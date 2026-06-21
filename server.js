@@ -138,12 +138,12 @@ async function iniciarConversa(telefone) {
   await sendText(telefone, 'Pra começar, qual é o seu nome?');
 }
 
-async function processarMensagem(telefone, texto, vCard) {
+async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   const sessao = getSessao(telefone);
 
   // ETAPA 1: aguardando nome do cliente
   if (sessao.etapa === 'aguardando_nome') {
-    sessao.clienteNome = texto.trim();
+    sessao.clienteNome = (texto || '').trim();
     sessao.etapa = 'aguardando_vendedor';
     saveDB(DB);
 
@@ -154,7 +154,7 @@ async function processarMensagem(telefone, texto, vCard) {
 
   // ETAPA 2: aguardando escolha do vendedor
   if (sessao.etapa === 'aguardando_vendedor') {
-    const escolha = texto.trim();
+    const escolha = (texto || '').trim();
     let vendedor = null;
 
     const numeroEscolhido = parseInt(escolha);
@@ -181,28 +181,31 @@ async function processarMensagem(telefone, texto, vCard) {
 
   // ETAPA 3: coletando contatos recomendados
   if (sessao.etapa === 'coletando_contatos') {
-    let contato = null;
+    let novosContatos = [];
 
-    if (vCard) {
-      contato = parseVCard(vCard);
+    if (contatosMultiplos && contatosMultiplos.length > 0) {
+      novosContatos = contatosMultiplos.filter(c => c && c.nome);
+    } else if (vCard) {
+      const c = parseVCard(vCard);
+      if (c && c.nome) novosContatos = [c];
     } else if (texto) {
-      // Texto livre — tenta extrair nome e telefone separados por espaço, vírgula ou hífen
       const partes = texto.split(/[-,]/).map(p => p.trim());
-      contato = {
+      novosContatos = [{
         nome: partes[0] || texto.trim(),
         telefone: partes[1] || null
-      };
+      }];
     }
 
-    if (contato && contato.nome) {
-      sessao.contatos.push(contato);
+    if (novosContatos.length > 0) {
+      sessao.contatos.push(...novosContatos);
       saveDB(DB);
 
       const metaAtual = DB.empresa.faixasBonus.find(f => f.quantidade >= sessao.contatos.length) || DB.empresa.faixasBonus[DB.empresa.faixasBonus.length - 1];
       const faltam = metaAtual.quantidade - sessao.contatos.length;
 
       if (faltam > 0) {
-        await sendText(telefone, `Anotado! ✅ Faltam ${faltam} recomendações para você garantir "${metaAtual.premio}". Quem mais vem na sua mente?`);
+        const nomesAdicionados = novosContatos.map(c => c.nome).join(', ');
+        await sendText(telefone, `Anotado, ${nomesAdicionados}! ✅ Faltam ${faltam} recomendações para você garantir "${metaAtual.premio}". Quem mais vem na sua mente?`);
       } else {
         await finalizarFaixa(telefone, sessao, metaAtual);
       }
@@ -265,6 +268,7 @@ app.post('/webhook', async (req, res) => {
     console.log('[WEBHOOK] keys recebidas:', Object.keys(body).join(', '));
     console.log('[WEBHOOK] text:', JSON.stringify(body.text));
     console.log('[WEBHOOK] contact:', JSON.stringify(body.contact));
+    console.log('[WEBHOOK] contactArray:', JSON.stringify(body.contactArray));
     console.log('[WEBHOOK] vCard direto:', JSON.stringify(body.vCard));
     console.log('[WEBHOOK] image:', JSON.stringify(body.image));
     console.log('[WEBHOOK] document:', JSON.stringify(body.document));
@@ -287,14 +291,28 @@ app.post('/webhook', async (req, res) => {
     // Extrai o conteúdo da mensagem conforme o tipo
     let texto = null;
     let vCard = null;
+    let contatosMultiplos = null;
 
     if (body.text && body.text.message) {
       texto = body.text.message;
     }
+
+    // contactArray: formato real usado pela Z-API para contatos compartilhados
+    if (body.contactArray && Array.isArray(body.contactArray) && body.contactArray.length > 0) {
+      contatosMultiplos = body.contactArray.map(c => {
+        if (c.vcard || c.vCard) {
+          return parseVCard(c.vcard || c.vCard);
+        }
+        return {
+          nome: c.displayName || c.name || c.pushname || 'Contato sem nome',
+          telefone: (c.phones && c.phones[0]) || c.phone || c.waid || null
+        };
+      });
+    }
+
     if (body.contact) {
       vCard = body.contact.vCard || body.contact.vcard || null;
       if (!texto && !vCard && body.contact.displayName) {
-        // fallback: contato sem vCard estruturado, mas com nome/telefone direto
         texto = `${body.contact.displayName} - ${body.contact.phones ? body.contact.phones[0] : ''}`;
       }
     }
@@ -307,6 +325,7 @@ app.post('/webhook', async (req, res) => {
 
     console.log('[WEBHOOK] texto extraído:', texto);
     console.log('[WEBHOOK] vCard extraído:', vCard);
+    console.log('[WEBHOOK] contatosMultiplos extraído:', JSON.stringify(contatosMultiplos));
 
     // Verifica se é a primeira mensagem (gatilho de início)
     const sessaoExistente = DB.sessoes[telefone];
@@ -316,10 +335,10 @@ app.post('/webhook', async (req, res) => {
       if (!sessaoExistente) {
         await iniciarConversa(telefone);
       } else {
-        await processarMensagem(telefone, texto, vCard);
+        await processarMensagem(telefone, texto, vCard, contatosMultiplos);
       }
     } else {
-      await processarMensagem(telefone, texto, vCard);
+      await processarMensagem(telefone, texto, vCard, contatosMultiplos);
     }
 
     res.sendStatus(200);
