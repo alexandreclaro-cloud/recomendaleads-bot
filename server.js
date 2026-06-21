@@ -11,6 +11,15 @@ const axios = require('axios');
 
 const app = express();
 app.use(express.json());
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // ============================================================
 // CONFIGURAÇÃO — preencher com os dados da sua instância Z-API
@@ -94,8 +103,6 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
 // ============================================================
 
 function parseVCard(vCardString) {
-  // Exemplo de formato:
-  // BEGIN:VCARD\nVERSION:3.0\nN:;nome;;;\nFN:nome\nTEL;type=CELL;type=VOICE;waid=5544999999999:+55 44 9999-9999\nEND:VCARD
   const nomeMatch = vCardString.match(/FN:(.*)/);
   const telMatch = vCardString.match(/waid=(\d+)/);
   return {
@@ -232,7 +239,6 @@ async function finalizarFaixa(telefone, sessao, faixa) {
   sessao.faixaFinal = faixa;
   saveDB(DB);
 
-  // Agenda a conversão automática para cada contato após o tempo configurado
   const esperaMs = DB.empresa.tempoEsperaConversaoMin * 60 * 1000;
   sessao.contatos.forEach((contato) => {
     setTimeout(() => {
@@ -273,12 +279,10 @@ app.post('/webhook', async (req, res) => {
     console.log('[WEBHOOK] image:', JSON.stringify(body.image));
     console.log('[WEBHOOK] document:', JSON.stringify(body.document));
 
-    // Ignora mensagens enviadas por nós mesmos (evita loop)
     if (body.fromMe) {
       return res.sendStatus(200);
     }
 
-    // Ignora mensagens de grupo
     if (body.isGroup) {
       return res.sendStatus(200);
     }
@@ -288,7 +292,6 @@ app.post('/webhook', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Extrai o conteúdo da mensagem conforme o tipo
     let texto = null;
     let vCard = null;
     let contatosMultiplos = null;
@@ -297,7 +300,6 @@ app.post('/webhook', async (req, res) => {
       texto = body.text.message;
     }
 
-    // contactArray: formato real usado pela Z-API para contatos compartilhados
     if (body.contactArray && Array.isArray(body.contactArray) && body.contactArray.length > 0) {
       contatosMultiplos = body.contactArray.map(c => {
         if (c.vcard || c.vCard) {
@@ -327,7 +329,6 @@ app.post('/webhook', async (req, res) => {
     console.log('[WEBHOOK] vCard extraído:', vCard);
     console.log('[WEBHOOK] contatosMultiplos extraído:', JSON.stringify(contatosMultiplos));
 
-    // Verifica se é a primeira mensagem (gatilho de início)
     const sessaoExistente = DB.sessoes[telefone];
     const ehGatilhoInicial = texto && texto.toLowerCase().includes('quero meu presente');
 
