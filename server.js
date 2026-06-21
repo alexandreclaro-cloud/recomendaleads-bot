@@ -332,10 +332,12 @@ app.post('/webhook', async (req, res) => {
     console.log('[WEBHOOK] image:', JSON.stringify(body.image));
     console.log('[WEBHOOK] document:', JSON.stringify(body.document));
 
+    // Ignora mensagens enviadas por nós mesmos (evita loop)
     if (body.fromMe) {
       return res.sendStatus(200);
     }
 
+    // Ignora mensagens de grupo
     if (body.isGroup) {
       return res.sendStatus(200);
     }
@@ -345,6 +347,7 @@ app.post('/webhook', async (req, res) => {
       return res.sendStatus(200);
     }
 
+    // Extrai o conteúdo da mensagem conforme o tipo
     let texto = null;
     let vCard = null;
     let contatosMultiplos = null;
@@ -353,6 +356,7 @@ app.post('/webhook', async (req, res) => {
       texto = body.text.message;
     }
 
+    // contactArray: formato real usado pela Z-API para contatos compartilhados
     if (body.contactArray && Array.isArray(body.contactArray) && body.contactArray.length > 0) {
       contatosMultiplos = body.contactArray.map(c => {
         if (c.vcard || c.vCard) {
@@ -382,18 +386,20 @@ app.post('/webhook', async (req, res) => {
     console.log('[WEBHOOK] vCard extraído:', vCard);
     console.log('[WEBHOOK] contatosMultiplos extraído:', JSON.stringify(contatosMultiplos));
 
+    // Verifica se é a primeira mensagem (gatilho de início)
     const sessaoExistente = DB.sessoes[telefone];
     const ehGatilhoInicial = texto && texto.toLowerCase().includes('quero meu presente');
 
-    if (ehGatilhoInicial || !sessaoExistente) {
-      if (!sessaoExistente) {
-        await iniciarConversa(telefone);
-      } else {
-        await processarMensagem(telefone, texto, vCard, contatosMultiplos);
-      }
-    } else {
+    if (ehGatilhoInicial) {
+      // Sempre reinicia do zero quando o gatilho é digitado, mesmo se já havia uma sessão
+      resetSessao(telefone);
+      await iniciarConversa(telefone);
+    } else if (sessaoExistente) {
+      // Só continua o roteiro se já existe uma sessão ativa da RecomendaLeads para esse número
       await processarMensagem(telefone, texto, vCard, contatosMultiplos);
     }
+    // Se não há gatilho E não há sessão existente, o bot ignora completamente a mensagem
+    // (não responde nada — não é da RecomendaLeads)
 
     res.sendStatus(200);
   } catch (err) {
