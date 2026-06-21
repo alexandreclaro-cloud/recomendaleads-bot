@@ -1,13 +1,13 @@
 // ============================================================
 // RECOMENDALEADS BOT — Servidor de automação via Z-API
+// VERSÃO 2 — Persistência em Firestore (não perde dados em redeploy)
 // ============================================================
 // Este servidor recebe mensagens do WhatsApp via webhook da Z-API
 // e conduz o roteiro de neurovendas do Método Poder da Recomendação.
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const axios = require('axios');
+const admin = require('firebase-admin');
 
 const app = express();
 app.use(express.json());
@@ -22,7 +22,7 @@ app.use((req, res, next) => {
 });
 
 // ============================================================
-// CONFIGURAÇÃO — preencher com os dados da sua instância Z-API
+// CONFIGURAÇÃO — Z-API
 // ============================================================
 const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID || 'COLOQUE_SEU_ID_AQUI';
 const ZAPI_TOKEN = process.env.ZAPI_TOKEN || 'COLOQUE_SEU_TOKEN_AQUI';
@@ -30,41 +30,90 @@ const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN || 'COLOQUE_SEU_CLIENT_T
 const ZAPI_BASE_URL = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}`;
 
 // ============================================================
-// BANCO DE DADOS SIMPLES EM ARQUIVO (db.json)
+// CONFIGURAÇÃO — Firebase Admin / Firestore
 // ============================================================
-const DB_PATH = path.join(__dirname, 'db.json');
+// A variável de ambiente FIREBASE_SERVICE_ACCOUNT deve conter o JSON
+// completo da chave de serviço, como uma única linha de texto.
+let serviceAccount;
+try {
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} catch (err) {
+  console.error('ERRO: FIREBASE_SERVICE_ACCOUNT não está configurada corretamente.', err.message);
+}
 
-function loadDB() {
-  if (!fs.existsSync(DB_PATH)) {
-    const seed = {
-      empresa: {
-        nome: 'Empresa Demo',
-        mensagemAgradecimento: 'Olá! Muito obrigado por ser nosso cliente e confiar no nosso trabalho. 🙏',
-        vendedores: ['Carla Mendes', 'Roberto Lima', 'Juliana Alves'],
-        faixasBonus: [
-          { quantidade: 5, premio: 'Cupom de 10% de desconto na próxima compra', arquivo: null, link: null, texto: null },
-          { quantidade: 10, premio: 'Brinde exclusivo + 15% de desconto', arquivo: null, link: null, texto: null },
-          { quantidade: 15, premio: 'Vale-presente de R$ 50', arquivo: null, link: null, texto: null },
-          { quantidade: 20, premio: 'Status de Embaixador + kit especial', arquivo: null, link: null, texto: null }
-        ],
-        premioRecomendado: 'Desconto de 10% na primeira compra, cortesia de quem te recomendou',
-        ctaRecomendado: 'Gostaria de vir retirar?',
-        tempoEsperaConversaoMin: 60,
-        tempoFollowupMin: 30
-      },
-      sessoes: {} // chave: telefone do cliente -> estado da conversa
-    };
-    fs.writeFileSync(DB_PATH, JSON.stringify(seed, null, 2));
-    return seed;
+if (serviceAccount) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+}
+
+const db = admin.apps.length ? admin.firestore() : null;
+
+const EMPRESA_DOC = () => db.collection('config').doc('empresa');
+const SESSOES_COL = () => db.collection('sessoes');
+
+// ============================================================
+// SEED — configuração padrão da empresa (usada apenas se não existir ainda no Firestore)
+// ============================================================
+const EMPRESA_PADRAO = {
+  nome: 'Empresa Demo',
+  mensagemAgradecimento: 'Olá! Muito obrigado por ser nosso cliente e confiar no nosso trabalho. 🙏',
+  vendedores: ['Carla Mendes', 'Roberto Lima', 'Juliana Alves'],
+  faixasBonus: [
+    { quantidade: 5, premio: 'Cupom de 10% de desconto na próxima compra', arquivo: null, link: null, texto: null },
+    { quantidade: 10, premio: 'Brinde exclusivo + 15% de desconto', arquivo: null, link: null, texto: null },
+    { quantidade: 15, premio: 'Vale-presente de R$ 50', arquivo: null, link: null, texto: null },
+    { quantidade: 20, premio: 'Status de Embaixador + kit especial', arquivo: null, link: null, texto: null }
+  ],
+  premioRecomendado: 'Desconto de 10% na primeira compra, cortesia de quem te recomendou',
+  ctaRecomendado: 'Gostaria de vir retirar?',
+  tempoEsperaConversaoMin: 60,
+  tempoFollowupMin: 30
+};
+
+async function getEmpresa() {
+  const snap = await EMPRESA_DOC().get();
+  if (!snap.exists) {
+    await EMPRESA_DOC().set(EMPRESA_PADRAO);
+    return { ...EMPRESA_PADRAO };
   }
-  return JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+  return snap.data();
 }
 
-function saveDB(db) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+async function saveEmpresa(empresa) {
+  await EMPRESA_DOC().set(empresa, { merge: true });
 }
 
-let DB = loadDB();
+async function getSessao(telefone) {
+  const snap = await SESSOES_COL().doc(telefone).get();
+  if (!snap.exists) {
+    const novaSessao = {
+      etapa: 'aguardando_nome',
+      clienteNome: null,
+      vendedorNome: null,
+      contatos: [],
+      criadoEm: new Date().toISOString()
+    };
+    await SESSOES_COL().doc(telefone).set(novaSessao);
+    return novaSessao;
+  }
+  return snap.data();
+}
+
+async function saveSessao(telefone, sessao) {
+  await SESSOES_COL().doc(telefone).set(sessao, { merge: true });
+}
+
+async function resetSessao(telefone) {
+  await SESSOES_COL().doc(telefone).delete();
+}
+
+async function getTodasSessoes() {
+  const snap = await SESSOES_COL().get();
+  const sessoes = {};
+  snap.forEach(doc => { sessoes[doc.id] = doc.data(); });
+  return sessoes;
+}
 
 // ============================================================
 // HELPERS DE ENVIO — Z-API
@@ -123,11 +172,11 @@ function converterLinkDrive(url) {
   if (match && match[1]) {
     return `https://drive.google.com/uc?export=download&id=${match[1]}`;
   }
-  return url; // já é um link direto ou de outro tipo, usa como está
+  return url;
 }
 
 // ============================================================
-// PARSER DE VCARD — extrai nome e telefone do contato compartilhado
+// PARSER DE VCARD
 // ============================================================
 
 function parseVCard(vCardString) {
@@ -140,49 +189,27 @@ function parseVCard(vCardString) {
 }
 
 // ============================================================
-// ESTADO DA CONVERSA — máquina de estados simples por telefone
-// ============================================================
-// etapas: aguardando_nome -> aguardando_vendedor -> coletando_contatos -> finalizado
-
-function getSessao(telefone) {
-  if (!DB.sessoes[telefone]) {
-    DB.sessoes[telefone] = {
-      etapa: 'aguardando_nome',
-      clienteNome: null,
-      vendedorNome: null,
-      contatos: [],
-      criadoEm: new Date().toISOString()
-    };
-    saveDB(DB);
-  }
-  return DB.sessoes[telefone];
-}
-
-function resetSessao(telefone) {
-  delete DB.sessoes[telefone];
-  saveDB(DB);
-}
-
-// ============================================================
 // LÓGICA PRINCIPAL DO ROTEIRO DE NEUROVENDAS
 // ============================================================
 
 async function iniciarConversa(telefone) {
-  const sessao = getSessao(telefone);
-  await sendText(telefone, DB.empresa.mensagemAgradecimento);
+  const empresa = await getEmpresa();
+  await getSessao(telefone); // garante que a sessão existe
+  await sendText(telefone, empresa.mensagemAgradecimento);
   await sendText(telefone, 'Pra começar, qual é o seu nome?');
 }
 
 async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
-  const sessao = getSessao(telefone);
+  const empresa = await getEmpresa();
+  const sessao = await getSessao(telefone);
 
   // ETAPA 1: aguardando nome do cliente
   if (sessao.etapa === 'aguardando_nome') {
     sessao.clienteNome = (texto || '').trim();
     sessao.etapa = 'aguardando_vendedor';
-    saveDB(DB);
+    await saveSessao(telefone, sessao);
 
-    const listaVendedores = DB.empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
+    const listaVendedores = empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
     await sendText(telefone, `Prazer, ${sessao.clienteNome.split(' ')[0]}! E me diz, quem te atendeu hoje?\n\n${listaVendedores}\n\nResponda com o número ou o nome.`);
     return;
   }
@@ -193,10 +220,10 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     let vendedor = null;
 
     const numeroEscolhido = parseInt(escolha);
-    if (!isNaN(numeroEscolhido) && DB.empresa.vendedores[numeroEscolhido - 1]) {
-      vendedor = DB.empresa.vendedores[numeroEscolhido - 1];
+    if (!isNaN(numeroEscolhido) && empresa.vendedores[numeroEscolhido - 1]) {
+      vendedor = empresa.vendedores[numeroEscolhido - 1];
     } else {
-      vendedor = DB.empresa.vendedores.find(v => v.toLowerCase().includes(escolha.toLowerCase()));
+      vendedor = empresa.vendedores.find(v => v.toLowerCase().includes(escolha.toLowerCase()));
     }
 
     if (!vendedor) {
@@ -206,9 +233,9 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
     sessao.vendedorNome = vendedor;
     sessao.etapa = 'coletando_contatos';
-    saveDB(DB);
+    await saveSessao(telefone, sessao);
 
-    const primeiraFaixa = DB.empresa.faixasBonus[0];
+    const primeiraFaixa = empresa.faixasBonus[0];
     await sendText(telefone, `Show! Agora me envie o contato dos seus amigos para você receber ${primeiraFaixa.premio.toLowerCase()}.`);
     await sendText(telefone, `Me envie ${primeiraFaixa.quantidade} recomendações e já garanta seu presente.\n\nVocê pode mandar o contato direto da sua agenda (toque em 📎 → Contato) ou digitar nome e telefone. Então, qual é a primeira pessoa que vem na sua mente? Lembrando que ela também vai ganhar um presente nosso 🎁`);
     return;
@@ -232,17 +259,17 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     }
 
     if (novosContatos.length > 0) {
-      sessao.contatos.push(...novosContatos);
-      saveDB(DB);
+      sessao.contatos = [...(sessao.contatos || []), ...novosContatos];
+      await saveSessao(telefone, sessao);
 
-      const metaAtual = DB.empresa.faixasBonus.find(f => f.quantidade >= sessao.contatos.length) || DB.empresa.faixasBonus[DB.empresa.faixasBonus.length - 1];
+      const metaAtual = empresa.faixasBonus.find(f => f.quantidade >= sessao.contatos.length) || empresa.faixasBonus[empresa.faixasBonus.length - 1];
       const faltam = metaAtual.quantidade - sessao.contatos.length;
 
       if (faltam > 0) {
         const nomesAdicionados = novosContatos.map(c => c.nome).join(', ');
         await sendText(telefone, `Anotado, ${nomesAdicionados}! ✅ Faltam ${faltam} recomendações para você garantir "${metaAtual.premio}". Quem mais vem na sua mente?`);
       } else {
-        await finalizarFaixa(telefone, sessao, metaAtual);
+        await finalizarFaixa(telefone, sessao, metaAtual, empresa);
       }
     } else {
       await sendText(telefone, 'Não consegui identificar o contato. Pode mandar de novo, direto da sua agenda ou digitando nome e telefone?');
@@ -252,22 +279,20 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
   // ETAPA 4: já finalizado — reinicia se mandar mensagem de novo
   if (sessao.etapa === 'finalizado') {
-    resetSessao(telefone);
+    await resetSessao(telefone);
     await iniciarConversa(telefone);
     return;
   }
 }
 
-async function finalizarFaixa(telefone, sessao, faixa) {
+async function finalizarFaixa(telefone, sessao, faixa, empresa) {
   await sendText(telefone, `🎉 Perfeito! Você completou ${sessao.contatos.length} recomendações.`);
   await sendText(telefone, `Seu presente: ${faixa.premio}`);
 
-  // Envia o texto/orientações do voucher (ex: "mostre esse cupom na loja até dia X")
   if (faixa.texto) {
     await sendText(telefone, faixa.texto);
   }
 
-  // Envia o arquivo do voucher (PDF ou imagem), se configurado
   if (faixa.arquivo) {
     const linkDownload = converterLinkDrive(faixa.arquivo);
     const extensao = (faixa.arquivo.match(/\.(\w+)(\?|$)/) || [])[1] || 'pdf';
@@ -280,7 +305,6 @@ async function finalizarFaixa(telefone, sessao, faixa) {
     }
   }
 
-  // Envia o link (qualquer URL: site, Drive, Instagram, Google Maps etc.), se configurado
   if (faixa.link) {
     await sendText(telefone, faixa.link);
   }
@@ -289,20 +313,19 @@ async function finalizarFaixa(telefone, sessao, faixa) {
 
   sessao.etapa = 'finalizado';
   sessao.faixaFinal = faixa;
-  saveDB(DB);
+  await saveSessao(telefone, sessao);
 
-  // Agenda a conversão automática para cada contato após o tempo configurado
-  const esperaMs = DB.empresa.tempoEsperaConversaoMin * 60 * 1000;
+  const esperaMs = empresa.tempoEsperaConversaoMin * 60 * 1000;
   sessao.contatos.forEach((contato) => {
     setTimeout(() => {
-      contatarRecomendado(contato, sessao);
+      contatarRecomendado(contato, sessao, empresa);
     }, esperaMs);
   });
 
   console.log(`[SESSÃO FINALIZADA] ${sessao.clienteNome} via ${sessao.vendedorNome} — ${sessao.contatos.length} contatos`);
 }
 
-async function contatarRecomendado(contato, sessao) {
+async function contatarRecomendado(contato, sessao, empresa) {
   if (!contato.telefone) {
     console.log(`[AVISO] Contato "${contato.nome}" sem telefone válido — não foi possível enviar conversão.`);
     return;
@@ -311,7 +334,7 @@ async function contatarRecomendado(contato, sessao) {
   const primeiroNomeRecomendado = contato.nome.split(' ')[0];
   const primeiroNomeRecomendador = sessao.clienteNome.split(' ')[0];
 
-  const mensagem = `Olá ${primeiroNomeRecomendado}, somos da ${DB.empresa.nome} e seu amigo ${primeiroNomeRecomendador} recomendou você aqui na nossa empresa.\n\nPor ter sido recomendado, você ganhou ${DB.empresa.premioRecomendado}.\n\n${DB.empresa.ctaRecomendado}`;
+  const mensagem = `Olá ${primeiroNomeRecomendado}, somos da ${empresa.nome} e seu amigo ${primeiroNomeRecomendador} recomendou você aqui na nossa empresa.\n\nPor ter sido recomendado, você ganhou ${empresa.premioRecomendado}.\n\n${empresa.ctaRecomendado}`;
 
   await sendText(contato.telefone, mensagem);
   console.log(`[CONVERSÃO ENVIADA] para ${contato.nome} (${contato.telefone})`);
@@ -323,21 +346,18 @@ async function contatarRecomendado(contato, sessao) {
 
 app.post('/webhook', async (req, res) => {
   try {
+    if (!db) {
+      console.error('Firestore não inicializado — verifique FIREBASE_SERVICE_ACCOUNT');
+      return res.sendStatus(500);
+    }
+
     const body = req.body;
     console.log('[WEBHOOK] keys recebidas:', Object.keys(body).join(', '));
-    console.log('[WEBHOOK] text:', JSON.stringify(body.text));
-    console.log('[WEBHOOK] contact:', JSON.stringify(body.contact));
-    console.log('[WEBHOOK] contactArray:', JSON.stringify(body.contactArray));
-    console.log('[WEBHOOK] vCard direto:', JSON.stringify(body.vCard));
-    console.log('[WEBHOOK] image:', JSON.stringify(body.image));
-    console.log('[WEBHOOK] document:', JSON.stringify(body.document));
 
-    // Ignora mensagens enviadas por nós mesmos (evita loop)
     if (body.fromMe) {
       return res.sendStatus(200);
     }
 
-    // Ignora mensagens de grupo
     if (body.isGroup) {
       return res.sendStatus(200);
     }
@@ -347,7 +367,6 @@ app.post('/webhook', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Extrai o conteúdo da mensagem conforme o tipo
     let texto = null;
     let vCard = null;
     let contatosMultiplos = null;
@@ -356,7 +375,6 @@ app.post('/webhook', async (req, res) => {
       texto = body.text.message;
     }
 
-    // contactArray: formato real usado pela Z-API para contatos compartilhados
     if (body.contactArray && Array.isArray(body.contactArray) && body.contactArray.length > 0) {
       contatosMultiplos = body.contactArray.map(c => {
         if (c.vcard || c.vCard) {
@@ -375,31 +393,24 @@ app.post('/webhook', async (req, res) => {
         texto = `${body.contact.displayName} - ${body.contact.phones ? body.contact.phones[0] : ''}`;
       }
     }
-    if (!vCard && body.vCard) {
-      vCard = body.vCard;
-    }
-    if (!vCard && body.vcard) {
-      vCard = body.vcard;
-    }
+    if (!vCard && body.vCard) vCard = body.vCard;
+    if (!vCard && body.vcard) vCard = body.vcard;
 
     console.log('[WEBHOOK] texto extraído:', texto);
     console.log('[WEBHOOK] vCard extraído:', vCard);
     console.log('[WEBHOOK] contatosMultiplos extraído:', JSON.stringify(contatosMultiplos));
 
-    // Verifica se é a primeira mensagem (gatilho de início)
-    const sessaoExistente = DB.sessoes[telefone];
+    const sessaoExistenteSnap = await SESSOES_COL().doc(telefone).get();
+    const sessaoExiste = sessaoExistenteSnap.exists;
     const ehGatilhoInicial = texto && texto.toLowerCase().includes('quero meu presente');
 
     if (ehGatilhoInicial) {
-      // Sempre reinicia do zero quando o gatilho é digitado, mesmo se já havia uma sessão
-      resetSessao(telefone);
+      await resetSessao(telefone);
       await iniciarConversa(telefone);
-    } else if (sessaoExistente) {
-      // Só continua o roteiro se já existe uma sessão ativa da RecomendaLeads para esse número
+    } else if (sessaoExiste) {
       await processarMensagem(telefone, texto, vCard, contatosMultiplos);
     }
     // Se não há gatilho E não há sessão existente, o bot ignora completamente a mensagem
-    // (não responde nada — não é da RecomendaLeads)
 
     res.sendStatus(200);
   } catch (err) {
@@ -409,39 +420,55 @@ app.post('/webhook', async (req, res) => {
 });
 
 // ============================================================
-// ROTAS DE ADMINISTRAÇÃO SIMPLES
+// ROTAS DE ADMINISTRAÇÃO
 // ============================================================
 
 app.get('/', (req, res) => {
-  res.send('RecomendaLeads Bot está rodando ✅');
+  res.send('RecomendaLeads Bot v2 (Firestore) está rodando ✅');
 });
 
-app.get('/status', (req, res) => {
-  res.json({
-    empresa: DB.empresa.nome,
-    sessoesAtivas: Object.keys(DB.sessoes).length,
-    sessoes: DB.sessoes
-  });
-});
-
-app.post('/config', (req, res) => {
-  DB.empresa = { ...DB.empresa, ...req.body };
-  saveDB(DB);
-  res.json({ ok: true, empresa: DB.empresa });
-});
-
-app.post('/config/faixa', (req, res) => {
-  const { quantidade, arquivo, link, texto, premio } = req.body;
-  const faixa = DB.empresa.faixasBonus.find(f => f.quantidade === quantidade);
-  if (!faixa) {
-    return res.status(404).json({ ok: false, erro: 'Faixa não encontrada para essa quantidade' });
+app.get('/status', async (req, res) => {
+  try {
+    const empresa = await getEmpresa();
+    const sessoes = await getTodasSessoes();
+    res.json({
+      empresa: empresa.nome,
+      sessoesAtivas: Object.keys(sessoes).length,
+      sessoes
+    });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
   }
-  if (arquivo !== undefined) faixa.arquivo = arquivo;
-  if (link !== undefined) faixa.link = link;
-  if (texto !== undefined) faixa.texto = texto;
-  if (premio !== undefined) faixa.premio = premio;
-  saveDB(DB);
-  res.json({ ok: true, faixa });
+});
+
+app.post('/config', async (req, res) => {
+  try {
+    const empresaAtual = await getEmpresa();
+    const novaEmpresa = { ...empresaAtual, ...req.body };
+    await saveEmpresa(novaEmpresa);
+    res.json({ ok: true, empresa: novaEmpresa });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/config/faixa', async (req, res) => {
+  try {
+    const { quantidade, arquivo, link, texto, premio } = req.body;
+    const empresa = await getEmpresa();
+    const faixa = empresa.faixasBonus.find(f => f.quantidade === quantidade);
+    if (!faixa) {
+      return res.status(404).json({ ok: false, erro: 'Faixa não encontrada para essa quantidade' });
+    }
+    if (arquivo !== undefined) faixa.arquivo = arquivo;
+    if (link !== undefined) faixa.link = link;
+    if (texto !== undefined) faixa.texto = texto;
+    if (premio !== undefined) faixa.premio = premio;
+    await saveEmpresa(empresa);
+    res.json({ ok: true, faixa });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
 });
 
 // ============================================================
@@ -450,6 +477,7 @@ app.post('/config/faixa', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`RecomendaLeads Bot rodando na porta ${PORT}`);
+  console.log(`RecomendaLeads Bot v2 (Firestore) rodando na porta ${PORT}`);
   console.log(`Webhook disponível em: /webhook`);
+  console.log(`Firestore inicializado: ${db ? 'SIM' : 'NÃO — verifique FIREBASE_SERVICE_ACCOUNT'}`);
 });
