@@ -63,9 +63,11 @@ let DB = loadDB();
 
 async function sendText(phone, message) {
   try {
-    await axios.post(`${ZAPI_BASE_URL}/send-text`, { phone, message }, {
-      headers: { 'Client-Token': ZAPI_CLIENT_TOKEN, 'Content-Type': 'application/json' }
-    });
+    const headers = { 'Content-Type': 'application/json' };
+    if (ZAPI_CLIENT_TOKEN && ZAPI_CLIENT_TOKEN !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
+      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
+    }
+    await axios.post(`${ZAPI_BASE_URL}/send-text`, { phone, message }, { headers });
     console.log(`[ENVIADO] para ${phone}: ${message.slice(0, 60)}...`);
   } catch (err) {
     console.error('Erro ao enviar texto:', err.response?.data || err.message);
@@ -74,11 +76,13 @@ async function sendText(phone, message) {
 
 async function sendDocument(phone, base64OrUrl, fileName, extension) {
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (ZAPI_CLIENT_TOKEN && ZAPI_CLIENT_TOKEN !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
+      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
+    }
     await axios.post(`${ZAPI_BASE_URL}/send-document/${extension}`, {
       phone, document: base64OrUrl, fileName
-    }, {
-      headers: { 'Client-Token': ZAPI_CLIENT_TOKEN, 'Content-Type': 'application/json' }
-    });
+    }, { headers });
     console.log(`[DOCUMENTO ENVIADO] para ${phone}: ${fileName}`);
   } catch (err) {
     console.error('Erro ao enviar documento:', err.response?.data || err.message);
@@ -258,7 +262,12 @@ async function contatarRecomendado(contato, sessao) {
 app.post('/webhook', async (req, res) => {
   try {
     const body = req.body;
-    console.log('[WEBHOOK RECEBIDO]', JSON.stringify(body).slice(0, 300));
+    console.log('[WEBHOOK] keys recebidas:', Object.keys(body).join(', '));
+    console.log('[WEBHOOK] text:', JSON.stringify(body.text));
+    console.log('[WEBHOOK] contact:', JSON.stringify(body.contact));
+    console.log('[WEBHOOK] vCard direto:', JSON.stringify(body.vCard));
+    console.log('[WEBHOOK] image:', JSON.stringify(body.image));
+    console.log('[WEBHOOK] document:', JSON.stringify(body.document));
 
     // Ignora mensagens enviadas por nós mesmos (evita loop)
     if (body.fromMe) {
@@ -281,11 +290,23 @@ app.post('/webhook', async (req, res) => {
 
     if (body.text && body.text.message) {
       texto = body.text.message;
-    } else if (body.contact && body.contact.vCard) {
-      vCard = body.contact.vCard;
-    } else if (body.vCard) {
+    }
+    if (body.contact) {
+      vCard = body.contact.vCard || body.contact.vcard || null;
+      if (!texto && !vCard && body.contact.displayName) {
+        // fallback: contato sem vCard estruturado, mas com nome/telefone direto
+        texto = `${body.contact.displayName} - ${body.contact.phones ? body.contact.phones[0] : ''}`;
+      }
+    }
+    if (!vCard && body.vCard) {
       vCard = body.vCard;
     }
+    if (!vCard && body.vcard) {
+      vCard = body.vcard;
+    }
+
+    console.log('[WEBHOOK] texto extraído:', texto);
+    console.log('[WEBHOOK] vCard extraído:', vCard);
 
     // Verifica se é a primeira mensagem (gatilho de início)
     const sessaoExistente = DB.sessoes[telefone];
