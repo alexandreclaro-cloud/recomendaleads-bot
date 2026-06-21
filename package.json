@@ -1,14 +1,15 @@
 {
   "name": "recomendaleads-bot",
-  "version": "1.0.0",
-  "description": "Bot de automação de recomendações via WhatsApp (Z-API) para o Método Poder da Recomendação",
+  "version": "2.0.0",
+  "description": "Bot de automação de recomendações via WhatsApp (Z-API) para o Método Poder da Recomendação, com persistência em Firestore",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "axios": "^1.7.2"
+    "axios": "^1.7.2",
+    "firebase-admin": "^12.5.0"
   },
   "engines": {
     "node": ">=18.0.0"
