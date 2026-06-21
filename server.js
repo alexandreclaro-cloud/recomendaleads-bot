@@ -42,10 +42,10 @@ function loadDB() {
         mensagemAgradecimento: 'Olá! Muito obrigado por ser nosso cliente e confiar no nosso trabalho. 🙏',
         vendedores: ['Carla Mendes', 'Roberto Lima', 'Juliana Alves'],
         faixasBonus: [
-          { quantidade: 5, premio: 'Cupom de 10% de desconto na próxima compra' },
-          { quantidade: 10, premio: 'Brinde exclusivo + 15% de desconto' },
-          { quantidade: 15, premio: 'Vale-presente de R$ 50' },
-          { quantidade: 20, premio: 'Status de Embaixador + kit especial' }
+          { quantidade: 5, premio: 'Cupom de 10% de desconto na próxima compra', arquivo: null, link: null, texto: null },
+          { quantidade: 10, premio: 'Brinde exclusivo + 15% de desconto', arquivo: null, link: null, texto: null },
+          { quantidade: 15, premio: 'Vale-presente de R$ 50', arquivo: null, link: null, texto: null },
+          { quantidade: 20, premio: 'Status de Embaixador + kit especial', arquivo: null, link: null, texto: null }
         ],
         premioRecomendado: 'Desconto de 10% na primeira compra, cortesia de quem te recomendou',
         ctaRecomendado: 'Gostaria de vir retirar?',
@@ -83,6 +83,21 @@ async function sendText(phone, message) {
   }
 }
 
+async function sendImage(phone, imageUrl, caption) {
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (ZAPI_CLIENT_TOKEN && ZAPI_CLIENT_TOKEN !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
+      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
+    }
+    await axios.post(`${ZAPI_BASE_URL}/send-image`, {
+      phone, image: imageUrl, caption: caption || ''
+    }, { headers });
+    console.log(`[IMAGEM ENVIADA] para ${phone}`);
+  } catch (err) {
+    console.error('Erro ao enviar imagem:', err.response?.data || err.message);
+  }
+}
+
 async function sendDocument(phone, base64OrUrl, fileName, extension) {
   try {
     const headers = { 'Content-Type': 'application/json' };
@@ -96,6 +111,19 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
   } catch (err) {
     console.error('Erro ao enviar documento:', err.response?.data || err.message);
   }
+}
+
+// ============================================================
+// HELPER — converte link do Google Drive em link de download direto
+// ============================================================
+
+function converterLinkDrive(url) {
+  if (!url) return url;
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) {
+    return `https://drive.google.com/uc?export=download&id=${match[1]}`;
+  }
+  return url; // já é um link direto ou de outro tipo, usa como está
 }
 
 // ============================================================
@@ -233,12 +261,37 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 async function finalizarFaixa(telefone, sessao, faixa) {
   await sendText(telefone, `🎉 Perfeito! Você completou ${sessao.contatos.length} recomendações.`);
   await sendText(telefone, `Seu presente: ${faixa.premio}`);
+
+  // Envia o texto/orientações do voucher (ex: "mostre esse cupom na loja até dia X")
+  if (faixa.texto) {
+    await sendText(telefone, faixa.texto);
+  }
+
+  // Envia o arquivo do voucher (PDF ou imagem), se configurado
+  if (faixa.arquivo) {
+    const linkDownload = converterLinkDrive(faixa.arquivo);
+    const extensao = (faixa.arquivo.match(/\.(\w+)(\?|$)/) || [])[1] || 'pdf';
+    const ehImagem = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extensao.toLowerCase());
+
+    if (ehImagem) {
+      await sendImage(telefone, linkDownload, faixa.premio);
+    } else {
+      await sendDocument(telefone, linkDownload, `Voucher - ${faixa.premio}`, extensao);
+    }
+  }
+
+  // Envia o link (qualquer URL: site, Drive, Instagram, Google Maps etc.), se configurado
+  if (faixa.link) {
+    await sendText(telefone, faixa.link);
+  }
+
   await sendText(telefone, `Só uma coisa importante: avise seus amigos que vamos entrar em contato com eles em breve, combinado? Assim eles já esperam nossa mensagem 😉`);
 
   sessao.etapa = 'finalizado';
   sessao.faixaFinal = faixa;
   saveDB(DB);
 
+  // Agenda a conversão automática para cada contato após o tempo configurado
   const esperaMs = DB.empresa.tempoEsperaConversaoMin * 60 * 1000;
   sessao.contatos.forEach((contato) => {
     setTimeout(() => {
@@ -369,6 +422,20 @@ app.post('/config', (req, res) => {
   DB.empresa = { ...DB.empresa, ...req.body };
   saveDB(DB);
   res.json({ ok: true, empresa: DB.empresa });
+});
+
+app.post('/config/faixa', (req, res) => {
+  const { quantidade, arquivo, link, texto, premio } = req.body;
+  const faixa = DB.empresa.faixasBonus.find(f => f.quantidade === quantidade);
+  if (!faixa) {
+    return res.status(404).json({ ok: false, erro: 'Faixa não encontrada para essa quantidade' });
+  }
+  if (arquivo !== undefined) faixa.arquivo = arquivo;
+  if (link !== undefined) faixa.link = link;
+  if (texto !== undefined) faixa.texto = texto;
+  if (premio !== undefined) faixa.premio = premio;
+  saveDB(DB);
+  res.json({ ok: true, faixa });
 });
 
 // ============================================================
