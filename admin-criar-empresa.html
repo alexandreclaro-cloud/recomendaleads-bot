@@ -1,1 +1,173 @@
 
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Cadastrar Empresa (Teste)</title>
+<style>
+  :root {
+    --navy: #0a1628;
+    --navy-light: #132338;
+    --gold: #d4af37;
+    --gold-light: #f0d878;
+    --text: #e8edf4;
+    --text-dim: #9aabc0;
+    --success: #3ddc97;
+    --error: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: linear-gradient(160deg, var(--navy) 0%, #060d18 100%);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 40px 16px;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; }
+  h1 { color: var(--gold-light); font-size: 1.4rem; text-align: center; margin-bottom: 6px; }
+  p.sub { color: var(--text-dim); text-align: center; margin-bottom: 28px; font-size: 0.9rem; }
+
+  .card {
+    background: var(--navy-light);
+    border: 1px solid rgba(212,175,55,0.18);
+    border-radius: 14px;
+    padding: 24px;
+  }
+  label { display: block; font-size: 0.82rem; color: var(--text-dim); margin: 14px 0 5px; }
+  label:first-child { margin-top: 0; }
+  input {
+    width: 100%;
+    background: #0e1a2c;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+  input:focus { outline: none; border-color: var(--gold); }
+  .hint { font-size: 0.74rem; color: var(--text-dim); margin-top: 4px; opacity: 0.8; }
+
+  button {
+    width: 100%;
+    background: var(--gold);
+    color: var(--navy);
+    border: none;
+    font-weight: 700;
+    font-size: 0.92rem;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 20px;
+  }
+  button:hover { opacity: 0.92; }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  .status { font-size: 0.85rem; margin-top: 14px; text-align: center; font-weight: 600; }
+  .status.ok { color: var(--success); }
+  .status.err { color: var(--error); }
+
+  .resultado {
+    background: rgba(61,220,151,0.08);
+    border: 1px solid rgba(61,220,151,0.3);
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 16px;
+    font-size: 0.88rem;
+    display: none;
+  }
+  .resultado.show { display: block; }
+  .resultado b { color: var(--success); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚙️ Cadastrar Empresa de Teste</h1>
+  <p class="sub">Etapa de teste — este cadastro ainda não está ligado ao bot/CRM. Serve só para validar o login.</p>
+
+  <div class="card">
+    <label>Chave administrativa</label>
+    <input type="password" id="adminKeyInput" placeholder="Chave de acesso administrativo">
+    <div class="hint">Configurada na variável de ambiente ADMIN_SECRET do Render.</div>
+
+    <label>Nome da empresa</label>
+    <input type="text" id="nomeInput" placeholder="Ex: Empresa de Teste">
+
+    <label>Email de login</label>
+    <input type="email" id="emailInput" placeholder="teste@empresa.com">
+
+    <label>Senha de login</label>
+    <input type="text" id="senhaInput" placeholder="Defina uma senha para testar">
+
+    <button id="criarBtn">Cadastrar empresa</button>
+    <div class="status" id="statusMsg"></div>
+
+    <div class="resultado" id="resultadoBox">
+      <div>✅ Empresa <b id="resultadoNome"></b> cadastrada!</div>
+      <div style="margin-top:8px;">Login: <b id="resultadoEmail"></b></div>
+      <div>Senha: <b id="resultadoSenha"></b></div>
+      <div style="margin-top:10px; color:#9aabc0;">Teste agora em <a href="/login" style="color:#f0d878;">/login</a> com esses dados.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin;
+
+document.getElementById('criarBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('criarBtn');
+  const statusEl = document.getElementById('statusMsg');
+  const resultadoBox = document.getElementById('resultadoBox');
+
+  const adminKey = document.getElementById('adminKeyInput').value;
+  const nome = document.getElementById('nomeInput').value.trim();
+  const email = document.getElementById('emailInput').value.trim();
+  const senha = document.getElementById('senhaInput').value;
+
+  if (!adminKey || !nome || !email || !senha) {
+    statusEl.textContent = 'Preencha todos os campos';
+    statusEl.className = 'status err';
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.textContent = 'Cadastrando...';
+  statusEl.className = 'status';
+  resultadoBox.classList.remove('show');
+
+  try {
+    const resp = await fetch(`${API_BASE}/admin/empresas`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Key': adminKey
+      },
+      body: JSON.stringify({ nome, email, senha })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '';
+      document.getElementById('resultadoNome').textContent = data.empresa.nome;
+      document.getElementById('resultadoEmail').textContent = data.empresa.email;
+      document.getElementById('resultadoSenha').textContent = senha;
+      resultadoBox.classList.add('show');
+
+      document.getElementById('nomeInput').value = '';
+      document.getElementById('emailInput').value = '';
+      document.getElementById('senhaInput').value = '';
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao cadastrar');
+      statusEl.className = 'status err';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.className = 'status err';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
