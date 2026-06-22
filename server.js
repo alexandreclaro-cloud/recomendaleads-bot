@@ -8,6 +8,7 @@
 const express = require('express');
 const axios = require('axios');
 const admin = require('firebase-admin');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
@@ -49,6 +50,7 @@ const db = admin.apps.length ? admin.firestore() : null;
 
 const EMPRESA_DOC = () => db.collection('config').doc('empresa');
 const SESSOES_COL = () => db.collection('sessoes');
+const LEADS_COL = () => db.collection('leads');
 
 // ============================================================
 // SEED — configuração padrão da empresa
@@ -111,6 +113,52 @@ async function getTodasSessoes() {
   const sessoes = {};
   snap.forEach(doc => { sessoes[doc.id] = doc.data(); });
   return sessoes;
+}
+
+// ============================================================
+// CRM KANBAN — leads recomendados (coleção "leads")
+// ============================================================
+// Cada documento representa UM contato recomendado por um cliente.
+// Etapas possíveis: novo_lead -> enviou_convite -> visitou -> comprou
+
+async function criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor }) {
+  const lead = {
+    nomeRecomendado: nomeRecomendado || 'Contato sem nome',
+    telefoneRecomendado: telefoneRecomendado || null,
+    nomeRecomendador: nomeRecomendador || null,
+    telefoneRecomendador: telefoneRecomendador || null,
+    vendedor: vendedor || null,
+    etapa: 'novo_lead',
+    bonusPago: false,
+    criadoEm: new Date().toISOString(),
+    historico: [{ etapa: 'novo_lead', em: new Date().toISOString() }]
+  };
+  const ref = await LEADS_COL().add(lead);
+  return { id: ref.id, ...lead };
+}
+
+async function getTodosLeads() {
+  const snap = await LEADS_COL().orderBy('criadoEm', 'desc').get();
+  const leads = [];
+  snap.forEach(doc => leads.push({ id: doc.id, ...doc.data() }));
+  return leads;
+}
+
+async function atualizarLead(id, dados) {
+  const ref = LEADS_COL().doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+
+  const atual = snap.data();
+  const atualizado = { ...atual, ...dados };
+
+  // Se a etapa mudou, registra no histórico
+  if (dados.etapa && dados.etapa !== atual.etapa) {
+    atualizado.historico = [...(atual.historico || []), { etapa: dados.etapa, em: new Date().toISOString() }];
+  }
+
+  await ref.set(atualizado, { merge: true });
+  return { id, ...atualizado };
 }
 
 // ============================================================
@@ -326,6 +374,21 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa) {
   sessao.faixaFinal = faixa;
   await saveSessao(telefone, sessao);
 
+  // Alimenta o CRM Kanban: cada contato recomendado entra como um novo lead
+  for (const contato of sessao.contatos) {
+    try {
+      await criarLead({
+        nomeRecomendado: contato.nome,
+        telefoneRecomendado: contato.telefone,
+        nomeRecomendador: sessao.clienteNome,
+        telefoneRecomendador: telefone,
+        vendedor: sessao.vendedorNome
+      });
+    } catch (err) {
+      console.error('Erro ao criar lead no CRM:', err.message);
+    }
+  }
+
   const esperaMs = empresa.tempoEsperaConversaoMin * 60 * 1000;
   sessao.contatos.forEach((contato) => {
     setTimeout(() => {
@@ -434,7 +497,39 @@ app.post('/webhook', async (req, res) => {
 // ============================================================
 
 app.get('/', (req, res) => {
-  res.send('RecomendaLeads Bot v2 (Firestore) está rodando ✅');
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>RecomendaLeads</title>
+      <style>
+        body { font-family: -apple-system, sans-serif; background: #0a1628; color: #e8edf4; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .box { text-align: center; }
+        h1 { color: #f0d878; margin-bottom: 6px; }
+        p { color: #9aabc0; margin-bottom: 28px; }
+        a { display: inline-block; margin: 6px; padding: 12px 22px; background: #d4af37; color: #0a1628; font-weight: 700; border-radius: 8px; text-decoration: none; }
+        a:hover { opacity: 0.9; }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <h1>✅ RecomendaLeads Bot</h1>
+        <p>Servidor rodando — escolha um painel:</p>
+        <a href="/crm">📋 CRM Kanban</a>
+        <a href="/configurar-vouchers">⚙️ Configurações</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+app.get('/configurar-vouchers', (req, res) => {
+  res.sendFile(path.join(__dirname, 'configurar-vouchers.html'));
+});
+
+app.get('/crm', (req, res) => {
+  res.sendFile(path.join(__dirname, 'crm.html'));
 });
 
 app.get('/status', async (req, res) => {
@@ -448,6 +543,15 @@ app.get('/status', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ erro: err.message });
+  }
+});
+
+app.get('/config', async (req, res) => {
+  try {
+    const empresa = await getEmpresa();
+    res.json({ ok: true, empresa });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
   }
 });
 
@@ -476,6 +580,48 @@ app.post('/config/faixa', async (req, res) => {
     if (premio !== undefined) faixa.premio = premio;
     await saveEmpresa(empresa);
     res.json({ ok: true, faixa });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// ROTAS DO CRM KANBAN
+// ============================================================
+
+app.get('/leads', async (req, res) => {
+  try {
+    const leads = await getTodosLeads();
+    res.json({ ok: true, leads });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.patch('/leads/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { etapa, vendedor, bonusPago } = req.body;
+    const dados = {};
+    if (etapa !== undefined) dados.etapa = etapa;
+    if (vendedor !== undefined) dados.vendedor = vendedor;
+    if (bonusPago !== undefined) dados.bonusPago = bonusPago;
+
+    const lead = await atualizarLead(id, dados);
+    if (!lead) {
+      return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
+    }
+    res.json({ ok: true, lead });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/leads', async (req, res) => {
+  try {
+    const { nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor } = req.body;
+    const lead = await criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor });
+    res.json({ ok: true, lead });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
