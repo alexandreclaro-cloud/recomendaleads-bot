@@ -68,7 +68,17 @@ const EMPRESA_PADRAO = {
   premioRecomendado: 'Desconto de 10% na primeira compra, cortesia de quem te recomendou',
   ctaRecomendado: 'Gostaria de vir retirar?',
   tempoEsperaConversaoMin: 60,
-  tempoFollowupMin: 30
+  tempoFollowupMin: 30,
+  // Etapas do CRM Kanban — totalmente editáveis pelo cliente em /configurar-vouchers.
+  // Cada lead nasce na primeira etapa desta lista (índice 0).
+  etapasKanban: [
+    { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
+    { id: 'aceitou_mensagem', nome: 'Aceitou Mensagem' },
+    { id: 'agendou', nome: 'Agendou' },
+    { id: 'comprou', nome: 'Comprou' },
+    { id: 'nao_respondeu', nome: 'Não respondeu' },
+    { id: 'nao_tem_interesse', nome: 'Não tem interesse' }
+  ]
 };
 
 async function getEmpresa() {
@@ -119,19 +129,26 @@ async function getTodasSessoes() {
 // CRM KANBAN — leads recomendados (coleção "leads")
 // ============================================================
 // Cada documento representa UM contato recomendado por um cliente.
-// Etapas possíveis: novo_lead -> enviou_convite -> visitou -> comprou
+// As etapas (colunas) são definidas pelo cliente em empresa.etapasKanban.
+// O lead sempre nasce na primeira etapa dessa lista.
 
 async function criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor }) {
+  const empresa = await getEmpresa();
+  const etapas = (empresa.etapasKanban && empresa.etapasKanban.length > 0)
+    ? empresa.etapasKanban
+    : EMPRESA_PADRAO.etapasKanban;
+  const etapaInicial = etapas[0].id;
+
   const lead = {
     nomeRecomendado: nomeRecomendado || 'Contato sem nome',
     telefoneRecomendado: telefoneRecomendado || null,
     nomeRecomendador: nomeRecomendador || null,
     telefoneRecomendador: telefoneRecomendador || null,
     vendedor: vendedor || null,
-    etapa: 'novo_lead',
+    etapa: etapaInicial,
     bonusPago: false,
     criadoEm: new Date().toISOString(),
-    historico: [{ etapa: 'novo_lead', em: new Date().toISOString() }]
+    historico: [{ etapa: etapaInicial, em: new Date().toISOString() }]
   };
   const ref = await LEADS_COL().add(lead);
   return { id: ref.id, ...lead };
