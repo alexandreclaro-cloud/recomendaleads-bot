@@ -572,6 +572,12 @@ app.get('/configurar-vouchers', (req, res) => {
   res.sendFile(path.join(__dirname, 'configurar-vouchers.html'));
 });
 
+// Rota nova e separada — página de configuração protegida por login.
+// Usa as rotas /minha-config (não as antigas /config), e exige login no navegador.
+app.get('/minha-empresa/configurar', (req, res) => {
+  res.sendFile(path.join(__dirname, 'minha-empresa-configurar.html'));
+});
+
 app.get('/crm', (req, res) => {
   res.sendFile(path.join(__dirname, 'crm.html'));
 });
@@ -618,6 +624,79 @@ app.get('/admin/criar-empresa', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-criar-empresa.html'));
 });
 
+// ============================================================
+// NOVO — proteção por login (etapa 2)
+// ============================================================
+// Middleware que exige um token JWT válido e anexa a empresa logada em req.empresaLogin.
+// Usado apenas pelas rotas novas abaixo — nada das rotas antigas (/config, /leads,
+// /crm, etc., usadas pela Empresa Demo) foi alterado ou passou a exigir login.
+
+async function exigirLoginEmpresa(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) {
+      return res.status(401).json({ ok: false, erro: 'Não autenticado' });
+    }
+
+    const payload = jwt.verify(token, JWT_SECRET);
+    const doc = await EMPRESAS_COL().doc(payload.empresaLoginId).get();
+    if (!doc.exists) {
+      return res.status(401).json({ ok: false, erro: 'Empresa não encontrada' });
+    }
+
+    req.empresaLogin = { id: doc.id, ...doc.data() };
+    next();
+  } catch (err) {
+    return res.status(401).json({ ok: false, erro: 'Sessão inválida ou expirada' });
+  }
+}
+
+// Lê a configuração da empresa que está logada (não a Empresa Demo antiga).
+// Se a empresa ainda não tiver configuração salva (ex: X Mentor, criada antes
+// desta etapa), devolve os valores padrão sem quebrar nada.
+app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+    res.json({ ok: true, empresa: configuracao });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/minha-config', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const configuracaoAtual = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+    const novaConfiguracao = { ...configuracaoAtual, ...req.body };
+
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: novaConfiguracao }, { merge: true });
+    res.json({ ok: true, empresa: novaConfiguracao });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/minha-config/faixa', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const { quantidade, arquivo, link, texto, premio } = req.body;
+    const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+
+    const faixa = configuracao.faixasBonus.find(f => f.quantidade === quantidade);
+    if (!faixa) {
+      return res.status(404).json({ ok: false, erro: 'Faixa não encontrada para essa quantidade' });
+    }
+    if (arquivo !== undefined) faixa.arquivo = arquivo;
+    if (link !== undefined) faixa.link = link;
+    if (texto !== undefined) faixa.texto = texto;
+    if (premio !== undefined) faixa.premio = premio;
+
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao }, { merge: true });
+    res.json({ ok: true, faixa });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.post('/admin/empresas', async (req, res) => {
   try {
     const chaveAdmin = req.headers['x-admin-key'];
@@ -640,7 +719,13 @@ app.post('/admin/empresas', async (req, res) => {
       nome,
       email,
       senhaHash,
-      criadoEm: new Date().toISOString()
+      criadoEm: new Date().toISOString(),
+      // Configuração inicial da empresa — mesma estrutura usada em /configurar-vouchers,
+      // agora isolada por empresa em vez de compartilhada (Empresa Demo antiga).
+      configuracao: {
+        ...EMPRESA_PADRAO,
+        nome // o nome de exibição na configuração começa igual ao nome cadastrado aqui
+      }
     });
 
     res.json({ ok: true, empresa: { id: ref.id, nome, email } });
