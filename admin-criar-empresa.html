@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin — Cadastrar Empresa (Teste)</title>
+<title>Admin — Cadastrar Empresa</title>
 <style>
   :root {
     --navy: #0a1628;
@@ -37,7 +36,7 @@
   }
   label { display: block; font-size: 0.82rem; color: var(--text-dim); margin: 14px 0 5px; }
   label:first-child { margin-top: 0; }
-  input {
+  input[type="password"], input[type="text"], input[type="email"] {
     width: 100%;
     background: #0e1a2c;
     border: 1px solid rgba(255,255,255,0.12);
@@ -48,6 +47,31 @@
   }
   input:focus { outline: none; border-color: var(--gold); }
   .hint { font-size: 0.74rem; color: var(--text-dim); margin-top: 4px; opacity: 0.8; }
+
+  .checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 18px;
+    padding: 12px;
+    background: rgba(212,175,55,0.06);
+    border: 1px solid rgba(212,175,55,0.2);
+    border-radius: 8px;
+  }
+  .checkbox-row input[type="checkbox"] {
+    margin-top: 2px;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--gold);
+    cursor: pointer;
+  }
+  .checkbox-row label {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .checkbox-row .hint { margin-top: 4px; }
 
   button {
     width: 100%;
@@ -83,8 +107,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>⚙️ Cadastrar Empresa de Teste</h1>
-  <p class="sub">Etapa de teste — este cadastro ainda não está ligado ao bot/CRM. Serve só para validar o login.</p>
+  <h1>⚙️ Cadastrar Empresa</h1>
+  <p class="sub">Painel administrativo de cadastro de empresas com login.</p>
 
   <div class="card">
     <label>Chave administrativa</label>
@@ -100,74 +124,8 @@
     <label>Senha de login</label>
     <input type="text" id="senhaInput" placeholder="Defina uma senha para testar">
 
-    <button id="criarBtn">Cadastrar empresa</button>
-    <div class="status" id="statusMsg"></div>
-
-    <div class="resultado" id="resultadoBox">
-      <div>✅ Empresa <b id="resultadoNome"></b> cadastrada!</div>
-      <div style="margin-top:8px;">Login: <b id="resultadoEmail"></b></div>
-      <div>Senha: <b id="resultadoSenha"></b></div>
-      <div style="margin-top:10px; color:#9aabc0;">Teste agora em <a href="/login" style="color:#f0d878;">/login</a> com esses dados.</div>
-    </div>
-  </div>
-</div>
-
-<script>
-const API_BASE = window.location.origin;
-
-document.getElementById('criarBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('criarBtn');
-  const statusEl = document.getElementById('statusMsg');
-  const resultadoBox = document.getElementById('resultadoBox');
-
-  const adminKey = document.getElementById('adminKeyInput').value;
-  const nome = document.getElementById('nomeInput').value.trim();
-  const email = document.getElementById('emailInput').value.trim();
-  const senha = document.getElementById('senhaInput').value;
-
-  if (!adminKey || !nome || !email || !senha) {
-    statusEl.textContent = 'Preencha todos os campos';
-    statusEl.className = 'status err';
-    return;
-  }
-
-  btn.disabled = true;
-  statusEl.textContent = 'Cadastrando...';
-  statusEl.className = 'status';
-  resultadoBox.classList.remove('show');
-
-  try {
-    const resp = await fetch(`${API_BASE}/admin/empresas`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Admin-Key': adminKey
-      },
-      body: JSON.stringify({ nome, email, senha })
-    });
-    const data = await resp.json();
-
-    if (resp.ok && data.ok) {
-      statusEl.textContent = '';
-      document.getElementById('resultadoNome').textContent = data.empresa.nome;
-      document.getElementById('resultadoEmail').textContent = data.empresa.email;
-      document.getElementById('resultadoSenha').textContent = senha;
-      resultadoBox.classList.add('show');
-
-      document.getElementById('nomeInput').value = '';
-      document.getElementById('emailInput').value = '';
-      document.getElementById('senhaInput').value = '';
-    } else {
-      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao cadastrar');
-      statusEl.className = 'status err';
-    }
-  } catch (err) {
-    statusEl.textContent = '❌ Erro de conexão';
-    statusEl.className = 'status err';
-  } finally {
-    btn.disabled = false;
-  }
-});
-</script>
-</body>
-</html>
+    <div class="checkbox-row">
+      <input type="checkbox" id="migrarConfigCheckbox">
+      <div>
+        <label for="migrarConfigCheckbox">Migrar configuração da empresa principal</label>
+        <div class="hint">Marque apenas ao cadastrar a empresa principal (a que já usa /crm
