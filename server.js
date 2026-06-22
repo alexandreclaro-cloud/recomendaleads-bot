@@ -704,7 +704,7 @@ app.post('/admin/empresas', async (req, res) => {
       return res.status(401).json({ ok: false, erro: 'Chave administrativa inválida' });
     }
 
-    const { nome, email, senha } = req.body;
+    const { nome, email, senha, migrarConfigPrincipal } = req.body;
     if (!nome || !email || !senha) {
       return res.status(400).json({ ok: false, erro: 'Informe nome, email e senha' });
     }
@@ -712,6 +712,16 @@ app.post('/admin/empresas', async (req, res) => {
     const existenteSnap = await EMPRESAS_COL().where('email', '==', email).limit(1).get();
     if (!existenteSnap.empty) {
       return res.status(409).json({ ok: false, erro: 'Já existe uma empresa cadastrada com este email' });
+    }
+
+    // Se migrarConfigPrincipal=true, a conta nasce com os dados REAIS já salvos
+    // em config/empresa (mensagem, vendedores, faixas de bônus, etc.), em vez dos
+    // valores de exemplo. Usado uma única vez para dar à empresa principal sua
+    // própria conta de login sem perder o que já estava configurado.
+    let configuracaoInicial = { ...EMPRESA_PADRAO, nome };
+    if (migrarConfigPrincipal) {
+      const empresaReal = await getEmpresa();
+      configuracaoInicial = { ...empresaReal };
     }
 
     const senhaHash = await bcrypt.hash(senha, 10);
@@ -722,10 +732,7 @@ app.post('/admin/empresas', async (req, res) => {
       criadoEm: new Date().toISOString(),
       // Configuração inicial da empresa — mesma estrutura usada em /configurar-vouchers,
       // agora isolada por empresa em vez de compartilhada (Empresa Demo antiga).
-      configuracao: {
-        ...EMPRESA_PADRAO,
-        nome // o nome de exibição na configuração começa igual ao nome cadastrado aqui
-      }
+      configuracao: configuracaoInicial
     });
 
     res.json({ ok: true, empresa: { id: ref.id, nome, email } });
@@ -733,6 +740,21 @@ app.post('/admin/empresas', async (req, res) => {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
+
+app.get('/status', async (req, res) => {
+  try {
+    const empresa = await getEmpresa();
+    const sessoes = await getTodasSessoes();
+    res.json({
+      empresa: empresa.nome,
+      sessoesAtivas: Object.keys(sessoes).length,
+      sessoes
+    });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 app.get('/config', async (req, res) => {
   try {
     const empresa = await getEmpresa();
