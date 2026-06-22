@@ -32,8 +32,6 @@ const ZAPI_BASE_URL = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/
 // ============================================================
 // CONFIGURAÇÃO — Firebase Admin / Firestore
 // ============================================================
-// A variável de ambiente FIREBASE_SERVICE_ACCOUNT deve conter o JSON
-// completo da chave de serviço, como uma única linha de texto.
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -53,7 +51,7 @@ const EMPRESA_DOC = () => db.collection('config').doc('empresa');
 const SESSOES_COL = () => db.collection('sessoes');
 
 // ============================================================
-// SEED — configuração padrão da empresa (usada apenas se não existir ainda no Firestore)
+// SEED — configuração padrão da empresa
 // ============================================================
 const EMPRESA_PADRAO = {
   nome: 'Empresa Demo',
@@ -194,7 +192,7 @@ function parseVCard(vCardString) {
 
 async function iniciarConversa(telefone) {
   const empresa = await getEmpresa();
-  await getSessao(telefone); // garante que a sessão existe
+  await getSessao(telefone);
   await sendText(telefone, empresa.mensagemAgradecimento);
   await sendText(telefone, 'Pra começar, qual é o seu nome?');
 }
@@ -251,11 +249,24 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
       const c = parseVCard(vCard);
       if (c && c.nome) novosContatos = [c];
     } else if (texto) {
-      const partes = texto.split(/[-,]/).map(p => p.trim());
-      novosContatos = [{
-        nome: partes[0] || texto.trim(),
-        telefone: partes[1] || null
-      }];
+      // Só aceita texto livre como contato se contiver um padrão de telefone BR plausível,
+      // e rejeita textos longos ou que pareçam URLs/códigos Pix (evita falsos positivos)
+      const matchTelefone = texto.match(/\+?\d[\d\s().-]{8,15}\d/);
+      const ehUrlOuCodigo = /https?:\/\/|\.com|\.br\//.test(texto);
+
+      if (matchTelefone && !ehUrlOuCodigo) {
+        const telefoneCru = matchTelefone[0].replace(/[^\d]/g, '');
+        const telefoneValido = telefoneCru.length >= 10 && telefoneCru.length <= 13;
+        const tamanhoPlausivel = texto.length <= telefoneCru.length + 60;
+
+        if (telefoneValido && tamanhoPlausivel) {
+          const nome = texto.replace(matchTelefone[0], '').replace(/[-,]/g, ' ').trim();
+          novosContatos = [{
+            nome: nome || 'Contato sem nome',
+            telefone: telefoneCru
+          }];
+        }
+      }
     }
 
     if (novosContatos.length > 0) {
@@ -272,7 +283,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
         await finalizarFaixa(telefone, sessao, metaAtual, empresa);
       }
     } else {
-      await sendText(telefone, 'Não consegui identificar o contato. Pode mandar de novo, direto da sua agenda ou digitando nome e telefone?');
+      await sendText(telefone, 'Não consegui identificar um contato aí. Pode mandar o contato direto da sua agenda (toque em 📎 → Contato), ou digitar no formato "Nome - telefone com DDD"?');
     }
     return;
   }
@@ -410,7 +421,6 @@ app.post('/webhook', async (req, res) => {
     } else if (sessaoExiste) {
       await processarMensagem(telefone, texto, vCard, contatosMultiplos);
     }
-    // Se não há gatilho E não há sessão existente, o bot ignora completamente a mensagem
 
     res.sendStatus(200);
   } catch (err) {
