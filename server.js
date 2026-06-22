@@ -37,7 +37,7 @@ let serviceAccount;
 try {
   serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 } catch (err) {
-  console.error('ERRO: FIREBASE_SERVICE_ACCOUNT não está configurada corretamente.', err.message);
+  console.error('ERRO: FIREBASE_SERVICE_CCOUNT não está configurada corretamente.', err.message);
 }
 
 if (serviceAccount) {
@@ -66,6 +66,8 @@ const EMPRESA_PADRAO = {
     { quantidade: 20, premio: 'Status de Embaixador + kit especial', arquivo: null, link: null, texto: null }
   ],
   premioRecomendado: 'Desconto de 10% na primeira compra, cortesia de quem te recomendou',
+  arquivoRecomendado: null,
+  linkRecomendado: null,
   ctaRecomendado: 'Gostaria de vir retirar?',
   tempoEsperaConversaoMin: 60,
   tempoFollowupMin: 30,
@@ -428,6 +430,23 @@ async function contatarRecomendado(contato, sessao, empresa) {
   const mensagem = `Olá ${primeiroNomeRecomendado}, somos da ${empresa.nome} e seu amigo ${primeiroNomeRecomendador} recomendou você aqui na nossa empresa.\n\nPor ter sido recomendado, você ganhou ${empresa.premioRecomendado}.\n\n${empresa.ctaRecomendado}`;
 
   await sendText(contato.telefone, mensagem);
+
+  if (empresa.arquivoRecomendado) {
+    const linkDownload = converterLinkDrive(empresa.arquivoRecomendado);
+    const extensao = (empresa.arquivoRecomendado.match(/\.(\w+)(\?|$)/) || [])[1] || 'pdf';
+    const ehImagem = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extensao.toLowerCase());
+
+    if (ehImagem) {
+      await sendImage(contato.telefone, linkDownload, empresa.premioRecomendado || '');
+    } else {
+      await sendDocument(contato.telefone, linkDownload, `Voucher - ${empresa.premioRecomendado || 'presente'}`, extensao);
+    }
+  }
+
+  if (empresa.linkRecomendado) {
+    await sendText(contato.telefone, empresa.linkRecomendado);
+  }
+
   console.log(`[CONVERSÃO ENVIADA] para ${contato.nome} (${contato.telefone})`);
 }
 
