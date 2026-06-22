@@ -128,4 +128,80 @@
       <input type="checkbox" id="migrarConfigCheckbox">
       <div>
         <label for="migrarConfigCheckbox">Migrar configuração da empresa principal</label>
-        <div class="hint">Marque apenas ao cadastrar a empresa principal (a que já usa /crm
+        <div class="hint">Marque apenas ao cadastrar a empresa principal (a que já usa /crm e /configurar-vouchers hoje). A conta nasce com a mensagem, vendedores e faixas de bônus REAIS já configurados, em vez dos valores de exemplo.</div>
+      </div>
+    </div>
+
+    <button id="criarBtn">Cadastrar empresa</button>
+    <div class="status" id="statusMsg"></div>
+
+    <div class="resultado" id="resultadoBox">
+      <div>✅ Empresa <b id="resultadoNome"></b> cadastrada!</div>
+      <div style="margin-top:8px;">Login: <b id="resultadoEmail"></b></div>
+      <div>Senha: <b id="resultadoSenha"></b></div>
+      <div style="margin-top:10px; color:#9aabc0;">Teste agora em <a href="/login" style="color:#f0d878;">/login</a> com esses dados.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin;
+
+document.getElementById('criarBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('criarBtn');
+  const statusEl = document.getElementById('statusMsg');
+  const resultadoBox = document.getElementById('resultadoBox');
+
+  const adminKey = document.getElementById('adminKeyInput').value;
+  const nome = document.getElementById('nomeInput').value.trim();
+  const email = document.getElementById('emailInput').value.trim();
+  const senha = document.getElementById('senhaInput').value;
+  const migrarConfigPrincipal = document.getElementById('migrarConfigCheckbox').checked;
+
+  if (!adminKey || !nome || !email || !senha) {
+    statusEl.textContent = 'Preencha todos os campos';
+    statusEl.className = 'status err';
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.textContent = 'Cadastrando...';
+  statusEl.className = 'status';
+  resultadoBox.classList.remove('show');
+
+  try {
+    const resp = await fetch(`${API_BASE}/admin/empresas`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Key': adminKey
+      },
+      body: JSON.stringify({ nome, email, senha, migrarConfigPrincipal })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '';
+      document.getElementById('resultadoNome').textContent = data.empresa.nome;
+      document.getElementById('resultadoEmail').textContent = data.empresa.email;
+      document.getElementById('resultadoSenha').textContent = senha;
+      resultadoBox.classList.add('show');
+
+      document.getElementById('nomeInput').value = '';
+      document.getElementById('emailInput').value = '';
+      document.getElementById('senhaInput').value = '';
+      document.getElementById('migrarConfigCheckbox').checked = false;
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao cadastrar');
+      statusEl.className = 'status err';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.className = 'status err';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
