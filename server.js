@@ -9,6 +9,8 @@ const express = require('express');
 const axios = require('axios');
 const admin = require('firebase-admin');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 app.use(express.json());
@@ -51,6 +53,12 @@ const db = admin.apps.length ? admin.firestore() : null;
 const EMPRESA_DOC = () => db.collection('config').doc('empresa');
 const SESSOES_COL = () => db.collection('sessoes');
 const LEADS_COL = () => db.collection('leads');
+// Coleção nova, isolada — usada só pelo sistema de login. Não afeta o EMPRESA_DOC
+// único que o bot/CRM/configurações continuam usando normalmente nesta etapa.
+const EMPRESAS_COL = () => db.collection('empresas_login');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'recomendaleads-segredo-trocar-em-producao';
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'troque-esta-chave';
 
 // ============================================================
 // SEED — configuração padrão da empresa
@@ -566,6 +574,79 @@ app.get('/configurar-vouchers', (req, res) => {
 
 app.get('/crm', (req, res) => {
   res.sendFile(path.join(__dirname, 'crm.html'));
+});
+
+// ============================================================
+// NOVO — sistema de login (etapa 1, sem proteção ainda)
+// ============================================================
+// Estas rotas são aditivas: nada do bot, CRM ou configurações foi alterado.
+// Por enquanto, login e cadastro de empresa só existem para serem testados;
+// nenhuma rota passou a exigir autenticação.
+
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+app.post('/login', async (req, res) => {
+  try {
+    const { email, senha } = req.body;
+    if (!email || !senha) {
+      return res.status(400).json({ ok: false, erro: 'Informe email e senha' });
+    }
+
+    const snap = await EMPRESAS_COL().where('email', '==', email).limit(1).get();
+    if (snap.empty) {
+      return res.status(401).json({ ok: false, erro: 'Email ou senha incorretos' });
+    }
+
+    const doc = snap.docs[0];
+    const empresaLogin = { id: doc.id, ...doc.data() };
+
+    const senhaValida = await bcrypt.compare(senha, empresaLogin.senhaHash);
+    if (!senhaValida) {
+      return res.status(401).json({ ok: false, erro: 'Email ou senha incorretos' });
+    }
+
+    const token = jwt.sign({ empresaLoginId: empresaLogin.id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ ok: true, token, empresa: { id: empresaLogin.id, nome: empresaLogin.nome, email: empresaLogin.email } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.get('/admin/criar-empresa', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin-criar-empresa.html'));
+});
+
+app.post('/admin/empresas', async (req, res) => {
+  try {
+    const chaveAdmin = req.headers['x-admin-key'];
+    if (!chaveAdmin || chaveAdmin !== ADMIN_SECRET) {
+      return res.status(401).json({ ok: false, erro: 'Chave administrativa inválida' });
+    }
+
+    const { nome, email, senha } = req.body;
+    if (!nome || !email || !senha) {
+      return res.status(400).json({ ok: false, erro: 'Informe nome, email e senha' });
+    }
+
+    const existenteSnap = await EMPRESAS_COL().where('email', '==', email).limit(1).get();
+    if (!existenteSnap.empty) {
+      return res.status(409).json({ ok: false, erro: 'Já existe uma empresa cadastrada com este email' });
+    }
+
+    const senhaHash = await bcrypt.hash(senha, 10);
+    const ref = await EMPRESAS_COL().add({
+      nome,
+      email,
+      senhaHash,
+      criadoEm: new Date().toISOString()
+    });
+
+    res.json({ ok: true, empresa: { id: ref.id, nome, email } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
 });
 
 app.get('/status', async (req, res) => {
