@@ -288,10 +288,10 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     return;
   }
 
-  // ETAPA 4: já finalizado — reinicia se mandar mensagem de novo
+  // ETAPA 4: já finalizado — ignora mensagens soltas (ex: "Ok", "obrigado").
+  // Só reinicia quando a pessoa mandar o gatilho "quero meu presente" de novo,
+  // o que já é tratado separadamente no webhook antes de chegar aqui.
   if (sessao.etapa === 'finalizado') {
-    await resetSessao(telefone);
-    await iniciarConversa(telefone);
     return;
   }
 }
