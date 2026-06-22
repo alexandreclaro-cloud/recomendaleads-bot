@@ -1,19 +1,128 @@
-{
-  "name": "recomendaleads-bot",
-  "version": "2.0.0",
-  "description": "Bot de automação de recomendações via WhatsApp (Z-API) para o Método Poder da Recomendação, com persistência em Firestore",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.19.2",
-    "axios": "^1.7.2",
-    "firebase-admin": "^12.5.0",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — RecomendaLeads</title>
+<style>
+  :root {
+    --navy: #0a1628;
+    --navy-light: #132338;
+    --gold: #d4af37;
+    --gold-light: #f0d878;
+    --text: #e8edf4;
+    --text-dim: #9aabc0;
+    --error: #ff6b6b;
+    --success: #3ddc97;
   }
-}
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: linear-gradient(160deg, var(--navy) 0%, #060d18 100%);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .box {
+    background: var(--navy-light);
+    border: 1px solid rgba(212,175,55,0.2);
+    border-radius: 16px;
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+  .logo { text-align: center; margin-bottom: 8px; font-size: 1.6rem; }
+  h1 { text-align: center; font-size: 1.2rem; color: var(--gold-light); margin: 0 0 8px; }
+  p.sub { text-align: center; font-size: 0.8rem; color: var(--text-dim); margin: 0 0 24px; }
+  label { display: block; font-size: 0.82rem; color: var(--text-dim); margin-bottom: 6px; }
+  input[type="email"], input[type="password"] {
+    width: 100%;
+    background: #0e1a2c;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 11px 12px;
+    color: var(--text);
+    font-size: 0.95rem;
+    margin-bottom: 18px;
+  }
+  input:focus { outline: none; border-color: var(--gold); }
+  button {
+    width: 100%;
+    background: var(--gold);
+    color: var(--navy);
+    border: none;
+    font-weight: 700;
+    font-size: 0.95rem;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button:hover { opacity: 0.92; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .msg { font-size: 0.85rem; text-align: center; margin-top: 14px; min-height: 18px; font-weight: 600; }
+  .msg.err { color: var(--error); }
+  .msg.ok { color: var(--success); }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="logo">🎁</div>
+    <h1>RecomendaLeads</h1>
+    <p class="sub">Etapa de teste — esta tela ainda não bloqueia nenhuma página.</p>
+
+    <form id="loginForm">
+      <label>Email</label>
+      <input type="email" id="emailInput" required autocomplete="username">
+
+      <label>Senha</label>
+      <input type="password" id="senhaInput" required autocomplete="current-password">
+
+      <button type="submit" id="loginBtn">Entrar</button>
+      <div class="msg" id="msgBox"></div>
+    </form>
+  </div>
+
+<script>
+const API_BASE = window.location.origin;
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('loginBtn');
+  const msgBox = document.getElementById('msgBox');
+  const email = document.getElementById('emailInput').value.trim();
+  const senha = document.getElementById('senhaInput').value;
+
+  btn.disabled = true;
+  msgBox.textContent = '';
+  msgBox.className = 'msg';
+
+  try {
+    const resp = await fetch(`${API_BASE}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, senha })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      msgBox.textContent = `✅ Login funcionou! Empresa: ${data.empresa.nome}`;
+      msgBox.className = 'msg ok';
+    } else {
+      msgBox.textContent = data.erro || 'Email ou senha incorretos';
+      msgBox.className = 'msg err';
+    }
+  } catch (err) {
+    msgBox.textContent = 'Erro de conexão. Tente novamente.';
+    msgBox.className = 'msg err';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
