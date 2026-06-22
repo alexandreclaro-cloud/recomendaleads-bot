@@ -188,6 +188,14 @@
     <textarea id="empresaVendedoresInput" rows="4" placeholder="Ex:&#10;Alexandre Claro&#10;Russo&#10;Nicolas"></textarea>
     <div class="hint">O cliente vai escolher um desses nomes (ou número da lista) quando o bot perguntar "quem te atendeu hoje?".</div>
 
+    <label>Prêmio do recomendado (o que a pessoa recomendada ganha)</label>
+    <input type="text" id="empresaPremioRecomendadoInput" placeholder="Ex: Desconto de 10% na primeira compra, cortesia de quem te recomendou">
+    <div class="hint">Aparece na mensagem automática enviada ao contato recomendado, depois que quem o recomendou completar uma faixa.</div>
+
+    <label>Chamada para ação (CTA) enviada ao recomendado</label>
+    <input type="text" id="empresaCtaRecomendadoInput" placeholder="Ex: Gostaria de vir retirar?">
+    <div class="hint">É a última frase da mensagem enviada ao recomendado, convidando-o a agir.</div>
+
     <div class="row-save">
       <button class="save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
       <span class="status-msg" id="statusEmpresa"></span>
@@ -247,6 +255,8 @@ async function carregarConfiguracao() {
     document.getElementById('empresaNomeInput').value = empresaAtual.nome || '';
     document.getElementById('empresaMsgInput').value = empresaAtual.mensagemAgradecimento || '';
     document.getElementById('empresaVendedoresInput').value = (empresaAtual.vendedores || []).join('\n');
+    document.getElementById('empresaPremioRecomendadoInput').value = empresaAtual.premioRecomendado || '';
+    document.getElementById('empresaCtaRecomendadoInput').value = empresaAtual.ctaRecomendado || '';
 
     renderFaixas(empresaAtual.faixasBonus || FAIXAS_PADRAO);
     renderEtapas(empresaAtual.etapasKanban || ETAPAS_PADRAO);
@@ -343,7 +353,6 @@ document.getElementById('salvarEtapasBtn').addEventListener('click', async () =>
   const btn = document.getElementById('salvarEtapasBtn');
   const statusEl = document.getElementById('statusEtapas');
 
-  // Regenera os ids a partir dos nomes atuais, preservando ids já existentes quando possível
   const etapasParaSalvar = etapasAtuais.map(etapa => ({
     id: etapa.id || gerarIdEtapa(etapa.nome),
     nome: etapa.nome.trim() || 'Etapa sem nome'
@@ -379,7 +388,6 @@ document.getElementById('salvarEtapasBtn').addEventListener('click', async () =>
   }
 });
 
-
 document.getElementById('salvarEmpresaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarEmpresaBtn');
   const statusEl = document.getElementById('statusEmpresa');
@@ -390,6 +398,8 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
     .split('\n')
     .map(v => v.trim())
     .filter(v => v.length > 0);
+  const premioRecomendado = document.getElementById('empresaPremioRecomendadoInput').value.trim();
+  const ctaRecomendado = document.getElementById('empresaCtaRecomendadoInput').value.trim();
 
   btn.disabled = true;
   statusEl.textContent = 'Salvando...';
@@ -399,7 +409,7 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
     const resp = await fetch(`${API_BASE}/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome, mensagemAgradecimento, vendedores })
+      body: JSON.stringify({ nome, mensagemAgradecimento, vendedores, premioRecomendado, ctaRecomendado })
     });
     const data = await resp.json();
 
