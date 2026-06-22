@@ -733,21 +733,6 @@ app.post('/admin/empresas', async (req, res) => {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
-
-app.get('/status', async (req, res) => {
-  try {
-    const empresa = await getEmpresa();
-    const sessoes = await getTodasSessoes();
-    res.json({
-      empresa: empresa.nome,
-      sessoesAtivas: Object.keys(sessoes).length,
-      sessoes
-    });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
 app.get('/config', async (req, res) => {
   try {
     const empresa = await getEmpresa();
