@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -111,8 +110,11 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     const data = await resp.json();
 
     if (resp.ok && data.ok) {
-      msgBox.textContent = `✅ Login funcionou! Empresa: ${data.empresa.nome}`;
+      localStorage.setItem('recomendaleads_token', data.token);
+      localStorage.setItem('recomendaleads_empresa', JSON.stringify(data.empresa));
+      msgBox.textContent = `✅ Login funcionou! Redirecionando...`;
       msgBox.className = 'msg ok';
+      setTimeout(() => { window.location.href = '/minha-empresa/configurar'; }, 800);
     } else {
       msgBox.textContent = data.erro || 'Email ou senha incorretos';
       msgBox.className = 'msg err';
