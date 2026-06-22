@@ -84,7 +84,7 @@
 
   .board {
     display: grid;
-    grid-template-columns: repeat(4, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 14px;
     padding: 18px 24px 40px;
     overflow-x: auto;
@@ -107,10 +107,7 @@
     justify-content: space-between;
     border-bottom: 2px solid transparent;
   }
-  .column[data-etapa="novo_lead"] .column-head { border-color: var(--col-novo); }
-  .column[data-etapa="enviou_convite"] .column-head { border-color: var(--col-convite); }
-  .column[data-etapa="visitou"] .column-head { border-color: var(--col-visitou); }
-  .column[data-etapa="comprou"] .column-head { border-color: var(--col-comprou); }
+  .column .column-head { border-color: var(--gold); }
 
   .column-head h3 { margin: 0; font-size: 0.92rem; font-weight: 600; }
   .column-count {
@@ -212,62 +209,70 @@
 
 <div id="loadMsg" class="load-msg">Carregando leads...</div>
 
-<div class="board" id="board" style="display:none">
-  <div class="column" data-etapa="novo_lead">
-    <div class="column-head">
-      <h3>🆕 Novo Lead</h3>
-      <span class="column-count" data-countfor="novo_lead">0</span>
-    </div>
-    <div class="column-body" data-coletapa="novo_lead"></div>
-  </div>
-
-  <div class="column" data-etapa="enviou_convite">
-    <div class="column-head">
-      <h3>📨 Enviou Convite</h3>
-      <span class="column-count" data-countfor="enviou_convite">0</span>
-    </div>
-    <div class="column-body" data-coletapa="enviou_convite"></div>
-  </div>
-
-  <div class="column" data-etapa="visitou">
-    <div class="column-head">
-      <h3>🚶 Visitou</h3>
-      <span class="column-count" data-countfor="visitou">0</span>
-    </div>
-    <div class="column-body" data-coletapa="visitou"></div>
-  </div>
-
-  <div class="column" data-etapa="comprou">
-    <div class="column-head">
-      <h3>💰 Comprou</h3>
-      <span class="column-count" data-countfor="comprou">0</span>
-    </div>
-    <div class="column-body" data-coletapa="comprou"></div>
-  </div>
-</div>
+<div class="board" id="board" style="display:none"></div>
 
 <script>
 const API_BASE = window.location.origin;
 let leads = [];
+let etapas = [];
+
+// Etapas padrão usadas apenas se a configuração não carregar
+const ETAPAS_PADRAO = [
+  { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
+  { id: 'aceitou_mensagem', nome: 'Aceitou Mensagem' },
+  { id: 'agendou', nome: 'Agendou' },
+  { id: 'comprou', nome: 'Comprou' },
+  { id: 'nao_respondeu', nome: 'Não respondeu' },
+  { id: 'nao_tem_interesse', nome: 'Não tem interesse' }
+];
 
 async function carregarLeads() {
   const loadMsg = document.getElementById('loadMsg');
   const board = document.getElementById('board');
   try {
-    const resp = await fetch(`${API_BASE}/leads`);
-    const data = await resp.json();
-    if (!resp.ok || !data.ok) throw new Error(data.erro || 'Falha ao carregar leads');
+    const [respLeads, respConfig] = await Promise.all([
+      fetch(`${API_BASE}/leads`),
+      fetch(`${API_BASE}/config`)
+    ]);
+    const dataLeads = await respLeads.json();
+    const dataConfig = await respConfig.json();
 
-    leads = data.leads;
+    if (!respLeads.ok || !dataLeads.ok) throw new Error(dataLeads.erro || 'Falha ao carregar leads');
+
+    leads = dataLeads.leads;
+    etapas = (dataConfig.ok && dataConfig.empresa.etapasKanban && dataConfig.empresa.etapasKanban.length > 0)
+      ? dataConfig.empresa.etapasKanban
+      : ETAPAS_PADRAO;
+
     loadMsg.style.display = 'none';
     board.style.display = 'grid';
 
+    montarColunas();
     popularFiltroVendedores();
     renderBoard();
     atualizarStats();
   } catch (err) {
     loadMsg.textContent = 'Não foi possível carregar os leads. Verifique se o bot está rodando.';
   }
+}
+
+function montarColunas() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  etapas.forEach(etapa => {
+    const col = document.createElement('div');
+    col.className = 'column';
+    col.dataset.etapa = etapa.id;
+    col.innerHTML = `
+      <div class="column-head">
+        <h3>${etapa.nome}</h3>
+        <span class="column-count" data-countfor="${etapa.id}">0</span>
+      </div>
+      <div class="column-body" data-coletapa="${etapa.id}"></div>
+    `;
+    board.appendChild(col);
+  });
 }
 
 function popularFiltroVendedores() {
@@ -281,8 +286,12 @@ function popularFiltroVendedores() {
 }
 
 function atualizarStats() {
+  const etapaSucesso = etapas.find(e => e.id.includes('comprou')) || etapas[etapas.length - 1];
+
   document.getElementById('statTotal').textContent = leads.length;
-  document.getElementById('statComprou').textContent = leads.filter(l => l.etapa === 'comprou').length;
+  document.getElementById('statComprou').textContent = etapaSucesso
+    ? leads.filter(l => l.etapa === etapaSucesso.id).length
+    : 0;
 }
 
 function leadsFiltrados() {
@@ -292,13 +301,15 @@ function leadsFiltrados() {
 }
 
 function renderBoard() {
-  const etapas = ['novo_lead', 'enviou_convite', 'visitou', 'comprou'];
   const filtrados = leadsFiltrados();
 
   etapas.forEach(etapa => {
-    const col = document.querySelector(`[data-coletapa="${etapa}"]`);
-    const leadsDaColuna = filtrados.filter(l => l.etapa === etapa);
-    document.querySelector(`[data-countfor="${etapa}"]`).textContent = leadsDaColuna.length;
+    const col = document.querySelector(`[data-coletapa="${etapa.id}"]`);
+    if (!col) return;
+
+    const leadsDaColuna = filtrados.filter(l => l.etapa === etapa.id);
+    const countEl = document.querySelector(`[data-countfor="${etapa.id}"]`);
+    if (countEl) countEl.textContent = leadsDaColuna.length;
 
     col.innerHTML = '';
     if (leadsDaColuna.length === 0) {
@@ -337,42 +348,49 @@ function renderBoard() {
   });
 }
 
-// Drag and drop entre colunas
-document.querySelectorAll('.column-body').forEach(col => {
-  col.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    col.classList.add('drag-over');
-  });
-  col.addEventListener('dragleave', () => {
-    col.classList.remove('drag-over');
-  });
-  col.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    col.classList.remove('drag-over');
+// Drag and drop entre colunas — delegado no board, já que as colunas são geradas dinamicamente
+const boardEl = document.getElementById('board');
 
-    const dragging = document.querySelector('.lead-card.dragging');
-    if (!dragging) return;
+boardEl.addEventListener('dragover', (e) => {
+  const col = e.target.closest('.column-body');
+  if (!col) return;
+  e.preventDefault();
+  col.classList.add('drag-over');
+});
 
-    const id = dragging.dataset.id;
-    const novaEtapa = col.dataset.coletapa;
+boardEl.addEventListener('dragleave', (e) => {
+  const col = e.target.closest('.column-body');
+  if (col) col.classList.remove('drag-over');
+});
 
-    const lead = leads.find(l => l.id === id);
-    if (!lead || lead.etapa === novaEtapa) return;
+boardEl.addEventListener('drop', async (e) => {
+  const col = e.target.closest('.column-body');
+  if (!col) return;
+  e.preventDefault();
+  col.classList.remove('drag-over');
 
-    lead.etapa = novaEtapa;
-    renderBoard();
-    atualizarStats();
+  const dragging = document.querySelector('.lead-card.dragging');
+  if (!dragging) return;
 
-    try {
-      await fetch(`${API_BASE}/leads/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ etapa: novaEtapa })
-      });
-    } catch (err) {
-      console.error('Erro ao mover lead:', err);
-    }
-  });
+  const id = dragging.dataset.id;
+  const novaEtapa = col.dataset.coletapa;
+
+  const lead = leads.find(l => l.id === id);
+  if (!lead || lead.etapa === novaEtapa) return;
+
+  lead.etapa = novaEtapa;
+  renderBoard();
+  atualizarStats();
+
+  try {
+    await fetch(`${API_BASE}/leads/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ etapa: novaEtapa })
+    });
+  } catch (err) {
+    console.error('Erro ao mover lead:', err);
+  }
 });
 
 document.getElementById('filtroVendedor').addEventListener('change', renderBoard);
