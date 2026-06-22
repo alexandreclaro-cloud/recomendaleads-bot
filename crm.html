@@ -1,1 +1,605 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM — Poder da Recomendação</title>
+<style>
+  :root {
+    --navy: #0a1628;
+    --navy-light: #132338;
+    --navy-card: #18293f;
+    --gold: #d4af37;
+    --gold-light: #f0d878;
+    --text: #e8edf4;
+    --text-dim: #9aabc0;
+    --success: #3ddc97;
+    --error: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: linear-gradient(160deg, var(--navy) 0%, #060d18 100%);
+    color: var(--text);
+    min-height: 100vh;
+  }
 
+  header {
+    padding: 18px 24px;
+    border-bottom: 1px solid rgba(212,175,55,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 {
+    font-size: 1.25rem;
+    margin: 0;
+    color: var(--gold-light);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-stats {
+    display: flex;
+    gap: 18px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+  .header-stats b { color: var(--gold-light); font-size: 1rem; }
+  .refresh-btn {
+    background: transparent;
+    border: 1px solid rgba(212,175,55,0.3);
+    color: var(--text-dim);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .refresh-btn:hover { border-color: var(--gold); color: var(--gold-light); }
+
+  .toolbar {
+    padding: 14px 24px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .toolbar select, .toolbar input {
+    background: var(--navy-light);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+  }
+  .toolbar label { font-size: 0.78rem; color: var(--text-dim); margin-right: 4px; }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+    padding: 18px 24px 40px;
+    overflow-x: auto;
+  }
+  @media (max-width: 980px) {
+    .board { grid-template-columns: 1fr; }
+  }
+
+  .column {
+    background: rgba(255,255,255,0.02);
+    border-radius: 12px;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .column-head {
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(212,175,55,0.14);
+    border-bottom: 2px solid var(--gold);
+  }
+  .column-head h3 { margin: 0; font-size: 0.92rem; font-weight: 600; color: var(--gold-light); }
+  .column-count {
+    background: rgba(255,255,255,0.1);
+    color: var(--text);
+    font-size: 0.75rem;
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-weight: 600;
+  }
+
+  .column-body {
+    flex: 1;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 120px;
+  }
+  .column-body.drag-over { background: rgba(212,175,55,0.06); border-radius: 10px; }
+
+  .lead-card {
+    background: var(--navy-card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-left: 3px solid var(--gold);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: grab;
+    transition: border-color 0.15s, transform 0.1s, background 0.15s;
+  }
+  .lead-card:active { cursor: grabbing; transform: scale(0.98); }
+  .lead-card:hover { background: #1d3148; border-left-color: var(--gold-light); }
+  .lead-card.dragging { opacity: 0.4; }
+
+  .lead-card .nome { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+  .lead-card .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+  }
+  .lead-card .vendedor-tag {
+    background: rgba(212,175,55,0.12);
+    color: var(--gold-light);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.68rem;
+  }
+
+  .empty-col {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    opacity: 0.6;
+    padding: 24px 8px;
+  }
+
+  .load-msg {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-dim);
+  }
+
+  /* Modal de detalhes do lead */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal-box {
+    background: var(--navy-light);
+    border: 1px solid rgba(212,175,55,0.25);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 24px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+  .modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 18px;
+  }
+  .modal-head h2 { margin: 0; font-size: 1.15rem; color: var(--gold-light); }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.3rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+  }
+  .modal-close:hover { color: var(--text); }
+
+  .modal-field { margin-bottom: 14px; }
+  .modal-field label {
+    display: block;
+    font-size: 0.76rem;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .modal-field .valor { font-size: 0.95rem; }
+  .modal-field select {
+    width: 100%;
+    background: #0e1a2c;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+
+  .modal-historico {
+    margin-top: 4px;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+  .modal-historico .item { padding: 3px 0; border-bottom: 1px dashed rgba(255,255,255,0.06); }
+  .modal-historico .item:last-child { border-bottom: none; }
+
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  .modal-actions a, .modal-actions button {
+    flex: 1;
+    text-align: center;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+  }
+  .modal-actions .wa-btn { background: var(--success); color: #06281c; }
+  .modal-actions .wa-btn:hover { opacity: 0.9; }
+  .modal-actions .save-vendedor-btn { background: var(--gold); color: var(--navy); }
+  .modal-actions .save-vendedor-btn:hover { opacity: 0.9; }
+  .modal-status { font-size: 0.8rem; margin-top: 8px; text-align: center; font-weight: 600; }
+  .modal-status.ok { color: var(--success); }
+  .modal-status.err { color: var(--error); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 CRM — Poder da Recomendação</h1>
+  <div class="header-stats" id="headerStats">
+    <span>Total: <b id="statTotal">—</b></span>
+    <span>Comprou: <b id="statComprou">—</b></span>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="/configurar-vouchers" style="color:#9aabc0; font-size:0.8rem; text-decoration:none;">⚙️ Configurações</a>
+    <button class="refresh-btn" id="refreshBtn">↻ Atualizar</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <label>Vendedor:</label>
+  <select id="filtroVendedor">
+    <option value="">Todos</option>
+  </select>
+</div>
+
+<div id="loadMsg" class="load-msg">Carregando leads...</div>
+
+<div class="board" id="board" style="display:none"></div>
+
+<div id="modalContainer"></div>
+
+<script>
+const API_BASE = window.location.origin;
+let leads = [];
+let etapas = [];
+
+// Etapas padrão usadas apenas se a configuração não carregar
+const ETAPAS_PADRAO = [
+  { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
+  { id: 'aceitou_mensagem', nome: 'Aceitou Mensagem' },
+  { id: 'agendou', nome: 'Agendou' },
+  { id: 'comprou', nome: 'Comprou' },
+  { id: 'nao_respondeu', nome: 'Não respondeu' },
+  { id: 'nao_tem_interesse', nome: 'Não tem interesse' }
+];
+
+async function carregarLeads() {
+  const loadMsg = document.getElementById('loadMsg');
+  const board = document.getElementById('board');
+  try {
+    const [respLeads, respConfig] = await Promise.all([
+      fetch(`${API_BASE}/leads`),
+      fetch(`${API_BASE}/config`)
+    ]);
+    const dataLeads = await respLeads.json();
+    const dataConfig = await respConfig.json();
+
+    if (!respLeads.ok || !dataLeads.ok) throw new Error(dataLeads.erro || 'Falha ao carregar leads');
+
+    leads = dataLeads.leads;
+    etapas = (dataConfig.ok && dataConfig.empresa.etapasKanban && dataConfig.empresa.etapasKanban.length > 0)
+      ? dataConfig.empresa.etapasKanban
+      : ETAPAS_PADRAO;
+
+    loadMsg.style.display = 'none';
+    board.style.display = 'grid';
+
+    montarColunas();
+    popularFiltroVendedores();
+    renderBoard();
+    atualizarStats();
+  } catch (err) {
+    loadMsg.textContent = 'Não foi possível carregar os leads. Verifique se o bot está rodando.';
+  }
+}
+
+function montarColunas() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  etapas.forEach(etapa => {
+    const col = document.createElement('div');
+    col.className = 'column';
+    col.dataset.etapa = etapa.id;
+    col.innerHTML = `
+      <div class="column-head">
+        <h3>${etapa.nome}</h3>
+        <span class="column-count" data-countfor="${etapa.id}">0</span>
+      </div>
+      <div class="column-body" data-coletapa="${etapa.id}"></div>
+    `;
+    board.appendChild(col);
+  });
+}
+
+function popularFiltroVendedores() {
+  const select = document.getElementById('filtroVendedor');
+  const atual = select.value;
+  const vendedores = [...new Set(leads.map(l => l.vendedor).filter(Boolean))].sort();
+
+  select.innerHTML = '<option value="">Todos</option>' +
+    vendedores.map(v => `<option value="${v}">${v}</option>`).join('');
+  select.value = atual;
+}
+
+function atualizarStats() {
+  const etapaSucesso = etapas.find(e => e.id.includes('comprou')) || etapas[etapas.length - 1];
+
+  document.getElementById('statTotal').textContent = leads.length;
+  document.getElementById('statComprou').textContent = etapaSucesso
+    ? leads.filter(l => l.etapa === etapaSucesso.id).length
+    : 0;
+}
+
+function leadsFiltrados() {
+  const vendedor = document.getElementById('filtroVendedor').value;
+  if (!vendedor) return leads;
+  return leads.filter(l => l.vendedor === vendedor);
+}
+
+function renderBoard() {
+  const filtrados = leadsFiltrados();
+
+  etapas.forEach(etapa => {
+    const col = document.querySelector(`[data-coletapa="${etapa.id}"]`);
+    if (!col) return;
+
+    const leadsDaColuna = filtrados.filter(l => l.etapa === etapa.id);
+    const countEl = document.querySelector(`[data-countfor="${etapa.id}"]`);
+    if (countEl) countEl.textContent = leadsDaColuna.length;
+
+    col.innerHTML = '';
+    if (leadsDaColuna.length === 0) {
+      col.innerHTML = '<div class="empty-col">Nenhum lead aqui</div>';
+      return;
+    }
+
+    leadsDaColuna.forEach(lead => {
+      const card = document.createElement('div');
+      card.className = 'lead-card';
+      card.draggable = true;
+      card.dataset.id = lead.id;
+
+      card.innerHTML = `
+        <div class="nome">${lead.nomeRecomendado || 'Sem nome'}</div>
+        <div class="meta">
+          <span class="vendedor-tag">${lead.vendedor || 'Sem vendedor'}</span>
+        </div>
+      `;
+
+      let foiArrastado = false;
+      card.addEventListener('dragstart', () => {
+        foiArrastado = true;
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+      });
+      card.addEventListener('click', (e) => {
+        if (foiArrastado) {
+          foiArrastado = false;
+          return;
+        }
+        abrirModalLead(lead.id);
+      });
+
+      col.appendChild(card);
+    });
+  });
+}
+
+function formatarData(isoString) {
+  if (!isoString) return '—';
+  const d = new Date(isoString);
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function nomeEtapa(etapaId) {
+  const etapa = etapas.find(e => e.id === etapaId);
+  return etapa ? etapa.nome : etapaId;
+}
+
+function abrirModalLead(leadId) {
+  const lead = leads.find(l => l.id === leadId);
+  if (!lead) return;
+
+  const modalContainer = document.getElementById('modalContainer');
+  const telLimpo = (lead.telefoneRecomendado || '').replace(/\D/g, '');
+  const waLink = telLimpo ? `https://wa.me/${telLimpo}` : null;
+
+  const vendedoresUnicos = [...new Set(leads.map(l => l.vendedor).filter(Boolean))].sort();
+  const opcoesVendedor = ['', ...vendedoresUnicos]
+    .map(v => `<option value="${v}" ${v === (lead.vendedor || '') ? 'selected' : ''}>${v || 'Sem vendedor'}</option>`)
+    .join('');
+
+  const historicoHtml = (lead.historico || [])
+    .map(h => `<div class="item">${nomeEtapa(h.etapa)} — ${formatarData(h.em)}</div>`)
+    .reverse()
+    .join('') || '<div class="item">Sem histórico</div>';
+
+  modalContainer.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h2>${lead.nomeRecomendado || 'Sem nome'}</h2>
+          <button class="modal-close" id="modalCloseBtn">✕</button>
+        </div>
+
+        <div class="modal-field">
+          <label>Telefone</label>
+          <div class="valor">${lead.telefoneRecomendado || 'Não informado'}</div>
+        </div>
+
+        <div class="modal-field">
+          <label>Recomendado por</label>
+          <div class="valor">${lead.nomeRecomendador || '—'}${lead.telefoneRecomendador ? ' · ' + lead.telefoneRecomendador : ''}</div>
+        </div>
+
+        <div class="modal-field">
+          <label>Etapa atual</label>
+          <div class="valor">${nomeEtapa(lead.etapa)}</div>
+        </div>
+
+        <div class="modal-field">
+          <label>Vendedor responsável</label>
+          <select id="modalVendedorSelect">${opcoesVendedor}</select>
+        </div>
+
+        <div class="modal-field">
+          <label>Criado em</label>
+          <div class="valor">${formatarData(lead.criadoEm)}</div>
+        </div>
+
+        <div class="modal-field">
+          <label>Histórico de etapas</label>
+          <div class="modal-historico">${historicoHtml}</div>
+        </div>
+
+        <div class="modal-actions">
+          ${waLink ? `<a class="wa-btn" href="${waLink}" target="_blank">Abrir WhatsApp</a>` : ''}
+          <button class="save-vendedor-btn" id="modalSalvarBtn">Salvar vendedor</button>
+        </div>
+        <div class="modal-status" id="modalStatus"></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modalCloseBtn').addEventListener('click', fecharModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'modalOverlay') fecharModal();
+  });
+  document.getElementById('modalSalvarBtn').addEventListener('click', () => salvarVendedorModal(leadId));
+}
+
+function fecharModal() {
+  document.getElementById('modalContainer').innerHTML = '';
+}
+
+async function salvarVendedorModal(leadId) {
+  const btn = document.getElementById('modalSalvarBtn');
+  const statusEl = document.getElementById('modalStatus');
+  const novoVendedor = document.getElementById('modalVendedorSelect').value || null;
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando...';
+  statusEl.classList.remove('ok', 'err');
+
+  try {
+    const resp = await fetch(`${API_BASE}/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vendedor: novoVendedor })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      const lead = leads.find(l => l.id === leadId);
+      if (lead) lead.vendedor = novoVendedor;
+      statusEl.textContent = '✅ Vendedor atualizado!';
+      statusEl.classList.add('ok');
+      renderBoard();
+      popularFiltroVendedores();
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      statusEl.classList.add('err');
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.classList.add('err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Drag and drop entre colunas — delegado no board, já que as colunas são geradas dinamicamente
+const boardEl = document.getElementById('board');
+
+boardEl.addEventListener('dragover', (e) => {
+  const col = e.target.closest('.column-body');
+  if (!col) return;
+  e.preventDefault();
+  col.classList.add('drag-over');
+});
+
+boardEl.addEventListener('dragleave', (e) => {
+  const col = e.target.closest('.column-body');
+  if (col) col.classList.remove('drag-over');
+});
+
+boardEl.addEventListener('drop', async (e) => {
+  const col = e.target.closest('.column-body');
+  if (!col) return;
+  e.preventDefault();
+  col.classList.remove('drag-over');
+
+  const dragging = document.querySelector('.lead-card.dragging');
+  if (!dragging) return;
+
+  const id = dragging.dataset.id;
+  const novaEtapa = col.dataset.coletapa;
+
+  const lead = leads.find(l => l.id === id);
+  if (!lead || lead.etapa === novaEtapa) return;
+
+  lead.etapa = novaEtapa;
+  renderBoard();
+  atualizarStats();
+
+  try {
+    await fetch(`${API_BASE}/leads/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ etapa: novaEtapa })
+    });
+  } catch (err) {
+    console.error('Erro ao mover lead:', err);
+  }
+});
+
+document.getElementById('filtroVendedor').addEventListener('change', renderBoard);
+document.getElementById('refreshBtn').addEventListener('click', carregarLeads);
+
+carregarLeads();
+setInterval(carregarLeads, 30000); // atualiza sozinho a cada 30s
+</script>
+</body>
+</html>
