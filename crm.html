@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM — Poder da Recomendação</title>
+<style>
+  :root {
+    --navy: #0a1628;
+    --navy-light: #132338;
+    --navy-card: #18293f;
+    --gold: #d4af37;
+    --gold-light: #f0d878;
+    --text: #e8edf4;
+    --text-dim: #9aabc0;
+    --success: #3ddc97;
+    --error: #ff6b6b;
+    --col-novo: #4a7fd4;
+    --col-convite: #d4af37;
+    --col-visitou: #d48a3d;
+    --col-comprou: #3ddc97;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: linear-gradient(160deg, var(--navy) 0%, #060d18 100%);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 18px 24px;
+    border-bottom: 1px solid rgba(212,175,55,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 {
+    font-size: 1.25rem;
+    margin: 0;
+    color: var(--gold-light);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-stats {
+    display: flex;
+    gap: 18px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+  .header-stats b { color: var(--gold-light); font-size: 1rem; }
+  .refresh-btn {
+    background: transparent;
+    border: 1px solid rgba(212,175,55,0.3);
+    color: var(--text-dim);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .refresh-btn:hover { border-color: var(--gold); color: var(--gold-light); }
+
+  .toolbar {
+    padding: 14px 24px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .toolbar select, .toolbar input {
+    background: var(--navy-light);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+  }
+  .toolbar label { font-size: 0.78rem; color: var(--text-dim); margin-right: 4px; }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(260px, 1fr));
+    gap: 14px;
+    padding: 18px 24px 40px;
+    overflow-x: auto;
+  }
+  @media (max-width: 980px) {
+    .board { grid-template-columns: 1fr; }
+  }
+
+  .column {
+    background: rgba(255,255,255,0.02);
+    border-radius: 12px;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+  }
+  .column-head {
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid transparent;
+  }
+  .column[data-etapa="novo_lead"] .column-head { border-color: var(--col-novo); }
+  .column[data-etapa="enviou_convite"] .column-head { border-color: var(--col-convite); }
+  .column[data-etapa="visitou"] .column-head { border-color: var(--col-visitou); }
+  .column[data-etapa="comprou"] .column-head { border-color: var(--col-comprou); }
+
+  .column-head h3 { margin: 0; font-size: 0.92rem; font-weight: 600; }
+  .column-count {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    padding: 2px 9px;
+    border-radius: 12px;
+  }
+
+  .column-body {
+    flex: 1;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 120px;
+  }
+  .column-body.drag-over { background: rgba(212,175,55,0.06); border-radius: 10px; }
+
+  .lead-card {
+    background: var(--navy-card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 12px 13px;
+    cursor: grab;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .lead-card:active { cursor: grabbing; transform: scale(0.98); }
+  .lead-card:hover { border-color: rgba(212,175,55,0.35); }
+  .lead-card.dragging { opacity: 0.4; }
+
+  .lead-card .nome { font-weight: 600; font-size: 0.92rem; margin-bottom: 2px; }
+  .lead-card .tel { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 8px; }
+  .lead-card .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.74rem;
+    color: var(--text-dim);
+  }
+  .lead-card .vendedor-tag {
+    background: rgba(212,175,55,0.12);
+    color: var(--gold-light);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+  }
+  .lead-card .por {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    opacity: 0.75;
+    margin-top: 4px;
+  }
+  .lead-card a.wa-link {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 0.76rem;
+    color: var(--success);
+    text-decoration: none;
+  }
+  .lead-card a.wa-link:hover { text-decoration: underline; }
+
+  .empty-col {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    opacity: 0.6;
+    padding: 24px 8px;
+  }
+
+  .load-msg {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-dim);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 CRM — Poder da Recomendação</h1>
+  <div class="header-stats" id="headerStats">
+    <span>Total: <b id="statTotal">—</b></span>
+    <span>Comprou: <b id="statComprou">—</b></span>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="/configurar-vouchers" style="color:#9aabc0; font-size:0.8rem; text-decoration:none;">⚙️ Configurações</a>
+    <button class="refresh-btn" id="refreshBtn">↻ Atualizar</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <label>Vendedor:</label>
+  <select id="filtroVendedor">
+    <option value="">Todos</option>
+  </select>
+</div>
+
+<div id="loadMsg" class="load-msg">Carregando leads...</div>
+
+<div class="board" id="board" style="display:none">
+  <div class="column" data-etapa="novo_lead">
+    <div class="column-head">
+      <h3>🆕 Novo Lead</h3>
+      <span class="column-count" data-countfor="novo_lead">0</span>
+    </div>
+    <div class="column-body" data-coletapa="novo_lead"></div>
+  </div>
+
+  <div class="column" data-etapa="enviou_convite">
+    <div class="column-head">
+      <h3>📨 Enviou Convite</h3>
+      <span class="column-count" data-countfor="enviou_convite">0</span>
+    </div>
+    <div class="column-body" data-coletapa="enviou_convite"></div>
+  </div>
+
+  <div class="column" data-etapa="visitou">
+    <div class="column-head">
+      <h3>🚶 Visitou</h3>
+      <span class="column-count" data-countfor="visitou">0</span>
+    </div>
+    <div class="column-body" data-coletapa="visitou"></div>
+  </div>
+
+  <div class="column" data-etapa="comprou">
+    <div class="column-head">
+      <h3>💰 Comprou</h3>
+      <span class="column-count" data-countfor="comprou">0</span>
+    </div>
+    <div class="column-body" data-coletapa="comprou"></div>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin;
+let leads = [];
+
+async function carregarLeads() {
+  const loadMsg = document.getElementById('loadMsg');
+  const board = document.getElementById('board');
+  try {
+    const resp = await fetch(`${API_BASE}/leads`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error(data.erro || 'Falha ao carregar leads');
+
+    leads = data.leads;
+    loadMsg.style.display = 'none';
+    board.style.display = 'grid';
+
+    popularFiltroVendedores();
+    renderBoard();
+    atualizarStats();
+  } catch (err) {
+    loadMsg.textContent = 'Não foi possível carregar os leads. Verifique se o bot está rodando.';
+  }
+}
+
+function popularFiltroVendedores() {
+  const select = document.getElementById('filtroVendedor');
+  const atual = select.value;
+  const vendedores = [...new Set(leads.map(l => l.vendedor).filter(Boolean))].sort();
+
+  select.innerHTML = '<option value="">Todos</option>' +
+    vendedores.map(v => `<option value="${v}">${v}</option>`).join('');
+  select.value = atual;
+}
+
+function atualizarStats() {
+  document.getElementById('statTotal').textContent = leads.length;
+  document.getElementById('statComprou').textContent = leads.filter(l => l.etapa === 'comprou').length;
+}
+
+function leadsFiltrados() {
+  const vendedor = document.getElementById('filtroVendedor').value;
+  if (!vendedor) return leads;
+  return leads.filter(l => l.vendedor === vendedor);
+}
+
+function renderBoard() {
+  const etapas = ['novo_lead', 'enviou_convite', 'visitou', 'comprou'];
+  const filtrados = leadsFiltrados();
+
+  etapas.forEach(etapa => {
+    const col = document.querySelector(`[data-coletapa="${etapa}"]`);
+    const leadsDaColuna = filtrados.filter(l => l.etapa === etapa);
+    document.querySelector(`[data-countfor="${etapa}"]`).textContent = leadsDaColuna.length;
+
+    col.innerHTML = '';
+    if (leadsDaColuna.length === 0) {
+      col.innerHTML = '<div class="empty-col">Nenhum lead aqui</div>';
+      return;
+    }
+
+    leadsDaColuna.forEach(lead => {
+      const card = document.createElement('div');
+      card.className = 'lead-card';
+      card.draggable = true;
+      card.dataset.id = lead.id;
+
+      const telLimpo = (lead.telefoneRecomendado || '').replace(/\D/g, '');
+      const waLink = telLimpo ? `https://wa.me/${telLimpo}` : null;
+
+      card.innerHTML = `
+        <div class="nome">${lead.nomeRecomendado || 'Sem nome'}</div>
+        <div class="tel">${lead.telefoneRecomendado || 'Sem telefone'}</div>
+        <div class="meta">
+          <span class="vendedor-tag">${lead.vendedor || 'Sem vendedor'}</span>
+        </div>
+        <div class="por">Recomendado por: ${lead.nomeRecomendador || '—'}</div>
+        ${waLink ? `<a class="wa-link" href="${waLink}" target="_blank">Abrir WhatsApp →</a>` : ''}
+      `;
+
+      card.addEventListener('dragstart', () => {
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+      });
+
+      col.appendChild(card);
+    });
+  });
+}
+
+// Drag and drop entre colunas
+document.querySelectorAll('.column-body').forEach(col => {
+  col.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    col.classList.add('drag-over');
+  });
+  col.addEventListener('dragleave', () => {
+    col.classList.remove('drag-over');
+  });
+  col.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    col.classList.remove('drag-over');
+
+    const dragging = document.querySelector('.lead-card.dragging');
+    if (!dragging) return;
+
+    const id = dragging.dataset.id;
+    const novaEtapa = col.dataset.coletapa;
+
+    const lead = leads.find(l => l.id === id);
+    if (!lead || lead.etapa === novaEtapa) return;
+
+    lead.etapa = novaEtapa;
+    renderBoard();
+    atualizarStats();
+
+    try {
+      await fetch(`${API_BASE}/leads/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ etapa: novaEtapa })
+      });
+    } catch (err) {
+      console.error('Erro ao mover lead:', err);
+    }
+  });
+});
+
+document.getElementById('filtroVendedor').addEventListener('change', renderBoard);
+document.getElementById('refreshBtn').addEventListener('click', carregarLeads);
+
+carregarLeads();
+setInterval(carregarLeads, 30000); // atualiza sozinho a cada 30s
+</script>
+</body>
+</html>
