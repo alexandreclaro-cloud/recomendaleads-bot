@@ -127,6 +127,42 @@
     color: var(--text-dim);
     margin-bottom: 24px;
   }
+
+  .etapa-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .etapa-row input[type="text"] {
+    flex: 1;
+    margin: 0;
+  }
+  .etapa-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text-dim);
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+  }
+  .etapa-btn:hover { border-color: var(--gold); color: var(--gold-light); }
+  .etapa-btn.remover:hover { border-color: var(--error); color: var(--error); }
+  .etapa-btn:disabled { opacity: 0.3; cursor: default; }
+  .add-etapa-btn {
+    background: transparent;
+    border: 1px dashed rgba(212,175,55,0.4);
+    color: var(--gold-light);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .add-etapa-btn:hover { background: rgba(212,175,55,0.08); }
 </style>
 </head>
 <body>
@@ -155,6 +191,25 @@
     <div class="row-save">
       <button class="save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
       <span class="status-msg" id="statusEmpresa"></span>
+    </div>
+  </div>
+
+  <div class="card" id="etapasCard">
+    <div class="card-head">
+      <h2>Etapas do CRM Kanban</h2>
+    </div>
+    <p class="hint" style="margin-top:-6px; margin-bottom:14px;">
+      Estas são as colunas do seu CRM (<a href="/crm" style="color:#f0d878;">veja o quadro aqui</a>).
+      Cada novo lead recomendado nasce na primeira coluna da lista. Você pode renomear, reordenar, adicionar ou remover etapas.
+    </p>
+
+    <div id="etapasContainer"></div>
+
+    <button class="add-etapa-btn" id="addEtapaBtn">+ Adicionar etapa</button>
+
+    <div class="row-save">
+      <button class="save-btn" id="salvarEtapasBtn">Salvar etapas do Kanban</button>
+      <span class="status-msg" id="statusEtapas"></span>
     </div>
   </div>
 
@@ -194,10 +249,12 @@ async function carregarConfiguracao() {
     document.getElementById('empresaVendedoresInput').value = (empresaAtual.vendedores || []).join('\n');
 
     renderFaixas(empresaAtual.faixasBonus || FAIXAS_PADRAO);
+    renderEtapas(empresaAtual.etapasKanban || ETAPAS_PADRAO);
   } catch (err) {
     loadStatus.textContent = 'Não foi possível conectar ao servidor. Verifique se o bot está rodando.';
     loadStatus.classList.add('err');
     renderFaixas(FAIXAS_PADRAO);
+    renderEtapas(ETAPAS_PADRAO);
   }
 }
 
@@ -208,6 +265,120 @@ const FAIXAS_PADRAO = [
   { quantidade: 15, premio: 'Vale-presente de R$ 50' },
   { quantidade: 20, premio: 'Status de Embaixador + kit especial' }
 ];
+
+// Etapas padrão do Kanban — usadas apenas como fallback caso o servidor não responda
+const ETAPAS_PADRAO = [
+  { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
+  { id: 'aceitou_mensagem', nome: 'Aceitou Mensagem' },
+  { id: 'agendou', nome: 'Agendou' },
+  { id: 'comprou', nome: 'Comprou' },
+  { id: 'nao_respondeu', nome: 'Não respondeu' },
+  { id: 'nao_tem_interesse', nome: 'Não tem interesse' }
+];
+
+let etapasAtuais = [];
+
+function gerarIdEtapa(nome) {
+  const base = (nome || 'etapa')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'etapa';
+  let candidato = base;
+  let contador = 1;
+  while (etapasAtuais.some(e => e.id === candidato)) {
+    candidato = `${base}_${contador++}`;
+  }
+  return candidato;
+}
+
+function renderEtapas(etapas) {
+  etapasAtuais = etapas.map(e => ({ ...e }));
+  const container = document.getElementById('etapasContainer');
+  container.innerHTML = '';
+
+  etapasAtuais.forEach((etapa, index) => {
+    const row = document.createElement('div');
+    row.className = 'etapa-row';
+    row.innerHTML = `
+      <button class="etapa-btn" data-action="up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>↑</button>
+      <button class="etapa-btn" data-action="down" data-index="${index}" ${index === etapasAtuais.length - 1 ? 'disabled' : ''}>↓</button>
+      <input type="text" data-index="${index}" value="${etapa.nome.replace(/"/g, '&quot;')}">
+      <button class="etapa-btn remover" data-action="remover" data-index="${index}" ${etapasAtuais.length <= 1 ? 'disabled' : ''}>🗑️</button>
+    `;
+    container.appendChild(row);
+  });
+
+  container.querySelectorAll('input[type="text"]').forEach(input => {
+    input.addEventListener('input', () => {
+      const idx = parseInt(input.dataset.index);
+      etapasAtuais[idx].nome = input.value;
+    });
+  });
+
+  container.querySelectorAll('.etapa-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.index);
+      const action = btn.dataset.action;
+
+      if (action === 'up' && idx > 0) {
+        [etapasAtuais[idx - 1], etapasAtuais[idx]] = [etapasAtuais[idx], etapasAtuais[idx - 1]];
+      } else if (action === 'down' && idx < etapasAtuais.length - 1) {
+        [etapasAtuais[idx + 1], etapasAtuais[idx]] = [etapasAtuais[idx], etapasAtuais[idx + 1]];
+      } else if (action === 'remover' && etapasAtuais.length > 1) {
+        etapasAtuais.splice(idx, 1);
+      }
+      renderEtapas(etapasAtuais);
+    });
+  });
+}
+
+document.getElementById('addEtapaBtn').addEventListener('click', () => {
+  const novoNome = `Nova etapa ${etapasAtuais.length + 1}`;
+  etapasAtuais.push({ id: gerarIdEtapa(novoNome), nome: novoNome });
+  renderEtapas(etapasAtuais);
+});
+
+document.getElementById('salvarEtapasBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarEtapasBtn');
+  const statusEl = document.getElementById('statusEtapas');
+
+  // Regenera os ids a partir dos nomes atuais, preservando ids já existentes quando possível
+  const etapasParaSalvar = etapasAtuais.map(etapa => ({
+    id: etapa.id || gerarIdEtapa(etapa.nome),
+    nome: etapa.nome.trim() || 'Etapa sem nome'
+  }));
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando...';
+  statusEl.classList.remove('ok', 'err');
+
+  try {
+    const resp = await fetch(`${API_BASE}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ etapasKanban: etapasParaSalvar })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!';
+      statusEl.classList.add('ok');
+      empresaAtual = data.empresa;
+      renderEtapas(data.empresa.etapasKanban);
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      statusEl.classList.add('err');
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.classList.add('err');
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { statusEl.textContent = ''; statusEl.classList.remove('ok','err'); }, 4000);
+  }
+});
+
 
 document.getElementById('salvarEmpresaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarEmpresaBtn');
