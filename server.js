@@ -58,6 +58,14 @@ const LEADS_COL = () => db.collection('leads');
 // coleção própria evita misturar os dois fluxos caso a mesma pessoa apareça
 // nos dois papéis em momentos diferentes.
 const SESSOES_RECOMENDADO_COL = () => db.collection('sessoes_recomendado');
+// Agendamentos persistidos: tudo que precisa acontecer no futuro (iniciar
+// conversa com o recomendado depois do tempo de espera, disparar cada passo
+// da cadência de follow-up) é gravado aqui em vez de usar setTimeout em
+// memória. Um executor roda a cada minuto (ver iniciarExecutorAgendamentos)
+// e processa qualquer agendamento cujo executarEm já tenha passado. Isso
+// sobrevive a reinícios do servidor (deploys, hibernação, etc.) — algo que
+// setTimeout não sobrevive, já que vive só na memória do processo.
+const AGENDAMENTOS_COL = () => db.collection('agendamentos');
 // Coleção nova, isolada — usada só pelo sistema de login. Não afeta o EMPRESA_DOC
 // único que o bot/CRM/configurações continuam usando normalmente nesta etapa.
 const EMPRESAS_COL = () => db.collection('empresas_login');
@@ -471,12 +479,27 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa) {
     }
   }
 
-  const esperaMs = empresa.tempoEsperaConversaoMin * 60 * 1000;
-  sessao.contatos.forEach((contato) => {
-    setTimeout(() => {
-      iniciarConversaRecomendado(contato, sessao, empresa);
-    }, esperaMs);
-  });
+  // Agenda o início da conversa com cada recomendado. Em vez de setTimeout
+  // (perdido se o servidor reiniciar), grava no Firestore um agendamento
+  // com a data/hora exata de execução — o executor (ver mais abaixo) confere
+  // isso a cada minuto e dispara quando chegar a hora, mesmo que o servidor
+  // tenha sido reiniciado nesse meio tempo.
+  const executarEm = new Date(Date.now() + empresa.tempoEsperaConversaoMin * 60 * 1000).toISOString();
+  for (const contato of sessao.contatos) {
+    try {
+      await criarAgendamento({
+        tipo: 'iniciar_conversa_recomendado',
+        executarEm,
+        dados: {
+          contato,
+          nomeRecomendador: sessao.clienteNome,
+          vendedorNome: sessao.vendedorNome
+        }
+      });
+    } catch (err) {
+      console.error('Erro ao criar agendamento para recomendado:', err.message);
+    }
+  }
 
   console.log(`[SESSÃO FINALIZADA] ${sessao.clienteNome} via ${sessao.vendedorNome} — ${sessao.contatos.length} contatos`);
 }
@@ -511,34 +534,66 @@ async function encerrarSessaoRecomendado(telefone) {
   await SESSOES_RECOMENDADO_COL().doc(telefone).delete();
 }
 
+// ============================================================
+// AGENDAMENTOS PERSISTIDOS — substituem setTimeout em memória
+// ============================================================
+// Cada documento representa uma ação futura. Campos:
+//   tipo: 'iniciar_conversa_recomendado' | 'followup_recomendado'
+//   executarEm: ISO string da data/hora em que deve rodar
+//   status: 'pendente' | 'concluido' | 'cancelado'
+//   dados: payload específico do tipo de agendamento
+//   marcaTempoReferencia: timestamp da sessão no momento em que o
+//     agendamento foi criado — usado para invalidar agendamentos antigos
+//     se a pessoa responder antes (igual o setTimeout antigo fazia com
+//     ultimaMensagemEm, só que agora persistido).
+
+async function criarAgendamento({ tipo, executarEm, dados, marcaTempoReferencia }) {
+  await AGENDAMENTOS_COL().add({
+    tipo,
+    executarEm,
+    status: 'pendente',
+    dados,
+    marcaTempoReferencia: marcaTempoReferencia || null,
+    criadoEm: new Date().toISOString()
+  });
+}
+
+async function buscarAgendamentosVencidos() {
+  const agora = new Date().toISOString();
+  const snap = await AGENDAMENTOS_COL()
+    .where('status', '==', 'pendente')
+    .where('executarEm', '<=', agora)
+    .get();
+  const agendamentos = [];
+  snap.forEach(doc => agendamentos.push({ id: doc.id, ...doc.data() }));
+  return agendamentos;
+}
+
+async function marcarAgendamentoConcluido(id) {
+  await AGENDAMENTOS_COL().doc(id).update({ status: 'concluido' });
+}
+
 // Agenda o próximo passo de follow-up (índice da cadência) se a pessoa não
-// responder antes do tempo configurado. Cada chamada de saveSessaoRecomendado
-// com um novo "ultimaMensagemEm" invalida follow-ups antigos automaticamente,
-// já que o setTimeout confere se o timestamp ainda é o mesmo antes de agir.
-function agendarProximoFollowup(telefone, empresa, marcaTempo, indiceFollowup) {
+// responder antes do tempo configurado. O agendamento carrega a marca de
+// tempo da sessão no momento da criação — se a pessoa responder antes
+// (mudando ultimaMensagemEm), o executor confere isso e ignora o agendamento
+// vencido, exatamente como o setTimeout antigo fazia, só que sobrevivendo a
+// reinícios do servidor.
+async function agendarProximoFollowup(telefone, empresa, marcaTempo, indiceFollowup) {
   const cadencia = empresa.cadenciaFollowupRecomendado || [];
   const proximo = cadencia[indiceFollowup];
   if (!proximo) return; // cadência esgotada, não agenda mais nada
 
-  const esperaMs = proximo.esperaMin * 60 * 1000;
-  setTimeout(async () => {
-    try {
-      const sessaoAtual = await getSessaoRecomendado(telefone);
-      // Só dispara o follow-up se a sessão ainda existir e a pessoa não
-      // tiver respondido (ou seja, o timestamp da última mensagem não mudou).
-      if (!sessaoAtual || sessaoAtual.ultimaMensagemEm !== marcaTempo) return;
-
-      await sendText(telefone, proximo.texto);
-      const novaMarca = new Date().toISOString();
-      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: novaMarca });
-      agendarProximoFollowup(telefone, empresa, novaMarca, indiceFollowup + 1);
-    } catch (err) {
-      console.error('Erro ao enviar follow-up do recomendado:', err.message);
-    }
-  }, esperaMs);
+  const executarEm = new Date(Date.now() + proximo.esperaMin * 60 * 1000).toISOString();
+  await criarAgendamento({
+    tipo: 'followup_recomendado',
+    executarEm,
+    marcaTempoReferencia: marcaTempo,
+    dados: { telefone, indiceFollowup }
+  });
 }
 
-async function iniciarConversaRecomendado(contato, sessaoRecomendador, empresa) {
+async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa) {
   if (!contato.telefone) {
     console.log(`[AVISO] Contato "${contato.nome}" sem telefone válido — não foi possível iniciar conversa.`);
     return;
@@ -546,8 +601,8 @@ async function iniciarConversaRecomendado(contato, sessaoRecomendador, empresa) 
 
   const variaveis = {
     nomeRecomendado: contato.nome.split(' ')[0],
-    recomendador: sessaoRecomendador.clienteNome.split(' ')[0],
-    vendedor: sessaoRecomendador.vendedorNome,
+    recomendador: nomeRecomendador.split(' ')[0],
+    vendedor: vendedorNome,
     empresa: empresa.nome
   };
 
@@ -559,13 +614,13 @@ async function iniciarConversaRecomendado(contato, sessaoRecomendador, empresa) 
     etapa: 'aguardando_confirmacao',
     nomeRecomendado: contato.nome,
     telefoneRecomendado: contato.telefone,
-    nomeRecomendador: sessaoRecomendador.clienteNome,
-    vendedorNome: sessaoRecomendador.vendedorNome,
+    nomeRecomendador: nomeRecomendador,
+    vendedorNome: vendedorNome,
     ultimaMensagemEm: marcaTempo,
     criadoEm: marcaTempo
   });
 
-  agendarProximoFollowup(contato.telefone, empresa, marcaTempo, 0);
+  await agendarProximoFollowup(contato.telefone, empresa, marcaTempo, 0);
   console.log(`[ROTEIRO RECOMENDADO INICIADO] ${contato.nome} (${contato.telefone})`);
 }
 
@@ -591,7 +646,7 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
 
   const marcaTempo = new Date().toISOString();
   await saveSessaoRecomendado(telefone, { etapa: 'aguardando_reacao', ultimaMensagemEm: marcaTempo });
-  agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
+  await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
 }
 
 async function enviarCtaRecomendado(telefone, sessao, empresa) {
@@ -611,7 +666,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       await sendText(telefone, empresa.mensagemAguardandoConfirmacao);
       const marcaTempo = new Date().toISOString();
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-      agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
+      await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
     }
     return true;
   }
@@ -1063,6 +1118,77 @@ app.post('/leads', async (req, res) => {
 });
 
 // ============================================================
+// EXECUTOR DE AGENDAMENTOS — roda a cada 1 minuto
+// ============================================================
+// Substitui setTimeout em memória: busca no Firestore todo agendamento
+// vencido (executarEm <= agora, status pendente) e processa de acordo com
+// o tipo. Como o estado vive no banco, não no processo, isso sobrevive a
+// reinícios do servidor — qualquer agendamento perdido durante o tempo em
+// que o servidor estava reiniciando/hibernando é simplesmente processado
+// na próxima checagem, em vez de desaparecer.
+
+async function processarAgendamento(agendamento) {
+  const empresa = await getEmpresa();
+
+  if (agendamento.tipo === 'iniciar_conversa_recomendado') {
+    const { contato, nomeRecomendador, vendedorNome } = agendamento.dados;
+    await iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa);
+    return;
+  }
+
+  if (agendamento.tipo === 'followup_recomendado') {
+    const { telefone, indiceFollowup } = agendamento.dados;
+    const sessaoAtual = await getSessaoRecomendado(telefone);
+
+    // Só dispara o follow-up se a sessão ainda existir e a pessoa não tiver
+    // respondido depois que este agendamento foi criado (ou seja, o
+    // timestamp de referência ainda bate com o atual da sessão).
+    if (!sessaoAtual || sessaoAtual.ultimaMensagemEm !== agendamento.marcaTempoReferencia) {
+      return;
+    }
+
+    const cadencia = empresa.cadenciaFollowupRecomendado || [];
+    const proximo = cadencia[indiceFollowup];
+    if (!proximo) return;
+
+    await sendText(telefone, proximo.texto);
+    const novaMarca = new Date().toISOString();
+    await saveSessaoRecomendado(telefone, { ultimaMensagemEm: novaMarca });
+    await agendarProximoFollowup(telefone, empresa, novaMarca, indiceFollowup + 1);
+    return;
+  }
+
+  console.log(`[AGENDAMENTO] Tipo desconhecido ignorado: ${agendamento.tipo}`);
+}
+
+async function executarAgendamentosPendentes() {
+  if (!db) return;
+  try {
+    const pendentes = await buscarAgendamentosVencidos();
+    for (const agendamento of pendentes) {
+      try {
+        await processarAgendamento(agendamento);
+      } catch (err) {
+        console.error(`Erro ao processar agendamento ${agendamento.id}:`, err.message);
+      } finally {
+        // Marca como concluído mesmo se falhar, para não tentar de novo em
+        // loop infinito — erros já ficam registrados no log acima.
+        await marcarAgendamentoConcluido(agendamento.id);
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao buscar agendamentos pendentes:', err.message);
+  }
+}
+
+function iniciarExecutorAgendamentos() {
+  // Roda imediatamente uma vez no boot (cobre agendamentos que venceram
+  // enquanto o servidor estava off) e depois a cada 60 segundos.
+  executarAgendamentosPendentes();
+  setInterval(executarAgendamentosPendentes, 60 * 1000);
+}
+
+// ============================================================
 // INICIALIZAÇÃO DO SERVIDOR
 // ============================================================
 
@@ -1071,4 +1197,6 @@ app.listen(PORT, () => {
   console.log(`RecomendaLeads Bot v2 (Firestore) rodando na porta ${PORT}`);
   console.log(`Webhook disponível em: /webhook`);
   console.log(`Firestore inicializado: ${db ? 'SIM' : 'NÃO — verifique FIREBASE_SERVICE_ACCOUNT'}`);
+  iniciarExecutorAgendamentos();
+  console.log('Executor de agendamentos iniciado (checagem a cada 60s)');
 });
