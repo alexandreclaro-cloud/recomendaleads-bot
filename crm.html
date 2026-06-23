@@ -403,6 +403,30 @@
         </div>
       </div>
 
+      <div class="config-card">
+        <h2>🎁 Prêmio para quem é recomendado</h2>
+        <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
+          Mensagem e presente enviados automaticamente para a pessoa que foi recomendada (depois do tempo de espera configurado).
+        </p>
+
+        <label>Prêmio (texto curto mostrado ao recomendado)</label>
+        <input type="text" id="premioRecomendadoInput" placeholder="Ex: Desconto de 10% na primeira compra">
+
+        <label>Arquivo (link do Google Drive)</label>
+        <input type="text" id="arquivoRecomendadoInput" placeholder="https://drive.google.com/file/d/...">
+
+        <label>Link</label>
+        <input type="text" id="linkRecomendadoInput" placeholder="https://...">
+
+        <label>Chamada para ação (CTA)</label>
+        <input type="text" id="ctaRecomendadoInput" placeholder="Ex: Gostaria de vir retirar?">
+
+        <div class="config-row-save">
+          <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar prêmio do recomendado</button>
+          <span class="config-status-msg" id="statusRecomendado"></span>
+        </div>
+      </div>
+
       <div id="faixasContainer"></div>
     </div>
   </div>
@@ -804,6 +828,11 @@ async function carregarConfiguracao() {
     document.getElementById('empresaMsgInput').value = configuracaoAtual.mensagemAgradecimento || '';
     document.getElementById('empresaVendedoresInput').value = (configuracaoAtual.vendedores || []).join('\n');
 
+    document.getElementById('premioRecomendadoInput').value = configuracaoAtual.premioRecomendado || '';
+    document.getElementById('arquivoRecomendadoInput').value = configuracaoAtual.arquivoRecomendado || '';
+    document.getElementById('linkRecomendadoInput').value = configuracaoAtual.linkRecomendado || '';
+    document.getElementById('ctaRecomendadoInput').value = configuracaoAtual.ctaRecomendado || '';
+
     renderFaixas(configuracaoAtual.faixasBonus || []);
   } catch (err) {
     loadMsg.textContent = 'Não foi possível carregar a configuração.';
@@ -834,7 +863,47 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
       statusEl.textContent = '✅ Salvo!';
       statusEl.className = 'config-status-msg ok';
       configuracaoAtual = data.empresa;
+      // Atualiza também o nome exibido no header, já que pode ter mudado
       document.getElementById('empresaLogadaNome').textContent = data.empresa.nome;
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      statusEl.className = 'config-status-msg err';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.className = 'config-status-msg err';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
+  }
+});
+
+// Card "Prêmio para quem é recomendado" — mesma lógica do card de dados da
+// empresa, salvando os 4 campos fixos (sem faixas) usados por contatarRecomendado().
+document.getElementById('salvarRecomendadoBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarRecomendadoBtn');
+  const statusEl = document.getElementById('statusRecomendado');
+
+  const premioRecomendado = document.getElementById('premioRecomendadoInput').value.trim();
+  const arquivoRecomendado = document.getElementById('arquivoRecomendadoInput').value.trim() || null;
+  const linkRecomendado = document.getElementById('linkRecomendadoInput').value.trim() || null;
+  const ctaRecomendado = document.getElementById('ctaRecomendadoInput').value.trim();
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando...';
+  statusEl.className = 'config-status-msg';
+
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ premioRecomendado, arquivoRecomendado, linkRecomendado, ctaRecomendado })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!';
+      statusEl.className = 'config-status-msg ok';
+      configuracaoAtual = data.empresa;
     } else {
       statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
       statusEl.className = 'config-status-msg err';
