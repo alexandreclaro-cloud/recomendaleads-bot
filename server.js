@@ -53,9 +53,29 @@ const db = admin.apps.length ? admin.firestore() : null;
 const EMPRESA_DOC = () => db.collection('config').doc('empresa');
 const SESSOES_COL = () => db.collection('sessoes');
 const LEADS_COL = () => db.collection('leads');
+// Sessões do roteiro enviado ao RECOMENDADO (pessoa que recebeu a indicação),
+// separada de SESSOES_COL (que é do roteiro de quem RECOMENDA). Usar uma
+// coleção própria evita misturar os dois fluxos caso a mesma pessoa apareça
+// nos dois papéis em momentos diferentes.
+const SESSOES_RECOMENDADO_COL = () => db.collection('sessoes_recomendado');
 // Coleção nova, isolada — usada só pelo sistema de login. Não afeta o EMPRESA_DOC
 // único que o bot/CRM/configurações continuam usando normalmente nesta etapa.
 const EMPRESAS_COL = () => db.collection('empresas_login');
+
+// Palavras que, quando presentes na resposta do recomendado, são interpretadas
+// como confirmação para seguir a conversa (etapa "aguardando_confirmacao").
+// Lista fixa por enquanto — editar aqui diretamente se precisar ajustar.
+const PALAVRAS_POSITIVAS = [
+  'sim', 'pode', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim',
+  'com certeza', 'isso', 'aham', 'uhum', 'beleza', 'blz', 'vai', 'fala',
+  'diga', 'segue', 'continua', 'quero', 'demorou'
+];
+
+function respostaEhPositiva(texto) {
+  if (!texto) return false;
+  const normalizado = texto.toLowerCase().trim();
+  return PALAVRAS_POSITIVAS.some(palavra => normalizado.includes(palavra));
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'recomendaleads-segredo-trocar-em-producao';
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'troque-esta-chave';
@@ -84,6 +104,19 @@ const EMPRESA_PADRAO = {
   arquivoRecomendado: null,
   linkRecomendado: null,
   ctaRecomendado: 'Gostaria de vir retirar?',
+  // Mensagem inicial enviada ao recomendado, antes de falar do prêmio — pede
+  // confirmação para seguir a conversa. Suporta variáveis entre chaves.
+  mensagemInicialRecomendado: 'Oi {nomeRecomendado}, aqui é {vendedor} da {empresa} e seu amigo {recomendador} me recomendou você... Posso falar?',
+  // Mensagem repetida enquanto a resposta do recomendado não bate com
+  // nenhuma palavra positiva (ver PALAVRAS_POSITIVAS mais abaixo).
+  mensagemAguardandoConfirmacao: 'Posso te contar mais sobre isso?',
+  // Cadência de follow-up: mensagens extras enviadas em sequência se o
+  // recomendado não responder. Cada item espera X minutos desde a última
+  // mensagem enviada antes de disparar o texto seguinte.
+  cadenciaFollowupRecomendado: [
+    { esperaMin: 1440, texto: 'Oi, só passando pra saber se você viu minha mensagem 🙂' },
+    { esperaMin: 4320, texto: 'Seu presente ainda está disponível! Posso te contar mais?' }
+  ],
   tempoEsperaConversaoMin: 60,
   tempoFollowupMin: 30,
   // Etapas do CRM Kanban — totalmente editáveis pelo cliente em /configurar-vouchers.
@@ -441,25 +474,104 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa) {
   const esperaMs = empresa.tempoEsperaConversaoMin * 60 * 1000;
   sessao.contatos.forEach((contato) => {
     setTimeout(() => {
-      contatarRecomendado(contato, sessao, empresa);
+      iniciarConversaRecomendado(contato, sessao, empresa);
     }, esperaMs);
   });
 
   console.log(`[SESSÃO FINALIZADA] ${sessao.clienteNome} via ${sessao.vendedorNome} — ${sessao.contatos.length} contatos`);
 }
 
-async function contatarRecomendado(contato, sessao, empresa) {
+// ============================================================
+// ROTEIRO DO RECOMENDADO — etapas com confirmação e cadência
+// ============================================================
+// Substitui o antigo envio único de "contatarRecomendado". Agora a conversa
+// com o recomendado tem 3 etapas, cada uma esperando uma resposta da pessoa
+// antes de avançar:
+//   1) mensagem inicial → espera confirmação (palavra positiva)
+//   2) prêmio + arquivo + link → espera qualquer reação
+//   3) CTA (agendamento, convite à loja, etc.)
+// Se a pessoa não responder, a cadência de follow-up configurada dispara em
+// sequência até a pessoa responder ou a lista acabar.
+
+function substituirVariaveis(template, variaveis) {
+  if (!template) return '';
+  return template.replace(/\{(\w+)\}/g, (match, chave) => variaveis[chave] ?? match);
+}
+
+async function getSessaoRecomendado(telefone) {
+  const snap = await SESSOES_RECOMENDADO_COL().doc(telefone).get();
+  return snap.exists ? snap.data() : null;
+}
+
+async function saveSessaoRecomendado(telefone, sessao) {
+  await SESSOES_RECOMENDADO_COL().doc(telefone).set(sessao, { merge: true });
+}
+
+async function encerrarSessaoRecomendado(telefone) {
+  await SESSOES_RECOMENDADO_COL().doc(telefone).delete();
+}
+
+// Agenda o próximo passo de follow-up (índice da cadência) se a pessoa não
+// responder antes do tempo configurado. Cada chamada de saveSessaoRecomendado
+// com um novo "ultimaMensagemEm" invalida follow-ups antigos automaticamente,
+// já que o setTimeout confere se o timestamp ainda é o mesmo antes de agir.
+function agendarProximoFollowup(telefone, empresa, marcaTempo, indiceFollowup) {
+  const cadencia = empresa.cadenciaFollowupRecomendado || [];
+  const proximo = cadencia[indiceFollowup];
+  if (!proximo) return; // cadência esgotada, não agenda mais nada
+
+  const esperaMs = proximo.esperaMin * 60 * 1000;
+  setTimeout(async () => {
+    try {
+      const sessaoAtual = await getSessaoRecomendado(telefone);
+      // Só dispara o follow-up se a sessão ainda existir e a pessoa não
+      // tiver respondido (ou seja, o timestamp da última mensagem não mudou).
+      if (!sessaoAtual || sessaoAtual.ultimaMensagemEm !== marcaTempo) return;
+
+      await sendText(telefone, proximo.texto);
+      const novaMarca = new Date().toISOString();
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: novaMarca });
+      agendarProximoFollowup(telefone, empresa, novaMarca, indiceFollowup + 1);
+    } catch (err) {
+      console.error('Erro ao enviar follow-up do recomendado:', err.message);
+    }
+  }, esperaMs);
+}
+
+async function iniciarConversaRecomendado(contato, sessaoRecomendador, empresa) {
   if (!contato.telefone) {
-    console.log(`[AVISO] Contato "${contato.nome}" sem telefone válido — não foi possível enviar conversão.`);
+    console.log(`[AVISO] Contato "${contato.nome}" sem telefone válido — não foi possível iniciar conversa.`);
     return;
   }
 
-  const primeiroNomeRecomendado = contato.nome.split(' ')[0];
-  const primeiroNomeRecomendador = sessao.clienteNome.split(' ')[0];
+  const variaveis = {
+    nomeRecomendado: contato.nome.split(' ')[0],
+    recomendador: sessaoRecomendador.clienteNome.split(' ')[0],
+    vendedor: sessaoRecomendador.vendedorNome,
+    empresa: empresa.nome
+  };
 
-  const mensagem = `Olá ${primeiroNomeRecomendado}, somos da ${empresa.nome} e seu amigo ${primeiroNomeRecomendador} recomendou você aqui na nossa empresa.\n\nPor ter sido recomendado, você ganhou ${empresa.premioRecomendado}.\n\n${empresa.ctaRecomendado}`;
+  const mensagemInicial = substituirVariaveis(empresa.mensagemInicialRecomendado, variaveis);
+  await sendText(contato.telefone, mensagemInicial);
 
-  await sendText(contato.telefone, mensagem);
+  const marcaTempo = new Date().toISOString();
+  await saveSessaoRecomendado(contato.telefone, {
+    etapa: 'aguardando_confirmacao',
+    nomeRecomendado: contato.nome,
+    telefoneRecomendado: contato.telefone,
+    nomeRecomendador: sessaoRecomendador.clienteNome,
+    vendedorNome: sessaoRecomendador.vendedorNome,
+    ultimaMensagemEm: marcaTempo,
+    criadoEm: marcaTempo
+  });
+
+  agendarProximoFollowup(contato.telefone, empresa, marcaTempo, 0);
+  console.log(`[ROTEIRO RECOMENDADO INICIADO] ${contato.nome} (${contato.telefone})`);
+}
+
+async function enviarPremioRecomendado(telefone, sessao, empresa) {
+  await sendText(telefone, `Por ter sido recomendado pelo seu amigo, você ganhou ${empresa.premioRecomendado}.`);
+  await sendText(telefone, `E já estou te enviando agora mesmo seu presente 🎁`);
 
   if (empresa.arquivoRecomendado) {
     const linkDownload = converterLinkDrive(empresa.arquivoRecomendado);
@@ -467,17 +579,50 @@ async function contatarRecomendado(contato, sessao, empresa) {
     const ehImagem = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extensao.toLowerCase());
 
     if (ehImagem) {
-      await sendImage(contato.telefone, linkDownload, empresa.premioRecomendado || '');
+      await sendImage(telefone, linkDownload, empresa.premioRecomendado || '');
     } else {
-      await sendDocument(contato.telefone, linkDownload, `Voucher - ${empresa.premioRecomendado || 'presente'}`, extensao);
+      await sendDocument(telefone, linkDownload, `Voucher - ${empresa.premioRecomendado || 'presente'}`, extensao);
     }
   }
 
   if (empresa.linkRecomendado) {
-    await sendText(contato.telefone, empresa.linkRecomendado);
+    await sendText(telefone, empresa.linkRecomendado);
   }
 
-  console.log(`[CONVERSÃO ENVIADA] para ${contato.nome} (${contato.telefone})`);
+  const marcaTempo = new Date().toISOString();
+  await saveSessaoRecomendado(telefone, { etapa: 'aguardando_reacao', ultimaMensagemEm: marcaTempo });
+  agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
+}
+
+async function enviarCtaRecomendado(telefone, sessao, empresa) {
+  await sendText(telefone, empresa.ctaRecomendado);
+  await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
+  console.log(`[ROTEIRO RECOMENDADO FINALIZADO] ${sessao.nomeRecomendado} (${telefone})`);
+}
+
+async function processarMensagemRecomendado(telefone, texto, empresa) {
+  const sessao = await getSessaoRecomendado(telefone);
+  if (!sessao) return false; // não é uma conversa de recomendado em andamento
+
+  if (sessao.etapa === 'aguardando_confirmacao') {
+    if (respostaEhPositiva(texto)) {
+      await enviarPremioRecomendado(telefone, sessao, empresa);
+    } else {
+      await sendText(telefone, empresa.mensagemAguardandoConfirmacao);
+      const marcaTempo = new Date().toISOString();
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
+    }
+    return true;
+  }
+
+  if (sessao.etapa === 'aguardando_reacao') {
+    await enviarCtaRecomendado(telefone, sessao, empresa);
+    return true;
+  }
+
+  // etapa 'finalizado' — não há mais nada a processar, ignora mensagens soltas
+  return true;
 }
 
 // ============================================================
@@ -545,10 +690,18 @@ app.post('/webhook', async (req, res) => {
     const ehGatilhoInicial = texto && texto.toLowerCase().includes('quero meu presente');
 
     if (ehGatilhoInicial) {
+      // Gatilho explícito sempre tem prioridade e sempre é tratado como
+      // fluxo de quem recomenda, mesmo que essa pessoa tenha uma conversa
+      // de recomendado em andamento no mesmo número.
       await resetSessao(telefone);
       await iniciarConversa(telefone);
     } else if (sessaoExiste) {
       await processarMensagem(telefone, texto, vCard, contatosMultiplos);
+    } else {
+      // Não é fluxo de quem recomenda — verifica se é uma resposta de
+      // alguém que está no roteiro de recomendado (etapas com confirmação).
+      const empresa = await getEmpresa();
+      await processarMensagemRecomendado(telefone, texto, empresa);
     }
 
     res.sendStatus(200);
