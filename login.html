@@ -73,34 +73,27 @@
   <div class="box">
     <div class="logo">🎁</div>
     <h1>RecomendaLeads</h1>
-    <p class="sub">Etapa de teste — esta tela ainda não bloqueia nenhuma página.</p>
-
+    <p class="sub">Acesse o painel da sua empresa.</p>
     <form id="loginForm">
       <label>Email</label>
       <input type="email" id="emailInput" required autocomplete="username">
-
       <label>Senha</label>
       <input type="password" id="senhaInput" required autocomplete="current-password">
-
       <button type="submit" id="loginBtn">Entrar</button>
       <div class="msg" id="msgBox"></div>
     </form>
   </div>
-
 <script>
 const API_BASE = window.location.origin;
-
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('loginBtn');
   const msgBox = document.getElementById('msgBox');
   const email = document.getElementById('emailInput').value.trim();
   const senha = document.getElementById('senhaInput').value;
-
   btn.disabled = true;
   msgBox.textContent = '';
   msgBox.className = 'msg';
-
   try {
     const resp = await fetch(`${API_BASE}/login`, {
       method: 'POST',
@@ -108,13 +101,12 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
       body: JSON.stringify({ email, senha })
     });
     const data = await resp.json();
-
     if (resp.ok && data.ok) {
       localStorage.setItem('recomendaleads_token', data.token);
       localStorage.setItem('recomendaleads_empresa', JSON.stringify(data.empresa));
       msgBox.textContent = `✅ Login funcionou! Redirecionando...`;
       msgBox.className = 'msg ok';
-      setTimeout(() => { window.location.href = '/minha-empresa/configurar'; }, 800);
+      setTimeout(() => { window.location.href = '/crm'; }, 800);
     } else {
       msgBox.textContent = data.erro || 'Email ou senha incorretos';
       msgBox.className = 'msg err';
