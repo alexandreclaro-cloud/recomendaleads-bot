@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CRM — Poder da Recomendação</title>
+<title>Painel — Poder da Recomendação</title>
 <style>
   :root {
     --navy: #0a1628;
@@ -60,6 +60,47 @@
   }
   .refresh-btn:hover { border-color: var(--gold); color: var(--gold-light); }
 
+  .logado-tag {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+  .logado-tag b { color: var(--gold-light); }
+  .sair-btn {
+    background: transparent;
+    border: 1px solid rgba(255,107,107,0.3);
+    color: var(--error);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .sair-btn:hover { border-color: var(--error); background: rgba(255,107,107,0.08); }
+
+  /* ===== Abas ===== */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 24px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.015);
+  }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 14px 18px 12px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--gold-light); border-bottom-color: var(--gold); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ===== Aba Leads (Kanban) ===== */
   .toolbar {
     padding: 14px 24px;
     display: flex;
@@ -258,37 +299,177 @@
   .modal-status { font-size: 0.8rem; margin-top: 8px; text-align: center; font-weight: 600; }
   .modal-status.ok { color: var(--success); }
   .modal-status.err { color: var(--error); }
+
+  /* ===== Aba Configurações ===== */
+  .config-wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 60px; }
+
+  .config-card {
+    background: var(--navy-light);
+    border: 1px solid rgba(212,175,55,0.18);
+    border-radius: 14px;
+    padding: 22px;
+    margin-bottom: 20px;
+  }
+  .config-card h2 { font-size: 1.05rem; margin: 0 0 14px; color: var(--text); }
+  .config-card label { display: block; font-size: 0.82rem; color: var(--text-dim); margin: 12px 0 5px; }
+  .config-card input[type="text"], .config-card textarea {
+    width: 100%;
+    background: #0e1a2c;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .config-card input:focus, .config-card textarea:focus { outline: none; border-color: var(--gold); }
+  .config-row-save { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+  button.config-save-btn {
+    background: var(--gold);
+    color: var(--navy);
+    border: none;
+    font-weight: 700;
+    font-size: 0.9rem;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button.config-save-btn:hover { opacity: 0.92; }
+  button.config-save-btn:disabled { opacity: 0.5; cursor: default; }
+  .config-status-msg { font-size: 0.85rem; font-weight: 600; }
+  .config-status-msg.ok { color: var(--success); }
+  .config-status-msg.err { color: var(--error); }
+
+  .config-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .config-badge { background: var(--gold); color: var(--navy); font-weight: 700; font-size: 0.85rem; padding: 4px 12px; border-radius: 20px; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>📋 CRM — Poder da Recomendação</h1>
+  <h1>📋 Poder da Recomendação</h1>
   <div class="header-stats" id="headerStats">
     <span>Total: <b id="statTotal">—</b></span>
     <span>Comprou: <b id="statComprou">—</b></span>
   </div>
-  <div style="display:flex; gap:10px; align-items:center;">
-    <a href="/configurar-vouchers" style="color:#9aabc0; font-size:0.8rem; text-decoration:none;">⚙️ Configurações</a>
+  <div style="display:flex; gap:14px; align-items:center;">
+    <span class="logado-tag">Logado como: <b id="empresaLogadaNome">—</b></span>
     <button class="refresh-btn" id="refreshBtn">↻ Atualizar</button>
+    <button class="sair-btn" id="sairBtn">Sair</button>
   </div>
 </header>
 
-<div class="toolbar">
-  <label>Vendedor:</label>
-  <select id="filtroVendedor">
-    <option value="">Todos</option>
-  </select>
+<div class="tabs">
+  <button class="tab-btn active" data-tab="leads">📋 Leads</button>
+  <button class="tab-btn" data-tab="config">⚙️ Configurações</button>
 </div>
 
-<div id="loadMsg" class="load-msg">Carregando leads...</div>
+<!-- ===================== ABA LEADS ===================== -->
+<div class="tab-panel active" id="tabLeads">
+  <div class="toolbar">
+    <label>Vendedor:</label>
+    <select id="filtroVendedor">
+      <option value="">Todos</option>
+    </select>
+  </div>
 
-<div class="board" id="board" style="display:none"></div>
+  <div id="loadMsg" class="load-msg">Carregando leads...</div>
+
+  <div class="board" id="board" style="display:none"></div>
+</div>
+
+<!-- ===================== ABA CONFIGURAÇÕES ===================== -->
+<div class="tab-panel" id="tabConfig">
+  <div class="config-wrap">
+    <div id="configLoadMsg" class="load-msg">Carregando configuração...</div>
+
+    <div id="configConteudo" style="display:none">
+      <div class="config-card">
+        <h2>Dados da empresa</h2>
+
+        <label>Nome da empresa</label>
+        <input type="text" id="empresaNomeInput">
+
+        <label>Mensagem de agradecimento (primeira mensagem enviada ao cliente)</label>
+        <textarea id="empresaMsgInput" rows="2"></textarea>
+
+        <label>Vendedores (um por linha)</label>
+        <textarea id="empresaVendedoresInput" rows="4"></textarea>
+
+        <div class="config-row-save">
+          <button class="config-save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
+          <span class="config-status-msg" id="statusEmpresa"></span>
+        </div>
+      </div>
+
+      <div id="faixasContainer"></div>
+    </div>
+  </div>
+</div>
 
 <div id="modalContainer"></div>
 
 <script>
 const API_BASE = window.location.origin;
+
+// ============================================================
+// LOGIN — exige token válido para acessar o painel. Sem token,
+// redireciona para /login antes de carregar qualquer dado.
+// ============================================================
+const token = localStorage.getItem('recomendaleads_token');
+const empresaLogada = JSON.parse(localStorage.getItem('recomendaleads_empresa') || 'null');
+
+if (!token || !empresaLogada) {
+  window.location.href = '/login';
+}
+
+document.getElementById('empresaLogadaNome').textContent = empresaLogada ? empresaLogada.nome : '—';
+
+document.getElementById('sairBtn').addEventListener('click', () => {
+  localStorage.removeItem('recomendaleads_token');
+  localStorage.removeItem('recomendaleads_empresa');
+  window.location.href = '/login';
+});
+
+// Wrapper único de fetch autenticado — usado por leads e configurações.
+// Centraliza o tratamento de sessão expirada (401) num só lugar.
+async function fetchAutenticado(url, options = {}) {
+  const resp = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}), 'Authorization': `Bearer ${token}` }
+  });
+  if (resp.status === 401) {
+    localStorage.removeItem('recomendaleads_token');
+    localStorage.removeItem('recomendaleads_empresa');
+    window.location.href = '/login';
+    throw new Error('Sessão expirada');
+  }
+  return resp;
+}
+
+// ============================================================
+// ABAS
+// ============================================================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+
+    if (btn.dataset.tab === 'leads') {
+      document.getElementById('tabLeads').classList.add('active');
+    } else {
+      document.getElementById('tabConfig').classList.add('active');
+      // Carrega a configuração só na primeira vez que a aba é aberta
+      if (!configuracaoCarregada) carregarConfiguracao();
+    }
+  });
+});
+
+// ============================================================
+// ABA LEADS (Kanban)
+// ============================================================
 let leads = [];
 let etapas = [];
 
@@ -307,9 +488,10 @@ async function carregarLeads() {
   const board = document.getElementById('board');
   try {
     const [respLeads, respConfig] = await Promise.all([
-      fetch(`${API_BASE}/leads`),
-      fetch(`${API_BASE}/config`)
+      fetchAutenticado(`${API_BASE}/minha-leads`),
+      fetchAutenticado(`${API_BASE}/minha-config`)
     ]);
+
     const dataLeads = await respLeads.json();
     const dataConfig = await respConfig.json();
 
@@ -524,9 +706,8 @@ async function salvarVendedorModal(leadId) {
   statusEl.classList.remove('ok', 'err');
 
   try {
-    const resp = await fetch(`${API_BASE}/leads/${leadId}`, {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-leads/${leadId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vendedor: novoVendedor })
     });
     const data = await resp.json();
@@ -585,9 +766,8 @@ boardEl.addEventListener('drop', async (e) => {
   atualizarStats();
 
   try {
-    await fetch(`${API_BASE}/leads/${id}`, {
+    await fetchAutenticado(`${API_BASE}/minha-leads/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ etapa: novaEtapa })
     });
   } catch (err) {
@@ -596,8 +776,151 @@ boardEl.addEventListener('drop', async (e) => {
 });
 
 document.getElementById('filtroVendedor').addEventListener('change', renderBoard);
-document.getElementById('refreshBtn').addEventListener('click', carregarLeads);
+document.getElementById('refreshBtn').addEventListener('click', () => {
+  carregarLeads();
+  if (configuracaoCarregada) carregarConfiguracao();
+});
 
+// ============================================================
+// ABA CONFIGURAÇÕES
+// ============================================================
+let configuracaoAtual = null;
+let configuracaoCarregada = false;
+
+async function carregarConfiguracao() {
+  const loadMsg = document.getElementById('configLoadMsg');
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`);
+    const data = await resp.json();
+
+    if (!resp.ok || !data.ok) throw new Error(data.erro || 'Falha ao carregar configuração');
+
+    configuracaoAtual = data.empresa;
+    configuracaoCarregada = true;
+    loadMsg.style.display = 'none';
+    document.getElementById('configConteudo').style.display = 'block';
+
+    document.getElementById('empresaNomeInput').value = configuracaoAtual.nome || '';
+    document.getElementById('empresaMsgInput').value = configuracaoAtual.mensagemAgradecimento || '';
+    document.getElementById('empresaVendedoresInput').value = (configuracaoAtual.vendedores || []).join('\n');
+
+    renderFaixas(configuracaoAtual.faixasBonus || []);
+  } catch (err) {
+    loadMsg.textContent = 'Não foi possível carregar a configuração.';
+  }
+}
+
+document.getElementById('salvarEmpresaBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarEmpresaBtn');
+  const statusEl = document.getElementById('statusEmpresa');
+
+  const nome = document.getElementById('empresaNomeInput').value.trim();
+  const mensagemAgradecimento = document.getElementById('empresaMsgInput').value.trim();
+  const vendedores = document.getElementById('empresaVendedoresInput').value
+    .split('\n').map(v => v.trim()).filter(v => v.length > 0);
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando...';
+  statusEl.className = 'config-status-msg';
+
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ nome, mensagemAgradecimento, vendedores })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!';
+      statusEl.className = 'config-status-msg ok';
+      configuracaoAtual = data.empresa;
+      document.getElementById('empresaLogadaNome').textContent = data.empresa.nome;
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      statusEl.className = 'config-status-msg err';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.className = 'config-status-msg err';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
+  }
+});
+
+function renderFaixas(faixas) {
+  const container = document.getElementById('faixasContainer');
+  container.innerHTML = '';
+
+  faixas.forEach((faixa) => {
+    const card = document.createElement('div');
+    card.className = 'config-card';
+    card.innerHTML = `
+      <div class="config-card-head">
+        <h2>${faixa.premio}</h2>
+        <span class="config-badge">${faixa.quantidade} recomendações</span>
+      </div>
+      <label>Prêmio (texto curto mostrado ao cliente)</label>
+      <input type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
+      <label>Arquivo (link do Google Drive)</label>
+      <input type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="https://drive.google.com/file/d/...">
+      <label>Link</label>
+      <input type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
+      <label>Texto de orientação</label>
+      <textarea data-field="texto" rows="3">${faixa.texto || ''}</textarea>
+      <div class="config-row-save">
+        <button class="config-save-btn" data-quantidade="${faixa.quantidade}">Salvar faixa de ${faixa.quantidade}</button>
+        <span class="config-status-msg" data-statusfor="${faixa.quantidade}"></span>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+
+  container.querySelectorAll('.config-save-btn').forEach(btn => {
+    btn.addEventListener('click', () => salvarFaixa(btn));
+  });
+}
+
+async function salvarFaixa(btn) {
+  const quantidade = parseInt(btn.dataset.quantidade);
+  const card = btn.closest('.config-card');
+  const statusEl = card.querySelector(`[data-statusfor="${quantidade}"]`);
+
+  const premio = card.querySelector('[data-field="premio"]').value.trim();
+  const arquivo = card.querySelector('[data-field="arquivo"]').value.trim() || null;
+  const link = card.querySelector('[data-field="link"]').value.trim() || null;
+  const texto = card.querySelector('[data-field="texto"]').value.trim() || null;
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando...';
+  statusEl.className = 'config-status-msg';
+
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, {
+      method: 'POST',
+      body: JSON.stringify({ quantidade, premio, arquivo, link, texto })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!';
+      statusEl.className = 'config-status-msg ok';
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      statusEl.className = 'config-status-msg err';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.className = 'config-status-msg err';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
+  }
+}
+
+// ============================================================
+// INICIALIZAÇÃO
+// ============================================================
 carregarLeads();
 setInterval(carregarLeads, 30000); // atualiza sozinho a cada 30s
 </script>
