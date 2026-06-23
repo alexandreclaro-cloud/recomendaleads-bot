@@ -139,13 +139,32 @@ const EMPRESA_PADRAO = {
   ]
 };
 
+// IMPORTANTE: o bot do WhatsApp precisa usar a configuração da empresa que
+// está de fato recebendo mensagens hoje (a PDN, único número ativo) — não a
+// "Empresa Demo" antiga em config/empresa, que é só um resquício do sistema
+// single-tenant original e não é mais editada pela tela /crm.
+// getEmpresa() agora lê de empresas_login/{EMPRESA_ID_PDN}.configuracao,
+// que é exatamente o que a aba "Configurações" do /crm salva via /minha-config.
+// Isso corrige um bug onde tempoEsperaConversaoMin e os textos do roteiro do
+// recomendado editados no /crm nunca chegavam ao bot, que continuava lendo o
+// valor padrão (60 min) da Empresa Demo, nunca atualizado pela tela.
 async function getEmpresa() {
-  const snap = await EMPRESA_DOC().get();
-  if (!snap.exists) {
+  const snap = await EMPRESAS_COL().doc(EMPRESA_ID_PDN).get();
+  if (snap.exists && snap.data().configuracao) {
+    // Mescla com EMPRESA_PADRAO para garantir que campos novos (adicionados
+    // depois que a empresa foi criada/migrada) sempre tenham um valor, mesmo
+    // que a configuração salva no Firestore ainda não os tenha.
+    return { ...EMPRESA_PADRAO, ...snap.data().configuracao };
+  }
+  // Fallback de segurança: se por algum motivo o documento da PDN não for
+  // encontrado, cai para o comportamento antigo (Empresa Demo) em vez de
+  // quebrar o bot inteiro.
+  const snapDemo = await EMPRESA_DOC().get();
+  if (!snapDemo.exists) {
     await EMPRESA_DOC().set(EMPRESA_PADRAO);
     return { ...EMPRESA_PADRAO };
   }
-  return snap.data();
+  return snapDemo.data();
 }
 
 async function saveEmpresa(empresa) {
@@ -999,6 +1018,9 @@ app.post('/admin/empresas', async (req, res) => {
     // em config/empresa (mensagem, vendedores, faixas de bônus, etc.), em vez dos
     // valores de exemplo. Usado uma única vez para dar à empresa principal sua
     // própria conta de login sem perder o que já estava configurado.
+    // Nota: getEmpresa() hoje retorna a config da PDN (não mais da Empresa
+    // Demo) — então usar essa opção para criar uma NOVA empresa copiaria os
+    // dados da PDN, não os da Empresa Demo original. Use com essa ressalva.
     let configuracaoInicial = { ...EMPRESA_PADRAO, nome };
     if (migrarConfigPrincipal) {
       const empresaReal = await getEmpresa();
