@@ -395,10 +395,7 @@
         <textarea id="empresaMsgInput" rows="2"></textarea>
 
         <label>Vendedores (um por linha)</label>
-        <textarea id="empresaVendedoresInput" rows="4"></textarea>
-
-        <div class="config-row-save">
-          <button class="config-save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
+        <textarea id="empresaVendedoresInput" rows="4"></textarea><button class="config-save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
           <span class="config-status-msg" id="statusEmpresa"></span>
         </div>
       </div>
@@ -406,10 +403,16 @@
       <div class="config-card">
         <h2>🎁 Prêmio para quem é recomendado</h2>
         <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-          Mensagem e presente enviados automaticamente para a pessoa que foi recomendada (depois do tempo de espera configurado).
+          Roteiro enviado automaticamente para a pessoa que foi recomendada (depois do tempo de espera configurado). Use {nomeRecomendado}, {recomendador}, {vendedor} e {empresa} para personalizar as mensagens.
         </p>
 
-        <label>Prêmio (texto curto mostrado ao recomendado)</label>
+        <label>1️⃣ Mensagem inicial (pede para a pessoa confirmar antes de seguir)</label>
+        <textarea id="mensagemInicialRecomendadoInput" rows="3"></textarea>
+
+        <label>Mensagem repetida enquanto a pessoa não confirma</label>
+        <input type="text" id="mensagemAguardandoConfirmacaoInput" placeholder="Ex: Posso te contar mais sobre isso?">
+
+        <label>2️⃣ Prêmio (texto curto mostrado depois da confirmação)</label>
         <input type="text" id="premioRecomendadoInput" placeholder="Ex: Desconto de 10% na primeira compra">
 
         <label>Arquivo (link do Google Drive)</label>
@@ -418,12 +421,29 @@
         <label>Link</label>
         <input type="text" id="linkRecomendadoInput" placeholder="https://...">
 
-        <label>Chamada para ação (CTA)</label>
-        <input type="text" id="ctaRecomendadoInput" placeholder="Ex: Gostaria de vir retirar?">
+        <label>3️⃣ Chamada para ação (CTA) — enviado depois que a pessoa reage ao prêmio</label>
+        <input type="text" id="ctaRecomendadoInput" placeholder="Ex: Gostaria de vir retirar? Ou cole aqui seu link de agendamento do Google Agenda">
 
         <div class="config-row-save">
           <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar prêmio do recomendado</button>
           <span class="config-status-msg" id="statusRecomendado"></span>
+        </div>
+      </div>
+
+      <div class="config-card">
+        <h2>⏰ Cadência de follow-up (se a pessoa não responder)</h2>
+        <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
+          Mensagens enviadas em sequência se o recomendado não responder. O tempo de espera é contado a partir da última mensagem enviada a ela.
+        </p>
+
+        <div id="cadenciaContainer"></div>
+
+        <div class="config-row-save">
+          <button class="config-save-btn" id="adicionarFollowupBtn" style="background:transparent; border:1px solid var(--gold); color:var(--gold-light);">+ Adicionar mensagem</button>
+        </div>
+        <div class="config-row-save">
+          <button class="config-save-btn" id="salvarCadenciaBtn">Salvar cadência</button>
+          <span class="config-status-msg" id="statusCadencia"></span>
         </div>
       </div>
 
@@ -774,9 +794,7 @@ boardEl.addEventListener('drop', async (e) => {
   const col = e.target.closest('.column-body');
   if (!col) return;
   e.preventDefault();
-  col.classList.remove('drag-over');
-
-  const dragging = document.querySelector('.lead-card.dragging');
+  col.classList.remove('drag-over');const dragging = document.querySelector('.lead-card.dragging');
   if (!dragging) return;
 
   const id = dragging.dataset.id;
@@ -832,7 +850,10 @@ async function carregarConfiguracao() {
     document.getElementById('arquivoRecomendadoInput').value = configuracaoAtual.arquivoRecomendado || '';
     document.getElementById('linkRecomendadoInput').value = configuracaoAtual.linkRecomendado || '';
     document.getElementById('ctaRecomendadoInput').value = configuracaoAtual.ctaRecomendado || '';
+    document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
+    document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
 
+    renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
     renderFaixas(configuracaoAtual.faixasBonus || []);
   } catch (err) {
     loadMsg.textContent = 'Não foi possível carregar a configuração.';
@@ -888,6 +909,8 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const arquivoRecomendado = document.getElementById('arquivoRecomendadoInput').value.trim() || null;
   const linkRecomendado = document.getElementById('linkRecomendadoInput').value.trim() || null;
   const ctaRecomendado = document.getElementById('ctaRecomendadoInput').value.trim();
+  const mensagemInicialRecomendado = document.getElementById('mensagemInicialRecomendadoInput').value.trim();
+  const mensagemAguardandoConfirmacao = document.getElementById('mensagemAguardandoConfirmacaoInput').value.trim();
 
   btn.disabled = true;
   statusEl.textContent = 'Salvando...';
@@ -896,7 +919,95 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ premioRecomendado, arquivoRecomendado, linkRecomendado, ctaRecomendado })
+      body: JSON.stringify({
+        premioRecomendado, arquivoRecomendado, linkRecomendado, ctaRecomendado,
+        mensagemInicialRecomendado, mensagemAguardandoConfirmacao
+      })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!';
+      statusEl.className = 'config-status-msg ok';
+      configuracaoAtual = data.empresa;
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      statusEl.className = 'config-status-msg err';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.className = 'config-status-msg err';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
+  }
+});
+
+// ===== Cadência de follow-up =====
+// Lista editável em memória; só é persistida quando "Salvar cadência" é clicado.
+let cadenciaAtual = [];
+
+function renderCadencia(cadencia) {
+  cadenciaAtual = cadencia.map(item => ({ ...item }));
+  const container = document.getElementById('cadenciaContainer');
+  container.innerHTML = '';
+
+  if (cadenciaAtual.length === 0) {
+    container.innerHTML = '<p style="font-size:0.82rem; color:var(--text-dim);">Nenhuma mensagem de follow-up configurada ainda.</p>';
+    return;
+  }
+
+  cadenciaAtual.forEach((item, index) => {
+    const linha = document.createElement('div');
+    linha.style.cssText = 'display:flex; gap:10px; align-items:flex-start; margin-bottom:12px; padding:12px; background:#0e1a2c; border-radius:8px;';
+    linha.innerHTML = `
+      <div style="flex:0 0 110px;">
+        <label style="margin-top:0;">Esperar (min)</label>
+        <input type="text" data-cadencia-campo="esperaMin" data-index="${index}" value="${item.esperaMin}" style="width:100%;">
+      </div>
+      <div style="flex:1;">
+        <label style="margin-top:0;">Mensagem ${index + 1}</label>
+        <input type="text" data-cadencia-campo="texto" data-index="${index}" value="${(item.texto || '').replace(/"/g, '&quot;')}">
+      </div>
+      <button type="button" data-remover-index="${index}" style="margin-top:24px; background:transparent; border:1px solid var(--error); color:var(--error); border-radius:8px; padding:8px 12px; cursor:pointer; font-size:0.8rem;">Remover</button>
+    `;
+    container.appendChild(linha);
+  });
+
+  container.querySelectorAll('[data-cadencia-campo]').forEach(input => {
+    input.addEventListener('input', () => {
+      const idx = parseInt(input.dataset.index);
+      const campo = input.dataset.cadenciaCampo;
+      cadenciaAtual[idx][campo] = campo === 'esperaMin' ? (parseInt(input.value) || 0) : input.value;
+    });
+  });
+
+  container.querySelectorAll('[data-remover-index]').forEach(btnRemover => {
+    btnRemover.addEventListener('click', () => {
+      const idx = parseInt(btnRemover.dataset.removerIndex);
+      cadenciaAtual.splice(idx, 1);
+      renderCadencia(cadenciaAtual);
+    });
+  });
+}
+
+document.getElementById('adicionarFollowupBtn').addEventListener('click', () => {
+  cadenciaAtual.push({ esperaMin: 1440, texto: '' });
+  renderCadencia(cadenciaAtual);
+});
+
+document.getElementById('salvarCadenciaBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarCadenciaBtn');
+  const statusEl = document.getElementById('statusCadencia');
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando...';
+  statusEl.className = 'config-status-msg';
+
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ cadenciaFollowupRecomendado: cadenciaAtual })
     });
     const data = await resp.json();
 
@@ -995,3 +1106,6 @@ setInterval(carregarLeads, 30000); // atualiza sozinho a cada 30s
 </script>
 </body>
 </html>
+        
+
+        <div class="config-row-save">
