@@ -395,7 +395,9 @@
         <textarea id="empresaMsgInput" rows="2"></textarea>
 
         <label>Vendedores (um por linha)</label>
-        <textarea id="empresaVendedoresInput" rows="4"></textarea><button class="config-save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
+        <textarea id="empresaVendedoresInput" rows="4"></textarea>
+
+        <div class="config-row-save"><button class="config-save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
           <span class="config-status-msg" id="statusEmpresa"></span>
         </div>
       </div>
@@ -423,6 +425,9 @@
 
         <label>3️⃣ Chamada para ação (CTA) — enviado depois que a pessoa reage ao prêmio</label>
         <input type="text" id="ctaRecomendadoInput" placeholder="Ex: Gostaria de vir retirar? Ou cole aqui seu link de agendamento do Google Agenda">
+
+        <label>Tempo de espera antes de iniciar a conversa com o recomendado (minutos)</label>
+        <input type="text" id="tempoEsperaConversaoMinInput" placeholder="Ex: 60">
 
         <div class="config-row-save">
           <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar prêmio do recomendado</button>
@@ -794,8 +799,9 @@ boardEl.addEventListener('drop', async (e) => {
   const col = e.target.closest('.column-body');
   if (!col) return;
   e.preventDefault();
-  col.classList.remove('drag-over');const dragging = document.querySelector('.lead-card.dragging');
-  if (!dragging) return;
+  col.classList.remove('drag-over');
+
+  const dragging = document.querySelector('.lead-card.dragging');if (!dragging) return;
 
   const id = dragging.dataset.id;
   const novaEtapa = col.dataset.coletapa;
@@ -852,6 +858,7 @@ async function carregarConfiguracao() {
     document.getElementById('ctaRecomendadoInput').value = configuracaoAtual.ctaRecomendado || '';
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
+    document.getElementById('tempoEsperaConversaoMinInput').value = configuracaoAtual.tempoEsperaConversaoMin || 60;
 
     renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
     renderFaixas(configuracaoAtual.faixasBonus || []);
@@ -911,6 +918,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const ctaRecomendado = document.getElementById('ctaRecomendadoInput').value.trim();
   const mensagemInicialRecomendado = document.getElementById('mensagemInicialRecomendadoInput').value.trim();
   const mensagemAguardandoConfirmacao = document.getElementById('mensagemAguardandoConfirmacaoInput').value.trim();
+  const tempoEsperaConversaoMin = parseInt(document.getElementById('tempoEsperaConversaoMinInput').value) || 60;
 
   btn.disabled = true;
   statusEl.textContent = 'Salvando...';
@@ -921,7 +929,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
       method: 'POST',
       body: JSON.stringify({
         premioRecomendado, arquivoRecomendado, linkRecomendado, ctaRecomendado,
-        mensagemInicialRecomendado, mensagemAguardandoConfirmacao
+        mensagemInicialRecomendado, mensagemAguardandoConfirmacao, tempoEsperaConversaoMin
       })
     });
     const data = await resp.json();
@@ -1106,6 +1114,3 @@ setInterval(carregarLeads, 30000); // atualiza sozinho a cada 30s
 </script>
 </body>
 </html>
-        
-
-        <div class="config-row-save">
