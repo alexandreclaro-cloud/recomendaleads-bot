@@ -16,8 +16,8 @@ const app = express();
 app.use(express.json());
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -59,6 +59,13 @@ const EMPRESAS_COL = () => db.collection('empresas_login');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'recomendaleads-segredo-trocar-em-producao';
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'troque-esta-chave';
+
+// ID do documento da PDN Vendas em empresas_login (confirmado no Firestore).
+// Usado para já vincular todo lead novo criado pelo bot a esta empresa, já que
+// hoje existe apenas 1 número de WhatsApp ativo (o da PDN). Quando houver mais
+// de um número/empresa, este valor fixo deve ser substituído por uma lógica
+// dinâmica (ex: mapear pelo número de WhatsApp que recebeu a mensagem).
+const EMPRESA_ID_PDN = 'MFMcfVJfqv35dA9MotLK';
 
 // ============================================================
 // SEED — configuração padrão da empresa
@@ -141,8 +148,12 @@ async function getTodasSessoes() {
 // Cada documento representa UM contato recomendado por um cliente.
 // As etapas (colunas) são definidas pelo cliente em empresa.etapasKanban.
 // O lead sempre nasce na primeira etapa dessa lista.
+//
+// Campo novo: empresaId — identifica a qual empresa (doc de empresas_login)
+// este lead pertence. Leads antigos (criados antes desta etapa) não têm esse
+// campo e continuam acessíveis apenas pelas rotas antigas /leads, sem login.
 
-async function criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor }) {
+async function criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor, empresaId }) {
   const empresa = await getEmpresa();
   const etapas = (empresa.etapasKanban && empresa.etapasKanban.length > 0)
     ? empresa.etapasKanban
@@ -155,6 +166,7 @@ async function criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendado
     nomeRecomendador: nomeRecomendador || null,
     telefoneRecomendador: telefoneRecomendador || null,
     vendedor: vendedor || null,
+    empresaId: empresaId || null,
     etapa: etapaInicial,
     bonusPago: false,
     criadoEm: new Date().toISOString(),
@@ -166,6 +178,14 @@ async function criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendado
 
 async function getTodosLeads() {
   const snap = await LEADS_COL().orderBy('criadoEm', 'desc').get();
+  const leads = [];
+  snap.forEach(doc => leads.push({ id: doc.id, ...doc.data() }));
+  return leads;
+}
+
+// Mesma lógica de getTodosLeads, mas filtrando só os leads da empresa logada.
+async function getLeadsPorEmpresa(empresaId) {
+  const snap = await LEADS_COL().where('empresaId', '==', empresaId).orderBy('criadoEm', 'desc').get();
   const leads = [];
   snap.forEach(doc => leads.push({ id: doc.id, ...doc.data() }));
   return leads;
@@ -401,7 +421,8 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa) {
   sessao.faixaFinal = faixa;
   await saveSessao(telefone, sessao);
 
-  // Alimenta o CRM Kanban: cada contato recomendado entra como um novo lead
+  // Alimenta o CRM Kanban: cada contato recomendado entra como um novo lead.
+  // empresaId fixo na PDN por enquanto — único número de WhatsApp ativo hoje.
   for (const contato of sessao.contatos) {
     try {
       await criarLead({
@@ -409,7 +430,8 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa) {
         telefoneRecomendado: contato.telefone,
         nomeRecomendador: sessao.clienteNome,
         telefoneRecomendador: telefone,
-        vendedor: sessao.vendedorNome
+        vendedor: sessao.vendedorNome,
+        empresaId: EMPRESA_ID_PDN
       });
     } catch (err) {
       console.error('Erro ao criar lead no CRM:', err.message);
@@ -562,6 +584,7 @@ app.get('/', (req, res) => {
         <p>Servidor rodando — escolha um painel:</p>
         <a href="/crm">📋 CRM Kanban</a>
         <a href="/configurar-vouchers">⚙️ Configurações</a>
+        <a href="/login">🔑 Login da Empresa</a>
       </div>
     </body>
     </html>
@@ -578,6 +601,10 @@ app.get('/minha-empresa/configurar', (req, res) => {
   res.sendFile(path.join(__dirname, 'minha-empresa-configurar.html'));
 });
 
+// /crm continua na mesma URL de sempre. A proteção por login agora é feita
+// dentro do próprio crm.html (ele verifica o token salvo no navegador e
+// redireciona para /login se não houver um válido), então a rota do servidor
+// não precisa mudar — ela só continua servindo o arquivo.
 app.get('/crm', (req, res) => {
   res.sendFile(path.join(__dirname, 'crm.html'));
 });
@@ -697,6 +724,52 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// ============================================================
+// NOVO — leads isolados por empresa (etapa 3, protegidos por login)
+// ============================================================
+// Mesma forma e contrato das rotas antigas /leads, mas:
+// 1) exigem login (exigirLoginEmpresa)
+// 2) só retornam/alteram leads cujo campo empresaId é o da empresa logada
+// As rotas antigas /leads continuam existindo e abertas, sem filtro — usadas
+// hoje apenas pela "Empresa Demo" (leads sem empresaId, criados antes desta etapa).
+
+app.get('/minha-leads', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const leads = await getLeadsPorEmpresa(req.empresaLogin.id);
+    res.json({ ok: true, leads });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Confirma que o lead pertence à empresa logada antes de alterar —
+    // impede que alguém logado numa empresa altere lead de outra empresa.
+    const ref = LEADS_COL().doc(id);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
+    }
+
+    const { etapa, vendedor, bonusPago } = req.body;
+    const dados = {};
+    if (etapa !== undefined) dados.etapa = etapa;
+    if (vendedor !== undefined) dados.vendedor = vendedor;
+    if (bonusPago !== undefined) dados.bonusPago = bonusPago;
+
+    const lead = await atualizarLead(id, dados);
+    if (!lead) {
+      return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
+    }
+    res.json({ ok: true, lead });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.post('/admin/empresas', async (req, res) => {
   try {
     const chaveAdmin = req.headers['x-admin-key'];
@@ -795,7 +868,7 @@ app.post('/config/faixa', async (req, res) => {
 });
 
 // ============================================================
-// ROTAS DO CRM KANBAN
+// ROTAS DO CRM KANBAN (ANTIGAS — Empresa Demo, sem login, intocadas)
 // ============================================================
 
 app.get('/leads', async (req, res) => {
