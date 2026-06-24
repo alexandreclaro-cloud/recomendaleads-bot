@@ -88,6 +88,17 @@ function respostaEhPositiva(texto) {
 const JWT_SECRET = process.env.JWT_SECRET || 'recomendaleads-segredo-trocar-em-producao';
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'troque-esta-chave';
 
+// ============================================================
+// CONFIGURAÇÃO — API Claude (interpretação de respostas do recomendado)
+// ============================================================
+// Usada só no roteiro do recomendado, para interpretar a resposta da pessoa
+// (positiva/negativa/pergunta) e, quando for uma pergunta, gerar uma resposta
+// curta baseada apenas no que está configurado pela empresa. Modelo Haiku é
+// usado por ser o mais econômico — essa tarefa é simples e não precisa de um
+// modelo mais caro.
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+
 // ID do documento da PDN Vendas em empresas_login (confirmado no Firestore).
 // Usado para já vincular todo lead novo criado pelo bot a esta empresa, já que
 // hoje existe apenas 1 número de WhatsApp ativo (o da PDN). Quando houver mais
@@ -114,7 +125,7 @@ const EMPRESA_PADRAO = {
   ctaRecomendado: 'Gostaria de vir retirar?',
   // Mensagem inicial enviada ao recomendado, antes de falar do prêmio — pede
   // confirmação para seguir a conversa. Suporta variáveis entre chaves.
-  mensagemInicialRecomendado: 'Oi {nomeRecomendado}, aqui é {vendedor} da {empresa} e seu amigo {recomendador} me recomendou você... Posso falar?',
+  mensagemInicialRecomendado: 'Oi {nomeRecomendado}, aqui é {vendedor} da {empresa} e seu amigo(a) {recomendador} me recomendou você... Posso falar?',
   // Mensagem repetida enquanto a resposta do recomendado não bate com
   // nenhuma palavra positiva (ver PALAVRAS_POSITIVAS mais abaixo).
   mensagemAguardandoConfirmacao: 'Posso te contar mais sobre isso?',
@@ -386,6 +397,13 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
     sessao.vendedorNome = vendedor;
     sessao.etapa = 'coletando_contatos';
+    // indiceFaixaAtual: qual faixa de empresa.faixasBonus está em jogo agora.
+    // contatosFaixaAtual: contatos coletados especificamente para ESSA faixa
+    // (zera a cada nova faixa liberada) — diferente de sessao.contatos, que
+    // continua acumulando TODOS os contatos da sessão inteira (usado só para
+    // criar os leads no final, não para calcular a meta).
+    sessao.indiceFaixaAtual = 0;
+    sessao.contatosFaixaAtual = [];
     await saveSessao(telefone, sessao);
 
     const primeiraFaixa = empresa.faixasBonus[0];
@@ -425,17 +443,30 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     }
 
     if (novosContatos.length > 0) {
+      const faixaAtual = empresa.faixasBonus[sessao.indiceFaixaAtual];
+      const contatosFaixaAtual = [...(sessao.contatosFaixaAtual || []), ...novosContatos];
+
+      // Acumula no histórico total da sessão (usado só para criar os leads
+      // no final) — isso nunca trava nem é usado para calcular metas.
       sessao.contatos = [...(sessao.contatos || []), ...novosContatos];
-      await saveSessao(telefone, sessao);
 
-      const metaAtual = empresa.faixasBonus.find(f => f.quantidade >= sessao.contatos.length) || empresa.faixasBonus[empresa.faixasBonus.length - 1];
-      const faltam = metaAtual.quantidade - sessao.contatos.length;
+      if (contatosFaixaAtual.length < faixaAtual.quantidade) {
+        // Ainda não bateu a meta desta faixa.
+        sessao.contatosFaixaAtual = contatosFaixaAtual;
+        await saveSessao(telefone, sessao);
 
-      if (faltam > 0) {
+        const faltam = faixaAtual.quantidade - contatosFaixaAtual.length;
         const nomesAdicionados = novosContatos.map(c => c.nome).join(', ');
-        await sendText(telefone, `Anotado, ${nomesAdicionados}! ✅ Faltam ${faltam} recomendações para você garantir "${metaAtual.premio}". Quem mais vem na sua mente?`);
+        await sendText(telefone, `Anotado, ${nomesAdicionados}! ✅ Faltam ${faltam} recomendações para você garantir "${faixaAtual.premio}". Quem mais vem na sua mente?`);
       } else {
-        await finalizarFaixa(telefone, sessao, metaAtual, empresa);
+        // Bateu ou passou a meta — separa o que pertence a esta faixa do
+        // excedente (que só vai contar de verdade se a pessoa topar
+        // continuar para a próxima faixa).
+        const contatosDestaFaixa = contatosFaixaAtual.slice(0, faixaAtual.quantidade);
+        const excedente = contatosFaixaAtual.slice(faixaAtual.quantidade);
+
+        sessao.contatosFaixaAtual = [];
+        await finalizarFaixa(telefone, sessao, faixaAtual, empresa, contatosDestaFaixa, excedente);
       }
     } else {
       await sendText(telefone, 'Não consegui identificar um contato aí. Pode mandar o contato direto da sua agenda (toque em 📎 → Contato), ou digitar no formato "Nome - telefone com DDD"?');
@@ -443,7 +474,42 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     return;
   }
 
-  // ETAPA 4: já finalizado — ignora mensagens soltas (ex: "Ok", "obrigado").
+  // ETAPA 4: aguardando a pessoa confirmar se quer liberar a próxima faixa
+  // de bônus (só existe quando há uma próxima faixa configurada).
+  if (sessao.etapa === 'aguardando_autorizacao_proxima_faixa') {
+    if (respostaEhPositiva(texto)) {
+      const proximoIndice = sessao.indiceFaixaAtual + 1;
+      const proximaFaixa = empresa.faixasBonus[proximoIndice];
+      const excedentePendente = sessao.excedentePendente || [];
+
+      sessao.indiceFaixaAtual = proximoIndice;
+      sessao.contatosFaixaAtual = excedentePendente;
+      sessao.excedentePendente = [];
+      sessao.etapa = 'coletando_contatos';
+
+      // O excedente que a pessoa já tinha mandado agora conta de verdade.
+      // Se isso já for suficiente para bater a nova meta sozinho, finaliza
+      // esta faixa também na hora, em vez de pedir mais contatos à toa.
+      if (excedentePendente.length >= proximaFaixa.quantidade) {
+        const contatosDestaFaixa = excedentePendente.slice(0, proximaFaixa.quantidade);
+        const novoExcedente = excedentePendente.slice(proximaFaixa.quantidade);
+        sessao.contatosFaixaAtual = [];
+        await finalizarFaixa(telefone, sessao, proximaFaixa, empresa, contatosDestaFaixa, novoExcedente);
+      } else {
+        await saveSessao(telefone, sessao);
+        const faltam = proximaFaixa.quantidade - excedentePendente.length;
+        await sendText(telefone, `Show! Faltam ${faltam} recomendações para você garantir "${proximaFaixa.premio}". Quem mais vem na sua mente?`);
+      }
+    } else {
+      sessao.excedentePendente = [];
+      sessao.etapa = 'finalizado';
+      await saveSessao(telefone, sessao);
+      await sendText(telefone, 'Sem problemas! Muito obrigado por participar e por confiar na gente 🙏');
+    }
+    return;
+  }
+
+  // ETAPA 5: já finalizado — ignora mensagens soltas (ex: "Ok", "obrigado").
   // Só reinicia quando a pessoa mandar o gatilho "quero meu presente" de novo,
   // o que já é tratado separadamente no webhook antes de chegar aqui.
   if (sessao.etapa === 'finalizado') {
@@ -451,8 +517,11 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   }
 }
 
-async function finalizarFaixa(telefone, sessao, faixa, empresa) {
-  await sendText(telefone, `🎉 Perfeito! Você completou ${sessao.contatos.length} recomendações.`);
+// contatosDestaFaixa: exatamente os contatos que contam para o prêmio atual.
+// excedente: contatos que já chegaram além da meta, mas só serão
+// aproveitados de verdade se a pessoa topar continuar para a próxima faixa.
+async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFaixa, excedente) {
+  await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
   await sendText(telefone, `Seu presente: ${faixa.premio}`);
 
   if (faixa.texto) {
@@ -477,13 +546,9 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa) {
 
   await sendText(telefone, `Só uma coisa importante: avise seus amigos que vamos entrar em contato com eles em breve, combinado? Assim eles já esperam nossa mensagem 😉`);
 
-  sessao.etapa = 'finalizado';
-  sessao.faixaFinal = faixa;
-  await saveSessao(telefone, sessao);
-
-  // Alimenta o CRM Kanban: cada contato recomendado entra como um novo lead.
+  // Alimenta o CRM Kanban: cada contato desta faixa entra como um novo lead.
   // empresaId fixo na PDN por enquanto — único número de WhatsApp ativo hoje.
-  for (const contato of sessao.contatos) {
+  for (const contato of contatosDestaFaixa) {
     try {
       await criarLead({
         nomeRecomendado: contato.nome,
@@ -498,13 +563,36 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa) {
     }
   }
 
-  // Agenda o início da conversa com cada recomendado. Em vez de setTimeout
-  // (perdido se o servidor reiniciar), grava no Firestore um agendamento
-  // com a data/hora exata de execução — o executor (ver mais abaixo) confere
-  // isso a cada minuto e dispara quando chegar a hora, mesmo que o servidor
+  const proximaFaixa = empresa.faixasBonus[sessao.indiceFaixaAtual + 1];
+
+  if (!proximaFaixa) {
+    // Não há mais faixas configuradas — agradece e encerra sem perguntar nada.
+    sessao.etapa = 'finalizado';
+    sessao.faixaFinal = faixa;
+    await saveSessao(telefone, sessao);
+    await sendText(telefone, 'Muito obrigado por participar e por confiar na gente! 🙏');
+  } else {
+    // Existe próxima faixa — pergunta se a pessoa quer continuar. Se já tem
+    // excedente, menciona isso explicitamente na pergunta.
+    sessao.etapa = 'aguardando_autorizacao_proxima_faixa';
+    sessao.excedentePendente = excedente;
+    await saveSessao(telefone, sessao);
+
+    if (excedente.length > 0) {
+      const palavraContato = excedente.length === 1 ? 'contato' : 'contatos';
+      await sendText(telefone, `E olha, você já mandou ${excedente.length} ${palavraContato} a mais! Quer completar mais ${proximaFaixa.quantidade - excedente.length} recomendações e ganhar "${proximaFaixa.premio}"?`);
+    } else {
+      await sendText(telefone, `Quer liberar o próximo prêmio? São +${proximaFaixa.quantidade} recomendações e o prêmio é "${proximaFaixa.premio}". Quer continuar?`);
+    }
+  }
+
+  // Agenda o início da conversa com cada recomendado DESTA faixa. Em vez de
+  // setTimeout (perdido se o servidor reiniciar), grava no Firestore um
+  // agendamento com a data/hora exata de execução — o executor confere isso
+  // periodicamente e dispara quando chegar a hora, mesmo que o servidor
   // tenha sido reiniciado nesse meio tempo.
   const executarEm = new Date(Date.now() + empresa.tempoEsperaConversaoMin * 60 * 1000).toISOString();
-  for (const contato of sessao.contatos) {
+  for (const contato of contatosDestaFaixa) {
     try {
       await criarAgendamento({
         tipo: 'iniciar_conversa_recomendado',
@@ -520,7 +608,7 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa) {
     }
   }
 
-  console.log(`[SESSÃO FINALIZADA] ${sessao.clienteNome} via ${sessao.vendedorNome} — ${sessao.contatos.length} contatos`);
+  console.log(`[FAIXA FINALIZADA] ${sessao.clienteNome} via ${sessao.vendedorNome} — ${contatosDestaFaixa.length} contatos nesta faixa, ${excedente.length} excedentes pendentes`);
 }
 
 // ============================================================
@@ -670,8 +758,89 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
 
 async function enviarCtaRecomendado(telefone, sessao, empresa) {
   await sendText(telefone, empresa.ctaRecomendado);
-  await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
-  console.log(`[ROTEIRO RECOMENDADO FINALIZADO] ${sessao.nomeRecomendado} (${telefone})`);
+  // Não finaliza ainda: o CTA é texto livre (a empresa pode perguntar algo
+  // tipo "Gostaria de vir retirar?"), então é natural a pessoa responder.
+  // Espera-se essa resposta para mandar uma mensagem final de encerramento
+  // antes de marcar como totalmente finalizado.
+  await saveSessaoRecomendado(telefone, { etapa: 'aguardando_fechamento' });
+  console.log(`[ROTEIRO RECOMENDADO - CTA ENVIADO, AGUARDANDO RESPOSTA FINAL] ${sessao.nomeRecomendado} (${telefone})`);
+}
+
+// ============================================================
+// INTERPRETAÇÃO DA RESPOSTA DO RECOMENDADO — via API Claude
+// ============================================================
+// Substitui a comparação simples por palavras-chave (respostaEhPositiva) por
+// uma interpretação real da mensagem da pessoa. A IA recebe só o que está
+// configurado pela empresa (nome, prêmio, CTA) e instrução explícita de
+// nunca inventar informação fora disso — qualquer pergunta sem resposta
+// configurada recebe um "não tenho essa informação aqui" em vez de um chute.
+//
+// Retorna um objeto: { classificacao: 'positiva'|'negativa'|'pergunta', respostaSugerida: string|null }
+// Se a chamada à API falhar por qualquer motivo, cai de volta para a lógica
+// antiga de palavras-chave (respostaEhPositiva) — o roteiro nunca trava por
+// causa de uma falha da IA.
+async function interpretarRespostaRecomendado(texto, empresa, contextoEtapa) {
+  if (!ANTHROPIC_API_KEY) {
+    // Sem chave configurada — usa o fallback de palavras-chave diretamente.
+    return {
+      classificacao: respostaEhPositiva(texto) ? 'positiva' : 'negativa',
+      respostaSugerida: null
+    };
+  }
+
+  const informacoesDisponiveis = [
+    `Nome da empresa: ${empresa.nome}`,
+    `Prêmio oferecido ao recomendado: ${empresa.premioRecomendado}`,
+    `Chamada para ação (CTA): ${empresa.ctaRecomendado}`
+  ].join('\n');
+
+  const systemPrompt = `Você ajuda a interpretar respostas de WhatsApp em uma conversa de recomendação comercial (etapa: ${contextoEtapa}).
+
+Informações que você PODE usar para responder perguntas:
+${informacoesDisponiveis}
+
+Regras estritas:
+- NUNCA invente informações fora do que foi listado acima (preço, endereço, prazo, qualquer dado não fornecido).
+- Se a pessoa perguntar algo que você não tem informação, responda de forma breve e natural dizendo que não tem esse detalhe aí, mas que a equipe vai falar mais sobre isso em breve.
+- Responda SEMPRE em JSON puro, sem markdown, no formato exato: {"classificacao": "positiva" | "negativa" | "pergunta", "respostaSugerida": "texto curto em português, ou null"}.
+- "positiva": a pessoa topou continuar a conversa (ex: sim, pode, claro, ok). respostaSugerida deve ser null. Use esta classificação também quando a etapa for "aguardando resposta final de fechamento, depois do CTA" — nesse caso, gere uma respostaSugerida breve e calorosa de encerramento (ex: "Combinado! Estamos te esperando 😊" ou "Perfeito, qualquer coisa é só chamar!").
+- "negativa": a pessoa não quer continuar, diz que não conhece a empresa/o recomendador, ou pediu para parar. Aqui respostaSugerida é OBRIGATÓRIA: escreva uma despedida breve, gentil e humana — reconheça o que a pessoa disse (ex: se ela diz que não conhece, responda algo como "Poxa, que pena! Talvez quem te recomendou ainda se lembre de você 🙂" ou "Entendo, talvez eu tenha me confundido na lista, me perdoe!"). Nunca insista ou pressione, apenas se despeça com simpatia.
+- "pergunta": a pessoa fez uma pergunta ou comentário que merece uma resposta antes de prosseguir. respostaSugerida é obrigatória.
+- respostaSugerida deve ter no máximo 2 frases curtas, tom natural e amigável, em português do Brasil.`;
+
+  try {
+    const resp = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: ANTHROPIC_MODEL,
+      max_tokens: 200,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: texto || '' }]
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      timeout: 8000
+    });
+
+    const textoResposta = resp.data?.content?.[0]?.text || '';
+    const parsed = JSON.parse(textoResposta);
+
+    if (!['positiva', 'negativa', 'pergunta'].includes(parsed.classificacao)) {
+      throw new Error('Classificação inesperada retornada pela IA');
+    }
+
+    return {
+      classificacao: parsed.classificacao,
+      respostaSugerida: parsed.respostaSugerida || null
+    };
+  } catch (err) {
+    console.error('Erro ao interpretar resposta via IA, usando fallback de palavras-chave:', err.message);
+    return {
+      classificacao: respostaEhPositiva(texto) ? 'positiva' : 'negativa',
+      respostaSugerida: null
+    };
+  }
 }
 
 async function processarMensagemRecomendado(telefone, texto, empresa) {
@@ -679,10 +848,23 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   if (!sessao) return false; // não é uma conversa de recomendado em andamento
 
   if (sessao.etapa === 'aguardando_confirmacao') {
-    if (respostaEhPositiva(texto)) {
+    const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando confirmação para falar do prêmio');
+
+    if (interpretacao.classificacao === 'positiva') {
       await enviarPremioRecomendado(telefone, sessao, empresa);
+    } else if (interpretacao.classificacao === 'negativa') {
+      // Resposta claramente negativa — manda uma despedida gentil (gerada
+      // pela IA, reconhecendo o que a pessoa disse) e encerra o roteiro,
+      // sem mais follow-ups agendados para ela.
+      const despedida = interpretacao.respostaSugerida || 'Sem problemas! Foi só um engano da nossa parte, desculpe incomodar 🙂';
+      await sendText(telefone, despedida);
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado_negativo' });
+      console.log(`[ROTEIRO RECOMENDADO ENCERRADO - RESPOSTA NEGATIVA] ${sessao.nomeRecomendado} (${telefone})`);
     } else {
-      await sendText(telefone, empresa.mensagemAguardandoConfirmacao);
+      // Pergunta/comentário: responde com a sugestão da IA (ou a mensagem
+      // padrão configurada, se a IA não tiver gerado uma) e continua
+      // esperando confirmação, com nova cadência de follow-up.
+      await sendText(telefone, interpretacao.respostaSugerida || empresa.mensagemAguardandoConfirmacao);
       const marcaTempo = new Date().toISOString();
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
@@ -691,11 +873,32 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   }
 
   if (sessao.etapa === 'aguardando_reacao') {
+    // Depois do prêmio, qualquer pergunta específica ainda recebe uma
+    // resposta da IA antes do CTA seguir — mas o CTA sempre é enviado depois,
+    // já que aqui o objetivo é só reagir bem, não decidir se continua ou não.
+    const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando reação ao prêmio, antes do CTA final');
+    if (interpretacao.classificacao === 'pergunta' && interpretacao.respostaSugerida) {
+      await sendText(telefone, interpretacao.respostaSugerida);
+    }
     await enviarCtaRecomendado(telefone, sessao, empresa);
     return true;
   }
 
-  // etapa 'finalizado' — não há mais nada a processar, ignora mensagens soltas
+  if (sessao.etapa === 'aguardando_fechamento') {
+    // O CTA é texto livre (a empresa pode perguntar algo como "Gostaria de
+    // vir retirar?"), então é natural a pessoa responder a ele. Manda uma
+    // mensagem final de encerramento (gerada pela IA, reconhecendo o que a
+    // pessoa disse) e só então marca como totalmente finalizado.
+    const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando resposta final de fechamento, depois do CTA');
+    const fechamento = interpretacao.respostaSugerida || 'Combinado! Estamos à disposição 😊';
+    await sendText(telefone, fechamento);
+    await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
+    console.log(`[ROTEIRO RECOMENDADO FINALIZADO] ${sessao.nomeRecomendado} (${telefone})`);
+    return true;
+  }
+
+  // etapas 'finalizado' e 'finalizado_negativo' — não há mais nada a
+  // processar, ignora mensagens soltas.
   return true;
 }
 
@@ -1205,9 +1408,18 @@ async function executarAgendamentosPendentes() {
 
 function iniciarExecutorAgendamentos() {
   // Roda imediatamente uma vez no boot (cobre agendamentos que venceram
-  // enquanto o servidor estava off) e depois a cada 60 segundos.
+  // enquanto o servidor estava off) e depois periodicamente.
+  //
+  // Intervalo de 3 minutos (em vez de 1) reduz o consumo de cota do
+  // Firestore em ~66%, já que cada checagem é uma leitura mesmo quando não
+  // encontra nada pendente. Como os tempos de espera configurados são de
+  // minutos/horas (nunca segundos), 3 minutos de atraso máximo no envio de
+  // uma mensagem é imperceptível na prática, mas evita rodar 1440
+  // checagens/dia (a maioria sem nenhum agendamento pendente) e estourar a
+  // cota gratuita do plano Spark do Firestore.
+  const INTERVALO_EXECUTOR_MS = 3 * 60 * 1000;
   executarAgendamentosPendentes();
-  setInterval(executarAgendamentosPendentes, 60 * 1000);
+  setInterval(executarAgendamentosPendentes, INTERVALO_EXECUTOR_MS);
 }
 
 // ============================================================
