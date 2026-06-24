@@ -580,7 +580,10 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
 
 function substituirVariaveis(template, variaveis) {
   if (!template) return '';
-  return template.replace(/\{(\w+)\}/g, (match, chave) => variaveis[chave] ?? match);
+  // Aceita {recomendado} como alias de {nomeRecomendado} para compatibilidade
+  // com mensagens configuradas antes da variável ser renomeada
+  const variaveisExpandidas = { ...variaveis, recomendado: variaveis.nomeRecomendado };
+  return template.replace(/\{(\w+)\}/g, (match, chave) => variaveisExpandidas[chave] ?? match);
 }
 
 async function getSessaoRecomendado(telefone) {
@@ -777,6 +780,10 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando confirmação para falar do prêmio');
 
     if (interpretacao.classificacao === 'positiva') {
+      // Atualiza ultimaMensagemEm antes de enviar o prêmio — isso invalida
+      // qualquer followup pendente que estava aguardando a marcaTempoReferencia antiga
+      const marcaTempo = new Date().toISOString();
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
     } else if (interpretacao.classificacao === 'negativa') {
       const despedida = interpretacao.respostaSugerida || 'Sem problemas! Foi só um engano da nossa parte, desculpe incomodar 🙂';
@@ -784,15 +791,22 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       await saveSessaoRecomendado(telefone, { etapa: 'finalizado_negativo' });
       console.log(`[ROTEIRO RECOMENDADO ENCERRADO - RESPOSTA NEGATIVA] ${sessao.nomeRecomendado} (${telefone})`);
     } else {
-      await sendText(telefone, interpretacao.respostaSugerida || empresa.mensagemAguardandoConfirmacao);
+      // Pergunta/comentário: atualiza a marca de tempo ANTES de agendar o próximo
+      // followup — isso invalida automaticamente o followup anterior que estava
+      // pendente com a marca antiga, evitando que dispare em duplicidade
       const marcaTempo = new Date().toISOString();
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      await sendText(telefone, interpretacao.respostaSugerida || empresa.mensagemAguardandoConfirmacao);
       await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
     }
     return true;
   }
 
   if (sessao.etapa === 'aguardando_reacao') {
+    // Atualiza ultimaMensagemEm imediatamente ao receber resposta — invalida
+    // qualquer followup pendente que estava esperando a marca antiga
+    const marcaReacao = new Date().toISOString();
+    await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaReacao });
     const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando reação ao prêmio, antes do CTA final');
     if (interpretacao.classificacao === 'pergunta' && interpretacao.respostaSugerida) {
       await sendText(telefone, interpretacao.respostaSugerida);
