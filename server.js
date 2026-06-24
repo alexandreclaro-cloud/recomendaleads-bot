@@ -649,8 +649,12 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
     return;
   }
 
+  const primeiroNomeRecomendado = (contato.nome && contato.nome.trim() && contato.nome !== 'Contato sem nome')
+    ? contato.nome.split(' ')[0]
+    : 'você';
   const variaveis = {
-    nomeRecomendado: contato.nome.split(' ')[0],
+    nomeRecomendado: primeiroNomeRecomendado,
+    recomendado: primeiroNomeRecomendado,
     recomendador: nomeRecomendador.split(' ')[0],
     vendedor: vendedorNome,
     empresa: empresa.nome
@@ -733,8 +737,8 @@ Regras estritas:
 - Se a pessoa perguntar algo que você não tem informação, responda de forma breve e natural dizendo que não tem esse detalhe aí, mas que a equipe vai falar mais sobre isso em breve.
 - Responda SEMPRE em JSON puro, sem markdown, no formato exato: {"classificacao": "positiva" | "negativa" | "pergunta", "respostaSugerida": "texto curto em português, ou null"}.
 - "positiva": a pessoa topou continuar a conversa (ex: sim, pode, claro, ok). respostaSugerida deve ser null. Use esta classificação também quando a etapa for "aguardando resposta final de fechamento, depois do CTA" — nesse caso, gere uma respostaSugerida breve e calorosa de encerramento (ex: "Combinado! Estamos te esperando 😊" ou "Perfeito, qualquer coisa é só chamar!").
-- "negativa": a pessoa não quer continuar, diz que não conhece a empresa/o recomendador, ou pediu para parar. Aqui respostaSugerida é OBRIGATÓRIA: escreva uma despedida breve, gentil e humana — reconheça o que a pessoa disse (ex: se ela diz que não conhece, responda algo como "Poxa, que pena! Talvez quem te recomendou ainda se lembre de você 🙂" ou "Entendo, talvez eu tenha me confundido na lista, me perdoe!"). Nunca insista ou pressione, apenas se despeça com simpatia.
-- "pergunta": a pessoa fez uma pergunta ou comentário que merece uma resposta antes de prosseguir. respostaSugerida é obrigatória.
+- "negativa": SOMENTE quando a pessoa explicitamente não quer continuar (ex: "não quero", "não tenho interesse", "para de me mandar mensagem", "não conheço você", "me tira da lista"). Aqui respostaSugerida é OBRIGATÓRIA: escreva uma despedida breve, gentil e humana. Nunca insista ou pressione.
+- "pergunta": quando a pessoa faz uma pergunta, pede mais informações, diz que está ocupada agora mas pode depois (ex: "estou no trabalho", "pode ser outra hora", "qual o assunto?", "quem é você?", "quem te passou meu número?"). respostaSugerida é obrigatória — responda de forma breve e amigável, incentivando a continuar.
 - respostaSugerida deve ter no máximo 2 frases curtas, tom natural e amigável, em português do Brasil.`;
 
   try {
@@ -1453,7 +1457,7 @@ async function executarAgendamentosPendentes() {
 }
 
 function iniciarExecutorAgendamentos() {
-  const INTERVALO_EXECUTOR_MS = 3 * 60 * 1000;
+  const INTERVALO_EXECUTOR_MS = 1 * 60 * 1000;
   executarAgendamentosPendentes();
   setInterval(executarAgendamentosPendentes, INTERVALO_EXECUTOR_MS);
 }
@@ -1468,5 +1472,5 @@ app.listen(PORT, () => {
   console.log(`Webhook disponível em: /webhook`);
   console.log(`Firestore inicializado: ${db ? 'SIM' : 'NÃO — verifique FIREBASE_SERVICE_ACCOUNT'}`);
   iniciarExecutorAgendamentos();
-  console.log('Executor de agendamentos iniciado (checagem a cada 3 min)');
+  console.log('Executor de agendamentos iniciado (checagem a cada 1 min)');
 });
