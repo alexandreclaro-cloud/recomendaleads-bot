@@ -9,7 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    /* ===== Paleta — dourado como marca, verde como status, cinza-azulado neutro ===== */
     --bg: #FAFBFA;
     --surface: #FFFFFF;
     --surface-sunken: #F4F6F5;
@@ -133,7 +132,6 @@
   }
   .sair-btn:hover { border-color: var(--error); background: var(--error-soft); }
 
-  /* ===== Abas (pill toggle) ===== */
   .tabs {
     display: flex;
     gap: 4px;
@@ -158,7 +156,6 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
-  /* ===== Aba Leads (Kanban) ===== */
   .toolbar {
     padding: 16px 28px;
     display: flex;
@@ -266,7 +263,6 @@
     color: var(--text-dim);
   }
 
-  /* Modal de detalhes do lead */
   .modal-overlay {
     position: fixed;
     inset: 0;
@@ -362,10 +358,8 @@
   .modal-status.ok { color: var(--success); }
   .modal-status.err { color: var(--error); }
 
-  /* ===== Aba Configurações ===== */
   .config-wrap { max-width: 760px; margin: 0 auto; padding: 28px 16px 60px; }
 
-  /* ===== Sub-abas dentro de Configurações ===== */
   .subtabs {
     display: flex;
     gap: 4px;
@@ -390,7 +384,6 @@
   .subtab-panel { display: none; }
   .subtab-panel.active { display: block; }
 
-  /* ===== Upload de arquivo ===== */
   .upload-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .upload-row input[type="text"] { flex: 1; min-width: 0; }
   .upload-btn {
@@ -418,7 +411,7 @@
   }
   .config-card h2 { font-size: 1.02rem; font-weight: 700; margin: 0 0 6px; color: var(--text); }
   .config-card label { display: block; font-size: 0.8rem; color: var(--text-dim); margin: 14px 0 6px; font-weight: 500; }
-  .config-card input[type="text"], .config-card textarea {
+  .config-card input[type="text"], .config-card input[type="number"], .config-card textarea {
     width: 100%;
     background: var(--surface-sunken);
     border: 1px solid var(--border);
@@ -451,10 +444,35 @@
 
   .config-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
   .config-badge { background: var(--gold-soft); color: var(--gold-deep); font-weight: 600; font-size: 0.78rem; padding: 4px 12px; border-radius: 999px; }
+
+  /* Input de quantidade editável na primeira faixa */
+  .quantidade-editavel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--gold-soft);
+    border: 1px solid var(--gold);
+    border-radius: 999px;
+    padding: 3px 10px;
+  }
+  .quantidade-editavel input {
+    width: 48px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--gold);
+    border-radius: 0;
+    padding: 2px 4px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--gold-deep);
+    font-family: inherit;
+    text-align: center;
+  }
+  .quantidade-editavel input:focus { outline: none; }
+  .quantidade-editavel span { font-size: 0.78rem; color: var(--gold-deep); font-weight: 600; white-space: nowrap; }
 </style>
 </head>
 <body>
-
 
 <header>
   <h1>Poder da Recomendação</h1>
@@ -484,7 +502,6 @@
   </div>
 
   <div id="loadMsg" class="load-msg">Carregando leads...</div>
-
   <div class="board" id="board" style="display:none"></div>
 </div>
 
@@ -502,7 +519,7 @@
         <button class="subtab-btn" data-subtab="cadencia">Cadência de Follow-up</button>
       </div>
 
-      <!-- ===== Sub-aba: Empresa ===== -->
+      <!-- Sub-aba: Empresa -->
       <div class="subtab-panel active" id="subtabEmpresa">
         <div class="config-card">
           <h2>Dados da empresa</h2>
@@ -523,20 +540,20 @@
         </div>
       </div>
 
-      <!-- ===== Sub-aba: Prêmio Cliente (Recomendador) ===== -->
+      <!-- Sub-aba: Prêmio Cliente -->
       <div class="subtab-panel" id="subtabPremioCliente">
         <div id="faixasContainerCliente"></div>
       </div>
 
-      <!-- ===== Sub-aba: Prêmio do Recomendado ===== -->
+      <!-- Sub-aba: Prêmio do Recomendado -->
       <div class="subtab-panel" id="subtabRecomendado">
         <div class="config-card">
           <h2>Prêmio para quem é recomendado</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-            Roteiro enviado automaticamente para a pessoa que foi recomendada (depois do tempo de espera configurado). Use {nomeRecomendado}, {recomendador}, {vendedor} e {empresa} para personalizar as mensagens.
+            Roteiro enviado automaticamente para a pessoa que foi recomendada. Use {nomeRecomendado}, {recomendador}, {vendedor} e {empresa} para personalizar.
           </p>
 
-          <label>1️⃣ Mensagem inicial (pede para a pessoa confirmar antes de seguir)</label>
+          <label>1️⃣ Mensagem inicial (pede confirmação antes de seguir)</label>
           <textarea id="mensagemInicialRecomendadoInput" rows="3"></textarea>
 
           <label>Mensagem repetida enquanto a pessoa não confirma</label>
@@ -556,8 +573,8 @@
           <label>Link</label>
           <input type="text" id="linkRecomendadoInput" placeholder="https://...">
 
-          <label>3️⃣ Chamada para ação (CTA) — enviado depois que a pessoa reage ao prêmio</label>
-          <input type="text" id="ctaRecomendadoInput" placeholder="Ex: Gostaria de vir retirar? Ou cole aqui seu link de agendamento do Google Agenda">
+          <label>3️⃣ Chamada para ação (CTA)</label>
+          <input type="text" id="ctaRecomendadoInput" placeholder="Ex: Gostaria de vir retirar?">
 
           <label>Tempo de espera antes de iniciar a conversa com o recomendado (minutos)</label>
           <input type="text" id="tempoEsperaConversaoMinInput" placeholder="Ex: 60">
@@ -569,17 +586,17 @@
         </div>
       </div>
 
-      <!-- ===== Sub-aba: Faixas de Bônus ===== -->
+      <!-- Sub-aba: Faixas de Bônus -->
       <div class="subtab-panel" id="subtabFaixas">
         <div id="faixasContainer"></div>
       </div>
 
-      <!-- ===== Sub-aba: Cadência de Follow-up ===== -->
+      <!-- Sub-aba: Cadência de Follow-up -->
       <div class="subtab-panel" id="subtabCadencia">
         <div class="config-card">
           <h2>Cadência de follow-up (se a pessoa não responder)</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-            Mensagens enviadas em sequência se o recomendado não responder. O tempo de espera é contado a partir da última mensagem enviada a ela.
+            Mensagens enviadas em sequência se o recomendado não responder.
           </p>
 
           <div id="cadenciaContainer"></div>
@@ -602,10 +619,6 @@
 <script>
 const API_BASE = window.location.origin;
 
-// ============================================================
-// LOGIN — exige token válido para acessar o painel. Sem token,
-// redireciona para /login antes de carregar qualquer dado.
-// ============================================================
 const token = localStorage.getItem('recomendaleads_token');
 const empresaLogada = JSON.parse(localStorage.getItem('recomendaleads_empresa') || 'null');
 
@@ -621,8 +634,6 @@ document.getElementById('sairBtn').addEventListener('click', () => {
   window.location.href = '/login';
 });
 
-// Wrapper único de fetch autenticado — usado por leads e configurações.
-// Centraliza o tratamento de sessão expirada (401) num só lugar.
 async function fetchAutenticado(url, options = {}) {
   const resp = await fetch(url, {
     ...options,
@@ -650,17 +661,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       document.getElementById('tabLeads').classList.add('active');
     } else {
       document.getElementById('tabConfig').classList.add('active');
-      // Carrega a configuração só na primeira vez que a aba é aberta
       if (!configuracaoCarregada) carregarConfiguracao();
     }
   });
 });
 
-// ============================================================
-// SUB-ABAS dentro de Configurações (Empresa / Prêmio do Recomendado /
-// Cadência / Faixas de Bônus) — divide o que antes era uma rolagem longa
-// de cards em blocos navegáveis, um por vez.
-// ============================================================
 const MAPA_SUBTABS = {
   empresa: 'subtabEmpresa',
   premioCliente: 'subtabPremioCliente',
@@ -684,7 +689,6 @@ document.querySelectorAll('.subtab-btn').forEach(btn => {
 let leads = [];
 let etapas = [];
 
-// Etapas padrão usadas apenas se a configuração não carregar
 const ETAPAS_PADRAO = [
   { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
   { id: 'aceitou_mensagem', nome: 'Aceitou Mensagem' },
@@ -756,7 +760,6 @@ function popularFiltroVendedores() {
 
 function atualizarStats() {
   const etapaSucesso = etapas.find(e => e.id.includes('comprou')) || etapas[etapas.length - 1];
-
   document.getElementById('statTotal').textContent = leads.length;
   document.getElementById('statComprou').textContent = etapaSucesso
     ? leads.filter(l => l.etapa === etapaSucesso.id).length
@@ -808,10 +811,7 @@ function renderBoard() {
         card.classList.remove('dragging');
       });
       card.addEventListener('click', (e) => {
-        if (foiArrastado) {
-          foiArrastado = false;
-          return;
-        }
+        if (foiArrastado) { foiArrastado = false; return; }
         abrirModalLead(lead.id);
       });
 
@@ -856,37 +856,30 @@ function abrirModalLead(leadId) {
           <h2>${lead.nomeRecomendado || 'Sem nome'}</h2>
           <button class="modal-close" id="modalCloseBtn">✕</button>
         </div>
-
         <div class="modal-field">
           <label>Telefone</label>
           <div class="valor">${lead.telefoneRecomendado || 'Não informado'}</div>
         </div>
-
         <div class="modal-field">
           <label>Recomendado por</label>
           <div class="valor">${lead.nomeRecomendador || '—'}${lead.telefoneRecomendador ? ' · ' + lead.telefoneRecomendador : ''}</div>
         </div>
-
         <div class="modal-field">
           <label>Etapa atual</label>
           <div class="valor">${nomeEtapa(lead.etapa)}</div>
         </div>
-
         <div class="modal-field">
           <label>Vendedor responsável</label>
           <select id="modalVendedorSelect">${opcoesVendedor}</select>
         </div>
-
         <div class="modal-field">
           <label>Criado em</label>
           <div class="valor">${formatarData(lead.criadoEm)}</div>
         </div>
-
         <div class="modal-field">
           <label>Histórico de etapas</label>
           <div class="modal-historico">${historicoHtml}</div>
         </div>
-
         <div class="modal-actions">
           ${waLink ? `<a class="wa-btn" href="${waLink}" target="_blank">Abrir WhatsApp</a>` : ''}
           <button class="save-vendedor-btn" id="modalSalvarBtn">Salvar vendedor</button>
@@ -942,7 +935,6 @@ async function salvarVendedorModal(leadId) {
   }
 }
 
-// Drag and drop entre colunas — delegado no board, já que as colunas são geradas dinamicamente
 const boardEl = document.getElementById('board');
 
 boardEl.addEventListener('dragover', (e) => {
@@ -1054,7 +1046,6 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
       statusEl.textContent = '✅ Salvo!';
       statusEl.className = 'config-status-msg ok';
       configuracaoAtual = data.empresa;
-      // Atualiza também o nome exibido no header, já que pode ter mudado
       document.getElementById('empresaLogadaNome').textContent = data.empresa.nome;
     } else {
       statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
@@ -1069,8 +1060,6 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
   }
 });
 
-// Card "Prêmio para quem é recomendado" — mesma lógica do card de dados da
-// empresa, salvando os 4 campos fixos (sem faixas) usados por contatarRecomendado().
 document.getElementById('salvarRecomendadoBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarRecomendadoBtn');
   const statusEl = document.getElementById('statusRecomendado');
@@ -1114,8 +1103,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   }
 });
 
-// ===== Cadência de follow-up =====
-// Lista editável em memória; só é persistida quando "Salvar cadência" é clicado.
+// ===== Cadência =====
 let cadenciaAtual = [];
 
 function renderCadencia(cadencia) {
@@ -1199,30 +1187,44 @@ document.getElementById('salvarCadenciaBtn').addEventListener('click', async () 
   }
 });
 
+// ============================================================
+// FAIXAS — renderiza nas duas sub-abas
+// A primeira faixa tem a quantidade EDITÁVEL (input numérico).
+// As demais têm a quantidade como badge estático (somente leitura).
+// ============================================================
 function renderFaixas(faixas) {
-  // Renderiza nas duas abas que mostram faixas: "Faixas de Bônus" e
-  // "Prêmio Cliente (Recomendador)" — mesmo conteúdo, dois containers.
   ['faixasContainer', 'faixasContainerCliente'].forEach(containerId => {
     const container = document.getElementById(containerId);
     if (!container) return;
     container.innerHTML = '';
 
-    faixas.forEach((faixa) => {
+    faixas.forEach((faixa, index) => {
+      const isPrimeiraFaixa = index === 0;
       const card = document.createElement('div');
       card.className = 'config-card';
+
+      // Badge/input de quantidade — editável só na primeira faixa
+      const quantidadeHtml = isPrimeiraFaixa
+        ? `<div class="quantidade-editavel">
+             <input type="number" class="quantidade-input" value="${faixa.quantidade}" min="1" max="50" title="Quantidade mínima de recomendações para esta faixa">
+             <span>recomendações</span>
+           </div>`
+        : `<span class="config-badge">${faixa.quantidade} recomendações</span>`;
+
       card.innerHTML = `
         <div class="config-card-head">
           <h2>${faixa.premio}</h2>
-          <span class="config-badge">${faixa.quantidade} recomendações</span>
+          ${quantidadeHtml}
         </div>
+        ${isPrimeiraFaixa ? '<p style="font-size:0.78rem;color:var(--text-dim);margin:4px 0 0;">✏️ Você pode alterar a quantidade mínima desta faixa.</p>' : ''}
         <label>Prêmio (texto curto mostrado ao cliente)</label>
         <input type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
         <label>Arquivo (imagem JPEG/PNG ou PDF)</label>
         <div class="upload-row">
           <input type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="Cole um link ou use o botão ao lado →">
-          <label class="upload-btn" for="arquivoFaixaFile_${faixa.quantidade}">📎 Escolher arquivo</label>
-          <input type="file" id="arquivoFaixaFile_${faixa.quantidade}" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
-          <span class="upload-status" id="uploadStatusFaixa_${faixa.quantidade}"></span>
+          <label class="upload-btn" for="arquivoFaixaFile_${containerId}_${faixa.quantidade}">📎 Escolher arquivo</label>
+          <input type="file" id="arquivoFaixaFile_${containerId}_${faixa.quantidade}" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+          <span class="upload-status" id="uploadStatusFaixa_${containerId}_${faixa.quantidade}"></span>
         </div>
         <label>Link</label>
         <input type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
@@ -1230,23 +1232,32 @@ function renderFaixas(faixas) {
         <textarea data-field="texto" rows="3">${faixa.texto || ''}</textarea>
         <div class="config-row-save">
           <button class="config-save-btn" data-quantidade="${faixa.quantidade}">Salvar faixa de ${faixa.quantidade}</button>
-          <span class="config-status-msg" data-statusfor="${faixa.quantidade}"></span>
+          <span class="config-status-msg" data-statusfor="${faixa.quantidade}_${containerId}"></span>
         </div>
       `;
       container.appendChild(card);
 
-      // Atualiza o título (h2) em tempo real conforme o usuário edita o campo
-      // de prêmio — sem precisar salvar antes de ver o novo nome refletido.
+      // Atualiza o título h2 em tempo real ao editar o prêmio
       const h2 = card.querySelector('h2');
       const inputPremio = card.querySelector('[data-field="premio"]');
       inputPremio.addEventListener('input', () => {
         h2.textContent = inputPremio.value || '(sem título)';
       });
 
-      // Upload de arquivo para essa faixa específica
-      const inputFileFaixa = card.querySelector(`#arquivoFaixaFile_${faixa.quantidade}`);
+      // Se é a primeira faixa, o input de quantidade também atualiza o botão
+      if (isPrimeiraFaixa) {
+        const inputQtd = card.querySelector('.quantidade-input');
+        const btnSalvar = card.querySelector('.config-save-btn');
+        inputQtd.addEventListener('input', () => {
+          const v = parseInt(inputQtd.value) || faixa.quantidade;
+          btnSalvar.textContent = `Salvar faixa de ${v}`;
+        });
+      }
+
+      // Upload de arquivo para essa faixa
+      const inputFileFaixa = card.querySelector(`#arquivoFaixaFile_${containerId}_${faixa.quantidade}`);
       const inputArquivoFaixa = card.querySelector('[data-field="arquivo"]');
-      const statusFaixa = card.querySelector(`#uploadStatusFaixa_${faixa.quantidade}`);
+      const statusFaixa = card.querySelector(`#uploadStatusFaixa_${containerId}_${faixa.quantidade}`);
       if (inputFileFaixa) {
         inputFileFaixa.addEventListener('change', function() {
           uploadArquivo(this, inputArquivoFaixa, statusFaixa);
@@ -1261,44 +1272,54 @@ function renderFaixas(faixas) {
 }
 
 async function salvarFaixa(btn) {
-  const quantidade = parseInt(btn.dataset.quantidade);
+  const quantidadeOriginal = parseInt(btn.dataset.quantidade);
   const card = btn.closest('.config-card');
-  const statusEl = card.querySelector(`[data-statusfor="${quantidade}"]`);
+  const containerId = card.closest('[id]').id;
+  const statusEl = card.querySelector(`[data-statusfor="${quantidadeOriginal}_${containerId}"]`);
 
   const premio = card.querySelector('[data-field="premio"]').value.trim();
   const arquivo = card.querySelector('[data-field="arquivo"]').value.trim() || null;
   const link = card.querySelector('[data-field="link"]').value.trim() || null;
   const texto = card.querySelector('[data-field="texto"]').value.trim() || null;
 
+  // Verifica se tem input de quantidade editável (primeira faixa)
+  const inputQtd = card.querySelector('.quantidade-input');
+  const novaQuantidade = inputQtd ? (parseInt(inputQtd.value) || quantidadeOriginal) : null;
+
   btn.disabled = true;
-  statusEl.textContent = 'Salvando...';
-  statusEl.className = 'config-status-msg';
+  if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg'; }
 
   try {
+    const body = { quantidade: quantidadeOriginal, premio, arquivo, link, texto };
+    // Só envia novaQuantidade se for diferente da original (e for a primeira faixa)
+    if (novaQuantidade && novaQuantidade !== quantidadeOriginal) {
+      body.novaQuantidade = novaQuantidade;
+    }
+
     const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, {
       method: 'POST',
-      body: JSON.stringify({ quantidade, premio, arquivo, link, texto })
+      body: JSON.stringify(body)
     });
     const data = await resp.json();
 
     if (resp.ok && data.ok) {
-      statusEl.textContent = '✅ Salvo!';
-      statusEl.className = 'config-status-msg ok';
+      if (statusEl) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; }
+      // Recarrega as faixas para refletir a nova quantidade no badge/input
+      configuracaoAtual = { ...configuracaoAtual };
+      await carregarConfiguracao();
     } else {
-      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
-      statusEl.className = 'config-status-msg err';
+      if (statusEl) { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
     }
   } catch (err) {
-    statusEl.textContent = '❌ Erro de conexão';
-    statusEl.className = 'config-status-msg err';
+    if (statusEl) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
   } finally {
     btn.disabled = false;
-    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
+    setTimeout(() => { if (statusEl) { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; } }, 4000);
   }
 }
 
 // ============================================================
-// UPLOAD DE ARQUIVO — Firebase Storage via rota /upload-arquivo
+// UPLOAD DE ARQUIVO
 // ============================================================
 async function uploadArquivo(inputFile, inputTexto, statusEl) {
   const file = inputFile.files[0];
@@ -1328,7 +1349,6 @@ async function uploadArquivo(inputFile, inputTexto, statusEl) {
   inputFile.value = '';
 }
 
-// Upload do prêmio do recomendado
 document.getElementById('arquivoRecomendadoFile').addEventListener('change', function() {
   uploadArquivo(
     this,
@@ -1341,7 +1361,7 @@ document.getElementById('arquivoRecomendadoFile').addEventListener('change', fun
 // INICIALIZAÇÃO
 // ============================================================
 carregarLeads();
-setInterval(carregarLeads, 60000); // atualiza sozinho a cada 60s (reduzido de 30s para economizar cota do Firestore)
+setInterval(carregarLeads, 60000);
 </script>
 </body>
 </html>
