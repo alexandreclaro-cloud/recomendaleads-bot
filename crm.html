@@ -390,6 +390,24 @@
   .subtab-panel { display: none; }
   .subtab-panel.active { display: block; }
 
+  /* ===== Upload de arquivo ===== */
+  .upload-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .upload-row input[type="text"] { flex: 1; min-width: 0; }
+  .upload-btn {
+    background: var(--gold-soft);
+    color: var(--gold-deep);
+    border: 1px solid var(--gold);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .upload-btn:hover { background: var(--gold); color: #fff; }
+  .upload-status { font-size: 0.78rem; color: var(--text-dim); }
+
   .config-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -527,8 +545,13 @@
           <label>2️⃣ Prêmio (texto curto mostrado depois da confirmação)</label>
           <input type="text" id="premioRecomendadoInput" placeholder="Ex: Desconto de 10% na primeira compra">
 
-          <label>Arquivo (link direto de imagem JPEG/PNG ou PDF — use imgur.com para imagens)</label>
-          <input type="text" id="arquivoRecomendadoInput" placeholder="https://i.imgur.com/... ou https://drive.google.com/file/d/...">
+          <label>Arquivo (imagem JPEG/PNG ou PDF)</label>
+          <div class="upload-row">
+            <input type="text" id="arquivoRecomendadoInput" placeholder="Cole um link ou use o botão ao lado →">
+            <label class="upload-btn" for="arquivoRecomendadoFile">📎 Escolher arquivo</label>
+            <input type="file" id="arquivoRecomendadoFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+            <span class="upload-status" id="uploadStatusRecomendado"></span>
+          </div>
 
           <label>Link</label>
           <input type="text" id="linkRecomendadoInput" placeholder="https://...">
@@ -1194,8 +1217,13 @@ function renderFaixas(faixas) {
         </div>
         <label>Prêmio (texto curto mostrado ao cliente)</label>
         <input type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
-        <label>Arquivo (link direto de imagem JPEG/PNG ou PDF — use imgur.com para imagens)</label>
-        <input type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="https://i.imgur.com/... ou https://drive.google.com/file/d/...">
+        <label>Arquivo (imagem JPEG/PNG ou PDF)</label>
+        <div class="upload-row">
+          <input type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="Cole um link ou use o botão ao lado →">
+          <label class="upload-btn" for="arquivoFaixaFile_${faixa.quantidade}">📎 Escolher arquivo</label>
+          <input type="file" id="arquivoFaixaFile_${faixa.quantidade}" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+          <span class="upload-status" id="uploadStatusFaixa_${faixa.quantidade}"></span>
+        </div>
         <label>Link</label>
         <input type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
         <label>Texto de orientação</label>
@@ -1206,6 +1234,24 @@ function renderFaixas(faixas) {
         </div>
       `;
       container.appendChild(card);
+
+      // Atualiza o título (h2) em tempo real conforme o usuário edita o campo
+      // de prêmio — sem precisar salvar antes de ver o novo nome refletido.
+      const h2 = card.querySelector('h2');
+      const inputPremio = card.querySelector('[data-field="premio"]');
+      inputPremio.addEventListener('input', () => {
+        h2.textContent = inputPremio.value || '(sem título)';
+      });
+
+      // Upload de arquivo para essa faixa específica
+      const inputFileFaixa = card.querySelector(`#arquivoFaixaFile_${faixa.quantidade}`);
+      const inputArquivoFaixa = card.querySelector('[data-field="arquivo"]');
+      const statusFaixa = card.querySelector(`#uploadStatusFaixa_${faixa.quantidade}`);
+      if (inputFileFaixa) {
+        inputFileFaixa.addEventListener('change', function() {
+          uploadArquivo(this, inputArquivoFaixa, statusFaixa);
+        });
+      }
     });
 
     container.querySelectorAll('.config-save-btn').forEach(btn => {
@@ -1250,6 +1296,46 @@ async function salvarFaixa(btn) {
     setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
   }
 }
+
+// ============================================================
+// UPLOAD DE ARQUIVO — Firebase Storage via rota /upload-arquivo
+// ============================================================
+async function uploadArquivo(inputFile, inputTexto, statusEl) {
+  const file = inputFile.files[0];
+  if (!file) return;
+
+  statusEl.textContent = 'Enviando...';
+  const formData = new FormData();
+  formData.append('arquivo', file);
+
+  try {
+    const resp = await fetch(`${API_BASE}/upload-arquivo`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      inputTexto.value = data.url;
+      statusEl.textContent = '✅ Enviado!';
+      setTimeout(() => { statusEl.textContent = ''; }, 3000);
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao enviar');
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+  }
+  inputFile.value = '';
+}
+
+// Upload do prêmio do recomendado
+document.getElementById('arquivoRecomendadoFile').addEventListener('change', function() {
+  uploadArquivo(
+    this,
+    document.getElementById('arquivoRecomendadoInput'),
+    document.getElementById('uploadStatusRecomendado')
+  );
+});
 
 // ============================================================
 // INICIALIZAÇÃO
