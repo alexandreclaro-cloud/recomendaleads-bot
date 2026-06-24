@@ -478,9 +478,10 @@
     <div id="configConteudo" style="display:none">
       <div class="subtabs">
         <button class="subtab-btn active" data-subtab="empresa">Empresa</button>
-        <button class="subtab-btn" data-subtab="recomendado">Prêmio do Recomendado</button>
-        <button class="subtab-btn" data-subtab="cadencia">Cadência de Follow-up</button>
+        <button class="subtab-btn" data-subtab="premioCliente">Prêmio Cliente</button>
+        <button class="subtab-btn" data-subtab="recomendado">Prêmio Recomendado</button>
         <button class="subtab-btn" data-subtab="faixas">Faixas de Bônus</button>
+        <button class="subtab-btn" data-subtab="cadencia">Cadência de Follow-up</button>
       </div>
 
       <!-- ===== Sub-aba: Empresa ===== -->
@@ -504,6 +505,11 @@
         </div>
       </div>
 
+      <!-- ===== Sub-aba: Prêmio Cliente (Recomendador) ===== -->
+      <div class="subtab-panel" id="subtabPremioCliente">
+        <div id="faixasContainerCliente"></div>
+      </div>
+
       <!-- ===== Sub-aba: Prêmio do Recomendado ===== -->
       <div class="subtab-panel" id="subtabRecomendado">
         <div class="config-card">
@@ -521,8 +527,8 @@
           <label>2️⃣ Prêmio (texto curto mostrado depois da confirmação)</label>
           <input type="text" id="premioRecomendadoInput" placeholder="Ex: Desconto de 10% na primeira compra">
 
-          <label>Arquivo (link do Google Drive)</label>
-          <input type="text" id="arquivoRecomendadoInput" placeholder="https://drive.google.com/file/d/...">
+          <label>Arquivo (link direto de imagem JPEG/PNG ou PDF — use imgur.com para imagens)</label>
+          <input type="text" id="arquivoRecomendadoInput" placeholder="https://i.imgur.com/... ou https://drive.google.com/file/d/...">
 
           <label>Link</label>
           <input type="text" id="linkRecomendadoInput" placeholder="https://...">
@@ -538,6 +544,11 @@
             <span class="config-status-msg" id="statusRecomendado"></span>
           </div>
         </div>
+      </div>
+
+      <!-- ===== Sub-aba: Faixas de Bônus ===== -->
+      <div class="subtab-panel" id="subtabFaixas">
+        <div id="faixasContainer"></div>
       </div>
 
       <!-- ===== Sub-aba: Cadência de Follow-up ===== -->
@@ -558,11 +569,6 @@
             <span class="config-status-msg" id="statusCadencia"></span>
           </div>
         </div>
-      </div>
-
-      <!-- ===== Sub-aba: Faixas de Bônus ===== -->
-      <div class="subtab-panel" id="subtabFaixas">
-        <div id="faixasContainer"></div>
       </div>
     </div>
   </div>
@@ -634,9 +640,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ============================================================
 const MAPA_SUBTABS = {
   empresa: 'subtabEmpresa',
+  premioCliente: 'subtabPremioCliente',
   recomendado: 'subtabRecomendado',
-  cadencia: 'subtabCadencia',
-  faixas: 'subtabFaixas'
+  faixas: 'subtabFaixas',
+  cadencia: 'subtabCadencia'
 };
 
 document.querySelectorAll('.subtab-btn').forEach(btn => {
@@ -1170,35 +1177,40 @@ document.getElementById('salvarCadenciaBtn').addEventListener('click', async () 
 });
 
 function renderFaixas(faixas) {
-  const container = document.getElementById('faixasContainer');
-  container.innerHTML = '';
+  // Renderiza nas duas abas que mostram faixas: "Faixas de Bônus" e
+  // "Prêmio Cliente (Recomendador)" — mesmo conteúdo, dois containers.
+  ['faixasContainer', 'faixasContainerCliente'].forEach(containerId => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
 
-  faixas.forEach((faixa) => {
-    const card = document.createElement('div');
-    card.className = 'config-card';
-    card.innerHTML = `
-      <div class="config-card-head">
-        <h2>${faixa.premio}</h2>
-        <span class="config-badge">${faixa.quantidade} recomendações</span>
-      </div>
-      <label>Prêmio (texto curto mostrado ao cliente)</label>
-      <input type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
-      <label>Arquivo (link do Google Drive)</label>
-      <input type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="https://drive.google.com/file/d/...">
-      <label>Link</label>
-      <input type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
-      <label>Texto de orientação</label>
-      <textarea data-field="texto" rows="3">${faixa.texto || ''}</textarea>
-      <div class="config-row-save">
-        <button class="config-save-btn" data-quantidade="${faixa.quantidade}">Salvar faixa de ${faixa.quantidade}</button>
-        <span class="config-status-msg" data-statusfor="${faixa.quantidade}"></span>
-      </div>
-    `;
-    container.appendChild(card);
-  });
+    faixas.forEach((faixa) => {
+      const card = document.createElement('div');
+      card.className = 'config-card';
+      card.innerHTML = `
+        <div class="config-card-head">
+          <h2>${faixa.premio}</h2>
+          <span class="config-badge">${faixa.quantidade} recomendações</span>
+        </div>
+        <label>Prêmio (texto curto mostrado ao cliente)</label>
+        <input type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
+        <label>Arquivo (link direto de imagem JPEG/PNG ou PDF — use imgur.com para imagens)</label>
+        <input type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="https://i.imgur.com/... ou https://drive.google.com/file/d/...">
+        <label>Link</label>
+        <input type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
+        <label>Texto de orientação</label>
+        <textarea data-field="texto" rows="3">${faixa.texto || ''}</textarea>
+        <div class="config-row-save">
+          <button class="config-save-btn" data-quantidade="${faixa.quantidade}">Salvar faixa de ${faixa.quantidade}</button>
+          <span class="config-status-msg" data-statusfor="${faixa.quantidade}"></span>
+        </div>
+      `;
+      container.appendChild(card);
+    });
 
-  container.querySelectorAll('.config-save-btn').forEach(btn => {
-    btn.addEventListener('click', () => salvarFaixa(btn));
+    container.querySelectorAll('.config-save-btn').forEach(btn => {
+      btn.addEventListener('click', () => salvarFaixa(btn));
+    });
   });
 }
 
