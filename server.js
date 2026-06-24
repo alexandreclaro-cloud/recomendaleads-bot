@@ -902,21 +902,31 @@ app.post('/webhook', async (req, res) => {
     //   - Bot só responde novamente se a pessoa mandar "quero meu presente"
     // play1: reativa o bot para esse número (volta ao comportamento normal)
     const textoNormalizado = (texto || '').toLowerCase().trim();
-    if (textoNormalizado === 'stop1') {
-      await pausarNumero(telefone);
 
-      // Cancela sessão de quem recomenda (se houver)
-      await resetSessao(telefone);
+    // ============================================================
+    // COMANDOS ADMINISTRATIVOS — stop1 / play1 com número alvo
+    // ============================================================
+    // Qualquer número pode mandar estes comandos (inclusive o próprio dono
+    // do bot). O número alvo é passado junto ao comando:
+    //   stop1 5511999998888  → pausa o bot para aquele número
+    //   play1 5511999998888  → reativa o bot para aquele número
+    // Se nenhum número for passado, o alvo é o próprio remetente
+    // (comportamento antigo, mantido para compatibilidade).
 
-      // Cancela sessão de recomendado (se houver)
-      const sessaoRec = await getSessaoRecomendado(telefone);
+    const matchStop = textoNormalizado.match(/^stop1(?:\s+(\d+))?$/);
+    const matchPlay = textoNormalizado.match(/^play1(?:\s+(\d+))?$/);
+
+    if (matchStop) {
+      const alvo = matchStop[1] || telefone;
+
+      await pausarNumero(alvo);
+      await resetSessao(alvo);
+
+      const sessaoRec = await getSessaoRecomendado(alvo);
       if (sessaoRec) {
-        await saveSessaoRecomendado(telefone, { etapa: 'finalizado_negativo' });
+        await saveSessaoRecomendado(alvo, { etapa: 'finalizado_negativo' });
       }
 
-      // Cancela agendamentos pendentes para este número
-      // (iniciar_conversa_recomendado cujo contato.telefone seja este número,
-      //  e followup_recomendado cujo dados.telefone seja este número)
       try {
         const snap = await AGENDAMENTOS_COL()
           .where('status', '==', 'pendente')
@@ -928,7 +938,7 @@ app.post('/webhook', async (req, res) => {
             d.dados?.contato?.telefone ||
             d.dados?.telefone ||
             null;
-          if (telefoneAgendamento === telefone) {
+          if (telefoneAgendamento === alvo) {
             batch.update(doc.ref, { status: 'cancelado' });
           }
         });
@@ -937,13 +947,14 @@ app.post('/webhook', async (req, res) => {
         console.error('Erro ao cancelar agendamentos no stop1:', err.message);
       }
 
-      console.log(`[PAUSA MANUAL] Bot pausado e agendamentos cancelados para ${telefone}`);
+      console.log(`[PAUSA MANUAL] Bot pausado para ${alvo} (comando enviado por ${telefone})`);
       return res.sendStatus(200);
     }
 
-    if (textoNormalizado === 'play1') {
-      await despausarNumero(telefone);
-      console.log(`[PAUSA MANUAL] Bot reativado para ${telefone}`);
+    if (matchPlay) {
+      const alvo = matchPlay[1] || telefone;
+      await despausarNumero(alvo);
+      console.log(`[PAUSA MANUAL] Bot reativado para ${alvo} (comando enviado por ${telefone})`);
       return res.sendStatus(200);
     }
 
