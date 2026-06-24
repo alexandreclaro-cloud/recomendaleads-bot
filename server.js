@@ -76,7 +76,7 @@ async function despausarNumero(telefone) {
 const EMPRESAS_COL = () => db.collection('empresas_login');
 
 const PALAVRAS_POSITIVAS = [
-  'sim', 'pode', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim',
+  'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'oi', 'olá', 'ola',
   'com certeza', 'isso', 'aham', 'uhum', 'beleza', 'blz', 'vai', 'fala',
   'diga', 'segue', 'continua', 'quero', 'demorou'
 ];
@@ -557,6 +557,21 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   const executarEm = new Date(Date.now() + empresa.tempoEsperaConversaoMin * 60 * 1000).toISOString();
   for (const contato of contatosDestaFaixa) {
     try {
+      // Cancela agendamentos pendentes anteriores para este mesmo telefone
+      // evita que o recomendado receba o roteiro múltiplas vezes
+      if (contato.telefone) {
+        const snapPendentes = await AGENDAMENTOS_COL()
+          .where('status', '==', 'pendente')
+          .where('tipo', '==', 'iniciar_conversa_recomendado')
+          .get();
+        const batch = db.batch();
+        snapPendentes.forEach(doc => {
+          if (doc.data().dados?.contato?.telefone === contato.telefone) {
+            batch.update(doc.ref, { status: 'cancelado' });
+          }
+        });
+        await batch.commit();
+      }
       await criarAgendamento({
         tipo: 'iniciar_conversa_recomendado',
         executarEm,
@@ -967,7 +982,24 @@ app.post('/webhook', async (req, res) => {
     if (matchPlay) {
       const alvo = matchPlay[1] || telefone;
       await despausarNumero(alvo);
-      console.log(`[PAUSA MANUAL] Bot reativado para ${alvo} (comando enviado por ${telefone})`);
+      // Limpa sessões antigas para evitar que o recomendado fique preso em
+      // loop com agendamentos velhos após ser reativado
+      await resetSessao(alvo);
+      await SESSOES_RECOMENDADO_COL().doc(alvo).delete();
+      // Cancela agendamentos pendentes antigos para este número
+      try {
+        const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
+        const batch = db.batch();
+        snap.forEach(doc => {
+          const d = doc.data();
+          const tel = d.dados?.contato?.telefone || d.dados?.telefone || null;
+          if (tel === alvo) batch.update(doc.ref, { status: 'cancelado' });
+        });
+        await batch.commit();
+      } catch (err) {
+        console.error('Erro ao cancelar agendamentos no play1:', err.message);
+      }
+      console.log(`[PAUSA MANUAL] Bot reativado e sessões limpas para ${alvo} (comando enviado por ${telefone})`);
       return res.sendStatus(200);
     }
 
