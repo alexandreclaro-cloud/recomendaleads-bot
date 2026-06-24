@@ -66,6 +66,12 @@ const SESSOES_RECOMENDADO_COL = () => db.collection('sessoes_recomendado');
 // sobrevive a reinícios do servidor (deploys, hibernação, etc.) — algo que
 // setTimeout não sobrevive, já que vive só na memória do processo.
 const AGENDAMENTOS_COL = () => db.collection('agendamentos');
+// Guarda o ID de cada mensagem (messageId da Z-API) já processada, para
+// detectar e ignorar webhooks duplicados — a Z-API pode reenviar o mesmo
+// evento se o servidor demorar a responder (ex: aguardando a API do Claude).
+// Sem isso, uma mensagem reenviada seria processada de novo do zero,
+// causando respostas repetidas ao usuário.
+const MENSAGENS_PROCESSADAS_COL = () => db.collection('mensagens_processadas');
 // Coleção nova, isolada — usada só pelo sistema de login. Não afeta o EMPRESA_DOC
 // único que o bot/CRM/configurações continuam usando normalmente nesta etapa.
 const EMPRESAS_COL = () => db.collection('empresas_login');
@@ -350,6 +356,44 @@ function parseVCard(vCardString) {
     nome: nomeMatch ? nomeMatch[1].trim() : 'Contato sem nome',
     telefone: telMatch ? telMatch[1].trim() : null
   };
+}
+
+// ============================================================
+// IDEMPOTÊNCIA DO WEBHOOK — evita reprocessar a mesma mensagem
+// ============================================================
+// Retorna true se este messageId já foi visto antes (mensagem duplicada,
+// deve ser ignorada). Retorna false e marca como processado se for novo.
+// Sem messageId (alguns eventos da Z-API, como reações puras, não têm um),
+// sempre trata como não-duplicado — não há como comparar.
+async function jaProcessadaOuMarcar(messageId) {
+  if (!messageId) return false;
+  const ref = MENSAGENS_PROCESSADAS_COL().doc(messageId);
+  const snap = await ref.get();
+  if (snap.exists) return true;
+  await ref.set({ processadoEm: new Date().toISOString() });
+  return false;
+}
+
+// Mensagem usada quando o bot recebe algo que não consegue interpretar como
+// texto, contato ou resposta válida (sticker, emoji isolado, reação, áudio
+// sem transcrição, imagem sem legenda) — em vez de travar em silêncio ou
+// repetir um erro genérico, reconhece que não entendeu e repete a pergunta
+// atual daquela etapa, para a pessoa saber que precisa responder de novo.
+function mensagemNaoEntendiPorEtapa(etapa, empresa) {
+  if (etapa === 'aguardando_nome') {
+    return 'Acho que não entendi essa última mensagem 🙂 Pra começar, qual é o seu nome?';
+  }
+  if (etapa === 'aguardando_vendedor') {
+    const listaVendedores = empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
+    return `Não entendi essa última mensagem. Pode me dizer quem te atendeu hoje?\n\n${listaVendedores}\n\nResponda com o número ou o nome.`;
+  }
+  if (etapa === 'coletando_contatos') {
+    return 'Acho que não entendi essa última mensagem 🙂 Pode mandar o contato direto da sua agenda (toque em 📎 → Contato), ou digitar no formato "Nome - telefone com DDD"?';
+  }
+  if (etapa === 'aguardando_autorizacao_proxima_faixa') {
+    return 'Não entendi essa última mensagem. Você quer liberar o próximo prêmio? Pode responder com sim ou não.';
+  }
+  return null; // etapa 'finalizado' ou desconhecida — não responde nada
 }
 
 // ============================================================
@@ -924,6 +968,14 @@ app.post('/webhook', async (req, res) => {
       return res.sendStatus(200);
     }
 
+    // Ignora webhooks duplicados (a Z-API pode reenviar o mesmo evento se o
+    // servidor demorar a responder, por exemplo esperando a API do Claude).
+    const messageId = body.messageId || null;
+    if (await jaProcessadaOuMarcar(messageId)) {
+      console.log(`[WEBHOOK] Mensagem duplicada ignorada (messageId: ${messageId})`);
+      return res.sendStatus(200);
+    }
+
     const telefone = body.phone;
     if (!telefone) {
       return res.sendStatus(200);
@@ -961,6 +1013,28 @@ app.post('/webhook', async (req, res) => {
     console.log('[WEBHOOK] texto extraído:', texto);
     console.log('[WEBHOOK] vCard extraído:', vCard);
     console.log('[WEBHOOK] contatosMultiplos extraído:', JSON.stringify(contatosMultiplos));
+
+    // Evento sem texto, vCard ou contatos — provavelmente um sticker, emoji
+    // isolado, reação, áudio sem transcrição, ou similar. Em vez de travar
+    // em silêncio (ou repetir um erro genérico em loop), reconhece que não
+    // entendeu e repete a pergunta da etapa atual da pessoa, se houver uma
+    // conversa em andamento.
+    const ehEventoVazio = !texto && !vCard && !contatosMultiplos;
+    if (ehEventoVazio) {
+      const sessaoExistenteSnap = await SESSOES_COL().doc(telefone).get();
+      if (sessaoExistenteSnap.exists) {
+        const sessao = sessaoExistenteSnap.data();
+        const empresa = await getEmpresa();
+        const msg = mensagemNaoEntendiPorEtapa(sessao.etapa, empresa);
+        if (msg) await sendText(telefone, msg);
+      } else {
+        const sessaoRecomendado = await getSessaoRecomendado(telefone);
+        if (sessaoRecomendado && sessaoRecomendado.etapa !== 'finalizado' && sessaoRecomendado.etapa !== 'finalizado_negativo') {
+          await sendText(telefone, 'Acho que não entendi essa última mensagem 🙂 Pode me responder em texto?');
+        }
+      }
+      return res.sendStatus(200);
+    }
 
     const sessaoExistenteSnap = await SESSOES_COL().doc(telefone).get();
     const sessaoExiste = sessaoExistenteSnap.exists;
