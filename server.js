@@ -781,11 +781,20 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   if (!sessao) return false;
 
   if (sessao.etapa === 'aguardando_confirmacao') {
+    // PALAVRAS-CHAVE PRIMEIRO — respostas simples e positivas respondem
+    // imediatamente sem chamar a IA, eliminando o delay de 2-4 segundos
+    // para os casos mais comuns ("Sim", "Pode", "Posso", "Claro", etc.)
+    if (respostaEhPositiva(texto)) {
+      const marcaTempo = new Date().toISOString();
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      await enviarPremioRecomendado(telefone, sessao, empresa);
+      return true;
+    }
+
+    // Só chama a IA para casos ambíguos (perguntas, respostas longas, contexto incerto)
     const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando confirmação para falar do prêmio');
 
     if (interpretacao.classificacao === 'positiva') {
-      // Atualiza ultimaMensagemEm antes de enviar o prêmio — isso invalida
-      // qualquer followup pendente que estava aguardando a marcaTempoReferencia antiga
       const marcaTempo = new Date().toISOString();
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
@@ -795,9 +804,6 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       await saveSessaoRecomendado(telefone, { etapa: 'finalizado_negativo' });
       console.log(`[ROTEIRO RECOMENDADO ENCERRADO - RESPOSTA NEGATIVA] ${sessao.nomeRecomendado} (${telefone})`);
     } else {
-      // Pergunta/comentário: atualiza a marca de tempo ANTES de agendar o próximo
-      // followup — isso invalida automaticamente o followup anterior que estava
-      // pendente com a marca antiga, evitando que dispare em duplicidade
       const marcaTempo = new Date().toISOString();
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await sendText(telefone, interpretacao.respostaSugerida || empresa.mensagemAguardandoConfirmacao);
@@ -807,13 +813,16 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   }
 
   if (sessao.etapa === 'aguardando_reacao') {
-    // Atualiza ultimaMensagemEm imediatamente ao receber resposta — invalida
-    // qualquer followup pendente que estava esperando a marca antiga
+    // Qualquer resposta avança para o CTA — atualiza marca de tempo imediatamente
     const marcaReacao = new Date().toISOString();
     await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaReacao });
-    const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando reação ao prêmio, antes do CTA final');
-    if (interpretacao.classificacao === 'pergunta' && interpretacao.respostaSugerida) {
-      await sendText(telefone, interpretacao.respostaSugerida);
+    // Só chama IA se a resposta parecer uma pergunta (texto longo ou com "?")
+    const parecePerguntar = texto && (texto.includes('?') || texto.split(' ').length > 4);
+    if (parecePerguntar) {
+      const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando reação ao prêmio, antes do CTA final');
+      if (interpretacao.classificacao === 'pergunta' && interpretacao.respostaSugerida) {
+        await sendText(telefone, interpretacao.respostaSugerida);
+      }
     }
     await enviarCtaRecomendado(telefone, sessao, empresa);
     return true;
