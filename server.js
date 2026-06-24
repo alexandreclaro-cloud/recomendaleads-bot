@@ -1265,7 +1265,7 @@ app.post('/minha-config', exigirLoginEmpresa, async (req, res) => {
 
 app.post('/minha-config/faixa', exigirLoginEmpresa, async (req, res) => {
   try {
-    const { quantidade, arquivo, link, texto, premio } = req.body;
+    const { quantidade, novaQuantidade, arquivo, link, texto, premio } = req.body;
     const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
 
     const faixa = configuracao.faixasBonus.find(f => f.quantidade === quantidade);
@@ -1276,6 +1276,10 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, async (req, res) => {
     if (link !== undefined) faixa.link = link;
     if (texto !== undefined) faixa.texto = texto;
     if (premio !== undefined) faixa.premio = premio;
+    // Permite alterar a quantidade mínima de recomendações da faixa
+    if (novaQuantidade && novaQuantidade !== quantidade) {
+      faixa.quantidade = novaQuantidade;
+    }
 
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao }, { merge: true });
     res.json({ ok: true, faixa });
