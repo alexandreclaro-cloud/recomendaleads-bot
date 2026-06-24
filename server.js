@@ -45,7 +45,8 @@ try {
 
 if (serviceAccount) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket: 'recomendaleads-8063e.firebasestorage.app'
   });
 }
 
