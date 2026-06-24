@@ -55,31 +55,9 @@ const db = admin.apps.length ? admin.firestore() : null;
 const EMPRESA_DOC = () => db.collection('config').doc('empresa');
 const SESSOES_COL = () => db.collection('sessoes');
 const LEADS_COL = () => db.collection('leads');
-// Sessões do roteiro enviado ao RECOMENDADO (pessoa que recebeu a indicação),
-// separada de SESSOES_COL (que é do roteiro de quem RECOMENDA). Usar uma
-// coleção própria evita misturar os dois fluxos caso a mesma pessoa apareça
-// nos dois papéis em momentos diferentes.
 const SESSOES_RECOMENDADO_COL = () => db.collection('sessoes_recomendado');
-// Agendamentos persistidos: tudo que precisa acontecer no futuro (iniciar
-// conversa com o recomendado depois do tempo de espera, disparar cada passo
-// da cadência de follow-up) é gravado aqui em vez de usar setTimeout em
-// memória. Um executor roda a cada minuto (ver iniciarExecutorAgendamentos)
-// e processa qualquer agendamento cujo executarEm já tenha passado. Isso
-// sobrevive a reinícios do servidor (deploys, hibernação, etc.) — algo que
-// setTimeout não sobrevive, já que vive só na memória do processo.
 const AGENDAMENTOS_COL = () => db.collection('agendamentos');
-// Guarda o ID de cada mensagem (messageId da Z-API) já processada, para
-// detectar e ignorar webhooks duplicados — a Z-API pode reenviar o mesmo
-// evento se o servidor demorar a responder (ex: aguardando a API do Claude).
-// Sem isso, uma mensagem reenviada seria processada de novo do zero,
-// causando respostas repetidas ao usuário.
 const MENSAGENS_PROCESSADAS_COL = () => db.collection('mensagens_processadas');
-// Números pausados manualmente: quando o dono do número precisa conversar
-// pessoalmente com alguém (ex: a esposa, um amigo) usando o mesmo WhatsApp
-// do bot, mandar "stop1" daquele número pausa o bot SÓ para essa conversa —
-// outros números continuam normais. "play1" reativa. O gatilho "quero meu
-// presente" também funciona mesmo pausado, para quem quiser voltar ao fluxo
-// de recomendação espontaneamente.
 const NUMEROS_PAUSADOS_COL = () => db.collection('numeros_pausados');
 
 async function numeroEstaPausado(telefone) {
@@ -94,13 +72,9 @@ async function pausarNumero(telefone) {
 async function despausarNumero(telefone) {
   await NUMEROS_PAUSADOS_COL().doc(telefone).delete();
 }
-// Coleção nova, isolada — usada só pelo sistema de login. Não afeta o EMPRESA_DOC
-// único que o bot/CRM/configurações continuam usando normalmente nesta etapa.
+
 const EMPRESAS_COL = () => db.collection('empresas_login');
 
-// Palavras que, quando presentes na resposta do recomendado, são interpretadas
-// como confirmação para seguir a conversa (etapa "aguardando_confirmacao").
-// Lista fixa por enquanto — editar aqui diretamente se precisar ajustar.
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim',
   'com certeza', 'isso', 'aham', 'uhum', 'beleza', 'blz', 'vai', 'fala',
@@ -119,19 +93,9 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET || 'troque-esta-chave';
 // ============================================================
 // CONFIGURAÇÃO — API Claude (interpretação de respostas do recomendado)
 // ============================================================
-// Usada só no roteiro do recomendado, para interpretar a resposta da pessoa
-// (positiva/negativa/pergunta) e, quando for uma pergunta, gerar uma resposta
-// curta baseada apenas no que está configurado pela empresa. Modelo Haiku é
-// usado por ser o mais econômico — essa tarefa é simples e não precisa de um
-// modelo mais caro.
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
 
-// ID do documento da PDN Vendas em empresas_login (confirmado no Firestore).
-// Usado para já vincular todo lead novo criado pelo bot a esta empresa, já que
-// hoje existe apenas 1 número de WhatsApp ativo (o da PDN). Quando houver mais
-// de um número/empresa, este valor fixo deve ser substituído por uma lógica
-// dinâmica (ex: mapear pelo número de WhatsApp que recebeu a mensagem).
 const EMPRESA_ID_PDN = 'MFMcfVJfqv35dA9MotLK';
 
 // ============================================================
@@ -151,23 +115,14 @@ const EMPRESA_PADRAO = {
   arquivoRecomendado: null,
   linkRecomendado: null,
   ctaRecomendado: 'Gostaria de vir retirar?',
-  // Mensagem inicial enviada ao recomendado, antes de falar do prêmio — pede
-  // confirmação para seguir a conversa. Suporta variáveis entre chaves.
   mensagemInicialRecomendado: 'Oi {nomeRecomendado}, aqui é {vendedor} da {empresa} e seu amigo(a) {recomendador} me recomendou você... Posso falar?',
-  // Mensagem repetida enquanto a resposta do recomendado não bate com
-  // nenhuma palavra positiva (ver PALAVRAS_POSITIVAS mais abaixo).
   mensagemAguardandoConfirmacao: 'Posso te contar mais sobre isso?',
-  // Cadência de follow-up: mensagens extras enviadas em sequência se o
-  // recomendado não responder. Cada item espera X minutos desde a última
-  // mensagem enviada antes de disparar o texto seguinte.
   cadenciaFollowupRecomendado: [
     { esperaMin: 1440, texto: 'Oi, só passando pra saber se você viu minha mensagem 🙂' },
     { esperaMin: 4320, texto: 'Seu presente ainda está disponível! Posso te contar mais?' }
   ],
   tempoEsperaConversaoMin: 60,
   tempoFollowupMin: 30,
-  // Etapas do CRM Kanban — totalmente editáveis pelo cliente em /configurar-vouchers.
-  // Cada lead nasce na primeira etapa desta lista (índice 0).
   etapasKanban: [
     { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
     { id: 'aceitou_mensagem', nome: 'Aceitou Mensagem' },
@@ -178,26 +133,21 @@ const EMPRESA_PADRAO = {
   ]
 };
 
-// IMPORTANTE: o bot do WhatsApp precisa usar a configuração da empresa que
-// está de fato recebendo mensagens hoje (a PDN, único número ativo) — não a
-// "Empresa Demo" antiga em config/empresa, que é só um resquício do sistema
-// single-tenant original e não é mais editada pela tela /crm.
-// getEmpresa() agora lê de empresas_login/{EMPRESA_ID_PDN}.configuracao,
-// que é exatamente o que a aba "Configurações" do /crm salva via /minha-config.
-// Isso corrige um bug onde tempoEsperaConversaoMin e os textos do roteiro do
-// recomendado editados no /crm nunca chegavam ao bot, que continuava lendo o
-// valor padrão (60 min) da Empresa Demo, nunca atualizado pela tela.
+// Configuração especial para empresa de teste — faixa 1 com apenas 1 recomendação
+const EMPRESA_TESTE_CONFIG = {
+  ...EMPRESA_PADRAO,
+  nome: 'PDN Teste',
+  faixasBonus: [
+    { quantidade: 1, premio: 'Prêmio de teste — 1 recomendação', arquivo: null, link: null, texto: null }
+  ],
+  tempoEsperaConversaoMin: 1
+};
+
 async function getEmpresa() {
   const snap = await EMPRESAS_COL().doc(EMPRESA_ID_PDN).get();
   if (snap.exists && snap.data().configuracao) {
-    // Mescla com EMPRESA_PADRAO para garantir que campos novos (adicionados
-    // depois que a empresa foi criada/migrada) sempre tenham um valor, mesmo
-    // que a configuração salva no Firestore ainda não os tenha.
     return { ...EMPRESA_PADRAO, ...snap.data().configuracao };
   }
-  // Fallback de segurança: se por algum motivo o documento da PDN não for
-  // encontrado, cai para o comportamento antigo (Empresa Demo) em vez de
-  // quebrar o bot inteiro.
   const snapDemo = await EMPRESA_DOC().get();
   if (!snapDemo.exists) {
     await EMPRESA_DOC().set(EMPRESA_PADRAO);
@@ -244,13 +194,6 @@ async function getTodasSessoes() {
 // ============================================================
 // CRM KANBAN — leads recomendados (coleção "leads")
 // ============================================================
-// Cada documento representa UM contato recomendado por um cliente.
-// As etapas (colunas) são definidas pelo cliente em empresa.etapasKanban.
-// O lead sempre nasce na primeira etapa dessa lista.
-//
-// Campo novo: empresaId — identifica a qual empresa (doc de empresas_login)
-// este lead pertence. Leads antigos (criados antes desta etapa) não têm esse
-// campo e continuam acessíveis apenas pelas rotas antigas /leads, sem login.
 
 async function criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor, empresaId }) {
   const empresa = await getEmpresa();
@@ -282,7 +225,6 @@ async function getTodosLeads() {
   return leads;
 }
 
-// Mesma lógica de getTodosLeads, mas filtrando só os leads da empresa logada.
 async function getLeadsPorEmpresa(empresaId) {
   const snap = await LEADS_COL().where('empresaId', '==', empresaId).orderBy('criadoEm', 'desc').get();
   const leads = [];
@@ -298,7 +240,6 @@ async function atualizarLead(id, dados) {
   const atual = snap.data();
   const atualizado = { ...atual, ...dados };
 
-  // Se a etapa mudou, registra no histórico
   if (dados.etapa && dados.etapa !== atual.etapa) {
     atualizado.historico = [...(atual.historico || []), { etapa: dados.etapa, em: new Date().toISOString() }];
   }
@@ -383,10 +324,7 @@ function parseVCard(vCardString) {
 // ============================================================
 // IDEMPOTÊNCIA DO WEBHOOK — evita reprocessar a mesma mensagem
 // ============================================================
-// Retorna true se este messageId já foi visto antes (mensagem duplicada,
-// deve ser ignorada). Retorna false e marca como processado se for novo.
-// Sem messageId (alguns eventos da Z-API, como reações puras, não têm um),
-// sempre trata como não-duplicado — não há como comparar.
+
 async function jaProcessadaOuMarcar(messageId) {
   if (!messageId) return false;
   const ref = MENSAGENS_PROCESSADAS_COL().doc(messageId);
@@ -396,11 +334,6 @@ async function jaProcessadaOuMarcar(messageId) {
   return false;
 }
 
-// Mensagem usada quando o bot recebe algo que não consegue interpretar como
-// texto, contato ou resposta válida (sticker, emoji isolado, reação, áudio
-// sem transcrição, imagem sem legenda) — em vez de travar em silêncio ou
-// repetir um erro genérico, reconhece que não entendeu e repete a pergunta
-// atual daquela etapa, para a pessoa saber que precisa responder de novo.
 function mensagemNaoEntendiPorEtapa(etapa, empresa) {
   if (etapa === 'aguardando_nome') {
     return 'Acho que não entendi essa última mensagem 🙂 Pra começar, qual é o seu nome?';
@@ -415,7 +348,7 @@ function mensagemNaoEntendiPorEtapa(etapa, empresa) {
   if (etapa === 'aguardando_autorizacao_proxima_faixa') {
     return 'Não entendi essa última mensagem. Você quer liberar o próximo prêmio? Pode responder com sim ou não.';
   }
-  return null; // etapa 'finalizado' ou desconhecida — não responde nada
+  return null;
 }
 
 // ============================================================
@@ -433,7 +366,6 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   const empresa = await getEmpresa();
   const sessao = await getSessao(telefone);
 
-  // ETAPA 1: aguardando nome do cliente
   if (sessao.etapa === 'aguardando_nome') {
     sessao.clienteNome = (texto || '').trim();
     sessao.etapa = 'aguardando_vendedor';
@@ -444,7 +376,6 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     return;
   }
 
-  // ETAPA 2: aguardando escolha do vendedor
   if (sessao.etapa === 'aguardando_vendedor') {
     const escolha = (texto || '').trim();
     let vendedor = null;
@@ -463,11 +394,6 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
     sessao.vendedorNome = vendedor;
     sessao.etapa = 'coletando_contatos';
-    // indiceFaixaAtual: qual faixa de empresa.faixasBonus está em jogo agora.
-    // contatosFaixaAtual: contatos coletados especificamente para ESSA faixa
-    // (zera a cada nova faixa liberada) — diferente de sessao.contatos, que
-    // continua acumulando TODOS os contatos da sessão inteira (usado só para
-    // criar os leads no final, não para calcular a meta).
     sessao.indiceFaixaAtual = 0;
     sessao.contatosFaixaAtual = [];
     await saveSessao(telefone, sessao);
@@ -478,7 +404,6 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     return;
   }
 
-  // ETAPA 3: coletando contatos recomendados
   if (sessao.etapa === 'coletando_contatos') {
     let novosContatos = [];
 
@@ -488,8 +413,6 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
       const c = parseVCard(vCard);
       if (c && c.nome) novosContatos = [c];
     } else if (texto) {
-      // Só aceita texto livre como contato se contiver um padrão de telefone BR plausível,
-      // e rejeita textos longos ou que pareçam URLs/códigos Pix (evita falsos positivos)
       const matchTelefone = texto.match(/\+?\d[\d\s().-]{8,15}\d/);
       const ehUrlOuCodigo = /https?:\/\/|\.com|\.br\//.test(texto);
 
@@ -512,12 +435,9 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
       const faixaAtual = empresa.faixasBonus[sessao.indiceFaixaAtual];
       const contatosFaixaAtual = [...(sessao.contatosFaixaAtual || []), ...novosContatos];
 
-      // Acumula no histórico total da sessão (usado só para criar os leads
-      // no final) — isso nunca trava nem é usado para calcular metas.
       sessao.contatos = [...(sessao.contatos || []), ...novosContatos];
 
       if (contatosFaixaAtual.length < faixaAtual.quantidade) {
-        // Ainda não bateu a meta desta faixa.
         sessao.contatosFaixaAtual = contatosFaixaAtual;
         await saveSessao(telefone, sessao);
 
@@ -525,9 +445,6 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
         const nomesAdicionados = novosContatos.map(c => c.nome).join(', ');
         await sendText(telefone, `Anotado, ${nomesAdicionados}! ✅ Faltam ${faltam} recomendações para você garantir "${faixaAtual.premio}". Quem mais vem na sua mente?`);
       } else {
-        // Bateu ou passou a meta — separa o que pertence a esta faixa do
-        // excedente (que só vai contar de verdade se a pessoa topar
-        // continuar para a próxima faixa).
         const contatosDestaFaixa = contatosFaixaAtual.slice(0, faixaAtual.quantidade);
         const excedente = contatosFaixaAtual.slice(faixaAtual.quantidade);
 
@@ -540,8 +457,6 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     return;
   }
 
-  // ETAPA 4: aguardando a pessoa confirmar se quer liberar a próxima faixa
-  // de bônus (só existe quando há uma próxima faixa configurada).
   if (sessao.etapa === 'aguardando_autorizacao_proxima_faixa') {
     if (respostaEhPositiva(texto)) {
       const proximoIndice = sessao.indiceFaixaAtual + 1;
@@ -553,9 +468,6 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
       sessao.excedentePendente = [];
       sessao.etapa = 'coletando_contatos';
 
-      // O excedente que a pessoa já tinha mandado agora conta de verdade.
-      // Se isso já for suficiente para bater a nova meta sozinho, finaliza
-      // esta faixa também na hora, em vez de pedir mais contatos à toa.
       if (excedentePendente.length >= proximaFaixa.quantidade) {
         const contatosDestaFaixa = excedentePendente.slice(0, proximaFaixa.quantidade);
         const novoExcedente = excedentePendente.slice(proximaFaixa.quantidade);
@@ -575,17 +487,11 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     return;
   }
 
-  // ETAPA 5: já finalizado — ignora mensagens soltas (ex: "Ok", "obrigado").
-  // Só reinicia quando a pessoa mandar o gatilho "quero meu presente" de novo,
-  // o que já é tratado separadamente no webhook antes de chegar aqui.
   if (sessao.etapa === 'finalizado') {
     return;
   }
 }
 
-// contatosDestaFaixa: exatamente os contatos que contam para o prêmio atual.
-// excedente: contatos que já chegaram além da meta, mas só serão
-// aproveitados de verdade se a pessoa topar continuar para a próxima faixa.
 async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFaixa, excedente) {
   await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
   await sendText(telefone, `Seu presente: ${faixa.premio}`);
@@ -612,8 +518,6 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
 
   await sendText(telefone, `Só uma coisa importante: avise seus amigos que vamos entrar em contato com eles em breve, combinado? Assim eles já esperam nossa mensagem 😉`);
 
-  // Alimenta o CRM Kanban: cada contato desta faixa entra como um novo lead.
-  // empresaId fixo na PDN por enquanto — único número de WhatsApp ativo hoje.
   for (const contato of contatosDestaFaixa) {
     try {
       await criarLead({
@@ -632,14 +536,11 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   const proximaFaixa = empresa.faixasBonus[sessao.indiceFaixaAtual + 1];
 
   if (!proximaFaixa) {
-    // Não há mais faixas configuradas — agradece e encerra sem perguntar nada.
     sessao.etapa = 'finalizado';
     sessao.faixaFinal = faixa;
     await saveSessao(telefone, sessao);
     await sendText(telefone, 'Muito obrigado por participar e por confiar na gente! 🙏');
   } else {
-    // Existe próxima faixa — pergunta se a pessoa quer continuar. Se já tem
-    // excedente, menciona isso explicitamente na pergunta.
     sessao.etapa = 'aguardando_autorizacao_proxima_faixa';
     sessao.excedentePendente = excedente;
     await saveSessao(telefone, sessao);
@@ -648,19 +549,11 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
       const palavraContato = excedente.length === 1 ? 'contato' : 'contatos';
       await sendText(telefone, `E olha, você já mandou ${excedente.length} ${palavraContato} a mais! Quer completar mais ${proximaFaixa.quantidade - excedente.length} recomendações e ganhar "${proximaFaixa.premio}"?`);
     } else {
-      // Quantidade INCREMENTAL em relação à faixa atual, não o total
-      // acumulado da próxima faixa (ex: faixa atual=5, próxima=10 no total
-      // → a mensagem deve dizer "+5", não "+10").
       const incremento = proximaFaixa.quantidade - faixa.quantidade;
       await sendText(telefone, `Quer liberar o próximo prêmio? São +${incremento} recomendações e o prêmio é "${proximaFaixa.premio}". Quer continuar?`);
     }
   }
 
-  // Agenda o início da conversa com cada recomendado DESTA faixa. Em vez de
-  // setTimeout (perdido se o servidor reiniciar), grava no Firestore um
-  // agendamento com a data/hora exata de execução — o executor confere isso
-  // periodicamente e dispara quando chegar a hora, mesmo que o servidor
-  // tenha sido reiniciado nesse meio tempo.
   const executarEm = new Date(Date.now() + empresa.tempoEsperaConversaoMin * 60 * 1000).toISOString();
   for (const contato of contatosDestaFaixa) {
     try {
@@ -684,14 +577,6 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
 // ============================================================
 // ROTEIRO DO RECOMENDADO — etapas com confirmação e cadência
 // ============================================================
-// Substitui o antigo envio único de "contatarRecomendado". Agora a conversa
-// com o recomendado tem 3 etapas, cada uma esperando uma resposta da pessoa
-// antes de avançar:
-//   1) mensagem inicial → espera confirmação (palavra positiva)
-//   2) prêmio + arquivo + link → espera qualquer reação
-//   3) CTA (agendamento, convite à loja, etc.)
-// Se a pessoa não responder, a cadência de follow-up configurada dispara em
-// sequência até a pessoa responder ou a lista acabar.
 
 function substituirVariaveis(template, variaveis) {
   if (!template) return '';
@@ -714,15 +599,6 @@ async function encerrarSessaoRecomendado(telefone) {
 // ============================================================
 // AGENDAMENTOS PERSISTIDOS — substituem setTimeout em memória
 // ============================================================
-// Cada documento representa uma ação futura. Campos:
-//   tipo: 'iniciar_conversa_recomendado' | 'followup_recomendado'
-//   executarEm: ISO string da data/hora em que deve rodar
-//   status: 'pendente' | 'concluido' | 'cancelado'
-//   dados: payload específico do tipo de agendamento
-//   marcaTempoReferencia: timestamp da sessão no momento em que o
-//     agendamento foi criado — usado para invalidar agendamentos antigos
-//     se a pessoa responder antes (igual o setTimeout antigo fazia com
-//     ultimaMensagemEm, só que agora persistido).
 
 async function criarAgendamento({ tipo, executarEm, dados, marcaTempoReferencia }) {
   await AGENDAMENTOS_COL().add({
@@ -750,16 +626,10 @@ async function marcarAgendamentoConcluido(id) {
   await AGENDAMENTOS_COL().doc(id).update({ status: 'concluido' });
 }
 
-// Agenda o próximo passo de follow-up (índice da cadência) se a pessoa não
-// responder antes do tempo configurado. O agendamento carrega a marca de
-// tempo da sessão no momento da criação — se a pessoa responder antes
-// (mudando ultimaMensagemEm), o executor confere isso e ignora o agendamento
-// vencido, exatamente como o setTimeout antigo fazia, só que sobrevivendo a
-// reinícios do servidor.
 async function agendarProximoFollowup(telefone, empresa, marcaTempo, indiceFollowup) {
   const cadencia = empresa.cadenciaFollowupRecomendado || [];
   const proximo = cadencia[indiceFollowup];
-  if (!proximo) return; // cadência esgotada, não agenda mais nada
+  if (!proximo) return;
 
   const executarEm = new Date(Date.now() + proximo.esperaMin * 60 * 1000).toISOString();
   await criarAgendamento({
@@ -828,10 +698,6 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
 
 async function enviarCtaRecomendado(telefone, sessao, empresa) {
   await sendText(telefone, empresa.ctaRecomendado);
-  // Não finaliza ainda: o CTA é texto livre (a empresa pode perguntar algo
-  // tipo "Gostaria de vir retirar?"), então é natural a pessoa responder.
-  // Espera-se essa resposta para mandar uma mensagem final de encerramento
-  // antes de marcar como totalmente finalizado.
   await saveSessaoRecomendado(telefone, { etapa: 'aguardando_fechamento' });
   console.log(`[ROTEIRO RECOMENDADO - CTA ENVIADO, AGUARDANDO RESPOSTA FINAL] ${sessao.nomeRecomendado} (${telefone})`);
 }
@@ -839,19 +705,9 @@ async function enviarCtaRecomendado(telefone, sessao, empresa) {
 // ============================================================
 // INTERPRETAÇÃO DA RESPOSTA DO RECOMENDADO — via API Claude
 // ============================================================
-// Substitui a comparação simples por palavras-chave (respostaEhPositiva) por
-// uma interpretação real da mensagem da pessoa. A IA recebe só o que está
-// configurado pela empresa (nome, prêmio, CTA) e instrução explícita de
-// nunca inventar informação fora disso — qualquer pergunta sem resposta
-// configurada recebe um "não tenho essa informação aqui" em vez de um chute.
-//
-// Retorna um objeto: { classificacao: 'positiva'|'negativa'|'pergunta', respostaSugerida: string|null }
-// Se a chamada à API falhar por qualquer motivo, cai de volta para a lógica
-// antiga de palavras-chave (respostaEhPositiva) — o roteiro nunca trava por
-// causa de uma falha da IA.
+
 async function interpretarRespostaRecomendado(texto, empresa, contextoEtapa) {
   if (!ANTHROPIC_API_KEY) {
-    // Sem chave configurada — usa o fallback de palavras-chave diretamente.
     return {
       classificacao: respostaEhPositiva(texto) ? 'positiva' : 'negativa',
       respostaSugerida: null
@@ -915,7 +771,7 @@ Regras estritas:
 
 async function processarMensagemRecomendado(telefone, texto, empresa) {
   const sessao = await getSessaoRecomendado(telefone);
-  if (!sessao) return false; // não é uma conversa de recomendado em andamento
+  if (!sessao) return false;
 
   if (sessao.etapa === 'aguardando_confirmacao') {
     const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando confirmação para falar do prêmio');
@@ -923,17 +779,11 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     if (interpretacao.classificacao === 'positiva') {
       await enviarPremioRecomendado(telefone, sessao, empresa);
     } else if (interpretacao.classificacao === 'negativa') {
-      // Resposta claramente negativa — manda uma despedida gentil (gerada
-      // pela IA, reconhecendo o que a pessoa disse) e encerra o roteiro,
-      // sem mais follow-ups agendados para ela.
       const despedida = interpretacao.respostaSugerida || 'Sem problemas! Foi só um engano da nossa parte, desculpe incomodar 🙂';
       await sendText(telefone, despedida);
       await saveSessaoRecomendado(telefone, { etapa: 'finalizado_negativo' });
       console.log(`[ROTEIRO RECOMENDADO ENCERRADO - RESPOSTA NEGATIVA] ${sessao.nomeRecomendado} (${telefone})`);
     } else {
-      // Pergunta/comentário: responde com a sugestão da IA (ou a mensagem
-      // padrão configurada, se a IA não tiver gerado uma) e continua
-      // esperando confirmação, com nova cadência de follow-up.
       await sendText(telefone, interpretacao.respostaSugerida || empresa.mensagemAguardandoConfirmacao);
       const marcaTempo = new Date().toISOString();
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
@@ -943,9 +793,6 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   }
 
   if (sessao.etapa === 'aguardando_reacao') {
-    // Depois do prêmio, qualquer pergunta específica ainda recebe uma
-    // resposta da IA antes do CTA seguir — mas o CTA sempre é enviado depois,
-    // já que aqui o objetivo é só reagir bem, não decidir se continua ou não.
     const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando reação ao prêmio, antes do CTA final');
     if (interpretacao.classificacao === 'pergunta' && interpretacao.respostaSugerida) {
       await sendText(telefone, interpretacao.respostaSugerida);
@@ -955,10 +802,6 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   }
 
   if (sessao.etapa === 'aguardando_fechamento') {
-    // O CTA é texto livre (a empresa pode perguntar algo como "Gostaria de
-    // vir retirar?"), então é natural a pessoa responder a ele. Manda uma
-    // mensagem final de encerramento (gerada pela IA, reconhecendo o que a
-    // pessoa disse) e só então marca como totalmente finalizado.
     const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando resposta final de fechamento, depois do CTA');
     const fechamento = interpretacao.respostaSugerida || 'Combinado! Estamos à disposição 😊';
     await sendText(telefone, fechamento);
@@ -967,8 +810,6 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     return true;
   }
 
-  // etapas 'finalizado' e 'finalizado_negativo' — não há mais nada a
-  // processar, ignora mensagens soltas.
   return true;
 }
 
@@ -994,8 +835,6 @@ app.post('/webhook', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Ignora webhooks duplicados (a Z-API pode reenviar o mesmo evento se o
-    // servidor demorar a responder, por exemplo esperando a API do Claude).
     const messageId = body.messageId || null;
     if (await jaProcessadaOuMarcar(messageId)) {
       console.log(`[WEBHOOK] Mensagem duplicada ignorada (messageId: ${messageId})`);
@@ -1043,38 +882,64 @@ app.post('/webhook', async (req, res) => {
     // ============================================================
     // COMANDOS DE PAUSA MANUAL — "stop1" / "play1"
     // ============================================================
-    // Permite ao dono do número usar o mesmo WhatsApp do bot para conversas
-    // pessoais (ex: com a esposa, um amigo) sem o bot interferir. "stop1"
-    // pausa o bot só para aquele número específico; "play1" reativa. Esses
-    // dois comandos são checados ANTES de qualquer outra lógica, incluindo a
-    // checagem de pausa abaixo, para sempre funcionarem independente do
-    // estado atual da conversa.
+    // stop1: pausa IMEDIATAMENTE o bot para esse número.
+    //   - Cancela qualquer sessão ativa (recomendador e recomendado)
+    //   - Cancela agendamentos pendentes para esse número
+    //   - Bot só responde novamente se a pessoa mandar "quero meu presente"
+    // play1: reativa o bot para esse número (volta ao comportamento normal)
     const textoNormalizado = (texto || '').toLowerCase().trim();
     if (textoNormalizado === 'stop1') {
       await pausarNumero(telefone);
-      console.log(`[PAUSA MANUAL] Bot pausado para ${telefone}`);
-      return res.sendStatus(200); // não responde nada, silencioso de propósito
+
+      // Cancela sessão de quem recomenda (se houver)
+      await resetSessao(telefone);
+
+      // Cancela sessão de recomendado (se houver)
+      const sessaoRec = await getSessaoRecomendado(telefone);
+      if (sessaoRec) {
+        await saveSessaoRecomendado(telefone, { etapa: 'finalizado_negativo' });
+      }
+
+      // Cancela agendamentos pendentes para este número
+      // (iniciar_conversa_recomendado cujo contato.telefone seja este número,
+      //  e followup_recomendado cujo dados.telefone seja este número)
+      try {
+        const snap = await AGENDAMENTOS_COL()
+          .where('status', '==', 'pendente')
+          .get();
+        const batch = db.batch();
+        snap.forEach(doc => {
+          const d = doc.data();
+          const telefoneAgendamento =
+            d.dados?.contato?.telefone ||
+            d.dados?.telefone ||
+            null;
+          if (telefoneAgendamento === telefone) {
+            batch.update(doc.ref, { status: 'cancelado' });
+          }
+        });
+        await batch.commit();
+      } catch (err) {
+        console.error('Erro ao cancelar agendamentos no stop1:', err.message);
+      }
+
+      console.log(`[PAUSA MANUAL] Bot pausado e agendamentos cancelados para ${telefone}`);
+      return res.sendStatus(200);
     }
+
     if (textoNormalizado === 'play1') {
       await despausarNumero(telefone);
       console.log(`[PAUSA MANUAL] Bot reativado para ${telefone}`);
-      return res.sendStatus(200); // não responde nada, silencioso de propósito
+      return res.sendStatus(200);
     }
 
-    // Se o número está pausado, o bot só reage ao gatilho explícito "quero
-    // meu presente" (para quem quiser voltar ao fluxo espontaneamente) — todo
-    // o resto é ignorado em silêncio enquanto durar a pausa.
+    // Se o número está pausado, só reage ao gatilho "quero meu presente"
     const ehGatilhoInicialParaPausa = texto && texto.toLowerCase().includes('quero meu presente');
     if (!ehGatilhoInicialParaPausa && await numeroEstaPausado(telefone)) {
       console.log(`[PAUSA MANUAL] Mensagem ignorada — ${telefone} está pausado`);
       return res.sendStatus(200);
     }
 
-    // Evento sem texto, vCard ou contatos — provavelmente um sticker, emoji
-    // isolado, reação, áudio sem transcrição, ou similar. Em vez de travar
-    // em silêncio (ou repetir um erro genérico em loop), reconhece que não
-    // entendeu e repete a pergunta da etapa atual da pessoa, se houver uma
-    // conversa em andamento.
     const ehEventoVazio = !texto && !vCard && !contatosMultiplos;
     if (ehEventoVazio) {
       const sessaoExistenteSnap = await SESSOES_COL().doc(telefone).get();
@@ -1097,16 +962,11 @@ app.post('/webhook', async (req, res) => {
     const ehGatilhoInicial = texto && texto.toLowerCase().includes('quero meu presente');
 
     if (ehGatilhoInicial) {
-      // Gatilho explícito sempre tem prioridade e sempre é tratado como
-      // fluxo de quem recomenda, mesmo que essa pessoa tenha uma conversa
-      // de recomendado em andamento no mesmo número.
       await resetSessao(telefone);
       await iniciarConversa(telefone);
     } else if (sessaoExiste) {
       await processarMensagem(telefone, texto, vCard, contatosMultiplos);
     } else {
-      // Não é fluxo de quem recomenda — verifica se é uma resposta de
-      // alguém que está no roteiro de recomendado (etapas com confirmação).
       const empresa = await getEmpresa();
       await processarMensagemRecomendado(telefone, texto, empresa);
     }
@@ -1155,26 +1015,17 @@ app.get('/configurar-vouchers', (req, res) => {
   res.sendFile(path.join(__dirname, 'configurar-vouchers.html'));
 });
 
-// Rota nova e separada — página de configuração protegida por login.
-// Usa as rotas /minha-config (não as antigas /config), e exige login no navegador.
 app.get('/minha-empresa/configurar', (req, res) => {
   res.sendFile(path.join(__dirname, 'minha-empresa-configurar.html'));
 });
 
-// /crm continua na mesma URL de sempre. A proteção por login agora é feita
-// dentro do próprio crm.html (ele verifica o token salvo no navegador e
-// redireciona para /login se não houver um válido), então a rota do servidor
-// não precisa mudar — ela só continua servindo o arquivo.
 app.get('/crm', (req, res) => {
   res.sendFile(path.join(__dirname, 'crm.html'));
 });
 
 // ============================================================
-// NOVO — sistema de login (etapa 1, sem proteção ainda)
+// SISTEMA DE LOGIN
 // ============================================================
-// Estas rotas são aditivas: nada do bot, CRM ou configurações foi alterado.
-// Por enquanto, login e cadastro de empresa só existem para serem testados;
-// nenhuma rota passou a exigir autenticação.
 
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'login.html'));
@@ -1212,11 +1063,8 @@ app.get('/admin/criar-empresa', (req, res) => {
 });
 
 // ============================================================
-// NOVO — proteção por login (etapa 2)
+// MIDDLEWARE DE LOGIN
 // ============================================================
-// Middleware que exige um token JWT válido e anexa a empresa logada em req.empresaLogin.
-// Usado apenas pelas rotas novas abaixo — nada das rotas antigas (/config, /leads,
-// /crm, etc., usadas pela Empresa Demo) foi alterado ou passou a exigir login.
 
 async function exigirLoginEmpresa(req, res, next) {
   try {
@@ -1239,9 +1087,6 @@ async function exigirLoginEmpresa(req, res, next) {
   }
 }
 
-// Lê a configuração da empresa que está logada (não a Empresa Demo antiga).
-// Se a empresa ainda não tiver configuração salva (ex: X Mentor, criada antes
-// desta etapa), devolve os valores padrão sem quebrar nada.
 app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
   try {
     const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
@@ -1276,7 +1121,6 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, async (req, res) => {
     if (link !== undefined) faixa.link = link;
     if (texto !== undefined) faixa.texto = texto;
     if (premio !== undefined) faixa.premio = premio;
-    // Permite alterar a quantidade mínima de recomendações da faixa
     if (novaQuantidade && novaQuantidade !== quantidade) {
       faixa.quantidade = novaQuantidade;
     }
@@ -1289,13 +1133,8 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, async (req, res) => {
 });
 
 // ============================================================
-// NOVO — leads isolados por empresa (etapa 3, protegidos por login)
+// LEADS ISOLADOS POR EMPRESA
 // ============================================================
-// Mesma forma e contrato das rotas antigas /leads, mas:
-// 1) exigem login (exigirLoginEmpresa)
-// 2) só retornam/alteram leads cujo campo empresaId é o da empresa logada
-// As rotas antigas /leads continuam existindo e abertas, sem filtro — usadas
-// hoje apenas pela "Empresa Demo" (leads sem empresaId, criados antes desta etapa).
 
 app.get('/minha-leads', exigirLoginEmpresa, async (req, res) => {
   try {
@@ -1310,8 +1149,6 @@ app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Confirma que o lead pertence à empresa logada antes de alterar —
-    // impede que alguém logado numa empresa altere lead de outra empresa.
     const ref = LEADS_COL().doc(id);
     const snap = await ref.get();
     if (!snap.exists || snap.data().empresaId !== req.empresaLogin.id) {
@@ -1334,6 +1171,10 @@ app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// ============================================================
+// ROTA DE CRIAÇÃO DE EMPRESA (admin)
+// ============================================================
+
 app.post('/admin/empresas', async (req, res) => {
   try {
     const chaveAdmin = req.headers['x-admin-key'];
@@ -1341,7 +1182,7 @@ app.post('/admin/empresas', async (req, res) => {
       return res.status(401).json({ ok: false, erro: 'Chave administrativa inválida' });
     }
 
-    const { nome, email, senha, migrarConfigPrincipal } = req.body;
+    const { nome, email, senha, migrarConfigPrincipal, empresaTeste } = req.body;
     if (!nome || !email || !senha) {
       return res.status(400).json({ ok: false, erro: 'Informe nome, email e senha' });
     }
@@ -1351,15 +1192,13 @@ app.post('/admin/empresas', async (req, res) => {
       return res.status(409).json({ ok: false, erro: 'Já existe uma empresa cadastrada com este email' });
     }
 
-    // Se migrarConfigPrincipal=true, a conta nasce com os dados REAIS já salvos
-    // em config/empresa (mensagem, vendedores, faixas de bônus, etc.), em vez dos
-    // valores de exemplo. Usado uma única vez para dar à empresa principal sua
-    // própria conta de login sem perder o que já estava configurado.
-    // Nota: getEmpresa() hoje retorna a config da PDN (não mais da Empresa
-    // Demo) — então usar essa opção para criar uma NOVA empresa copiaria os
-    // dados da PDN, não os da Empresa Demo original. Use com essa ressalva.
     let configuracaoInicial = { ...EMPRESA_PADRAO, nome };
-    if (migrarConfigPrincipal) {
+
+    if (empresaTeste) {
+      // Empresa de teste: faixa 1 com quantidade = 1 e tempo de espera = 1 min
+      // para validar todo o fluxo rapidamente sem precisar mandar 5 contatos
+      configuracaoInicial = { ...EMPRESA_TESTE_CONFIG, nome };
+    } else if (migrarConfigPrincipal) {
       const empresaReal = await getEmpresa();
       configuracaoInicial = { ...empresaReal };
     }
@@ -1370,12 +1209,10 @@ app.post('/admin/empresas', async (req, res) => {
       email,
       senhaHash,
       criadoEm: new Date().toISOString(),
-      // Configuração inicial da empresa — mesma estrutura usada em /configurar-vouchers,
-      // agora isolada por empresa em vez de compartilhada (Empresa Demo antiga).
       configuracao: configuracaoInicial
     });
 
-    res.json({ ok: true, empresa: { id: ref.id, nome, email } });
+    res.json({ ok: true, empresa: { id: ref.id, nome, email, empresaTeste: !!empresaTeste } });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -1384,14 +1221,10 @@ app.post('/admin/empresas', async (req, res) => {
 // ============================================================
 // UPLOAD DE ARQUIVO — Firebase Storage
 // ============================================================
-// Recebe um arquivo (imagem JPEG/PNG ou PDF) via multipart/form-data,
-// salva no Firebase Storage e devolve a URL pública de download.
-// Só aceita chamadas autenticadas (mesmo JWT das outras rotas protegidas).
-// O arquivo é guardado em vouchers/{empresaId}/{timestamp}_{nomeOriginal}.
 
 const uploadMiddleware = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB máximo
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const tiposPermitidos = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
     if (tiposPermitidos.includes(file.mimetype)) {
@@ -1419,7 +1252,6 @@ app.post('/upload-arquivo', exigirLoginEmpresa, uploadMiddleware.single('arquivo
       metadata: { contentType: req.file.mimetype }
     });
 
-    // Gera URL pública de download com validade longa (100 anos)
     const [url] = await fileRef.getSignedUrl({
       action: 'read',
       expires: '01-01-2125'
@@ -1486,7 +1318,7 @@ app.post('/config/faixa', async (req, res) => {
 });
 
 // ============================================================
-// ROTAS DO CRM KANBAN (ANTIGAS — Empresa Demo, sem login, intocadas)
+// ROTAS DO CRM KANBAN (antigas — sem login)
 // ============================================================
 
 app.get('/leads', async (req, res) => {
@@ -1528,31 +1360,37 @@ app.post('/leads', async (req, res) => {
 });
 
 // ============================================================
-// EXECUTOR DE AGENDAMENTOS — roda a cada 1 minuto
+// EXECUTOR DE AGENDAMENTOS — roda a cada 3 minutos
 // ============================================================
-// Substitui setTimeout em memória: busca no Firestore todo agendamento
-// vencido (executarEm <= agora, status pendente) e processa de acordo com
-// o tipo. Como o estado vive no banco, não no processo, isso sobrevive a
-// reinícios do servidor — qualquer agendamento perdido durante o tempo em
-// que o servidor estava reiniciando/hibernando é simplesmente processado
-// na próxima checagem, em vez de desaparecer.
 
 async function processarAgendamento(agendamento) {
   const empresa = await getEmpresa();
 
   if (agendamento.tipo === 'iniciar_conversa_recomendado') {
     const { contato, nomeRecomendador, vendedorNome } = agendamento.dados;
+
+    // ✅ CORREÇÃO: verifica se o número está pausado antes de iniciar
+    // Se stop1 foi enviado após o agendamento ser criado, não inicia a conversa
+    if (contato.telefone && await numeroEstaPausado(contato.telefone)) {
+      console.log(`[AGENDAMENTO IGNORADO] ${contato.telefone} está pausado (stop1) — conversa não iniciada`);
+      return;
+    }
+
     await iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa);
     return;
   }
 
   if (agendamento.tipo === 'followup_recomendado') {
     const { telefone, indiceFollowup } = agendamento.dados;
+
+    // ✅ CORREÇÃO: verifica se o número está pausado antes de enviar follow-up
+    if (await numeroEstaPausado(telefone)) {
+      console.log(`[AGENDAMENTO IGNORADO] ${telefone} está pausado (stop1) — follow-up não enviado`);
+      return;
+    }
+
     const sessaoAtual = await getSessaoRecomendado(telefone);
 
-    // Só dispara o follow-up se a sessão ainda existir e a pessoa não tiver
-    // respondido depois que este agendamento foi criado (ou seja, o
-    // timestamp de referência ainda bate com o atual da sessão).
     if (!sessaoAtual || sessaoAtual.ultimaMensagemEm !== agendamento.marcaTempoReferencia) {
       return;
     }
@@ -1581,8 +1419,6 @@ async function executarAgendamentosPendentes() {
       } catch (err) {
         console.error(`Erro ao processar agendamento ${agendamento.id}:`, err.message);
       } finally {
-        // Marca como concluído mesmo se falhar, para não tentar de novo em
-        // loop infinito — erros já ficam registrados no log acima.
         await marcarAgendamentoConcluido(agendamento.id);
       }
     }
@@ -1592,16 +1428,6 @@ async function executarAgendamentosPendentes() {
 }
 
 function iniciarExecutorAgendamentos() {
-  // Roda imediatamente uma vez no boot (cobre agendamentos que venceram
-  // enquanto o servidor estava off) e depois periodicamente.
-  //
-  // Intervalo de 3 minutos (em vez de 1) reduz o consumo de cota do
-  // Firestore em ~66%, já que cada checagem é uma leitura mesmo quando não
-  // encontra nada pendente. Como os tempos de espera configurados são de
-  // minutos/horas (nunca segundos), 3 minutos de atraso máximo no envio de
-  // uma mensagem é imperceptível na prática, mas evita rodar 1440
-  // checagens/dia (a maioria sem nenhum agendamento pendente) e estourar a
-  // cota gratuita do plano Spark do Firestore.
   const INTERVALO_EXECUTOR_MS = 3 * 60 * 1000;
   executarAgendamentosPendentes();
   setInterval(executarAgendamentosPendentes, INTERVALO_EXECUTOR_MS);
@@ -1617,5 +1443,5 @@ app.listen(PORT, () => {
   console.log(`Webhook disponível em: /webhook`);
   console.log(`Firestore inicializado: ${db ? 'SIM' : 'NÃO — verifique FIREBASE_SERVICE_ACCOUNT'}`);
   iniciarExecutorAgendamentos();
-  console.log('Executor de agendamentos iniciado (checagem a cada 60s)');
+  console.log('Executor de agendamentos iniciado (checagem a cada 3 min)');
 });
