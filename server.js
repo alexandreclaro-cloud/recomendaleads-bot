@@ -11,6 +11,7 @@ const admin = require('firebase-admin');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
 
 const app = express();
 app.use(express.json());
@@ -72,6 +73,26 @@ const AGENDAMENTOS_COL = () => db.collection('agendamentos');
 // Sem isso, uma mensagem reenviada seria processada de novo do zero,
 // causando respostas repetidas ao usuário.
 const MENSAGENS_PROCESSADAS_COL = () => db.collection('mensagens_processadas');
+// Números pausados manualmente: quando o dono do número precisa conversar
+// pessoalmente com alguém (ex: a esposa, um amigo) usando o mesmo WhatsApp
+// do bot, mandar "stop1" daquele número pausa o bot SÓ para essa conversa —
+// outros números continuam normais. "play1" reativa. O gatilho "quero meu
+// presente" também funciona mesmo pausado, para quem quiser voltar ao fluxo
+// de recomendação espontaneamente.
+const NUMEROS_PAUSADOS_COL = () => db.collection('numeros_pausados');
+
+async function numeroEstaPausado(telefone) {
+  const snap = await NUMEROS_PAUSADOS_COL().doc(telefone).get();
+  return snap.exists;
+}
+
+async function pausarNumero(telefone) {
+  await NUMEROS_PAUSADOS_COL().doc(telefone).set({ pausadoEm: new Date().toISOString() });
+}
+
+async function despausarNumero(telefone) {
+  await NUMEROS_PAUSADOS_COL().doc(telefone).delete();
+}
 // Coleção nova, isolada — usada só pelo sistema de login. Não afeta o EMPRESA_DOC
 // único que o bot/CRM/configurações continuam usando normalmente nesta etapa.
 const EMPRESAS_COL = () => db.collection('empresas_login');
@@ -626,7 +647,11 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
       const palavraContato = excedente.length === 1 ? 'contato' : 'contatos';
       await sendText(telefone, `E olha, você já mandou ${excedente.length} ${palavraContato} a mais! Quer completar mais ${proximaFaixa.quantidade - excedente.length} recomendações e ganhar "${proximaFaixa.premio}"?`);
     } else {
-      await sendText(telefone, `Quer liberar o próximo prêmio? São +${proximaFaixa.quantidade} recomendações e o prêmio é "${proximaFaixa.premio}". Quer continuar?`);
+      // Quantidade INCREMENTAL em relação à faixa atual, não o total
+      // acumulado da próxima faixa (ex: faixa atual=5, próxima=10 no total
+      // → a mensagem deve dizer "+5", não "+10").
+      const incremento = proximaFaixa.quantidade - faixa.quantidade;
+      await sendText(telefone, `Quer liberar o próximo prêmio? São +${incremento} recomendações e o prêmio é "${proximaFaixa.premio}". Quer continuar?`);
     }
   }
 
@@ -1014,6 +1039,36 @@ app.post('/webhook', async (req, res) => {
     console.log('[WEBHOOK] vCard extraído:', vCard);
     console.log('[WEBHOOK] contatosMultiplos extraído:', JSON.stringify(contatosMultiplos));
 
+    // ============================================================
+    // COMANDOS DE PAUSA MANUAL — "stop1" / "play1"
+    // ============================================================
+    // Permite ao dono do número usar o mesmo WhatsApp do bot para conversas
+    // pessoais (ex: com a esposa, um amigo) sem o bot interferir. "stop1"
+    // pausa o bot só para aquele número específico; "play1" reativa. Esses
+    // dois comandos são checados ANTES de qualquer outra lógica, incluindo a
+    // checagem de pausa abaixo, para sempre funcionarem independente do
+    // estado atual da conversa.
+    const textoNormalizado = (texto || '').toLowerCase().trim();
+    if (textoNormalizado === 'stop1') {
+      await pausarNumero(telefone);
+      console.log(`[PAUSA MANUAL] Bot pausado para ${telefone}`);
+      return res.sendStatus(200); // não responde nada, silencioso de propósito
+    }
+    if (textoNormalizado === 'play1') {
+      await despausarNumero(telefone);
+      console.log(`[PAUSA MANUAL] Bot reativado para ${telefone}`);
+      return res.sendStatus(200); // não responde nada, silencioso de propósito
+    }
+
+    // Se o número está pausado, o bot só reage ao gatilho explícito "quero
+    // meu presente" (para quem quiser voltar ao fluxo espontaneamente) — todo
+    // o resto é ignorado em silêncio enquanto durar a pausa.
+    const ehGatilhoInicialParaPausa = texto && texto.toLowerCase().includes('quero meu presente');
+    if (!ehGatilhoInicialParaPausa && await numeroEstaPausado(telefone)) {
+      console.log(`[PAUSA MANUAL] Mensagem ignorada — ${telefone} está pausado`);
+      return res.sendStatus(200);
+    }
+
     // Evento sem texto, vCard ou contatos — provavelmente um sticker, emoji
     // isolado, reação, áudio sem transcrição, ou similar. Em vez de travar
     // em silêncio (ou repetir um erro genérico em loop), reconhece que não
@@ -1317,6 +1372,57 @@ app.post('/admin/empresas', async (req, res) => {
 
     res.json({ ok: true, empresa: { id: ref.id, nome, email } });
   } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// UPLOAD DE ARQUIVO — Firebase Storage
+// ============================================================
+// Recebe um arquivo (imagem JPEG/PNG ou PDF) via multipart/form-data,
+// salva no Firebase Storage e devolve a URL pública de download.
+// Só aceita chamadas autenticadas (mesmo JWT das outras rotas protegidas).
+// O arquivo é guardado em vouchers/{empresaId}/{timestamp}_{nomeOriginal}.
+
+const uploadMiddleware = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB máximo
+  fileFilter: (req, file, cb) => {
+    const tiposPermitidos = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
+    if (tiposPermitidos.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Tipo de arquivo não permitido. Use JPEG, PNG, WebP ou PDF.'));
+    }
+  }
+});
+
+app.post('/upload-arquivo', exigirLoginEmpresa, uploadMiddleware.single('arquivo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' });
+    }
+
+    const empresaId = req.empresaLogin.id;
+    const timestamp = Date.now();
+    const nomeArquivo = `vouchers/${empresaId}/${timestamp}_${req.file.originalname.replace(/\s+/g, '_')}`;
+
+    const bucket = admin.storage().bucket();
+    const fileRef = bucket.file(nomeArquivo);
+
+    await fileRef.save(req.file.buffer, {
+      metadata: { contentType: req.file.mimetype }
+    });
+
+    // Gera URL pública de download com validade longa (100 anos)
+    const [url] = await fileRef.getSignedUrl({
+      action: 'read',
+      expires: '01-01-2125'
+    });
+
+    res.json({ ok: true, url });
+  } catch (err) {
+    console.error('Erro ao fazer upload:', err.message);
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
