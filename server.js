@@ -753,7 +753,7 @@ Regras estritas:
         'x-api-key': ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01'
       },
-      timeout: 8000
+      timeout: 4000
     });
 
     const textoResposta = resp.data?.content?.[0]?.text || '';
