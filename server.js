@@ -1980,7 +1980,11 @@ app.get('/debug-fluxo', async (req, res) => {
     const pausados = []; pausSnap.forEach(d => pausados.push(d.id));
     const recSnap = await SESSOES_RECOMENDADO_COL().limit(40).get();
     const recomendado = []; recSnap.forEach(d => recomendado.push({ chave: d.id, etapa: d.data().etapa }));
-    res.json({ agora: new Date().toISOString(), agendamentos, pausados, recomendado });
+    const msgSnap = await MENSAGENS_CHAT_COL().orderBy('criadoEm', 'desc').limit(20).get();
+    const mensagens = []; msgSnap.forEach(d => { const x = d.data(); mensagens.push({ telefone: x.telefone, direcao: x.direcao, texto: (x.texto || '').slice(0, 45), criadoEm: x.criadoEm }); });
+    const zapiPdn = await getEmpresaById(EMPRESA_ID_PDN);
+    const zapiInfo = { temCredProprias: !!(zapiPdn && zapiPdn.zapiInstanceId), instanceId: zapiPdn && zapiPdn.zapiInstanceId ? String(zapiPdn.zapiInstanceId).slice(0, 6) + '...' : null };
+    res.json({ agora: new Date().toISOString(), zapiPdn: zapiInfo, agendamentos, pausados, recomendado, mensagens });
   } catch (err) {
     res.status(500).json({ erro: err.message });
   }
