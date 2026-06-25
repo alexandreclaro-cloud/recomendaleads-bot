@@ -106,17 +106,25 @@ const AGENDAMENTOS_COL = () => db.collection('agendamentos');
 const MENSAGENS_PROCESSADAS_COL = () => db.collection('mensagens_processadas');
 const NUMEROS_PAUSADOS_COL = () => db.collection('numeros_pausados');
 
+// Chave de documento isolada por empresa: "empresaId__telefone".
+// Garante que sessões e pausas de uma empresa não colidam com as de outra
+// quando o mesmo número fala com empresas diferentes. Para a PDN, a empresaId
+// é a constante de sempre — keys passam a ter o prefixo dela.
+function chaveSessao(telefone) {
+  return `${empresaIdAtual()}__${telefone}`;
+}
+
 async function numeroEstaPausado(telefone) {
-  const snap = await NUMEROS_PAUSADOS_COL().doc(telefone).get();
+  const snap = await NUMEROS_PAUSADOS_COL().doc(chaveSessao(telefone)).get();
   return snap.exists;
 }
 
 async function pausarNumero(telefone) {
-  await NUMEROS_PAUSADOS_COL().doc(telefone).set({ pausadoEm: new Date().toISOString() });
+  await NUMEROS_PAUSADOS_COL().doc(chaveSessao(telefone)).set({ pausadoEm: new Date().toISOString() });
 }
 
 async function despausarNumero(telefone) {
-  await NUMEROS_PAUSADOS_COL().doc(telefone).delete();
+  await NUMEROS_PAUSADOS_COL().doc(chaveSessao(telefone)).delete();
 }
 
 const EMPRESAS_COL = () => db.collection('empresas_login');
@@ -250,7 +258,7 @@ async function saveEmpresa(empresa) {
 }
 
 async function getSessao(telefone) {
-  const snap = await SESSOES_COL().doc(telefone).get();
+  const snap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
   if (!snap.exists) {
     const novaSessao = {
       etapa: 'aguardando_nome',
@@ -259,18 +267,18 @@ async function getSessao(telefone) {
       contatos: [],
       criadoEm: new Date().toISOString()
     };
-    await SESSOES_COL().doc(telefone).set(novaSessao);
+    await SESSOES_COL().doc(chaveSessao(telefone)).set(novaSessao);
     return novaSessao;
   }
   return snap.data();
 }
 
 async function saveSessao(telefone, sessao) {
-  await SESSOES_COL().doc(telefone).set(sessao, { merge: true });
+  await SESSOES_COL().doc(chaveSessao(telefone)).set(sessao, { merge: true });
 }
 
 async function resetSessao(telefone) {
-  await SESSOES_COL().doc(telefone).delete();
+  await SESSOES_COL().doc(chaveSessao(telefone)).delete();
 }
 
 async function getTodasSessoes() {
@@ -753,16 +761,16 @@ function substituirVariaveis(template, variaveis) {
 }
 
 async function getSessaoRecomendado(telefone) {
-  const snap = await SESSOES_RECOMENDADO_COL().doc(telefone).get();
+  const snap = await SESSOES_RECOMENDADO_COL().doc(chaveSessao(telefone)).get();
   return snap.exists ? snap.data() : null;
 }
 
 async function saveSessaoRecomendado(telefone, sessao) {
-  await SESSOES_RECOMENDADO_COL().doc(telefone).set(sessao, { merge: true });
+  await SESSOES_RECOMENDADO_COL().doc(chaveSessao(telefone)).set(sessao, { merge: true });
 }
 
 async function encerrarSessaoRecomendado(telefone) {
-  await SESSOES_RECOMENDADO_COL().doc(telefone).delete();
+  await SESSOES_RECOMENDADO_COL().doc(chaveSessao(telefone)).delete();
 }
 
 // ============================================================
@@ -1147,7 +1155,8 @@ async function tratarWebhook(req, res) {
             d.dados?.contato?.telefone ||
             d.dados?.telefone ||
             null;
-          if (telefoneAgendamento === alvo) {
+          const mesmaEmpresa = (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual();
+          if (telefoneAgendamento === alvo && mesmaEmpresa) {
             batch.update(doc.ref, { status: 'cancelado' });
           }
         });
@@ -1167,14 +1176,15 @@ async function tratarWebhook(req, res) {
         // play1 COM número — limpa sessões e agendamentos do número alvo
         await despausarNumero(alvo);
         await resetSessao(alvo);
-        await SESSOES_RECOMENDADO_COL().doc(alvo).delete();
+        await SESSOES_RECOMENDADO_COL().doc(chaveSessao(alvo)).delete();
         try {
           const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
           const batch = db.batch();
           snap.forEach(doc => {
             const d = doc.data();
             const tel = d.dados?.contato?.telefone || d.dados?.telefone || null;
-            if (tel === alvo) batch.update(doc.ref, { status: 'cancelado' });
+            const mesmaEmpresa = (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual();
+            if (tel === alvo && mesmaEmpresa) batch.update(doc.ref, { status: 'cancelado' });
           });
           await batch.commit();
         } catch (err) {
@@ -1198,7 +1208,7 @@ async function tratarWebhook(req, res) {
 
     const ehEventoVazio = !texto && !vCard && !contatosMultiplos;
     if (ehEventoVazio) {
-      const sessaoExistenteSnap = await SESSOES_COL().doc(telefone).get();
+      const sessaoExistenteSnap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
       if (sessaoExistenteSnap.exists) {
         const sessao = sessaoExistenteSnap.data();
         const empresa = await getEmpresa();
@@ -1213,7 +1223,7 @@ async function tratarWebhook(req, res) {
       return res.sendStatus(200);
     }
 
-    const sessaoExistenteSnap = await SESSOES_COL().doc(telefone).get();
+    const sessaoExistenteSnap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
     const sessaoExiste = sessaoExistenteSnap.exists;
     const ehGatilhoInicial = texto && texto.toLowerCase().includes('quero meu presente');
 
@@ -1389,6 +1399,58 @@ app.post('/minha-config', exigirLoginEmpresa, async (req, res) => {
 
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: novaConfiguracao }, { merge: true });
     res.json({ ok: true, empresa: novaConfiguracao });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// WHATSAPP DA EMPRESA — credenciais Z-API próprias do cliente
+// ============================================================
+// O cliente cria a instância dele na Z-API, conecta o WhatsApp via QR code
+// e cola aqui o Instance ID, o Token e o Client-Token. A URL de webhook
+// (única por empresa) é mostrada pra ele configurar na Z-API.
+
+function urlBase(req) {
+  return process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+}
+
+app.get('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const e = req.empresaLogin;
+    const conectado = !!(e.zapiInstanceId && e.zapiToken);
+    res.json({
+      ok: true,
+      conectado,
+      // Nunca devolvemos o token cheio — só uma confirmação de que existe.
+      zapiInstanceId: e.zapiInstanceId || '',
+      temToken: !!e.zapiToken,
+      temClientToken: !!e.zapiClientToken,
+      webhookUrl: `${urlBase(req)}/webhook/${e.id}`
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const { zapiInstanceId, zapiToken, zapiClientToken } = req.body;
+    if (!zapiInstanceId || !zapiToken) {
+      return res.status(400).json({ ok: false, erro: 'Informe ao menos o Instance ID e o Token da Z-API' });
+    }
+
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({
+      zapiInstanceId: String(zapiInstanceId).trim(),
+      zapiToken: String(zapiToken).trim(),
+      zapiClientToken: zapiClientToken ? String(zapiClientToken).trim() : null
+    }, { merge: true });
+
+    res.json({
+      ok: true,
+      conectado: true,
+      webhookUrl: `${urlBase(req)}/webhook/${req.empresaLogin.id}`
+    });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

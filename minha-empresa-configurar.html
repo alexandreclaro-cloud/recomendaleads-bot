@@ -92,6 +92,26 @@
   .badge { background: var(--gold); color: var(--navy); font-weight: 700; font-size: 0.85rem; padding: 4px 12px; border-radius: 20px; }
 
   .load-msg { text-align: center; color: var(--text-dim); padding: 40px; }
+
+  .wa-status {
+    font-size: 0.85rem; font-weight: 600; padding: 8px 12px; border-radius: 8px;
+    margin-bottom: 8px; display: inline-block;
+  }
+  .wa-status.on { background: rgba(61,220,151,0.12); color: var(--success); }
+  .wa-status.off { background: rgba(255,107,107,0.10); color: var(--error); }
+  .webhook-box {
+    display: flex; align-items: center; gap: 8px;
+    background: #0e1a2c; border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px; padding: 8px 10px;
+  }
+  .webhook-box code {
+    flex: 1; color: var(--gold-light); font-size: 0.8rem; word-break: break-all;
+  }
+  .copy-btn {
+    background: transparent; border: 1px solid var(--gold); color: var(--gold-light);
+    padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.78rem; white-space: nowrap;
+  }
+  .copy-btn:hover { background: rgba(212,175,55,0.1); }
 </style>
 </head>
 <body>
@@ -124,6 +144,38 @@
       <div class="row-save">
         <button class="save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
         <span class="status-msg" id="statusEmpresa"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📱 Meu WhatsApp</h2>
+      <p class="hint" style="margin-bottom:14px;">
+        Conecte o WhatsApp da sua empresa para o robô falar pelo seu número.
+        Crie uma conta na <strong>Z-API</strong>, conecte seu WhatsApp lendo o QR code,
+        e cole abaixo os dados da sua instância.
+      </p>
+
+      <div id="whatsappStatus" class="wa-status">Verificando conexão...</div>
+
+      <label>Instance ID (ID da instância na Z-API)</label>
+      <input type="text" id="zapiInstanceInput" placeholder="Ex: 3D1A2B3C4D5E...">
+
+      <label>Token da instância</label>
+      <input type="text" id="zapiTokenInput" placeholder="Token da sua instância Z-API">
+
+      <label>Client-Token (Token de segurança da conta — opcional, mas recomendado)</label>
+      <input type="text" id="zapiClientTokenInput" placeholder="Client-Token da sua conta Z-API">
+
+      <label>Sua URL de Webhook (cole isto na configuração da Z-API)</label>
+      <div class="webhook-box">
+        <code id="webhookUrlText">—</code>
+        <button type="button" class="copy-btn" id="copyWebhookBtn">Copiar</button>
+      </div>
+      <div class="hint">Na Z-API, em "Ao receber" (webhook de mensagens recebidas), cole exatamente esta URL.</div>
+
+      <div class="row-save">
+        <button class="save-btn" id="salvarWhatsappBtn">Salvar WhatsApp</button>
+        <span class="status-msg" id="statusWhatsapp"></span>
       </div>
     </div>
 
@@ -289,6 +341,87 @@ async function salvarFaixa(btn) {
   }
 }
 
+// ---------- Meu WhatsApp ----------
+async function carregarWhatsapp() {
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) return;
+
+    const statusEl = document.getElementById('whatsappStatus');
+    if (data.conectado) {
+      statusEl.textContent = '✅ WhatsApp conectado';
+      statusEl.className = 'wa-status on';
+    } else {
+      statusEl.textContent = '⚠️ WhatsApp ainda não conectado';
+      statusEl.className = 'wa-status off';
+    }
+
+    document.getElementById('zapiInstanceInput').value = data.zapiInstanceId || '';
+    // Por segurança o token não volta preenchido; mostramos só um aviso visual.
+    document.getElementById('zapiTokenInput').placeholder = data.temToken ? '•••••• (já salvo — preencha para trocar)' : 'Token da sua instância Z-API';
+    document.getElementById('zapiClientTokenInput').placeholder = data.temClientToken ? '•••••• (já salvo — preencha para trocar)' : 'Client-Token da sua conta Z-API';
+    document.getElementById('webhookUrlText').textContent = data.webhookUrl || '—';
+  } catch (err) {
+    /* silencioso */
+  }
+}
+
+document.getElementById('copyWebhookBtn').addEventListener('click', () => {
+  const url = document.getElementById('webhookUrlText').textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('copyWebhookBtn');
+    const txt = btn.textContent;
+    btn.textContent = 'Copiado!';
+    setTimeout(() => { btn.textContent = txt; }, 2000);
+  });
+});
+
+document.getElementById('salvarWhatsappBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarWhatsappBtn');
+  const statusEl = document.getElementById('statusWhatsapp');
+
+  const zapiInstanceId = document.getElementById('zapiInstanceInput').value.trim();
+  const zapiToken = document.getElementById('zapiTokenInput').value.trim();
+  const zapiClientToken = document.getElementById('zapiClientTokenInput').value.trim();
+
+  if (!zapiInstanceId || !zapiToken) {
+    statusEl.textContent = '❌ Preencha Instance ID e Token';
+    statusEl.className = 'status-msg err';
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando...';
+  statusEl.className = 'status-msg';
+
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zapiInstanceId, zapiToken, zapiClientToken })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!';
+      statusEl.className = 'status-msg ok';
+      document.getElementById('zapiTokenInput').value = '';
+      document.getElementById('zapiClientTokenInput').value = '';
+      carregarWhatsapp();
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      statusEl.className = 'status-msg err';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.className = 'status-msg err';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000);
+  }
+});
+
 document.getElementById('logoutBtn').addEventListener('click', () => {
   localStorage.removeItem('recomendaleads_token');
   localStorage.removeItem('recomendaleads_empresa');
@@ -296,6 +429,7 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 });
 
 carregarConfiguracao();
+carregarWhatsapp();
 </script>
 </body>
 </html>
