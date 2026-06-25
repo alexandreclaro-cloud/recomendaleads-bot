@@ -108,10 +108,14 @@ const NUMEROS_PAUSADOS_COL = () => db.collection('numeros_pausados');
 
 // Chave de documento isolada por empresa: "empresaId__telefone".
 // Garante que sessões e pausas de uma empresa não colidam com as de outra
-// quando o mesmo número fala com empresas diferentes. Para a PDN, a empresaId
-// é a constante de sempre — keys passam a ter o prefixo dela.
+// quando o mesmo número fala com empresas diferentes.
+// IMPORTANTE: a PDN mantém a chave ANTIGA (só o telefone, sem prefixo) para
+// não orfanar sessões em andamento nem números já pausados no deploy. Só os
+// novos clientes (multi-tenant) ganham o prefixo da empresa.
 function chaveSessao(telefone) {
-  return `${empresaIdAtual()}__${telefone}`;
+  const empresaId = empresaIdAtual();
+  if (empresaId === EMPRESA_ID_PDN) return telefone;
+  return `${empresaId}__${telefone}`;
 }
 
 async function numeroEstaPausado(telefone) {
