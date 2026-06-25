@@ -908,7 +908,7 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
   }
 
   const marcaTempo = new Date().toISOString();
-  await saveSessaoRecomendado(telefone, { etapa: 'aguardando_reacao', ultimaMensagemEm: marcaTempo });
+  await enviarMenuPrincipalRec(telefone, sessao, marcaTempo);
   await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
 }
 
@@ -916,6 +916,139 @@ async function enviarCtaRecomendado(telefone, sessao, empresa) {
   await sendText(telefone, empresa.ctaRecomendado);
   await saveSessaoRecomendado(telefone, { etapa: 'aguardando_fechamento' });
   console.log(`[ROTEIRO RECOMENDADO - CTA ENVIADO, AGUARDANDO RESPOSTA FINAL] ${sessao.nomeRecomendado} (${telefone})`);
+}
+
+// ============================================================
+// FLUXO PÓS-PRESENTE — menu por opções (visita / agendar / dúvidas)
+// Estilo "responda 1/2/3" (igual à escolha do vendedor). Pronto para
+// virar botão clicável quando ativarmos a API oficial do WhatsApp.
+// ============================================================
+
+function extrairOpcao(texto) {
+  const m = (texto || '').trim().match(/([1-9])/);
+  return m ? parseInt(m[1]) : null;
+}
+
+const PERIODOS_REC = { 1: 'manhã', 2: 'tarde', 3: 'noite' };
+
+async function enviarMenuPrincipalRec(telefone, sessao, marca) {
+  const recomendador = sessao.nomeRecomendador ? sessao.nomeRecomendador.split(' ')[0] : 'seu amigo';
+  await sendText(telefone,
+`🎉 *Prontinho!*
+
+Espero que você goste do presente 😊
+O(a) ${recomendador} vai ficar feliz de saber que você recebeu.
+
+Agora é só escolher quando quer aproveitar 👇
+
+🟢 *1* — Quero usar meu presente
+🟡 *2* — Vou usar depois
+⚪ *3* — Tenho uma dúvida`);
+  await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', ultimaMensagemEm: marca || new Date().toISOString() });
+}
+
+async function enviarPerguntaPeriodoRec(telefone, fluxo) {
+  await sendText(telefone,
+`Perfeito! 😊 Vamos reservar sua visita.
+
+Qual período fica melhor pra você?
+
+*1* — Manhã ☀️
+*2* — Tarde 🌤️
+*3* — Noite 🌙`);
+  await saveSessaoRecomendado(telefone, { etapa: 'agendar_periodo', fluxoAgendamento: fluxo || 'agora', ultimaMensagemEm: new Date().toISOString() });
+}
+
+function gerarOpcoesDias() {
+  const semana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const dias = [];
+  for (let i = 1; i <= 5; i++) {
+    const d = new Date(); d.setDate(d.getDate() + i);
+    dias.push({ idx: i, label: `${semana[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}` });
+  }
+  return dias;
+}
+
+async function enviarPerguntaDiaRec(telefone) {
+  const dias = gerarOpcoesDias();
+  const linhas = dias.map(d => `*${d.idx}* — ${d.label}`).join('\n');
+  await sendText(telefone, `Ótimo! Agora escolha o melhor dia 📅\n\n${linhas}`);
+  await saveSessaoRecomendado(telefone, { etapa: 'agendar_dia', diasOpcoes: dias, ultimaMensagemEm: new Date().toISOString() });
+}
+
+async function registrarEscolhaNoLead(telefone, dados, empresa, moverParaAgendou) {
+  try {
+    const snap = await LEADS_COL().where('telefoneRecomendado', '==', telefone).get();
+    let lead = null;
+    snap.forEach(d => {
+      const x = { id: d.id, ...d.data() };
+      if ((x.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) {
+        if (!lead || new Date(x.criadoEm || 0) > new Date(lead.criadoEm || 0)) lead = x;
+      }
+    });
+    if (!lead) return;
+    const upd = { ...dados };
+    if (moverParaAgendou) {
+      const etapas = (empresa.etapasKanban && empresa.etapasKanban.length) ? empresa.etapasKanban : EMPRESA_PADRAO.etapasKanban;
+      const ag = etapas.find(e => /agend/i.test(e.id) || /agend/i.test(e.nome));
+      if (ag) upd.etapa = ag.id;
+    }
+    await atualizarLead(lead.id, upd);
+  } catch (e) { console.error('Erro ao registrar escolha no lead:', e.message); }
+}
+
+async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, diaLabel) {
+  await sendText(telefone,
+`🎉 *Tudo certo!*
+
+Sua visita foi reservada:
+📅 ${diaLabel} — período da ${periodoLabel}
+
+Nossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`);
+  await registrarEscolhaNoLead(telefone, {
+    agendamentoPeriodo: periodoLabel,
+    agendamentoDia: diaLabel,
+    agendamentoEm: new Date().toISOString()
+  }, empresa, true);
+  await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
+  console.log(`[RECOMENDADO AGENDOU] ${telefone} — ${diaLabel} (${periodoLabel})`);
+}
+
+async function enviarMenuDepoisRec(telefone) {
+  await sendText(telefone,
+`Sem problemas! 😊 Seu presente continua reservado pra você.
+
+Como prefere fazer?
+
+🟢 *1* — Deixar uma data reservada
+🟡 *2* — Receber um lembrete depois`);
+  await saveSessaoRecomendado(telefone, { etapa: 'menu_depois', ultimaMensagemEm: new Date().toISOString() });
+}
+
+async function enviarMenuDuvidasRec(telefone) {
+  await sendText(telefone,
+`Claro! Sobre o que você gostaria de saber?
+
+*1* — Como funciona o presente?
+*2* — Qual a validade?
+*3* — Onde fica a empresa?
+*4* — Horários de atendimento
+*5* — Falar com um atendente`);
+  await saveSessaoRecomendado(telefone, { etapa: 'menu_duvidas', ultimaMensagemEm: new Date().toISOString() });
+}
+
+async function responderDuvidaRec(telefone, opcao, empresa) {
+  const faq = empresa.faqRecomendado || {};
+  let resposta;
+  if (opcao === 1) resposta = faq.comoFunciona || `Seu presente é: ${empresa.premioRecomendado}. É só apresentar essa mensagem quando vier nos visitar 😊`;
+  else if (opcao === 2) resposta = faq.validade || 'É por tempo limitado, então recomendo aproveitar logo! 😉 Qualquer detalhe, nossa equipe te ajuda.';
+  else if (opcao === 3) resposta = empresa.enderecoEmpresa ? `Estamos em: ${empresa.enderecoEmpresa} 📍` : (faq.endereco || 'Um atendente já te passa o endereço certinho 😊');
+  else if (opcao === 4) resposta = empresa.horariosEmpresa ? `Nosso atendimento: ${empresa.horariosEmpresa} 🕒` : (faq.horarios || 'Um atendente já te passa os horários 😊');
+  else return false;
+  await sendText(telefone, resposta);
+  await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona   *2* — Validade\n*3* — Endereço   *4* — Horários\n*5* — Falar com atendente\n\nOu responda *0* se estiver tudo certo 👍`);
+  await saveSessaoRecomendado(telefone, { etapa: 'menu_duvidas', ultimaMensagemEm: new Date().toISOString() });
+  return true;
 }
 
 // ============================================================
@@ -1065,19 +1198,84 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     return true;
   }
 
+  // Compatibilidade com sessões antigas em andamento (pré-menu)
   if (sessao.etapa === 'aguardando_reacao') {
-    // Qualquer resposta avança para o CTA
-    const marcaReacao = new Date().toISOString();
-    await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaReacao });
-    await enviarCtaRecomendado(telefone, sessao, empresa);
+    await enviarMenuPrincipalRec(telefone, sessao);
+    return true;
+  }
+  if (sessao.etapa === 'aguardando_fechamento') {
+    await sendText(telefone, empresa.mensagemFechamentoRecomendado || 'Combinado! 🙌 Vai ser um prazer te receber 😊');
+    await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
     return true;
   }
 
-  if (sessao.etapa === 'aguardando_fechamento') {
-    // Qualquer resposta encerra com mensagem de fechamento fixa
-    await sendText(telefone, empresa.mensagemFechamentoRecomendado || 'Combinado! 🙌 Vai ser um prazer te receber. Qualquer coisa, é só me chamar aqui 😊');
-    await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
-    console.log(`[ROTEIRO RECOMENDADO FINALIZADO] ${sessao.nomeRecomendado} (${telefone})`);
+  // ---- MENU PRINCIPAL (pós-presente) ----
+  if (sessao.etapa === 'menu_principal') {
+    const op = extrairOpcao(texto);
+    if (op === 1) await enviarPerguntaPeriodoRec(telefone, 'agora');
+    else if (op === 2) await enviarMenuDepoisRec(telefone);
+    else if (op === 3) await enviarMenuDuvidasRec(telefone);
+    else await sendText(telefone, 'É só me responder com o número da opção 😊\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida');
+    return true;
+  }
+
+  // ---- "VOU USAR DEPOIS" ----
+  if (sessao.etapa === 'menu_depois') {
+    const op = extrairOpcao(texto);
+    if (op === 1) {
+      await enviarPerguntaPeriodoRec(telefone, 'depois');
+    } else if (op === 2) {
+      await sendText(telefone, 'Perfeito! 😊 Vamos te lembrar no momento certo de aproveitar seu presente. Até breve! 👋');
+      await agendarProximoFollowup(telefone, empresa, new Date().toISOString(), 0);
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
+    } else {
+      await sendText(telefone, 'Responde com *1* (deixar uma data) ou *2* (receber um lembrete depois) 😊');
+    }
+    return true;
+  }
+
+  // ---- AGENDAR: período ----
+  if (sessao.etapa === 'agendar_periodo') {
+    const op = extrairOpcao(texto);
+    if (op >= 1 && op <= 3) {
+      await saveSessaoRecomendado(telefone, { periodoEscolhido: PERIODOS_REC[op] });
+      await enviarPerguntaDiaRec(telefone);
+    } else {
+      await sendText(telefone, 'Escolhe o período respondendo o número 😊\n*1* — Manhã   *2* — Tarde   *3* — Noite');
+    }
+    return true;
+  }
+
+  // ---- AGENDAR: dia ----
+  if (sessao.etapa === 'agendar_dia') {
+    const op = extrairOpcao(texto);
+    const dias = sessao.diasOpcoes || gerarOpcoesDias();
+    const dia = dias.find(d => d.idx === op);
+    if (dia) {
+      await finalizarAgendamentoRec(telefone, sessao, empresa, sessao.periodoEscolhido || 'combinado', dia.label);
+    } else {
+      await sendText(telefone, 'Me responde com o número do dia que você prefere 😊');
+    }
+    return true;
+  }
+
+  // ---- DÚVIDAS ----
+  if (sessao.etapa === 'menu_duvidas') {
+    if ((texto || '').trim() === '0') {
+      await sendText(telefone, 'Combinado! Qualquer coisa é só chamar aqui 😊 Vai ser um prazer te receber!');
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
+      return true;
+    }
+    const op = extrairOpcao(texto);
+    if (op === 5) {
+      await pausarNumero(telefone);
+      await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
+      await sendText(telefone, 'Claro! 😊 Já estou chamando um atendente pra falar com você por aqui. É só aguardar um pouquinho.');
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado_atendente' });
+      return true;
+    }
+    const ok = await responderDuvidaRec(telefone, op, empresa);
+    if (!ok) await sendText(telefone, 'Me responde com o número da dúvida 😊 (1 a 5), ou *0* se estiver tudo certo.');
     return true;
   }
 
