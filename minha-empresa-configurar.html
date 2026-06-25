@@ -21,8 +21,11 @@
   .activity .item .when { color: var(--text-faint); font-size: 0.78rem; white-space: nowrap; }
   .empty { color: var(--text-dim); font-size: 0.88rem; padding: 8px 0; }
 
-  .faixa-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .faixa-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
   .faixa-head h3 { font-size: 1rem; }
+  .qtd-edit { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+  .qtd-edit .qtd-input { width: 64px; text-align: center; padding: 7px 8px; font-weight: 600; }
+  .qtd-edit span { font-size: 0.8rem; color: var(--text-dim); }
 
   .webhook-box { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 12px; }
   .webhook-box code { flex: 1; color: var(--brand-dark); font-size: 0.8rem; word-break: break-all; }
@@ -277,7 +280,10 @@ function renderFaixas(faixas) {
     card.innerHTML = `
       <div class="faixa-head">
         <h3>${(faixa.premio || 'Prêmio').replace(/</g,'&lt;')}</h3>
-        <span class="badge badge-brand">${faixa.quantidade} recomendações</span>
+        <div class="qtd-edit">
+          <input class="input qtd-input" type="number" min="1" data-field="quantidade" value="${faixa.quantidade}">
+          <span>recomendações</span>
+        </div>
       </div>
       <label class="label">Prêmio (texto curto mostrado ao cliente)</label>
       <input class="input" type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
@@ -304,11 +310,25 @@ async function salvarFaixa(btn) {
   const arquivo = card.querySelector('[data-field="arquivo"]').value.trim() || null;
   const link = card.querySelector('[data-field="link"]').value.trim() || null;
   const texto = card.querySelector('[data-field="texto"]').value.trim() || null;
+  const novaQuantidade = parseInt(card.querySelector('[data-field="quantidade"]').value);
+
+  if (!novaQuantidade || novaQuantidade < 1) {
+    statusEl.textContent = '❌ Quantidade inválida'; statusEl.className = 'status-msg err'; return;
+  }
+  if (novaQuantidade !== quantidade && (configuracaoAtual.faixasBonus || []).some(f => f.quantidade === novaQuantidade)) {
+    statusEl.textContent = '❌ Já existe uma faixa com esse número'; statusEl.className = 'status-msg err'; return;
+  }
+
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantidade, premio, arquivo, link, texto }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantidade, novaQuantidade, premio, arquivo, link, texto }) });
     const data = await resp.json();
-    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok'; }
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok';
+      const f = (configuracaoAtual.faixasBonus || []).find(x => x.quantidade === quantidade);
+      if (f) { f.premio = premio; f.arquivo = arquivo; f.link = link; f.texto = texto; f.quantidade = novaQuantidade; }
+      if (novaQuantidade !== quantidade) setTimeout(() => renderFaixas(configuracaoAtual.faixasBonus || []), 1100);
+    }
     else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
   finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
