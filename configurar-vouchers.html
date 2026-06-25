@@ -172,9 +172,9 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>⚙️ Configuração da RecomendaLeads</h1>
+    <h1 style="display:flex;align-items:center;justify-content:center;gap:9px;"><i data-lucide="settings" style="width:22px;height:22px;color:var(--gold)"></i> Configuração da RecomendaLeads</h1>
     <p>Preencha os dados reais da sua empresa e os vouchers de cada faixa.</p>
-    <p style="margin-top:10px;"><a href="/crm" style="color:var(--gold); font-size:0.85rem; text-decoration:none;">📋 Ir para o CRM Kanban →</a></p>
+    <p style="margin-top:10px;"><a href="/crm" style="color:var(--gold); font-size:0.85rem; text-decoration:none; display:inline-flex; align-items:center; gap:6px;"><i data-lucide="kanban" style="width:15px;height:15px"></i> Ir para o CRM Kanban <i data-lucide="arrow-right" style="width:14px;height:14px"></i></a></p>
   </header>
 
   <div class="card" id="empresaCard">
@@ -318,10 +318,11 @@ function renderEtapas(etapas) {
       <button class="etapa-btn" data-action="up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>↑</button>
       <button class="etapa-btn" data-action="down" data-index="${index}" ${index === etapasAtuais.length - 1 ? 'disabled' : ''}>↓</button>
       <input type="text" data-index="${index}" value="${etapa.nome.replace(/"/g, '&quot;')}">
-      <button class="etapa-btn remover" data-action="remover" data-index="${index}" ${etapasAtuais.length <= 1 ? 'disabled' : ''}>🗑️</button>
+      <button class="etapa-btn remover" data-action="remover" data-index="${index}" ${etapasAtuais.length <= 1 ? 'disabled' : ''} title="Remover"><i data-lucide="trash-2" style="width:15px;height:15px"></i></button>
     `;
     container.appendChild(row);
   });
+  try { lucide.createIcons(); } catch (e) {}
 
   container.querySelectorAll('input[type="text"]').forEach(input => {
     input.addEventListener('input', () => {
@@ -521,5 +522,7 @@ async function salvarFaixa(btn) {
 
 carregarConfiguracao();
 </script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>lucide.createIcons();</script>
 </body>
 </html>
