@@ -472,6 +472,38 @@
   }
   .quantidade-editavel input:focus { outline: none; }
   .quantidade-editavel span { font-size: 0.78rem; color: var(--gold-deep); font-weight: 600; white-space: nowrap; }
+
+  /* Busca */
+  .search-box { position: relative; display: flex; align-items: center; flex: 1; max-width: 360px; }
+  .search-box svg { position: absolute; left: 11px; width: 16px; height: 16px; color: var(--text-faint); pointer-events: none; }
+  .search-box input { width: 100%; padding-left: 34px !important; }
+
+  /* Info no card do lead */
+  .lead-card .card-info { font-size: 0.76rem; color: var(--text-dim); display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+  .lead-card .card-info .ci-label { color: var(--text-faint); }
+
+  /* Ranking */
+  .ranking-wrap { padding: 4px 2px; }
+  .rank-title { font-size: 1.05rem; margin: 4px 0 18px; }
+  .rank-podium-wrap { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .rank-podium { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; text-align: center; box-shadow: var(--shadow-sm); }
+  .rank-podium.pos-1 { border-color: #F5C84B; background: #FFFBEF; }
+  .rank-podium.pos-2 { border-color: #C9D2DC; }
+  .rank-podium.pos-3 { border-color: #E3B895; }
+  .rank-medal { font-size: 1.8rem; }
+  .rank-name { font-weight: 600; font-size: 0.95rem; margin: 6px 0 10px; }
+  .rank-big { font-size: 2rem; font-weight: 700; color: var(--gold-deep); letter-spacing: -0.03em; }
+  .rank-sub { font-size: 0.74rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .rank-conv { font-size: 0.78rem; color: var(--success); font-weight: 600; margin-top: 8px; }
+  .rank-list { display: flex; flex-direction: column; }
+  .rank-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .rank-row:last-child { border-bottom: none; }
+  .rank-row.top { background: var(--gold-soft); border-radius: var(--radius); border-bottom: none; margin-bottom: 4px; }
+  .rank-pos { font-weight: 700; color: var(--text-dim); width: 34px; }
+  .rank-vend { flex: 1; font-weight: 600; font-size: 0.9rem; }
+  .rank-num { font-size: 0.82rem; color: var(--text-dim); white-space: nowrap; }
+  .rank-num.conv { color: var(--success); font-weight: 600; }
+  @media (max-width: 640px) { .rank-row .rank-num.conv { display: none; } }
 </style>
 </head>
 <body>
@@ -491,12 +523,17 @@
 
 <div class="tabs">
   <button class="tab-btn active" data-tab="leads">Leads</button>
+  <button class="tab-btn" data-tab="ranking">Ranking de vendedores</button>
   <button class="tab-btn" data-tab="config">Configurações</button>
 </div>
 
 <!-- ===================== ABA LEADS ===================== -->
 <div class="tab-panel active" id="tabLeads">
   <div class="toolbar">
+    <div class="search-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" id="buscaLead" placeholder="Buscar cliente, recomendado ou vendedor...">
+    </div>
     <label>Vendedor:</label>
     <select id="filtroVendedor">
       <option value="">Todos</option>
@@ -505,6 +542,13 @@
 
   <div id="loadMsg" class="load-msg">Carregando leads...</div>
   <div class="board" id="board" style="display:none"></div>
+</div>
+
+<!-- ===================== ABA RANKING ===================== -->
+<div class="tab-panel" id="tabRanking">
+  <div class="ranking-wrap" id="rankingWrap">
+    <p class="load-msg">Carregando ranking...</p>
+  </div>
 </div>
 
 <!-- ===================== ABA CONFIGURAÇÕES ===================== -->
@@ -519,6 +563,22 @@
         <button class="subtab-btn" data-subtab="recomendado">Prêmio Recomendado</button>
         <button class="subtab-btn" data-subtab="faixas">Faixas de Bônus</button>
         <button class="subtab-btn" data-subtab="cadencia">Cadência de Follow-up</button>
+        <button class="subtab-btn" data-subtab="etapas">Etapas do Pipeline</button>
+      </div>
+
+      <!-- Sub-aba: Etapas do Pipeline -->
+      <div class="subtab-panel" id="subtabEtapas">
+        <div class="config-card">
+          <h2>Etapas do Pipeline (colunas do Kanban)</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 14px;">
+            Renomeie as colunas do seu funil como preferir. Os leads existentes continuam nas mesmas posições.
+          </p>
+          <div id="etapasContainer"></div>
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarEtapasBtn">Salvar etapas</button>
+            <span class="config-status-msg" id="statusEtapas"></span>
+          </div>
+        </div>
       </div>
 
       <!-- Sub-aba: Empresa -->
@@ -661,6 +721,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
     if (btn.dataset.tab === 'leads') {
       document.getElementById('tabLeads').classList.add('active');
+    } else if (btn.dataset.tab === 'ranking') {
+      document.getElementById('tabRanking').classList.add('active');
+      renderRanking();
     } else {
       document.getElementById('tabConfig').classList.add('active');
       if (!configuracaoCarregada) carregarConfiguracao();
@@ -673,7 +736,8 @@ const MAPA_SUBTABS = {
   premioCliente: 'subtabPremioCliente',
   recomendado: 'subtabRecomendado',
   faixas: 'subtabFaixas',
-  cadencia: 'subtabCadencia'
+  cadencia: 'subtabCadencia',
+  etapas: 'subtabEtapas'
 };
 
 document.querySelectorAll('.subtab-btn').forEach(btn => {
@@ -682,6 +746,7 @@ document.querySelectorAll('.subtab-btn').forEach(btn => {
     document.querySelectorAll('.subtab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(MAPA_SUBTABS[btn.dataset.subtab]).classList.add('active');
+    if (btn.dataset.subtab === 'etapas') renderEtapasConfig();
   });
 });
 
@@ -768,10 +833,22 @@ function atualizarStats() {
     : 0;
 }
 
+function esc(s) {
+  return (s || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function leadsFiltrados() {
   const vendedor = document.getElementById('filtroVendedor').value;
-  if (!vendedor) return leads;
-  return leads.filter(l => l.vendedor === vendedor);
+  const termo = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
+  let res = vendedor ? leads.filter(l => l.vendedor === vendedor) : leads;
+  if (termo) {
+    res = res.filter(l =>
+      (l.nomeRecomendado || '').toLowerCase().includes(termo) ||
+      (l.nomeRecomendador || '').toLowerCase().includes(termo) ||
+      (l.vendedor || '').toLowerCase().includes(termo)
+    );
+  }
+  return res;
 }
 
 function renderBoard() {
@@ -798,9 +875,13 @@ function renderBoard() {
       card.dataset.id = lead.id;
 
       card.innerHTML = `
-        <div class="nome">${lead.nomeRecomendado || 'Sem nome'}</div>
+        <div class="nome">${esc(lead.nomeRecomendado) || 'Sem nome'}</div>
+        <div class="card-info">
+          <div><span class="ci-label">Cliente:</span> ${esc(lead.nomeRecomendador) || '—'}</div>
+          <div><span class="ci-label">Recomendado:</span> ${esc(lead.nomeRecomendado) || '—'}</div>
+        </div>
         <div class="meta">
-          <span class="vendedor-tag">${lead.vendedor || 'Sem vendedor'}</span>
+          <span class="vendedor-tag">${esc(lead.vendedor) || 'Sem vendedor'}</span>
         </div>
       `;
 
@@ -981,6 +1062,7 @@ boardEl.addEventListener('drop', async (e) => {
 });
 
 document.getElementById('filtroVendedor').addEventListener('change', renderBoard);
+document.getElementById('buscaLead').addEventListener('input', renderBoard);
 document.getElementById('refreshBtn').addEventListener('click', () => {
   carregarLeads();
   if (configuracaoCarregada) carregarConfiguracao();
@@ -1357,6 +1439,98 @@ document.getElementById('arquivoRecomendadoFile').addEventListener('change', fun
     document.getElementById('arquivoRecomendadoInput'),
     document.getElementById('uploadStatusRecomendado')
   );
+});
+
+// ============================================================
+// RANKING DE VENDEDORES
+// ============================================================
+function renderRanking() {
+  const wrap = document.getElementById('rankingWrap');
+  if (!wrap) return;
+  const etapaComprou = etapas.find(e => e.id.includes('comprou'));
+  const mapa = {};
+  leads.forEach(l => {
+    const v = (l.vendedor && l.vendedor.trim()) ? l.vendedor : 'Sem vendedor';
+    if (!mapa[v]) mapa[v] = { vendedor: v, total: 0, convertidos: 0 };
+    mapa[v].total++;
+    if (etapaComprou && l.etapa === etapaComprou.id) mapa[v].convertidos++;
+  });
+  const lista = Object.values(mapa).sort((a, b) => b.total - a.total || b.convertidos - a.convertidos);
+  if (!lista.length) {
+    wrap.innerHTML = '<p class="load-msg">Ainda não há indicações para ranquear.</p>';
+    return;
+  }
+  const medalhas = ['🥇', '🥈', '🥉'];
+  const podio = lista.slice(0, 3).map((v, i) => `
+    <div class="rank-podium pos-${i + 1}">
+      <div class="rank-medal">${medalhas[i]}</div>
+      <div class="rank-name">${esc(v.vendedor)}</div>
+      <div class="rank-big">${v.total}</div>
+      <div class="rank-sub">indicações</div>
+      <div class="rank-conv">${v.convertidos} converteram</div>
+    </div>`).join('');
+  const linhas = lista.map((v, i) => `
+    <div class="rank-row ${i < 3 ? 'top' : ''}">
+      <span class="rank-pos">${i + 1}º</span>
+      <span class="rank-vend">${esc(v.vendedor)}</span>
+      <span class="rank-num">${v.total} indicações</span>
+      <span class="rank-num conv">${v.convertidos} converteram</span>
+    </div>`).join('');
+  wrap.innerHTML = `
+    <h2 class="rank-title">Quem mais está trazendo indicações</h2>
+    <div class="rank-podium-wrap">${podio}</div>
+    <div class="rank-list">${linhas}</div>
+  `;
+}
+
+// ============================================================
+// EDITAR NOMES DAS ETAPAS (colunas do pipeline)
+// ============================================================
+function renderEtapasConfig() {
+  const c = document.getElementById('etapasContainer');
+  if (!c) return;
+  c.innerHTML = etapas.map((e, i) => `
+    <label>Coluna ${i + 1}</label>
+    <input type="text" data-etapa-id="${esc(e.id)}" value="${esc(e.nome).replace(/"/g, '&quot;')}">
+  `).join('');
+}
+
+document.getElementById('salvarEtapasBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarEtapasBtn');
+  const status = document.getElementById('statusEtapas');
+  const inputs = document.querySelectorAll('#etapasContainer input[data-etapa-id]');
+  const novas = Array.from(inputs).map(inp => ({
+    id: inp.dataset.etapaId,
+    nome: (inp.value || '').trim() || inp.dataset.etapaId
+  }));
+  if (!novas.length) return;
+
+  btn.disabled = true;
+  status.textContent = 'Salvando...';
+  status.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ etapasKanban: novas })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      status.textContent = '✅ Salvo!';
+      status.className = 'config-status-msg ok';
+      etapas = novas;
+      montarColunas();
+      renderBoard();
+    } else {
+      status.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      status.className = 'config-status-msg err';
+    }
+  } catch (err) {
+    status.textContent = '❌ Erro de conexão';
+    status.className = 'config-status-msg err';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { status.textContent = ''; status.className = 'config-status-msg'; }, 4000);
+  }
 });
 
 // ============================================================
