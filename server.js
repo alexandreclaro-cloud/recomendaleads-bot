@@ -1311,6 +1311,12 @@ app.get('/', (req, res) => {
   `);
 });
 
+// Design system compartilhado por todas as telas
+app.get('/theme.css', (req, res) => {
+  res.type('text/css');
+  res.sendFile(path.join(__dirname, 'theme.css'));
+});
+
 app.get('/configurar-vouchers', (req, res) => {
   res.sendFile(path.join(__dirname, 'configurar-vouchers.html'));
 });
