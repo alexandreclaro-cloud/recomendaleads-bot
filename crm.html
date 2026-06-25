@@ -134,26 +134,35 @@
   }
   .sair-btn:hover { border-color: var(--error); background: var(--error-soft); }
 
-  .tabs {
-    display: flex;
-    gap: 4px;
-    padding: 14px 28px 0;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
+  .app-shell { display: flex; min-height: 100vh; }
+  .crm-sidebar {
+    width: 232px; flex-shrink: 0; background: var(--surface);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+    padding: 18px 12px; position: sticky; top: 0; height: 100vh;
   }
+  .crm-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px; }
+  .crm-logo { width: 34px; height: 34px; border-radius: 9px; background: var(--gold); color: #fff; display: grid; place-items: center; font-size: 16px; flex-shrink: 0; }
+  .crm-brand b { font-size: 0.98rem; letter-spacing: -0.01em; }
+  .crm-brand span { display: block; font-size: 0.62rem; color: var(--text-faint); letter-spacing: 1px; text-transform: uppercase; }
+  .crm-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
   .tab-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-dim);
-    font-size: 0.86rem;
-    font-weight: 600;
-    padding: 9px 16px;
-    cursor: pointer;
-    border-radius: 8px 8px 0 0;
-    transition: color 0.15s, background 0.15s;
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    background: transparent; border: none; color: var(--text-dim);
+    font-size: 0.9rem; font-weight: 500; padding: 10px 12px; cursor: pointer;
+    border-radius: 9px; transition: color 0.15s, background 0.15s;
   }
   .tab-btn:hover { color: var(--text); background: var(--surface-sunken); }
-  .tab-btn.active { color: var(--gold-deep); background: var(--gold-soft); }
+  .tab-btn.active { color: var(--gold-deep); background: var(--gold-soft); font-weight: 600; }
+  .crm-user { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+  .crm-main { flex: 1; min-width: 0; }
+  @media (max-width: 860px) {
+    .app-shell { flex-direction: column; }
+    .crm-sidebar { width: 100%; height: auto; position: static; flex-direction: row; align-items: center; padding: 10px 12px; overflow-x: auto; gap: 8px; }
+    .crm-brand { padding: 0 8px 0 2px; }
+    .crm-nav { flex-direction: row; flex: none; }
+    .crm-user { border-top: none; padding-top: 0; margin: 0; flex-direction: row; align-items: center; }
+    .crm-user .logado-tag { display: none; }
+  }
 
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
@@ -534,24 +543,32 @@
 </head>
 <body>
 
-<header>
-  <h1>Poder da Recomendação</h1>
-  <div class="header-stats" id="headerStats">
-    <span class="stat-pill">Total <b id="statTotal">—</b></span>
-    <span class="stat-pill">Comprou <b id="statComprou">—</b></span>
-  </div>
-  <div style="display:flex; gap:14px; align-items:center;">
-    <span class="logado-tag">Logado como: <b id="empresaLogadaNome">—</b></span>
-    <button class="refresh-btn" id="refreshBtn">↻ Atualizar</button>
-    <button class="sair-btn" id="sairBtn">Sair</button>
-  </div>
-</header>
+<div class="app-shell">
+  <aside class="crm-sidebar">
+    <div class="crm-brand">
+      <div class="crm-logo">★</div>
+      <div><b>RecomendaLeads</b><span>CRM</span></div>
+    </div>
+    <nav class="crm-nav">
+      <button class="tab-btn active" data-tab="leads">📋 Leads</button>
+      <button class="tab-btn" data-tab="ranking">🏆 Ranking</button>
+      <button class="tab-btn" data-tab="config">⚙️ Configurações</button>
+    </nav>
+    <div class="crm-user">
+      <span class="logado-tag">Logado como<br><b id="empresaLogadaNome">—</b></span>
+      <button class="sair-btn" id="sairBtn">Sair</button>
+    </div>
+  </aside>
 
-<div class="tabs">
-  <button class="tab-btn active" data-tab="leads">Leads</button>
-  <button class="tab-btn" data-tab="ranking">Ranking de vendedores</button>
-  <button class="tab-btn" data-tab="config">Configurações</button>
-</div>
+  <main class="crm-main">
+    <header>
+      <h1>Poder da Recomendação</h1>
+      <div class="header-stats" id="headerStats">
+        <span class="stat-pill">Total <b id="statTotal">—</b></span>
+        <span class="stat-pill">Comprou <b id="statComprou">—</b></span>
+      </div>
+      <button class="refresh-btn" id="refreshBtn">↻ Atualizar</button>
+    </header>
 
 <!-- ===================== ABA LEADS ===================== -->
 <div class="tab-panel active" id="tabLeads">
@@ -703,6 +720,8 @@
       </div>
     </div>
   </div>
+</div>
+  </main>
 </div>
 
 <div id="modalContainer"></div>
