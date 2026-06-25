@@ -117,6 +117,7 @@ async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, ti
   try {
     await MENSAGENS_CHAT_COL().add({
       empresaId: empresaId || EMPRESA_ID_PDN,
+      chaveConversa: `${empresaId || EMPRESA_ID_PDN}__${telefone}`,
       telefone,
       direcao, // 'in' (recebida) ou 'out' (enviada)
       texto: texto || '',
@@ -1387,6 +1388,10 @@ app.get('/crm', (req, res) => {
   res.sendFile(path.join(__dirname, 'crm.html'));
 });
 
+app.get('/conversas', (req, res) => {
+  res.sendFile(path.join(__dirname, 'conversas.html'));
+});
+
 // ============================================================
 // SISTEMA DE LOGIN
 // ============================================================
@@ -1519,6 +1524,76 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
       conectado: true,
       webhookUrl: `${urlBase(req)}/webhook/${req.empresaLogin.id}`
     });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// CAIXA DE ENTRADA DO WHATSAPP — conversas da empresa logada
+// ============================================================
+
+// Lista as conversas (resumo) da empresa, mais recentes primeiro.
+app.get('/minha-conversas', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const snap = await CONVERSAS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const conversas = [];
+    snap.forEach(d => conversas.push({ id: d.id, ...d.data() }));
+    conversas.sort((a, b) => new Date(b.ultimaEm || 0) - new Date(a.ultimaEm || 0));
+    res.json({ ok: true, conversas });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Mensagens de uma conversa (e marca como lida).
+app.get('/minha-conversas/:telefone/mensagens', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    const chave = `${req.empresaLogin.id}__${telefone}`;
+    const snap = await MENSAGENS_CHAT_COL().where('chaveConversa', '==', chave).get();
+    const mensagens = [];
+    snap.forEach(d => mensagens.push({ id: d.id, ...d.data() }));
+    mensagens.sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
+    // marca como lida
+    await CONVERSAS_COL().doc(chave).set({ naoLidas: 0 }, { merge: true }).catch(() => {});
+    const pausado = await CONVERSAS_COL().doc(chave).get()
+      .then(d => d.exists && d.data().botPausado) .catch(() => false);
+    res.json({ ok: true, mensagens, botPausado: !!pausado });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Envia uma mensagem manual e pausa o bot para esse contato.
+app.post('/minha-conversas/:telefone/enviar', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    const mensagem = (req.body && req.body.mensagem || '').trim();
+    if (!mensagem) return res.status(400).json({ ok: false, erro: 'Mensagem vazia' });
+
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+    await tenantContext.run(contexto, async () => {
+      await pausarNumero(telefone);      // assume o atendimento: bot para nesse contato
+      await sendText(telefone, mensagem); // envia e já registra a mensagem
+    });
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true }, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Devolve o atendimento ao robô (reativa o bot para o contato).
+app.post('/minha-conversas/:telefone/devolver', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+    await tenantContext.run(contexto, async () => { await despausarNumero(telefone); });
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: false }, { merge: true });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

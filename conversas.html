@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conversas — RecomendaLeads</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { height: 100vh; overflow: hidden; }
+  .inbox { display: flex; height: 100vh; }
+
+  .conv-list { width: 360px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .conv-top { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .conv-top .logo { width: 32px; height: 32px; border-radius: 9px; background: var(--brand); color: #fff; display: grid; place-items: center; }
+  .conv-top b { font-size: 1rem; flex: 1; }
+  .conv-top a { font-size: 0.8rem; color: var(--text-dim); }
+  .conv-search { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .conv-items { flex: 1; overflow-y: auto; }
+  .conv-item { display: flex; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border); cursor: pointer; align-items: center; }
+  .conv-item:hover { background: var(--surface-2); }
+  .conv-item.active { background: var(--brand-soft); }
+  .conv-av { width: 42px; height: 42px; border-radius: 50%; background: var(--success); color: #fff; display: grid; place-items: center; font-weight: 600; flex-shrink: 0; }
+  .conv-meta { flex: 1; min-width: 0; }
+  .conv-meta .nome { font-weight: 600; font-size: 0.9rem; display: flex; justify-content: space-between; gap: 8px; }
+  .conv-meta .nome small { color: var(--text-faint); font-weight: 400; font-size: 0.72rem; white-space: nowrap; }
+  .conv-meta .prev { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge-naolida { background: var(--success); color: #fff; font-size: 0.68rem; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
+
+  .chat { flex: 1; display: flex; flex-direction: column; background: var(--surface-2); min-width: 0; }
+  .chat-empty { flex: 1; display: grid; place-items: center; color: var(--text-dim); font-size: 0.9rem; text-align: center; padding: 20px; }
+  .chat-head { padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .chat-head .conv-av { width: 38px; height: 38px; font-size: 0.9rem; }
+  .chat-head .info { flex: 1; min-width: 0; }
+  .chat-head .info b { font-size: 0.95rem; }
+  .chat-head .info small { display: block; color: var(--text-dim); font-size: 0.78rem; }
+  .bot-flag { font-size: 0.74rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
+  .bot-flag.on { background: var(--success-soft); color: var(--success-dark); }
+  .bot-flag.off { background: var(--action-soft); color: var(--action-dark); }
+
+  .msgs { flex: 1; overflow-y: auto; padding: 20px 18px; display: flex; flex-direction: column; gap: 8px; }
+  .bubble { max-width: 70%; padding: 9px 13px; border-radius: 12px; font-size: 0.9rem; line-height: 1.4; box-shadow: var(--shadow-sm); word-wrap: break-word; white-space: pre-wrap; }
+  .bubble small { display: block; font-size: 0.66rem; color: var(--text-faint); margin-top: 3px; text-align: right; }
+  .bubble.in { align-self: flex-start; background: var(--surface); }
+  .bubble.out { align-self: flex-end; background: var(--brand-soft); }
+
+  .composer { padding: 12px 16px; background: var(--surface); border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: center; }
+  .composer input { flex: 1; }
+  .composer .btn { padding: 11px 18px; }
+  .composer.disabled { opacity: 0.6; }
+
+  @media (max-width: 760px) {
+    .conv-list { width: 100%; }
+    .conv-list.hide-mobile { display: none; }
+    .chat.show-mobile { display: flex; }
+    .chat { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="inbox">
+  <aside class="conv-list" id="convList">
+    <div class="conv-top">
+      <div class="logo"><i data-lucide="message-circle"></i></div>
+      <b>Conversas</b>
+      <a href="/minha-empresa/configurar" title="Voltar ao painel"><i data-lucide="arrow-left" style="width:18px;height:18px;vertical-align:-4px"></i></a>
+    </div>
+    <div class="conv-search">
+      <input class="input" type="text" id="buscaConv" placeholder="Buscar contato ou telefone...">
+    </div>
+    <div class="conv-items" id="convItems"><div class="chat-empty" style="padding:30px">Carregando...</div></div>
+  </aside>
+
+  <section class="chat" id="chat">
+    <div class="chat-empty" id="chatVazio">Selecione uma conversa à esquerda para ver as mensagens.</div>
+    <div id="chatConteudo" style="display:none; flex:1; flex-direction:column; min-height:0;">
+      <div class="chat-head">
+        <button class="btn btn-ghost" id="voltarMobile" style="display:none;padding:6px"><i data-lucide="arrow-left"></i></button>
+        <div class="conv-av" id="chatAv">?</div>
+        <div class="info"><b id="chatNome">—</b><small id="chatTel">—</small></div>
+        <span class="bot-flag on" id="botFlag">Robô ativo</span>
+        <button class="btn btn-secondary" id="devolverBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Devolver ao robô</button>
+      </div>
+      <div class="msgs" id="msgs"></div>
+      <div class="composer" id="composer">
+        <input class="input" type="text" id="msgInput" placeholder="Digite uma mensagem... (você assume o atendimento)">
+        <button class="btn btn-action" id="enviarBtn"><i data-lucide="send"></i></button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+const API_BASE = window.location.origin;
+const TOKEN = localStorage.getItem('recomendaleads_token');
+if (!TOKEN) window.location.href = '/login';
+function icons() { try { lucide.createIcons(); } catch (e) {} }
+
+async function fetchAut(url, opts = {}) {
+  const resp = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}), 'Authorization': `Bearer ${TOKEN}` } });
+  if (resp.status === 401) { localStorage.removeItem('recomendaleads_token'); window.location.href = '/login'; throw new Error('401'); }
+  return resp;
+}
+
+let conversas = [];
+let atual = null; // telefone selecionado
+let botPausadoAtual = false;
+
+function inicial(s) { return ((s || '?').trim()[0] || '?').toUpperCase(); }
+function horaCurta(iso) {
+  if (!iso) return '';
+  const d = new Date(iso), hoje = new Date();
+  const mesmaData = d.toDateString() === hoje.toDateString();
+  return mesmaData ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                   : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+function esc(s) { return (s || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+async function carregarConversas() {
+  try {
+    const resp = await fetchAut(`${API_BASE}/minha-conversas`);
+    const data = await resp.json();
+    if (!data.ok) return;
+    conversas = data.conversas || [];
+    renderConversas();
+  } catch (e) {}
+}
+
+function renderConversas() {
+  const termo = (document.getElementById('buscaConv').value || '').toLowerCase().trim();
+  const lista = conversas.filter(c =>
+    !termo || (c.nome || '').toLowerCase().includes(termo) || (c.telefone || '').includes(termo));
+  const cont = document.getElementById('convItems');
+  if (!lista.length) { cont.innerHTML = '<div class="chat-empty" style="padding:30px">Nenhuma conversa ainda.</div>'; return; }
+  cont.innerHTML = lista.map(c => `
+    <div class="conv-item ${c.telefone === atual ? 'active' : ''}" data-tel="${esc(c.telefone)}" data-nome="${esc(c.nome || '')}">
+      <div class="conv-av">${inicial(c.nome || c.telefone)}</div>
+      <div class="conv-meta">
+        <div class="nome">${esc(c.nome || c.telefone)} <small>${horaCurta(c.ultimaEm)}</small></div>
+        <div class="prev">${c.ultimaDirecao === 'out' ? 'Você: ' : ''}${esc(c.ultimaMensagem || '')}</div>
+      </div>
+      ${c.naoLidas ? `<span class="badge-naolida">${c.naoLidas}</span>` : ''}
+    </div>`).join('');
+  cont.querySelectorAll('.conv-item').forEach(el => {
+    el.addEventListener('click', () => abrirConversa(el.dataset.tel, el.dataset.nome));
+  });
+}
+document.getElementById('buscaConv').addEventListener('input', renderConversas);
+
+async function abrirConversa(telefone, nome) {
+  atual = telefone;
+  document.getElementById('chatVazio').style.display = 'none';
+  document.getElementById('chatConteudo').style.display = 'flex';
+  document.getElementById('chatNome').textContent = nome || telefone;
+  document.getElementById('chatTel').textContent = telefone;
+  document.getElementById('chatAv').textContent = inicial(nome || telefone);
+  document.querySelector('.conv-list').classList.add('hide-mobile');
+  document.getElementById('chat').classList.add('show-mobile');
+  renderConversas();
+  await carregarMensagens(true);
+}
+
+async function carregarMensagens(scroll) {
+  if (!atual) return;
+  try {
+    const resp = await fetchAut(`${API_BASE}/minha-conversas/${atual}/mensagens`);
+    const data = await resp.json();
+    if (!data.ok) return;
+    botPausadoAtual = data.botPausado;
+    const flag = document.getElementById('botFlag');
+    const devolver = document.getElementById('devolverBtn');
+    if (botPausadoAtual) {
+      flag.textContent = 'Você assumiu'; flag.className = 'bot-flag off';
+      devolver.style.display = 'inline-flex';
+    } else {
+      flag.textContent = 'Robô ativo'; flag.className = 'bot-flag on';
+      devolver.style.display = 'none';
+    }
+    const msgs = document.getElementById('msgs');
+    const estavaNoFim = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
+    msgs.innerHTML = (data.mensagens || []).map(m => `
+      <div class="bubble ${m.direcao === 'out' ? 'out' : 'in'}">${esc(m.texto)}<small>${horaCurta(m.criadoEm)}</small></div>
+    `).join('') || '<div class="chat-empty">Nenhuma mensagem ainda.</div>';
+    if (scroll || estavaNoFim) msgs.scrollTop = msgs.scrollHeight;
+  } catch (e) {}
+}
+
+async function enviar() {
+  const input = document.getElementById('msgInput');
+  const texto = input.value.trim();
+  if (!texto || !atual) return;
+  input.value = '';
+  try {
+    await fetchAut(`${API_BASE}/minha-conversas/${atual}/enviar`, { method: 'POST', body: JSON.stringify({ mensagem: texto }) });
+    await carregarMensagens(true);
+    await carregarConversas();
+  } catch (e) { input.value = texto; }
+}
+document.getElementById('enviarBtn').addEventListener('click', enviar);
+document.getElementById('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') enviar(); });
+
+document.getElementById('devolverBtn').addEventListener('click', async () => {
+  if (!atual) return;
+  try { await fetchAut(`${API_BASE}/minha-conversas/${atual}/devolver`, { method: 'POST' }); await carregarMensagens(); } catch (e) {}
+});
+
+document.getElementById('voltarMobile').addEventListener('click', () => {
+  document.querySelector('.conv-list').classList.remove('hide-mobile');
+  document.getElementById('chat').classList.remove('show-mobile');
+});
+if (window.innerWidth <= 760) document.getElementById('voltarMobile').style.display = 'inline-flex';
+
+icons();
+carregarConversas();
+setInterval(carregarConversas, 6000);
+setInterval(() => { if (atual) carregarMensagens(false); }, 4000);
+</script>
+</body>
+</html>
