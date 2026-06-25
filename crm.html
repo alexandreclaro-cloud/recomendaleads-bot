@@ -6,23 +6,25 @@
 <title>Painel — Poder da Recomendação</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #FAFBFA;
+    --bg: #F8FAFC;
     --surface: #FFFFFF;
-    --surface-sunken: #F4F6F5;
-    --border: #E5E9E7;
-    --text: #10182B;
-    --text-dim: #5B6577;
-    --text-faint: #8B94A3;
-    --gold: #B8901F;
-    --gold-soft: #F6EFDD;
-    --gold-deep: #8C6B14;
+    --surface-sunken: #F1F5F9;
+    --border: #E2E8F0;
+    --text: #0F172A;
+    --text-dim: #64748B;
+    --text-faint: #94A3B8;
+    --gold: #2563EB;
+    --gold-soft: #EFF4FF;
+    --gold-deep: #1D4ED8;
+    --action: #F97316;
+    --action-deep: #EA580C;
     --success: #16A34A;
-    --success-soft: #E8F6ED;
-    --error: #DC2626;
-    --error-soft: #FCEAEA;
+    --success-soft: #DCFCE7;
+    --error: #EF4444;
+    --error-soft: #FEE2E2;
     --shadow-sm: 0 1px 2px rgba(16,24,43,0.04), 0 1px 1px rgba(16,24,43,0.03);
     --shadow-md: 0 4px 12px rgba(16,24,43,0.06), 0 1px 3px rgba(16,24,43,0.04);
     --radius: 10px;
@@ -36,7 +38,7 @@
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
   }
-  h1, h2 { font-family: 'Space Grotesk', 'Inter', sans-serif; letter-spacing: -0.01em; }
+  h1, h2 { font-family: 'Inter', sans-serif; letter-spacing: -0.01em; }
 
   header {
     padding: 18px 28px;
@@ -95,7 +97,7 @@
     color: var(--text-dim);
   }
   .stat-pill b {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Inter', sans-serif;
     color: var(--text);
     font-size: 0.95rem;
     font-weight: 600;
@@ -352,8 +354,8 @@
   }
   .modal-actions .wa-btn { background: var(--success-soft); color: var(--success); }
   .modal-actions .wa-btn:hover { background: #d6f0de; }
-  .modal-actions .save-vendedor-btn { background: var(--gold); color: #fff; }
-  .modal-actions .save-vendedor-btn:hover { background: var(--gold-deep); }
+  .modal-actions .save-vendedor-btn { background: var(--action); color: #fff; }
+  .modal-actions .save-vendedor-btn:hover { background: var(--action-deep); }
   .modal-status { font-size: 0.8rem; margin-top: 8px; text-align: center; font-weight: 600; }
   .modal-status.ok { color: var(--success); }
   .modal-status.err { color: var(--error); }

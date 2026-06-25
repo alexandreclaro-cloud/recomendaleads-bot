@@ -4,86 +4,37 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Login — RecomendaLeads</title>
+<link rel="stylesheet" href="/theme.css">
 <style>
-  :root {
-    --navy: #0a1628;
-    --navy-light: #132338;
-    --gold: #d4af37;
-    --gold-light: #f0d878;
-    --text: #e8edf4;
-    --text-dim: #9aabc0;
-    --error: #ff6b6b;
-    --success: #3ddc97;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    background: linear-gradient(160deg, var(--navy) 0%, #060d18 100%);
-    color: var(--text);
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-  .box {
-    background: var(--navy-light);
-    border: 1px solid rgba(212,175,55,0.2);
-    border-radius: 16px;
-    padding: 40px 36px;
-    width: 100%;
-    max-width: 380px;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
-  }
-  .logo { text-align: center; margin-bottom: 8px; font-size: 1.6rem; }
-  h1 { text-align: center; font-size: 1.2rem; color: var(--gold-light); margin: 0 0 8px; }
-  p.sub { text-align: center; font-size: 0.8rem; color: var(--text-dim); margin: 0 0 24px; }
-  label { display: block; font-size: 0.82rem; color: var(--text-dim); margin-bottom: 6px; }
-  input[type="email"], input[type="password"] {
-    width: 100%;
-    background: #0e1a2c;
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 8px;
-    padding: 11px 12px;
-    color: var(--text);
-    font-size: 0.95rem;
-    margin-bottom: 18px;
-  }
-  input:focus { outline: none; border-color: var(--gold); }
-  button {
-    width: 100%;
-    background: var(--gold);
-    color: var(--navy);
-    border: none;
-    font-weight: 700;
-    font-size: 0.95rem;
-    padding: 12px;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-  button:hover { opacity: 0.92; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .msg { font-size: 0.85rem; text-align: center; margin-top: 14px; min-height: 18px; font-weight: 600; }
-  .msg.err { color: var(--error); }
-  .msg.ok { color: var(--success); }
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .box { width: 100%; max-width: 392px; padding: 40px 36px; }
+  .logo { width: 54px; height: 54px; margin: 0 auto 18px; border-radius: 15px; background: var(--brand); color: #fff; display: grid; place-items: center; }
+  .logo .ti { width: 28px; height: 28px; }
+  h1 { text-align: center; font-size: 1.3rem; margin-bottom: 6px; }
+  .sub { text-align: center; font-size: 0.88rem; color: var(--text-dim); margin: 0 0 28px; }
+  .box .btn { width: 100%; margin-top: 6px; }
+  .msg { font-size: 0.85rem; text-align: center; margin-top: 16px; min-height: 18px; font-weight: 600; }
+  .msg.err { color: var(--danger-dark); }
+  .msg.ok { color: var(--success-dark); }
 </style>
 </head>
 <body>
-  <div class="box">
-    <div class="logo">🎁</div>
+  <div class="box card fade-in">
+    <div class="logo"><i data-lucide="gift"></i></div>
     <h1>RecomendaLeads</h1>
     <p class="sub">Acesse o painel da sua empresa.</p>
     <form id="loginForm">
-      <label>Email</label>
-      <input type="email" id="emailInput" required autocomplete="username">
-      <label>Senha</label>
-      <input type="password" id="senhaInput" required autocomplete="current-password">
-      <button type="submit" id="loginBtn">Entrar</button>
+      <label class="label">Email</label>
+      <input class="input" type="email" id="emailInput" required autocomplete="username">
+      <label class="label">Senha</label>
+      <input class="input" type="password" id="senhaInput" required autocomplete="current-password">
+      <button type="submit" class="btn btn-action" id="loginBtn">Entrar</button>
       <div class="msg" id="msgBox"></div>
     </form>
   </div>
+<script src="https://unpkg.com/lucide@latest"></script>
 <script>
+lucide.createIcons();
 const API_BASE = window.location.origin;
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -104,9 +55,9 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     if (resp.ok && data.ok) {
       localStorage.setItem('recomendaleads_token', data.token);
       localStorage.setItem('recomendaleads_empresa', JSON.stringify(data.empresa));
-      msgBox.textContent = `✅ Login funcionou! Redirecionando...`;
+      msgBox.textContent = '✅ Login funcionou! Redirecionando...';
       msgBox.className = 'msg ok';
-      setTimeout(() => { window.location.href = '/crm'; }, 800);
+      setTimeout(() => { window.location.href = '/minha-empresa/configurar'; }, 800);
     } else {
       msgBox.textContent = data.erro || 'Email ou senha incorretos';
       msgBox.className = 'msg err';

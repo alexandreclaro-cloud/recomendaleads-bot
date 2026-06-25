@@ -34,6 +34,52 @@ const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN || 'COLOQUE_SEU_CLIENT_T
 const ZAPI_BASE_URL = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}`;
 
 // ============================================================
+// MULTI-TENANT — contexto da empresa ativa por requisição
+// ============================================================
+// Cada requisição (webhook) ou execução de agendamento roda dentro de um
+// "contexto" que sabe qual empresa está ativa e quais credenciais Z-API usar.
+// Assim os envios saem pelo WhatsApp da empresa certa, sem precisar passar a
+// empresa em cada chamada. Se não houver contexto (ou a empresa não tiver
+// Z-API própria cadastrada), tudo cai no Z-API global — exatamente o
+// comportamento de hoje. Isso mantém a PDN funcionando sem mudança nenhuma.
+const { AsyncLocalStorage } = require('async_hooks');
+const tenantContext = new AsyncLocalStorage();
+
+const ZAPI_GLOBAL = {
+  instanceId: ZAPI_INSTANCE_ID,
+  token: ZAPI_TOKEN,
+  clientToken: ZAPI_CLIENT_TOKEN
+};
+
+// Credenciais Z-API próprias da empresa, com fallback pro global.
+function zapiDaEmpresa(empresa) {
+  if (empresa && empresa.zapiInstanceId && empresa.zapiToken) {
+    return {
+      instanceId: empresa.zapiInstanceId,
+      token: empresa.zapiToken,
+      clientToken: empresa.zapiClientToken || ''
+    };
+  }
+  return ZAPI_GLOBAL;
+}
+
+// Z-API do contexto atual (empresa ativa), ou global se não houver contexto.
+function zapiAtual() {
+  const ctx = tenantContext.getStore();
+  return (ctx && ctx.zapi) ? ctx.zapi : ZAPI_GLOBAL;
+}
+
+function zapiBaseUrl(cfg) {
+  return `https://api.z-api.io/instances/${cfg.instanceId}/token/${cfg.token}`;
+}
+
+// empresaId do contexto atual, ou a PDN como padrão (comportamento de hoje).
+function empresaIdAtual() {
+  const ctx = tenantContext.getStore();
+  return (ctx && ctx.empresaId) ? ctx.empresaId : EMPRESA_ID_PDN;
+}
+
+// ============================================================
 // CONFIGURAÇÃO — Firebase Admin / Firestore
 // ============================================================
 let serviceAccount;
@@ -60,17 +106,29 @@ const AGENDAMENTOS_COL = () => db.collection('agendamentos');
 const MENSAGENS_PROCESSADAS_COL = () => db.collection('mensagens_processadas');
 const NUMEROS_PAUSADOS_COL = () => db.collection('numeros_pausados');
 
+// Chave de documento isolada por empresa: "empresaId__telefone".
+// Garante que sessões e pausas de uma empresa não colidam com as de outra
+// quando o mesmo número fala com empresas diferentes.
+// IMPORTANTE: a PDN mantém a chave ANTIGA (só o telefone, sem prefixo) para
+// não orfanar sessões em andamento nem números já pausados no deploy. Só os
+// novos clientes (multi-tenant) ganham o prefixo da empresa.
+function chaveSessao(telefone) {
+  const empresaId = empresaIdAtual();
+  if (empresaId === EMPRESA_ID_PDN) return telefone;
+  return `${empresaId}__${telefone}`;
+}
+
 async function numeroEstaPausado(telefone) {
-  const snap = await NUMEROS_PAUSADOS_COL().doc(telefone).get();
+  const snap = await NUMEROS_PAUSADOS_COL().doc(chaveSessao(telefone)).get();
   return snap.exists;
 }
 
 async function pausarNumero(telefone) {
-  await NUMEROS_PAUSADOS_COL().doc(telefone).set({ pausadoEm: new Date().toISOString() });
+  await NUMEROS_PAUSADOS_COL().doc(chaveSessao(telefone)).set({ pausadoEm: new Date().toISOString() });
 }
 
 async function despausarNumero(telefone) {
-  await NUMEROS_PAUSADOS_COL().doc(telefone).delete();
+  await NUMEROS_PAUSADOS_COL().doc(chaveSessao(telefone)).delete();
 }
 
 const EMPRESAS_COL = () => db.collection('empresas_login');
@@ -162,7 +220,31 @@ const EMPRESA_TESTE_CONFIG = {
   tempoEsperaConversaoMin: 1
 };
 
+// Busca uma empresa pelo id, devolvendo a config (padrão + personalizações)
+// já com o id e as credenciais Z-API próprias anexadas. Retorna null se não
+// existir.
+async function getEmpresaById(empresaId) {
+  const snap = await EMPRESAS_COL().doc(empresaId).get();
+  if (!snap.exists) return null;
+  const data = snap.data();
+  const cfg = data.configuracao
+    ? { ...EMPRESA_PADRAO, ...data.configuracao }
+    : { ...EMPRESA_PADRAO, nome: data.nome };
+  return {
+    ...cfg,
+    id: snap.id,
+    zapiInstanceId: data.zapiInstanceId || null,
+    zapiToken: data.zapiToken || null,
+    zapiClientToken: data.zapiClientToken || null
+  };
+}
+
 async function getEmpresa() {
+  // Se há uma empresa ativa no contexto (multi-tenant), usa ela.
+  const ctx = tenantContext.getStore();
+  if (ctx && ctx.empresa) return ctx.empresa;
+
+  // Fallback: PDN (comportamento de hoje, sem contexto).
   const snap = await EMPRESAS_COL().doc(EMPRESA_ID_PDN).get();
   if (snap.exists && snap.data().configuracao) {
     return { ...EMPRESA_PADRAO, ...snap.data().configuracao };
@@ -180,7 +262,7 @@ async function saveEmpresa(empresa) {
 }
 
 async function getSessao(telefone) {
-  const snap = await SESSOES_COL().doc(telefone).get();
+  const snap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
   if (!snap.exists) {
     const novaSessao = {
       etapa: 'aguardando_nome',
@@ -189,18 +271,18 @@ async function getSessao(telefone) {
       contatos: [],
       criadoEm: new Date().toISOString()
     };
-    await SESSOES_COL().doc(telefone).set(novaSessao);
+    await SESSOES_COL().doc(chaveSessao(telefone)).set(novaSessao);
     return novaSessao;
   }
   return snap.data();
 }
 
 async function saveSessao(telefone, sessao) {
-  await SESSOES_COL().doc(telefone).set(sessao, { merge: true });
+  await SESSOES_COL().doc(chaveSessao(telefone)).set(sessao, { merge: true });
 }
 
 async function resetSessao(telefone) {
-  await SESSOES_COL().doc(telefone).delete();
+  await SESSOES_COL().doc(chaveSessao(telefone)).delete();
 }
 
 async function getTodasSessoes() {
@@ -271,13 +353,18 @@ async function atualizarLead(id, dados) {
 // HELPERS DE ENVIO — Z-API
 // ============================================================
 
+function zapiHeaders(cfg) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (cfg.clientToken && cfg.clientToken !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
+    headers['Client-Token'] = cfg.clientToken;
+  }
+  return headers;
+}
+
 async function sendText(phone, message) {
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (ZAPI_CLIENT_TOKEN && ZAPI_CLIENT_TOKEN !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
-      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
-    }
-    await axios.post(`${ZAPI_BASE_URL}/send-text`, { phone, message }, { headers });
+    const cfg = zapiAtual();
+    await axios.post(`${zapiBaseUrl(cfg)}/send-text`, { phone, message }, { headers: zapiHeaders(cfg) });
     console.log(`[ENVIADO] para ${phone}: ${message.slice(0, 60)}...`);
   } catch (err) {
     console.error('Erro ao enviar texto:', err.response?.data || err.message);
@@ -286,13 +373,10 @@ async function sendText(phone, message) {
 
 async function sendImage(phone, imageUrl, caption) {
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (ZAPI_CLIENT_TOKEN && ZAPI_CLIENT_TOKEN !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
-      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
-    }
-    await axios.post(`${ZAPI_BASE_URL}/send-image`, {
+    const cfg = zapiAtual();
+    await axios.post(`${zapiBaseUrl(cfg)}/send-image`, {
       phone, image: imageUrl, caption: caption || ''
-    }, { headers });
+    }, { headers: zapiHeaders(cfg) });
     console.log(`[IMAGEM ENVIADA] para ${phone}`);
   } catch (err) {
     console.error('Erro ao enviar imagem:', err.response?.data || err.message);
@@ -301,13 +385,10 @@ async function sendImage(phone, imageUrl, caption) {
 
 async function sendDocument(phone, base64OrUrl, fileName, extension) {
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (ZAPI_CLIENT_TOKEN && ZAPI_CLIENT_TOKEN !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
-      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
-    }
-    await axios.post(`${ZAPI_BASE_URL}/send-document/${extension}`, {
+    const cfg = zapiAtual();
+    await axios.post(`${zapiBaseUrl(cfg)}/send-document/${extension}`, {
       phone, document: base64OrUrl, fileName
-    }, { headers });
+    }, { headers: zapiHeaders(cfg) });
     console.log(`[DOCUMENTO ENVIADO] para ${phone}: ${fileName}`);
   } catch (err) {
     console.error('Erro ao enviar documento:', err.response?.data || err.message);
@@ -608,7 +689,7 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
         nomeRecomendador: sessao.clienteNome,
         telefoneRecomendador: telefone,
         vendedor: sessao.vendedorNome,
-        empresaId: EMPRESA_ID_PDN
+        empresaId: empresaIdAtual()
       });
     } catch (err) {
       console.error('Erro ao criar lead no CRM:', err.message);
@@ -684,16 +765,16 @@ function substituirVariaveis(template, variaveis) {
 }
 
 async function getSessaoRecomendado(telefone) {
-  const snap = await SESSOES_RECOMENDADO_COL().doc(telefone).get();
+  const snap = await SESSOES_RECOMENDADO_COL().doc(chaveSessao(telefone)).get();
   return snap.exists ? snap.data() : null;
 }
 
 async function saveSessaoRecomendado(telefone, sessao) {
-  await SESSOES_RECOMENDADO_COL().doc(telefone).set(sessao, { merge: true });
+  await SESSOES_RECOMENDADO_COL().doc(chaveSessao(telefone)).set(sessao, { merge: true });
 }
 
 async function encerrarSessaoRecomendado(telefone) {
-  await SESSOES_RECOMENDADO_COL().doc(telefone).delete();
+  await SESSOES_RECOMENDADO_COL().doc(chaveSessao(telefone)).delete();
 }
 
 // ============================================================
@@ -705,6 +786,9 @@ async function criarAgendamento({ tipo, executarEm, dados, marcaTempoReferencia 
     tipo,
     executarEm,
     status: 'pendente',
+    // Registra a empresa dona deste agendamento, pra que o follow-up depois
+    // seja enviado pelo WhatsApp dela (e não pelo número global).
+    empresaId: empresaIdAtual(),
     dados,
     marcaTempoReferencia: marcaTempoReferencia || null,
     criadoEm: new Date().toISOString()
@@ -968,7 +1052,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
 // WEBHOOK — recebe mensagens da Z-API
 // ============================================================
 
-app.post('/webhook', async (req, res) => {
+async function tratarWebhook(req, res) {
   try {
     if (!db) {
       console.error('Firestore não inicializado — verifique FIREBASE_SERVICE_ACCOUNT');
@@ -1075,7 +1159,8 @@ app.post('/webhook', async (req, res) => {
             d.dados?.contato?.telefone ||
             d.dados?.telefone ||
             null;
-          if (telefoneAgendamento === alvo) {
+          const mesmaEmpresa = (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual();
+          if (telefoneAgendamento === alvo && mesmaEmpresa) {
             batch.update(doc.ref, { status: 'cancelado' });
           }
         });
@@ -1095,14 +1180,15 @@ app.post('/webhook', async (req, res) => {
         // play1 COM número — limpa sessões e agendamentos do número alvo
         await despausarNumero(alvo);
         await resetSessao(alvo);
-        await SESSOES_RECOMENDADO_COL().doc(alvo).delete();
+        await SESSOES_RECOMENDADO_COL().doc(chaveSessao(alvo)).delete();
         try {
           const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
           const batch = db.batch();
           snap.forEach(doc => {
             const d = doc.data();
             const tel = d.dados?.contato?.telefone || d.dados?.telefone || null;
-            if (tel === alvo) batch.update(doc.ref, { status: 'cancelado' });
+            const mesmaEmpresa = (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual();
+            if (tel === alvo && mesmaEmpresa) batch.update(doc.ref, { status: 'cancelado' });
           });
           await batch.commit();
         } catch (err) {
@@ -1126,7 +1212,7 @@ app.post('/webhook', async (req, res) => {
 
     const ehEventoVazio = !texto && !vCard && !contatosMultiplos;
     if (ehEventoVazio) {
-      const sessaoExistenteSnap = await SESSOES_COL().doc(telefone).get();
+      const sessaoExistenteSnap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
       if (sessaoExistenteSnap.exists) {
         const sessao = sessaoExistenteSnap.data();
         const empresa = await getEmpresa();
@@ -1141,7 +1227,7 @@ app.post('/webhook', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const sessaoExistenteSnap = await SESSOES_COL().doc(telefone).get();
+    const sessaoExistenteSnap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
     const sessaoExiste = sessaoExistenteSnap.exists;
     const ehGatilhoInicial = texto && texto.toLowerCase().includes('quero meu presente');
 
@@ -1160,7 +1246,37 @@ app.post('/webhook', async (req, res) => {
     console.error('Erro no webhook:', err);
     res.sendStatus(500);
   }
-});
+}
+
+// Resolve a empresa do webhook e processa a mensagem dentro do contexto dela,
+// pra que os envios saiam pelo WhatsApp (Z-API) correto.
+//   - /webhook            → PDN (compatível com a configuração atual da Z-API)
+//   - /webhook/:empresaId → empresa específica (cada instância Z-API aponta
+//                            pra sua própria URL)
+async function comWebhook(req, res, empresaId) {
+  let empresa = null;
+  try {
+    empresa = empresaId ? await getEmpresaById(empresaId) : await getEmpresa();
+  } catch (err) {
+    console.error('Erro ao resolver empresa do webhook:', err.message);
+  }
+
+  if (empresaId && !empresa) {
+    console.warn(`[WEBHOOK] empresaId desconhecido: ${empresaId} — ignorando`);
+    return res.sendStatus(200);
+  }
+
+  const contexto = {
+    empresa,
+    empresaId: (empresa && empresa.id) || empresaId || EMPRESA_ID_PDN,
+    zapi: zapiDaEmpresa(empresa)
+  };
+
+  return tenantContext.run(contexto, () => tratarWebhook(req, res));
+}
+
+app.post('/webhook', (req, res) => comWebhook(req, res, null));
+app.post('/webhook/:empresaId', (req, res) => comWebhook(req, res, req.params.empresaId));
 
 // ============================================================
 // ROTAS DE ADMINISTRAÇÃO
@@ -1172,27 +1288,42 @@ app.get('/', (req, res) => {
     <html lang="pt-BR">
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>RecomendaLeads</title>
+      <link rel="stylesheet" href="/theme.css">
       <style>
-        body { font-family: -apple-system, sans-serif; background: #0a1628; color: #e8edf4; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .box { text-align: center; }
-        h1 { color: #f0d878; margin-bottom: 6px; }
-        p { color: #9aabc0; margin-bottom: 28px; }
-        a { display: inline-block; margin: 6px; padding: 12px 22px; background: #d4af37; color: #0a1628; font-weight: 700; border-radius: 8px; text-decoration: none; }
-        a:hover { opacity: 0.9; }
+        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .box { text-align: center; max-width: 440px; width: 100%; padding: 40px 36px; }
+        .logo { width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 15px; background: var(--brand); color: #fff; display: grid; place-items: center; }
+        .logo .ti { width: 28px; height: 28px; }
+        h1 { font-size: 1.4rem; margin-bottom: 6px; }
+        .lead { color: var(--text-dim); margin: 0 0 28px; font-size: 0.95rem; }
+        .links { display: flex; flex-direction: column; gap: 10px; }
+        .links a { width: 100%; }
       </style>
     </head>
     <body>
-      <div class="box">
-        <h1>✅ RecomendaLeads Bot</h1>
-        <p>Servidor rodando — escolha um painel:</p>
-        <a href="/crm">📋 CRM Kanban</a>
-        <a href="/configurar-vouchers">⚙️ Configurações</a>
-        <a href="/login">🔑 Login da Empresa</a>
+      <div class="box card fade-in">
+        <div class="logo"><i data-lucide="gift"></i></div>
+        <h1>RecomendaLeads</h1>
+        <p class="lead">Servidor rodando. Escolha por onde começar:</p>
+        <div class="links">
+          <a class="btn btn-brand" href="/login"><i data-lucide="log-in"></i> Login da Empresa</a>
+          <a class="btn btn-secondary" href="/crm"><i data-lucide="kanban"></i> CRM Kanban</a>
+          <a class="btn btn-secondary" href="/configurar-vouchers"><i data-lucide="settings"></i> Configurações</a>
+        </div>
       </div>
+      <script src="https://unpkg.com/lucide@latest"></script>
+      <script>lucide.createIcons();</script>
     </body>
     </html>
   `);
+});
+
+// Design system compartilhado por todas as telas
+app.get('/theme.css', (req, res) => {
+  res.type('text/css');
+  res.sendFile(path.join(__dirname, 'theme.css'));
 });
 
 app.get('/configurar-vouchers', (req, res) => {
@@ -1287,6 +1418,58 @@ app.post('/minha-config', exigirLoginEmpresa, async (req, res) => {
 
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: novaConfiguracao }, { merge: true });
     res.json({ ok: true, empresa: novaConfiguracao });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// WHATSAPP DA EMPRESA — credenciais Z-API próprias do cliente
+// ============================================================
+// O cliente cria a instância dele na Z-API, conecta o WhatsApp via QR code
+// e cola aqui o Instance ID, o Token e o Client-Token. A URL de webhook
+// (única por empresa) é mostrada pra ele configurar na Z-API.
+
+function urlBase(req) {
+  return process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+}
+
+app.get('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const e = req.empresaLogin;
+    const conectado = !!(e.zapiInstanceId && e.zapiToken);
+    res.json({
+      ok: true,
+      conectado,
+      // Nunca devolvemos o token cheio — só uma confirmação de que existe.
+      zapiInstanceId: e.zapiInstanceId || '',
+      temToken: !!e.zapiToken,
+      temClientToken: !!e.zapiClientToken,
+      webhookUrl: `${urlBase(req)}/webhook/${e.id}`
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const { zapiInstanceId, zapiToken, zapiClientToken } = req.body;
+    if (!zapiInstanceId || !zapiToken) {
+      return res.status(400).json({ ok: false, erro: 'Informe ao menos o Instance ID e o Token da Z-API' });
+    }
+
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({
+      zapiInstanceId: String(zapiInstanceId).trim(),
+      zapiToken: String(zapiToken).trim(),
+      zapiClientToken: zapiClientToken ? String(zapiClientToken).trim() : null
+    }, { merge: true });
+
+    res.json({
+      ok: true,
+      conectado: true,
+      webhookUrl: `${urlBase(req)}/webhook/${req.empresaLogin.id}`
+    });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -1548,6 +1731,27 @@ app.post('/leads', async (req, res) => {
 // ============================================================
 
 async function processarAgendamento(agendamento) {
+  // Resolve a empresa dona do agendamento e processa dentro do contexto dela,
+  // pra que os envios saiam pelo WhatsApp correto. Agendamentos antigos (sem
+  // empresaId) caem na PDN — comportamento de hoje.
+  const empresaId = agendamento.empresaId || EMPRESA_ID_PDN;
+  let empresa = null;
+  try {
+    empresa = await getEmpresaById(empresaId);
+  } catch (err) {
+    console.error('Erro ao resolver empresa do agendamento:', err.message);
+  }
+  if (!empresa) empresa = await getEmpresa();
+
+  const contexto = {
+    empresa,
+    empresaId: empresa.id || empresaId,
+    zapi: zapiDaEmpresa(empresa)
+  };
+  return tenantContext.run(contexto, () => processarAgendamentoInterno(agendamento));
+}
+
+async function processarAgendamentoInterno(agendamento) {
   const empresa = await getEmpresa();
 
   if (agendamento.tipo === 'iniciar_conversa_recomendado') {

@@ -1,149 +1,166 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Minha Empresa — RecomendaLeads</title>
+<link rel="stylesheet" href="/theme.css">
 <style>
-  :root {
-    --navy: #0a1628;
-    --navy-light: #132338;
-    --gold: #d4af37;
-    --gold-light: #f0d878;
-    --text: #e8edf4;
-    --text-dim: #9aabc0;
-    --success: #3ddc97;
-    --error: #ff6b6b;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    background: linear-gradient(160deg, var(--navy) 0%, #060d18 100%);
-    color: var(--text);
-    min-height: 100vh;
-    padding: 24px 16px 60px;
-  }
-  .wrap { max-width: 760px; margin: 0 auto; }
-  header { text-align: center; margin-bottom: 32px; }
-  header h1 { font-size: 1.5rem; margin: 0 0 6px; color: var(--gold-light); }
-  header p { color: var(--text-dim); margin: 0; font-size: 0.9rem; }
+  section.view { display: none; }
+  section.view.active { display: block; }
+  .logout-btn { background: transparent; border: none; color: var(--text-faint); cursor: pointer; padding: 7px; border-radius: var(--r-sm); display: grid; place-items: center; }
+  .logout-btn:hover { background: var(--surface-2); color: var(--danger-dark); }
+  .logout-btn .ti { width: 18px; height: 18px; }
 
-  .top-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    font-size: 0.85rem;
-    color: var(--text-dim);
-  }
-  .logout-btn {
-    background: transparent;
-    border: 1px solid rgba(255,107,107,0.3);
-    color: var(--error);
-    padding: 6px 14px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.8rem;
-  }
-  .logout-btn:hover { background: rgba(255,107,107,0.08); }
+  .activity .item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .activity .item:last-child { border-bottom: none; }
+  .activity .item .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+  .activity .item .who { flex: 1; min-width: 0; }
+  .activity .item .who b { font-size: 0.9rem; font-weight: 600; }
+  .activity .item .who small { display: block; color: var(--text-dim); font-size: 0.78rem; }
+  .activity .item .when { color: var(--text-faint); font-size: 0.78rem; white-space: nowrap; }
+  .empty { color: var(--text-dim); font-size: 0.88rem; padding: 8px 0; }
 
-  .card {
-    background: var(--navy-light);
-    border: 1px solid rgba(212,175,55,0.18);
-    border-radius: 14px;
-    padding: 22px;
-    margin-bottom: 20px;
-  }
-  .card h2 { font-size: 1.05rem; margin: 0 0 14px; color: var(--text); }
-  label { display: block; font-size: 0.82rem; color: var(--text-dim); margin: 12px 0 5px; }
-  input[type="text"], textarea {
-    width: 100%;
-    background: #0e1a2c;
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 8px;
-    padding: 10px 12px;
-    color: var(--text);
-    font-size: 0.92rem;
-    font-family: inherit;
-    resize: vertical;
-  }
-  input:focus, textarea:focus { outline: none; border-color: var(--gold); }
-  .hint { font-size: 0.76rem; color: var(--text-dim); margin-top: 4px; opacity: 0.8; }
-  .row-save { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
-  button.save-btn {
-    background: var(--gold);
-    color: var(--navy);
-    border: none;
-    font-weight: 700;
-    font-size: 0.9rem;
-    padding: 10px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-  button.save-btn:hover { opacity: 0.92; }
-  button.save-btn:disabled { opacity: 0.5; cursor: default; }
-  .status-msg { font-size: 0.85rem; font-weight: 600; }
-  .status-msg.ok { color: var(--success); }
-  .status-msg.err { color: var(--error); }
+  .faixa-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .faixa-head h3 { font-size: 1rem; }
 
-  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-  .badge { background: var(--gold); color: var(--navy); font-weight: 700; font-size: 0.85rem; padding: 4px 12px; border-radius: 20px; }
+  .webhook-box { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 12px; }
+  .webhook-box code { flex: 1; color: var(--brand-dark); font-size: 0.8rem; word-break: break-all; }
 
-  .load-msg { text-align: center; color: var(--text-dim); padding: 40px; }
+  .block-title { display: flex; align-items: center; gap: 9px; font-size: 1.05rem; }
+  .block-title .ti { width: 19px; height: 19px; color: var(--brand); }
+  .sub { color: var(--text-dim); font-size: 0.85rem; margin: 5px 0 18px; }
+  .row-save { display: flex; align-items: center; gap: 14px; margin-top: 20px; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>⚙️ Minha Empresa</h1>
-    <p>Configurações protegidas por login — etapa de teste.</p>
-  </header>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"><i data-lucide="gift"></i></div>
+      <div><b>RecomendaLeads</b><span>Painel</span></div>
+    </div>
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-section="overview"><i data-lucide="layout-dashboard"></i><span class="txt">Visão geral</span></button>
+      <button class="nav-item" data-section="empresa"><i data-lucide="building-2"></i><span class="txt">Minha empresa</span></button>
+      <button class="nav-item" data-section="premios"><i data-lucide="gift"></i><span class="txt">Prêmios</span></button>
+      <button class="nav-item" data-section="whatsapp"><i data-lucide="smartphone"></i><span class="txt">WhatsApp</span></button>
+      <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
+    </nav>
+    <div class="user-box">
+      <div class="avatar" id="avatarLetra">A</div>
+      <div class="meta"><b id="userNome">Empresa</b><small id="userEmail">—</small></div>
+      <button class="logout-btn" id="logoutBtn" title="Sair"><i data-lucide="log-out"></i></button>
+    </div>
+  </aside>
 
-  <div class="top-bar">
-    <span id="empresaLogadaNome">Carregando...</span>
-    <button class="logout-btn" id="logoutBtn">Sair</button>
-  </div>
-
-  <div id="loadMsg" class="load-msg">Carregando configuração...</div>
-
-  <div id="conteudo" style="display:none">
-    <div class="card">
-      <h2>Dados da empresa</h2>
-
-      <label>Nome da empresa</label>
-      <input type="text" id="empresaNomeInput">
-
-      <label>Mensagem de agradecimento (primeira mensagem enviada ao cliente)</label>
-      <textarea id="empresaMsgInput" rows="2"></textarea>
-
-      <label>Vendedores (um por linha)</label>
-      <textarea id="empresaVendedoresInput" rows="4"></textarea>
-
-      <div class="row-save">
-        <button class="save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
-        <span class="status-msg" id="statusEmpresa"></span>
-      </div>
+  <main class="main">
+    <div class="page-head">
+      <h1 id="pageTitle">Olá!</h1>
+      <p id="pageSub">Resumo do que está acontecendo no seu programa de indicações.</p>
     </div>
 
-    <div id="faixasContainer"></div>
-  </div>
+    <div id="loadMsg" class="empty">Carregando...</div>
+
+    <div id="conteudo" style="display:none">
+
+      <section class="view active fade-in" id="view-overview">
+        <div class="grid grid-metrics" style="margin-bottom:18px">
+          <div class="metric-card">
+            <div class="m-label"><i data-lucide="users"></i> Leads no total</div>
+            <div class="m-value" id="mLeads">0</div>
+          </div>
+          <div class="metric-card">
+            <div class="m-label"><i data-lucide="user-plus"></i> Novos na semana</div>
+            <div class="m-value" id="mSemana">0</div>
+          </div>
+          <div class="metric-card">
+            <div class="m-label"><i data-lucide="gift"></i> Prêmios configurados</div>
+            <div class="m-value" id="mPremios">0</div>
+          </div>
+          <div class="metric-card">
+            <div class="m-label"><i data-lucide="smartphone"></i> WhatsApp</div>
+            <div class="m-value sm" id="mWhats">—</div>
+          </div>
+        </div>
+
+        <div class="grid grid-tiles">
+          <a class="tile" data-go="empresa"><div class="ic"><i data-lucide="building-2"></i></div><b>Minha empresa</b><small>Nome, mensagem, vendedores</small></a>
+          <a class="tile" data-go="premios"><div class="ic"><i data-lucide="gift"></i></div><b>Prêmios</b><small>Faixas e vouchers</small></a>
+          <a class="tile" data-go="whatsapp"><div class="ic"><i data-lucide="smartphone"></i></div><b>WhatsApp</b><small>Conectar seu número</small></a>
+          <a class="tile" href="/crm"><div class="ic"><i data-lucide="kanban"></i></div><b>CRM / Leads</b><small>Acompanhar indicações</small></a>
+        </div>
+
+        <div class="card" style="margin-top:18px">
+          <div class="block-title"><i data-lucide="activity"></i> Atividade recente</div>
+          <p class="sub">Últimas indicações que chegaram.</p>
+          <div class="activity" id="activityList"><div class="empty">Sem indicações ainda.</div></div>
+        </div>
+      </section>
+
+      <section class="view fade-in" id="view-empresa">
+        <div class="card">
+          <div class="block-title"><i data-lucide="building-2"></i> Dados da empresa</div>
+          <p class="sub">Como sua empresa aparece nas mensagens automáticas.</p>
+          <label class="label">Nome da empresa</label>
+          <input class="input" type="text" id="empresaNomeInput">
+          <label class="label">Mensagem de agradecimento (primeira mensagem enviada ao cliente)</label>
+          <textarea class="textarea" id="empresaMsgInput" rows="2"></textarea>
+          <label class="label">Vendedores (um por linha)</label>
+          <textarea class="textarea" id="empresaVendedoresInput" rows="4"></textarea>
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarEmpresaBtn">Salvar dados</button>
+            <span class="status-msg" id="statusEmpresa"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="view fade-in" id="view-premios">
+        <div id="faixasContainer"></div>
+      </section>
+
+      <section class="view fade-in" id="view-whatsapp">
+        <div class="card">
+          <div class="block-title"><i data-lucide="smartphone"></i> Meu WhatsApp</div>
+          <p class="sub">Conecte o WhatsApp da sua empresa para o robô falar pelo seu número. Crie uma conta na <strong>Z-API</strong>, conecte seu WhatsApp lendo o QR code, e cole abaixo os dados da sua instância.</p>
+
+          <span id="whatsappStatus" class="badge badge-danger">Verificando conexão...</span>
+
+          <label class="label">Instance ID (ID da instância na Z-API)</label>
+          <input class="input" type="text" id="zapiInstanceInput" placeholder="Ex: 3D1A2B3C4D5E...">
+          <label class="label">Token da instância</label>
+          <input class="input" type="text" id="zapiTokenInput" placeholder="Token da sua instância Z-API">
+          <label class="label">Client-Token (Token de segurança da conta — opcional, mas recomendado)</label>
+          <input class="input" type="text" id="zapiClientTokenInput" placeholder="Client-Token da sua conta Z-API">
+
+          <label class="label">Sua URL de Webhook (cole isto na configuração da Z-API)</label>
+          <div class="webhook-box">
+            <code id="webhookUrlText">—</code>
+            <button type="button" class="btn btn-secondary" id="copyWebhookBtn" style="padding:7px 14px;font-size:0.8rem">Copiar</button>
+          </div>
+          <div class="hint">Na Z-API, em "Ao receber" (webhook de mensagens recebidas), cole exatamente esta URL.</div>
+
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarWhatsappBtn">Salvar WhatsApp</button>
+            <span class="status-msg" id="statusWhatsapp"></span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
 </div>
 
+<script src="https://unpkg.com/lucide@latest"></script>
 <script>
 const API_BASE = window.location.origin;
 const TOKEN = localStorage.getItem('recomendaleads_token');
+if (!TOKEN) { window.location.href = '/login'; }
 
-if (!TOKEN) {
-  window.location.href = '/login';
-}
+function icons() { try { lucide.createIcons(); } catch (e) {} }
 
 async function fetchAutenticado(url, options = {}) {
-  const resp = await fetch(url, {
-    ...options,
-    headers: { ...(options.headers || {}), 'Authorization': `Bearer ${TOKEN}` }
-  });
+  const resp = await fetch(url, { ...options, headers: { ...(options.headers || {}), 'Authorization': `Bearer ${TOKEN}` } });
   if (resp.status === 401) {
     localStorage.removeItem('recomendaleads_token');
     localStorage.removeItem('recomendaleads_empresa');
@@ -154,140 +171,197 @@ async function fetchAutenticado(url, options = {}) {
 }
 
 let configuracaoAtual = null;
+const TITULOS = {
+  overview: ['Olá, {nome}', 'Resumo do que está acontecendo no seu programa de indicações.'],
+  empresa: ['Minha empresa', 'Ajuste os dados que aparecem nas mensagens.'],
+  premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
+  whatsapp: ['WhatsApp', 'Conecte o número que o robô vai usar.']
+};
+
+function trocarSecao(secao) {
+  document.querySelectorAll('section.view').forEach(s => s.classList.remove('active'));
+  const alvo = document.getElementById('view-' + secao);
+  if (alvo) { alvo.classList.remove('fade-in'); void alvo.offsetWidth; alvo.classList.add('active', 'fade-in'); }
+  document.querySelectorAll('#nav .nav-item[data-section]').forEach(a => a.classList.toggle('active', a.dataset.section === secao));
+  const nomeEmpresa = (configuracaoAtual && configuracaoAtual.nome) ? configuracaoAtual.nome : '';
+  const [t, s] = TITULOS[secao] || TITULOS.overview;
+  document.getElementById('pageTitle').textContent = t.replace('{nome}', nomeEmpresa || 'tudo bem?');
+  document.getElementById('pageSub').textContent = s;
+  window.scrollTo({ top: 0 });
+}
+
+document.querySelectorAll('#nav .nav-item[data-section]').forEach(a => a.addEventListener('click', () => trocarSecao(a.dataset.section)));
+document.querySelectorAll('.tile[data-go]').forEach(t => t.addEventListener('click', () => trocarSecao(t.dataset.go)));
+
+function tempoRelativo(iso) {
+  if (!iso) return '';
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return 'agora';
+  if (diff < 3600) return `há ${Math.floor(diff/60)} min`;
+  if (diff < 86400) return `há ${Math.floor(diff/3600)}h`;
+  return `há ${Math.floor(diff/86400)}d`;
+}
 
 async function carregarConfiguracao() {
   const loadMsg = document.getElementById('loadMsg');
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`);
     const data = await resp.json();
-
-    if (!resp.ok || !data.ok) throw new Error(data.erro || 'Falha ao carregar configuração');
-
+    if (!resp.ok || !data.ok) throw new Error(data.erro || 'Falha ao carregar');
     configuracaoAtual = data.empresa;
     loadMsg.style.display = 'none';
     document.getElementById('conteudo').style.display = 'block';
 
     const empresaSalva = JSON.parse(localStorage.getItem('recomendaleads_empresa') || '{}');
-    document.getElementById('empresaLogadaNome').textContent = `Logado como: ${empresaSalva.nome || configuracaoAtual.nome}`;
+    const nome = empresaSalva.nome || configuracaoAtual.nome || 'Empresa';
+    document.getElementById('userNome').textContent = nome;
+    document.getElementById('userEmail').textContent = empresaSalva.email || '';
+    document.getElementById('avatarLetra').textContent = (nome[0] || 'E').toUpperCase();
 
     document.getElementById('empresaNomeInput').value = configuracaoAtual.nome || '';
     document.getElementById('empresaMsgInput').value = configuracaoAtual.mensagemAgradecimento || '';
     document.getElementById('empresaVendedoresInput').value = (configuracaoAtual.vendedores || []).join('\n');
 
-    renderFaixas(configuracaoAtual.faixasBonus || []);
-  } catch (err) {
-    loadMsg.textContent = 'Não foi possível carregar a configuração.';
-  }
+    const faixas = configuracaoAtual.faixasBonus || [];
+    renderFaixas(faixas);
+    document.getElementById('mPremios').textContent = faixas.length;
+    trocarSecao('overview');
+    icons();
+  } catch (err) { loadMsg.textContent = 'Não foi possível carregar a configuração.'; }
+}
+
+async function carregarVisaoGeral() {
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-leads`);
+    const data = await resp.json();
+    const leads = (data && (data.leads || data)) || [];
+    if (!Array.isArray(leads)) return;
+    document.getElementById('mLeads').textContent = leads.length;
+    const seteDias = Date.now() - 7 * 86400 * 1000;
+    document.getElementById('mSemana').textContent = leads.filter(l => l.criadoEm && new Date(l.criadoEm).getTime() >= seteDias).length;
+    const ordenados = [...leads].sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0)).slice(0, 8);
+    const lista = document.getElementById('activityList');
+    if (!ordenados.length) return;
+    lista.innerHTML = ordenados.map(l => `
+      <div class="item"><span class="dot"></span>
+        <div class="who"><b>${(l.nomeRecomendado || 'Contato').replace(/</g,'&lt;')}</b>
+        <small>${l.nomeRecomendador ? 'indicado por ' + l.nomeRecomendador.replace(/</g,'&lt;') : 'nova indicação'}</small></div>
+        <span class="when">${tempoRelativo(l.criadoEm)}</span></div>`).join('');
+  } catch (err) {}
 }
 
 document.getElementById('salvarEmpresaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarEmpresaBtn');
   const statusEl = document.getElementById('statusEmpresa');
-
   const nome = document.getElementById('empresaNomeInput').value.trim();
   const mensagemAgradecimento = document.getElementById('empresaMsgInput').value.trim();
-  const vendedores = document.getElementById('empresaVendedoresInput').value
-    .split('\n').map(v => v.trim()).filter(v => v.length > 0);
-
-  btn.disabled = true;
-  statusEl.textContent = 'Salvando...';
-  statusEl.className = 'status-msg';
-
+  const vendedores = document.getElementById('empresaVendedoresInput').value.split('\n').map(v => v.trim()).filter(Boolean);
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome, mensagemAgradecimento, vendedores })
-    });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome, mensagemAgradecimento, vendedores }) });
     const data = await resp.json();
-
-    if (resp.ok && data.ok) {
-      statusEl.textContent = '✅ Salvo!';
-      statusEl.className = 'status-msg ok';
-      configuracaoAtual = data.empresa;
-    } else {
-      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
-      statusEl.className = 'status-msg err';
-    }
-  } catch (err) {
-    statusEl.textContent = '❌ Erro de conexão';
-    statusEl.className = 'status-msg err';
-  } finally {
-    btn.disabled = false;
-    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000);
-  }
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok'; configuracaoAtual = data.empresa; document.getElementById('userNome').textContent = nome || 'Empresa'; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
 });
 
 function renderFaixas(faixas) {
   const container = document.getElementById('faixasContainer');
   container.innerHTML = '';
-
+  if (!faixas.length) { container.innerHTML = '<div class="card"><p class="empty">Nenhuma faixa configurada.</p></div>'; return; }
   faixas.forEach((faixa) => {
     const card = document.createElement('div');
     card.className = 'card';
+    card.style.marginBottom = '16px';
     card.innerHTML = `
-      <div class="card-head">
-        <h2>${faixa.premio}</h2>
-        <span class="badge">${faixa.quantidade} recomendações</span>
+      <div class="faixa-head">
+        <h3>${(faixa.premio || 'Prêmio').replace(/</g,'&lt;')}</h3>
+        <span class="badge badge-brand">${faixa.quantidade} recomendações</span>
       </div>
-      <label>Prêmio (texto curto mostrado ao cliente)</label>
-      <input type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
-      <label>Arquivo (link do Google Drive)</label>
-      <input type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="https://drive.google.com/file/d/...">
-      <label>Link</label>
-      <input type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
-      <label>Texto de orientação</label>
-      <textarea data-field="texto" rows="3">${faixa.texto || ''}</textarea>
+      <label class="label">Prêmio (texto curto mostrado ao cliente)</label>
+      <input class="input" type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
+      <label class="label">Arquivo (link do Google Drive — PDF ou imagem do voucher)</label>
+      <input class="input" type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="https://drive.google.com/file/d/...">
+      <label class="label">Link (site, Instagram, Maps, etc.)</label>
+      <input class="input" type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
+      <label class="label">Texto de orientação (enviado junto com o voucher)</label>
+      <textarea class="textarea" data-field="texto" rows="3">${faixa.texto || ''}</textarea>
       <div class="row-save">
-        <button class="save-btn" data-quantidade="${faixa.quantidade}">Salvar faixa de ${faixa.quantidade}</button>
+        <button class="btn btn-action" data-quantidade="${faixa.quantidade}">Salvar faixa de ${faixa.quantidade}</button>
         <span class="status-msg" data-statusfor="${faixa.quantidade}"></span>
-      </div>
-    `;
+      </div>`;
     container.appendChild(card);
   });
-
-  container.querySelectorAll('.save-btn').forEach(btn => {
-    btn.addEventListener('click', () => salvarFaixa(btn));
-  });
+  container.querySelectorAll('.btn-action').forEach(btn => btn.addEventListener('click', () => salvarFaixa(btn)));
 }
 
 async function salvarFaixa(btn) {
   const quantidade = parseInt(btn.dataset.quantidade);
   const card = btn.closest('.card');
   const statusEl = card.querySelector(`[data-statusfor="${quantidade}"]`);
-
   const premio = card.querySelector('[data-field="premio"]').value.trim();
   const arquivo = card.querySelector('[data-field="arquivo"]').value.trim() || null;
   const link = card.querySelector('[data-field="link"]').value.trim() || null;
   const texto = card.querySelector('[data-field="texto"]').value.trim() || null;
-
-  btn.disabled = true;
-  statusEl.textContent = 'Salvando...';
-  statusEl.className = 'status-msg';
-
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantidade, premio, arquivo, link, texto })
-    });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantidade, premio, arquivo, link, texto }) });
     const data = await resp.json();
-
-    if (resp.ok && data.ok) {
-      statusEl.textContent = '✅ Salvo!';
-      statusEl.className = 'status-msg ok';
-    } else {
-      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
-      statusEl.className = 'status-msg err';
-    }
-  } catch (err) {
-    statusEl.textContent = '❌ Erro de conexão';
-    statusEl.className = 'status-msg err';
-  } finally {
-    btn.disabled = false;
-    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000);
-  }
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok'; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
 }
+
+async function carregarWhatsapp() {
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) return;
+    const statusEl = document.getElementById('whatsappStatus');
+    const mWhats = document.getElementById('mWhats');
+    if (data.conectado) {
+      statusEl.textContent = '✅ WhatsApp conectado'; statusEl.className = 'badge badge-success';
+      mWhats.textContent = 'Conectado';
+    } else {
+      statusEl.textContent = '⚠️ Ainda não conectado'; statusEl.className = 'badge badge-danger';
+      mWhats.textContent = 'Não conectado';
+    }
+    document.getElementById('zapiInstanceInput').value = data.zapiInstanceId || '';
+    document.getElementById('zapiTokenInput').placeholder = data.temToken ? '•••••• (já salvo — preencha para trocar)' : 'Token da sua instância Z-API';
+    document.getElementById('zapiClientTokenInput').placeholder = data.temClientToken ? '•••••• (já salvo — preencha para trocar)' : 'Client-Token da sua conta Z-API';
+    document.getElementById('webhookUrlText').textContent = data.webhookUrl || '—';
+  } catch (err) {}
+}
+
+document.getElementById('copyWebhookBtn').addEventListener('click', () => {
+  const url = document.getElementById('webhookUrlText').textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('copyWebhookBtn'); const txt = btn.textContent;
+    btn.textContent = 'Copiado!'; setTimeout(() => { btn.textContent = txt; }, 2000);
+  });
+});
+
+document.getElementById('salvarWhatsappBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarWhatsappBtn');
+  const statusEl = document.getElementById('statusWhatsapp');
+  const zapiInstanceId = document.getElementById('zapiInstanceInput').value.trim();
+  const zapiToken = document.getElementById('zapiTokenInput').value.trim();
+  const zapiClientToken = document.getElementById('zapiClientTokenInput').value.trim();
+  if (!zapiInstanceId || !zapiToken) { statusEl.textContent = '❌ Preencha Instance ID e Token'; statusEl.className = 'status-msg err'; return; }
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zapiInstanceId, zapiToken, zapiClientToken }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok';
+      document.getElementById('zapiTokenInput').value = ''; document.getElementById('zapiClientTokenInput').value = '';
+      carregarWhatsapp();
+    } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
+});
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
   localStorage.removeItem('recomendaleads_token');
@@ -295,7 +369,10 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
   window.location.href = '/login';
 });
 
+icons();
 carregarConfiguracao();
+carregarWhatsapp();
+carregarVisaoGeral();
 </script>
 </body>
 </html>
