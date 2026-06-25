@@ -38,6 +38,8 @@
   .block-title .ti { width: 19px; height: 19px; color: var(--brand); }
   .sub { color: var(--text-dim); font-size: 0.85rem; margin: 5px 0 18px; }
   .row-save { display: flex; align-items: center; gap: 14px; margin-top: 20px; }
+  .metric-action { text-decoration: none; color: inherit; display: flex; flex-direction: column; justify-content: center; cursor: pointer; }
+  .metric-action:hover { border-color: var(--brand); }
 </style>
 </head>
 <body>
@@ -53,6 +55,7 @@
       <button class="nav-item" data-section="premios"><i data-lucide="gift"></i><span class="txt">Prêmios</span></button>
       <button class="nav-item" data-section="whatsapp"><i data-lucide="smartphone"></i><span class="txt">WhatsApp</span></button>
       <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
+      <a class="nav-item" href="/crm#config"><i data-lucide="settings"></i><span class="txt">Configurações</span></a>
     </nav>
     <div class="user-box">
       <div class="avatar" id="avatarLetra">A</div>
@@ -81,10 +84,10 @@
             <div class="m-label"><i data-lucide="user-plus"></i> Novos na semana</div>
             <div class="m-value" id="mSemana">0</div>
           </div>
-          <div class="metric-card">
-            <div class="m-label"><i data-lucide="gift"></i> Prêmios configurados</div>
-            <div class="m-value" id="mPremios">0</div>
-          </div>
+          <a class="metric-card metric-action" href="/crm#config">
+            <div class="m-label"><i data-lucide="settings"></i> Configurações</div>
+            <div class="m-value sm" style="color:var(--brand)">Abrir <i data-lucide="arrow-right" style="width:18px;height:18px;vertical-align:-3px"></i></div>
+          </a>
           <div class="metric-card">
             <div class="m-label"><i data-lucide="smartphone"></i> WhatsApp</div>
             <div class="m-value sm" id="mWhats">—</div>
@@ -231,7 +234,8 @@ async function carregarConfiguracao() {
 
     const faixas = configuracaoAtual.faixasBonus || [];
     renderFaixas(faixas);
-    document.getElementById('mPremios').textContent = faixas.length;
+    const mPremios = document.getElementById('mPremios');
+    if (mPremios) mPremios.textContent = faixas.length;
     trocarSecao('overview');
     icons();
   } catch (err) { loadMsg.textContent = 'Não foi possível carregar a configuração.'; }

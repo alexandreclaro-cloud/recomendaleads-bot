@@ -1663,6 +1663,12 @@ document.getElementById('salvarEtapasBtn').addEventListener('click', async () =>
 // ============================================================
 carregarLeads();
 setInterval(carregarLeads, 60000);
+
+// Abre direto a aba Configurações quando acessado via /crm#config
+if (location.hash === '#config') {
+  const cfgBtn = document.querySelector('.tab-btn[data-tab="config"]');
+  if (cfgBtn) cfgBtn.click();
+}
 </script>
 </body>
 </html>
