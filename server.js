@@ -105,6 +105,38 @@ const SESSOES_RECOMENDADO_COL = () => db.collection('sessoes_recomendado');
 const AGENDAMENTOS_COL = () => db.collection('agendamentos');
 const MENSAGENS_PROCESSADAS_COL = () => db.collection('mensagens_processadas');
 const NUMEROS_PAUSADOS_COL = () => db.collection('numeros_pausados');
+// Caixa de entrada: cada mensagem trocada + um resumo por conversa
+const MENSAGENS_CHAT_COL = () => db.collection('mensagens_chat');
+const CONVERSAS_COL = () => db.collection('conversas');
+
+// Grava uma mensagem (recebida ou enviada) no histórico da conversa e atualiza
+// o resumo da conversa. Usado para a caixa de entrada do WhatsApp.
+async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo }) {
+  if (!db || !telefone) return;
+  const agora = new Date().toISOString();
+  try {
+    await MENSAGENS_CHAT_COL().add({
+      empresaId: empresaId || EMPRESA_ID_PDN,
+      telefone,
+      direcao, // 'in' (recebida) ou 'out' (enviada)
+      texto: texto || '',
+      tipo: tipo || 'texto',
+      criadoEm: agora
+    });
+    const resumo = {
+      empresaId: empresaId || EMPRESA_ID_PDN,
+      telefone,
+      ultimaMensagem: (texto || '').slice(0, 140),
+      ultimaEm: agora,
+      ultimaDirecao: direcao
+    };
+    if (nome) resumo.nome = nome;
+    if (direcao === 'in') resumo.naoLidas = admin.firestore.FieldValue.increment(1);
+    await CONVERSAS_COL().doc(`${empresaId || EMPRESA_ID_PDN}__${telefone}`).set(resumo, { merge: true });
+  } catch (err) {
+    console.error('Erro ao registrar mensagem no chat:', err.message);
+  }
+}
 
 // Chave de documento isolada por empresa: "empresaId__telefone".
 // Garante que sessões e pausas de uma empresa não colidam com as de outra
@@ -366,6 +398,7 @@ async function sendText(phone, message) {
     const cfg = zapiAtual();
     await axios.post(`${zapiBaseUrl(cfg)}/send-text`, { phone, message }, { headers: zapiHeaders(cfg) });
     console.log(`[ENVIADO] para ${phone}: ${message.slice(0, 60)}...`);
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
   } catch (err) {
     console.error('Erro ao enviar texto:', err.response?.data || err.message);
   }
@@ -378,6 +411,7 @@ async function sendImage(phone, imageUrl, caption) {
       phone, image: imageUrl, caption: caption || ''
     }, { headers: zapiHeaders(cfg) });
     console.log(`[IMAGEM ENVIADA] para ${phone}`);
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem' });
   } catch (err) {
     console.error('Erro ao enviar imagem:', err.response?.data || err.message);
   }
@@ -390,6 +424,7 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
       phone, document: base64OrUrl, fileName
     }, { headers: zapiHeaders(cfg) });
     console.log(`[DOCUMENTO ENVIADO] para ${phone}: ${fileName}`);
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento' });
   } catch (err) {
     console.error('Erro ao enviar documento:', err.response?.data || err.message);
   }
@@ -1113,6 +1148,20 @@ async function tratarWebhook(req, res) {
     console.log('[WEBHOOK] texto extraído:', texto);
     console.log('[WEBHOOK] vCard extraído:', vCard);
     console.log('[WEBHOOK] contatosMultiplos extraído:', JSON.stringify(contatosMultiplos));
+
+    // Registra a mensagem recebida no histórico da conversa (caixa de entrada)
+    const nomeContato = body.senderName || body.chatName || body.pushname || null;
+    let textoChat = texto;
+    if (!textoChat) {
+      if (contatosMultiplos && contatosMultiplos.length) textoChat = '👤 Contato(s) compartilhado(s)';
+      else if (vCard) textoChat = '👤 Contato compartilhado';
+      else if (body.image) textoChat = '📷 Imagem';
+      else if (body.audio) textoChat = '🎤 Áudio';
+      else if (body.document) textoChat = '📎 Documento';
+    }
+    if (textoChat) {
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat });
+    }
 
     // ============================================================
     // COMANDOS DE PAUSA MANUAL — "stop1" / "play1"
