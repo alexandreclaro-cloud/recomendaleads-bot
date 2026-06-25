@@ -504,6 +504,16 @@
   .rank-num { font-size: 0.82rem; color: var(--text-dim); white-space: nowrap; }
   .rank-num.conv { color: var(--success); font-weight: 600; }
   @media (max-width: 640px) { .rank-row .rank-num.conv { display: none; } }
+
+  /* Editor de etapas (colunas do pipeline) */
+  .etapa-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .etapa-row input[type="text"] { flex: 1; }
+  .etapa-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 0.95rem; flex-shrink: 0; }
+  .etapa-btn:hover { border-color: var(--gold); color: var(--gold-deep); }
+  .etapa-btn.remover:hover { border-color: var(--error); color: var(--error); }
+  .etapa-btn:disabled { opacity: 0.3; cursor: default; }
+  .add-etapa-btn { background: transparent; border: 1px dashed var(--border); color: var(--gold-deep); padding: 9px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin: 4px 0 10px; }
+  .add-etapa-btn:hover { background: var(--gold-soft); border-color: var(--gold); }
 </style>
 </head>
 <body>
@@ -571,9 +581,11 @@
         <div class="config-card">
           <h2>Etapas do Pipeline (colunas do Kanban)</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 14px;">
-            Renomeie as colunas do seu funil como preferir. Os leads existentes continuam nas mesmas posições.
+            Crie, exclua, reordene (↑ ↓) e renomeie as colunas do seu funil. Use quantas quiser — 2, 3 ou mais.
+            Ao excluir uma coluna com leads, eles vão automaticamente para a primeira coluna.
           </p>
           <div id="etapasContainer"></div>
+          <button class="add-etapa-btn" id="addEtapaBtn">+ Adicionar coluna</button>
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarEtapasBtn">Salvar etapas</button>
             <span class="config-status-msg" id="statusEtapas"></span>
@@ -746,7 +758,7 @@ document.querySelectorAll('.subtab-btn').forEach(btn => {
     document.querySelectorAll('.subtab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(MAPA_SUBTABS[btn.dataset.subtab]).classList.add('active');
-    if (btn.dataset.subtab === 'etapas') renderEtapasConfig();
+    if (btn.dataset.subtab === 'etapas') renderEtapasConfig(etapas);
   });
 });
 
@@ -1486,23 +1498,61 @@ function renderRanking() {
 // ============================================================
 // EDITAR NOMES DAS ETAPAS (colunas do pipeline)
 // ============================================================
-function renderEtapasConfig() {
+let etapasEdit = [];
+
+function gerarIdEtapa(nome) {
+  const base = (nome || 'etapa')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'etapa';
+  let candidato = base, contador = 1;
+  while (etapasEdit.some(e => e.id === candidato)) candidato = `${base}_${contador++}`;
+  return candidato;
+}
+
+function renderEtapasConfig(lista) {
+  if (lista) etapasEdit = lista.map(e => ({ ...e }));
   const c = document.getElementById('etapasContainer');
   if (!c) return;
-  c.innerHTML = etapas.map((e, i) => `
-    <label>Coluna ${i + 1}</label>
-    <input type="text" data-etapa-id="${esc(e.id)}" value="${esc(e.nome).replace(/"/g, '&quot;')}">
-  `).join('');
+  c.innerHTML = '';
+  etapasEdit.forEach((etapa, index) => {
+    const row = document.createElement('div');
+    row.className = 'etapa-row';
+    row.innerHTML = `
+      <button class="etapa-btn" data-action="up" data-index="${index}" ${index === 0 ? 'disabled' : ''} title="Subir">↑</button>
+      <button class="etapa-btn" data-action="down" data-index="${index}" ${index === etapasEdit.length - 1 ? 'disabled' : ''} title="Descer">↓</button>
+      <input type="text" data-index="${index}" value="${esc(etapa.nome).replace(/"/g, '&quot;')}">
+      <button class="etapa-btn remover" data-action="remover" data-index="${index}" ${etapasEdit.length <= 1 ? 'disabled' : ''} title="Excluir">✕</button>
+    `;
+    c.appendChild(row);
+  });
+
+  c.querySelectorAll('input[type="text"]').forEach(input => {
+    input.addEventListener('input', () => { etapasEdit[parseInt(input.dataset.index)].nome = input.value; });
+  });
+  c.querySelectorAll('.etapa-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.index);
+      const action = btn.dataset.action;
+      if (action === 'up' && idx > 0) [etapasEdit[idx - 1], etapasEdit[idx]] = [etapasEdit[idx], etapasEdit[idx - 1]];
+      else if (action === 'down' && idx < etapasEdit.length - 1) [etapasEdit[idx + 1], etapasEdit[idx]] = [etapasEdit[idx], etapasEdit[idx + 1]];
+      else if (action === 'remover' && etapasEdit.length > 1) etapasEdit.splice(idx, 1);
+      renderEtapasConfig();
+    });
+  });
 }
+
+document.getElementById('addEtapaBtn').addEventListener('click', () => {
+  const novoNome = `Nova coluna ${etapasEdit.length + 1}`;
+  etapasEdit.push({ id: gerarIdEtapa(novoNome), nome: novoNome });
+  renderEtapasConfig();
+});
 
 document.getElementById('salvarEtapasBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarEtapasBtn');
   const status = document.getElementById('statusEtapas');
-  const inputs = document.querySelectorAll('#etapasContainer input[data-etapa-id]');
-  const novas = Array.from(inputs).map(inp => ({
-    id: inp.dataset.etapaId,
-    nome: (inp.value || '').trim() || inp.dataset.etapaId
-  }));
+  const novas = etapasEdit.map(e => ({ id: e.id || gerarIdEtapa(e.nome), nome: (e.nome || '').trim() || 'Coluna sem nome' }));
   if (!novas.length) return;
 
   btn.disabled = true;
@@ -1515,11 +1565,23 @@ document.getElementById('salvarEtapasBtn').addEventListener('click', async () =>
     });
     const data = await resp.json();
     if (resp.ok && data.ok) {
-      status.textContent = '✅ Salvo!';
-      status.className = 'config-status-msg ok';
+      // Move leads de colunas excluídas para a primeira coluna
+      const novosIds = novas.map(e => e.id);
+      const primeira = novas[0] && novas[0].id;
+      const orfaos = leads.filter(l => l.etapa && !novosIds.includes(l.etapa));
+      if (primeira && orfaos.length) {
+        for (const l of orfaos) {
+          l.etapa = primeira;
+          try { await fetchAutenticado(`${API_BASE}/minha-leads/${l.id}`, { method: 'PATCH', body: JSON.stringify({ etapa: primeira }) }); } catch (e) {}
+        }
+      }
       etapas = novas;
       montarColunas();
       renderBoard();
+      atualizarStats();
+      renderEtapasConfig(novas);
+      status.textContent = '✅ Salvo!';
+      status.className = 'config-status-msg ok';
     } else {
       status.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
       status.className = 'config-status-msg err';
