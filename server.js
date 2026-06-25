@@ -1967,6 +1967,25 @@ app.get('/status', async (req, res) => {
   }
 });
 
+// DEBUG TEMPORÁRIO — diagnóstico do fluxo do recomendado
+app.get('/debug-fluxo', async (req, res) => {
+  try {
+    const agSnap = await AGENDAMENTOS_COL().orderBy('criadoEm', 'desc').limit(15).get();
+    const agendamentos = [];
+    agSnap.forEach(d => {
+      const x = d.data();
+      agendamentos.push({ tipo: x.tipo, status: x.status, executarEm: x.executarEm, empresaId: x.empresaId, telefone: x.dados?.contato?.telefone || x.dados?.telefone || null });
+    });
+    const pausSnap = await NUMEROS_PAUSADOS_COL().limit(40).get();
+    const pausados = []; pausSnap.forEach(d => pausados.push(d.id));
+    const recSnap = await SESSOES_RECOMENDADO_COL().limit(40).get();
+    const recomendado = []; recSnap.forEach(d => recomendado.push({ chave: d.id, etapa: d.data().etapa }));
+    res.json({ agora: new Date().toISOString(), agendamentos, pausados, recomendado });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 app.get('/config', async (req, res) => {
   try {
     const empresa = await getEmpresa();
