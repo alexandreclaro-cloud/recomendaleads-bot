@@ -87,6 +87,25 @@ function respostaEhPositiva(texto) {
   return PALAVRAS_POSITIVAS.some(palavra => normalizado.includes(palavra));
 }
 
+const PALAVRAS_NEGATIVAS = [
+  'não quero', 'nao quero', 'não tenho interesse', 'nao tenho interesse',
+  'para de mandar', 'me tira', 'não conheço', 'nao conheco',
+  'quem é você', 'quem e voce', 'não me interessa', 'nao me interessa',
+  'bloquear', 'spam', 'para', 'chega', 'não', 'nao'
+];
+
+function respostaEhNegativa(texto) {
+  if (!texto) return false;
+  const normalizado = texto.toLowerCase().trim();
+  // Só considera negativo se for exatamente "não"/"nao" sozinho,
+  // ou se contiver frases explicitamente negativas
+  if (normalizado === 'não' || normalizado === 'nao') return true;
+  return ['não quero', 'nao quero', 'não tenho interesse', 'nao tenho interesse',
+    'para de mandar', 'me tira', 'não conheço', 'nao conheco',
+    'não me interessa', 'nao me interessa', 'bloquear', 'spam'
+  ].some(frase => normalizado.includes(frase));
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'recomendaleads-segredo-trocar-em-producao';
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'troque-esta-chave';
 
@@ -791,62 +810,97 @@ Regras estritas:
   }
 }
 
+// Mapeamento de objeções — o bot nunca desiste, sempre leva para o presente
+const OBJECOES = [
+  {
+    gatilhos: ['nao quero', 'não quero', 'nao tenho interesse', 'não tenho interesse', 'sem interesse'],
+    resposta: 'Entendo sua frustração, mas estou programado para lhe entregar um presente... Vou cumprir meu papel! 🎁'
+  },
+  {
+    gatilhos: ['nao conheco', 'não conheço', 'nao sei quem', 'não sei quem', 'quem e voce', 'quem é você', 'quem é vc', 'quem sao voces', 'não conheço vocês'],
+    resposta: 'Entendo que talvez não estamos falando da mesma pessoa, mas minha missão aqui é te entregar uma ferramenta que vai te ajudar a vender mais! 🎁'
+  },
+  {
+    gatilhos: ['quem deu meu contato', 'quem passou meu numero', 'quem passou meu número', 'quem te deu', 'como conseguiu meu numero', 'como conseguiu meu número'],
+    resposta: 'Entendo que não autorizou dar seu número, mas acredito que quem o fez estava com as melhores intenções... Vou cumprir meu papel e te entregar meu presente! 🎁'
+  },
+  {
+    gatilhos: ['nao autorizei', 'não autorizei', 'nao dei permissao', 'não dei permissão', 'nao permiti', 'não permiti'],
+    resposta: 'Entendo que se sinta invadido por não ter sido avisado. Vou ser breve e lhe entregar o que me foi solicitado! 🎁'
+  },
+  {
+    gatilhos: ['estou no trabalho', 'to no trabalho', 'ocupado', 'ocupada', 'agora nao', 'agora não', 'depois', 'pode ser depois', 'nao posso agora', 'não posso agora'],
+    resposta: 'Entendo! Vou ser rápido — é só um presente que {recomendador} separou pra você. Posso te enviar agora mesmo? 🎁'
+  },
+  {
+    gatilhos: ['spam', 'golpe', 'fraude', 'mentira', 'nao acredito', 'não acredito', 'desconfio'],
+    resposta: 'Entendo sua desconfiança! Sou {vendedor} da {empresa} e seu amigo(a) {recomendador} me pediu pra te entregar um presente. É rápido e sem compromisso! 🎁'
+  }
+];
+
+function verificarObjecao(texto, variaveis) {
+  if (!texto) return null;
+  const normalizado = texto.toLowerCase().trim();
+  for (const objecao of OBJECOES) {
+    if (objecao.gatilhos.some(g => normalizado.includes(g))) {
+      return substituirVariaveis(objecao.resposta, variaveis);
+    }
+  }
+  return null;
+}
+
 async function processarMensagemRecomendado(telefone, texto, empresa) {
   const sessao = await getSessaoRecomendado(telefone);
   if (!sessao) return false;
 
+  // IA DESATIVADA — fluxo 100% por palavras-chave e respostas fixas do CRM.
+  // Mais rápido, previsível e sem delay de API.
+
   if (sessao.etapa === 'aguardando_confirmacao') {
-    // PALAVRAS-CHAVE PRIMEIRO — respostas simples e positivas respondem
-    // imediatamente sem chamar a IA, eliminando o delay de 2-4 segundos
-    // para os casos mais comuns ("Sim", "Pode", "Posso", "Claro", etc.)
+    const variaveis = {
+      nomeRecomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
+      recomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
+      recomendador: sessao.nomeRecomendador ? sessao.nomeRecomendador.split(' ')[0] : 'seu amigo',
+      vendedor: sessao.vendedorNome || empresa.nome,
+      empresa: empresa.nome
+    };
+
     if (respostaEhPositiva(texto)) {
+      // Resposta positiva — envia prêmio imediatamente
       const marcaTempo = new Date().toISOString();
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
-      return true;
-    }
-
-    // Só chama a IA para casos ambíguos (perguntas, respostas longas, contexto incerto)
-    const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando confirmação para falar do prêmio');
-
-    if (interpretacao.classificacao === 'positiva') {
-      const marcaTempo = new Date().toISOString();
-      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-      await enviarPremioRecomendado(telefone, sessao, empresa);
-    } else if (interpretacao.classificacao === 'negativa') {
-      const despedida = interpretacao.respostaSugerida || 'Sem problemas! Foi só um engano da nossa parte, desculpe incomodar 🙂';
-      await sendText(telefone, despedida);
-      await saveSessaoRecomendado(telefone, { etapa: 'finalizado_negativo' });
-      console.log(`[ROTEIRO RECOMENDADO ENCERRADO - RESPOSTA NEGATIVA] ${sessao.nomeRecomendado} (${telefone})`);
     } else {
-      const marcaTempo = new Date().toISOString();
-      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-      await sendText(telefone, interpretacao.respostaSugerida || empresa.mensagemAguardandoConfirmacao);
-      await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
+      // Verifica se é uma objeção conhecida
+      const respostaObjecao = verificarObjecao(texto, variaveis);
+      if (respostaObjecao) {
+        // Responde à objeção e envia o presente logo em seguida
+        await sendText(telefone, respostaObjecao);
+        const marcaTempo = new Date().toISOString();
+        await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+        await enviarPremioRecomendado(telefone, sessao, empresa);
+      } else {
+        // Qualquer outra coisa — repete a mensagem de confirmação do CRM
+        const marcaTempo = new Date().toISOString();
+        await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+        await sendText(telefone, empresa.mensagemAguardandoConfirmacao || 'Posso te contar mais sobre isso?');
+        await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
+      }
     }
     return true;
   }
 
   if (sessao.etapa === 'aguardando_reacao') {
-    // Qualquer resposta avança para o CTA — atualiza marca de tempo imediatamente
+    // Qualquer resposta avança para o CTA
     const marcaReacao = new Date().toISOString();
     await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaReacao });
-    // Só chama IA se a resposta parecer uma pergunta (texto longo ou com "?")
-    const parecePerguntar = texto && (texto.includes('?') || texto.split(' ').length > 4);
-    if (parecePerguntar) {
-      const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando reação ao prêmio, antes do CTA final');
-      if (interpretacao.classificacao === 'pergunta' && interpretacao.respostaSugerida) {
-        await sendText(telefone, interpretacao.respostaSugerida);
-      }
-    }
     await enviarCtaRecomendado(telefone, sessao, empresa);
     return true;
   }
 
   if (sessao.etapa === 'aguardando_fechamento') {
-    const interpretacao = await interpretarRespostaRecomendado(texto, empresa, 'aguardando resposta final de fechamento, depois do CTA');
-    const fechamento = interpretacao.respostaSugerida || 'Combinado! Estamos à disposição 😊';
-    await sendText(telefone, fechamento);
+    // Qualquer resposta encerra com mensagem de fechamento fixa
+    await sendText(telefone, empresa.mensagemFechamentoRecomendado || 'Combinado! Estamos à disposição 😊');
     await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
     console.log(`[ROTEIRO RECOMENDADO FINALIZADO] ${sessao.nomeRecomendado} (${telefone})`);
     return true;
