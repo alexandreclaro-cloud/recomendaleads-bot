@@ -476,7 +476,11 @@
   /* Busca */
   .search-box { position: relative; display: flex; align-items: center; flex: 1; max-width: 360px; }
   .search-box svg { position: absolute; left: 11px; width: 16px; height: 16px; color: var(--text-faint); pointer-events: none; }
-  .search-box input { width: 100%; padding-left: 34px !important; }
+  .search-box input { width: 100%; padding-left: 34px !important; padding-right: 32px !important; }
+  .search-clear { position: absolute; right: 6px; width: 22px; height: 22px; border: none; background: var(--surface-sunken); color: var(--text-dim); border-radius: 50%; cursor: pointer; font-size: 0.75rem; line-height: 1; }
+  .search-clear:hover { background: var(--border); color: var(--text); }
+  .busca-aviso { background: var(--gold-soft); color: var(--gold-deep); border: 1px solid var(--gold); border-radius: var(--radius); padding: 10px 14px; margin: 0 28px 14px; font-size: 0.85rem; display: flex; align-items: center; gap: 10px; }
+  .busca-aviso button { background: var(--surface); border: 1px solid var(--gold); color: var(--gold-deep); border-radius: 6px; padding: 4px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
 
   /* Info no card do lead */
   .lead-card .card-info { font-size: 0.76rem; color: var(--text-dim); display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
@@ -543,6 +547,7 @@
     <div class="search-box">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
       <input type="text" id="buscaLead" placeholder="Buscar cliente, recomendado ou vendedor...">
+      <button type="button" class="search-clear" id="buscaClear" title="Limpar busca" style="display:none">✕</button>
     </div>
     <label>Vendedor:</label>
     <select id="filtroVendedor">
@@ -866,6 +871,23 @@ function leadsFiltrados() {
 function renderBoard() {
   const filtrados = leadsFiltrados();
 
+  const termo = (document.getElementById('buscaLead').value || '').trim();
+  let aviso = document.getElementById('buscaAviso');
+  if (filtrados.length === 0 && leads.length > 0 && termo) {
+    if (!aviso) {
+      aviso = document.createElement('div');
+      aviso.id = 'buscaAviso';
+      aviso.className = 'busca-aviso';
+      document.getElementById('board').before(aviso);
+    }
+    aviso.innerHTML = `<span>Nenhum lead encontrado para "<b>${esc(termo)}</b>". Seus ${leads.length} leads continuam salvos.</span> <button id="avisoLimpar">Limpar busca</button>`;
+    aviso.querySelector('#avisoLimpar').addEventListener('click', () => {
+      _buscaInput.value = ''; _buscaClear.style.display = 'none'; renderBoard();
+    });
+  } else if (aviso) {
+    aviso.remove();
+  }
+
   etapas.forEach(etapa => {
     const col = document.querySelector(`[data-coletapa="${etapa.id}"]`);
     if (!col) return;
@@ -1074,7 +1096,17 @@ boardEl.addEventListener('drop', async (e) => {
 });
 
 document.getElementById('filtroVendedor').addEventListener('change', renderBoard);
-document.getElementById('buscaLead').addEventListener('input', renderBoard);
+const _buscaInput = document.getElementById('buscaLead');
+const _buscaClear = document.getElementById('buscaClear');
+_buscaInput.addEventListener('input', () => {
+  _buscaClear.style.display = _buscaInput.value ? 'block' : 'none';
+  renderBoard();
+});
+_buscaClear.addEventListener('click', () => {
+  _buscaInput.value = '';
+  _buscaClear.style.display = 'none';
+  renderBoard();
+});
 document.getElementById('refreshBtn').addEventListener('click', () => {
   carregarLeads();
   if (configuracaoCarregada) carregarConfiguracao();
