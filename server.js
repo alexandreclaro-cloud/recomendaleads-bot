@@ -1034,26 +1034,31 @@ app.post('/webhook', async (req, res) => {
     }
 
     if (matchPlay) {
-      const alvo = matchPlay[1] || telefone;
-      await despausarNumero(alvo);
-      // Limpa sessões antigas para evitar que o recomendado fique preso em
-      // loop com agendamentos velhos após ser reativado
-      await resetSessao(alvo);
-      await SESSOES_RECOMENDADO_COL().doc(alvo).delete();
-      // Cancela agendamentos pendentes antigos para este número
-      try {
-        const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
-        const batch = db.batch();
-        snap.forEach(doc => {
-          const d = doc.data();
-          const tel = d.dados?.contato?.telefone || d.dados?.telefone || null;
-          if (tel === alvo) batch.update(doc.ref, { status: 'cancelado' });
-        });
-        await batch.commit();
-      } catch (err) {
-        console.error('Erro ao cancelar agendamentos no play1:', err.message);
+      const alvo = matchPlay[1] || null;
+
+      if (alvo) {
+        // play1 COM número — limpa sessões e agendamentos do número alvo
+        await despausarNumero(alvo);
+        await resetSessao(alvo);
+        await SESSOES_RECOMENDADO_COL().doc(alvo).delete();
+        try {
+          const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
+          const batch = db.batch();
+          snap.forEach(doc => {
+            const d = doc.data();
+            const tel = d.dados?.contato?.telefone || d.dados?.telefone || null;
+            if (tel === alvo) batch.update(doc.ref, { status: 'cancelado' });
+          });
+          await batch.commit();
+        } catch (err) {
+          console.error('Erro ao cancelar agendamentos no play1:', err.message);
+        }
+        console.log(`[PAUSA MANUAL] Bot reativado e sessões limpas para ${alvo} (comando enviado por ${telefone})`);
+      } else {
+        // play1 SEM número — só remove da lista de pausados, sem mexer em sessões
+        await despausarNumero(telefone);
+        console.log(`[PAUSA MANUAL] Bot reativado para ${telefone} (sem reset de sessão)`);
       }
-      console.log(`[PAUSA MANUAL] Bot reativado e sessões limpas para ${alvo} (comando enviado por ${telefone})`);
       return res.sendStatus(200);
     }
 
