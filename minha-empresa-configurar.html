@@ -26,6 +26,10 @@
   .qtd-edit { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
   .qtd-edit .qtd-input { width: 64px; text-align: center; padding: 7px 8px; font-weight: 600; }
   .qtd-edit span { font-size: 0.8rem; color: var(--text-dim); }
+  .arquivo-row { display: flex; gap: 8px; align-items: center; }
+  .arquivo-row .input { flex: 1; }
+  .upload-btn { white-space: nowrap; }
+  .upload-status { min-height: 16px; }
 
   .webhook-box { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 12px; }
   .webhook-box code { flex: 1; color: var(--brand-dark); font-size: 0.8rem; word-break: break-all; }
@@ -287,8 +291,13 @@ function renderFaixas(faixas) {
       </div>
       <label class="label">Prêmio (texto curto mostrado ao cliente)</label>
       <input class="input" type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
-      <label class="label">Arquivo (link do Google Drive — PDF ou imagem do voucher)</label>
-      <input class="input" type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="https://drive.google.com/file/d/...">
+      <label class="label">Arquivo do voucher (PDF ou imagem) — envie do seu computador ou cole um link</label>
+      <div class="arquivo-row">
+        <input class="input" type="text" data-field="arquivo" value="${(faixa.arquivo || '').replace(/"/g, '&quot;')}" placeholder="Envie um arquivo ou cole um link">
+        <button type="button" class="btn btn-secondary upload-btn"><i data-lucide="upload"></i> Enviar</button>
+        <input type="file" class="arquivo-file" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+      </div>
+      <div class="hint upload-status"></div>
       <label class="label">Link (site, Instagram, Maps, etc.)</label>
       <input class="input" type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
       <label class="label">Texto de orientação (enviado junto com o voucher)</label>
@@ -300,6 +309,42 @@ function renderFaixas(faixas) {
     container.appendChild(card);
   });
   container.querySelectorAll('.btn-action').forEach(btn => btn.addEventListener('click', () => salvarFaixa(btn)));
+
+  container.querySelectorAll('.card').forEach(card => {
+    const uploadBtn = card.querySelector('.upload-btn');
+    const fileInput = card.querySelector('.arquivo-file');
+    const arquivoInput = card.querySelector('[data-field="arquivo"]');
+    const statusEl = card.querySelector('.upload-status');
+    if (uploadBtn && fileInput) {
+      uploadBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => uploadArquivo(fileInput, arquivoInput, statusEl));
+    }
+  });
+  icons();
+}
+
+async function uploadArquivo(inputFile, inputTexto, statusEl) {
+  const file = inputFile.files[0];
+  if (!file) return;
+  statusEl.textContent = 'Enviando arquivo...'; statusEl.style.color = 'var(--text-dim)';
+  const formData = new FormData();
+  formData.append('arquivo', file);
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/upload-arquivo`, { method: 'POST', body: formData });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      inputTexto.value = data.url;
+      statusEl.textContent = '✅ Arquivo enviado! Clique em "Salvar faixa" para confirmar.';
+      statusEl.style.color = 'var(--success-dark)';
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao enviar arquivo');
+      statusEl.style.color = 'var(--danger-dark)';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão ao enviar';
+    statusEl.style.color = 'var(--danger-dark)';
+  }
+  inputFile.value = '';
 }
 
 async function salvarFaixa(btn) {
