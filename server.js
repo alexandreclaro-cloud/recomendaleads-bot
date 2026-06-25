@@ -34,6 +34,52 @@ const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN || 'COLOQUE_SEU_CLIENT_T
 const ZAPI_BASE_URL = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}`;
 
 // ============================================================
+// MULTI-TENANT — contexto da empresa ativa por requisição
+// ============================================================
+// Cada requisição (webhook) ou execução de agendamento roda dentro de um
+// "contexto" que sabe qual empresa está ativa e quais credenciais Z-API usar.
+// Assim os envios saem pelo WhatsApp da empresa certa, sem precisar passar a
+// empresa em cada chamada. Se não houver contexto (ou a empresa não tiver
+// Z-API própria cadastrada), tudo cai no Z-API global — exatamente o
+// comportamento de hoje. Isso mantém a PDN funcionando sem mudança nenhuma.
+const { AsyncLocalStorage } = require('async_hooks');
+const tenantContext = new AsyncLocalStorage();
+
+const ZAPI_GLOBAL = {
+  instanceId: ZAPI_INSTANCE_ID,
+  token: ZAPI_TOKEN,
+  clientToken: ZAPI_CLIENT_TOKEN
+};
+
+// Credenciais Z-API próprias da empresa, com fallback pro global.
+function zapiDaEmpresa(empresa) {
+  if (empresa && empresa.zapiInstanceId && empresa.zapiToken) {
+    return {
+      instanceId: empresa.zapiInstanceId,
+      token: empresa.zapiToken,
+      clientToken: empresa.zapiClientToken || ''
+    };
+  }
+  return ZAPI_GLOBAL;
+}
+
+// Z-API do contexto atual (empresa ativa), ou global se não houver contexto.
+function zapiAtual() {
+  const ctx = tenantContext.getStore();
+  return (ctx && ctx.zapi) ? ctx.zapi : ZAPI_GLOBAL;
+}
+
+function zapiBaseUrl(cfg) {
+  return `https://api.z-api.io/instances/${cfg.instanceId}/token/${cfg.token}`;
+}
+
+// empresaId do contexto atual, ou a PDN como padrão (comportamento de hoje).
+function empresaIdAtual() {
+  const ctx = tenantContext.getStore();
+  return (ctx && ctx.empresaId) ? ctx.empresaId : EMPRESA_ID_PDN;
+}
+
+// ============================================================
 // CONFIGURAÇÃO — Firebase Admin / Firestore
 // ============================================================
 let serviceAccount;
@@ -162,7 +208,31 @@ const EMPRESA_TESTE_CONFIG = {
   tempoEsperaConversaoMin: 1
 };
 
+// Busca uma empresa pelo id, devolvendo a config (padrão + personalizações)
+// já com o id e as credenciais Z-API próprias anexadas. Retorna null se não
+// existir.
+async function getEmpresaById(empresaId) {
+  const snap = await EMPRESAS_COL().doc(empresaId).get();
+  if (!snap.exists) return null;
+  const data = snap.data();
+  const cfg = data.configuracao
+    ? { ...EMPRESA_PADRAO, ...data.configuracao }
+    : { ...EMPRESA_PADRAO, nome: data.nome };
+  return {
+    ...cfg,
+    id: snap.id,
+    zapiInstanceId: data.zapiInstanceId || null,
+    zapiToken: data.zapiToken || null,
+    zapiClientToken: data.zapiClientToken || null
+  };
+}
+
 async function getEmpresa() {
+  // Se há uma empresa ativa no contexto (multi-tenant), usa ela.
+  const ctx = tenantContext.getStore();
+  if (ctx && ctx.empresa) return ctx.empresa;
+
+  // Fallback: PDN (comportamento de hoje, sem contexto).
   const snap = await EMPRESAS_COL().doc(EMPRESA_ID_PDN).get();
   if (snap.exists && snap.data().configuracao) {
     return { ...EMPRESA_PADRAO, ...snap.data().configuracao };
@@ -271,13 +341,18 @@ async function atualizarLead(id, dados) {
 // HELPERS DE ENVIO — Z-API
 // ============================================================
 
+function zapiHeaders(cfg) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (cfg.clientToken && cfg.clientToken !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
+    headers['Client-Token'] = cfg.clientToken;
+  }
+  return headers;
+}
+
 async function sendText(phone, message) {
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (ZAPI_CLIENT_TOKEN && ZAPI_CLIENT_TOKEN !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
-      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
-    }
-    await axios.post(`${ZAPI_BASE_URL}/send-text`, { phone, message }, { headers });
+    const cfg = zapiAtual();
+    await axios.post(`${zapiBaseUrl(cfg)}/send-text`, { phone, message }, { headers: zapiHeaders(cfg) });
     console.log(`[ENVIADO] para ${phone}: ${message.slice(0, 60)}...`);
   } catch (err) {
     console.error('Erro ao enviar texto:', err.response?.data || err.message);
@@ -286,13 +361,10 @@ async function sendText(phone, message) {
 
 async function sendImage(phone, imageUrl, caption) {
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (ZAPI_CLIENT_TOKEN && ZAPI_CLIENT_TOKEN !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
-      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
-    }
-    await axios.post(`${ZAPI_BASE_URL}/send-image`, {
+    const cfg = zapiAtual();
+    await axios.post(`${zapiBaseUrl(cfg)}/send-image`, {
       phone, image: imageUrl, caption: caption || ''
-    }, { headers });
+    }, { headers: zapiHeaders(cfg) });
     console.log(`[IMAGEM ENVIADA] para ${phone}`);
   } catch (err) {
     console.error('Erro ao enviar imagem:', err.response?.data || err.message);
@@ -301,13 +373,10 @@ async function sendImage(phone, imageUrl, caption) {
 
 async function sendDocument(phone, base64OrUrl, fileName, extension) {
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (ZAPI_CLIENT_TOKEN && ZAPI_CLIENT_TOKEN !== 'COLOQUE_SEU_CLIENT_TOKEN_AQUI') {
-      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
-    }
-    await axios.post(`${ZAPI_BASE_URL}/send-document/${extension}`, {
+    const cfg = zapiAtual();
+    await axios.post(`${zapiBaseUrl(cfg)}/send-document/${extension}`, {
       phone, document: base64OrUrl, fileName
-    }, { headers });
+    }, { headers: zapiHeaders(cfg) });
     console.log(`[DOCUMENTO ENVIADO] para ${phone}: ${fileName}`);
   } catch (err) {
     console.error('Erro ao enviar documento:', err.response?.data || err.message);
@@ -608,7 +677,7 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
         nomeRecomendador: sessao.clienteNome,
         telefoneRecomendador: telefone,
         vendedor: sessao.vendedorNome,
-        empresaId: EMPRESA_ID_PDN
+        empresaId: empresaIdAtual()
       });
     } catch (err) {
       console.error('Erro ao criar lead no CRM:', err.message);
@@ -705,6 +774,9 @@ async function criarAgendamento({ tipo, executarEm, dados, marcaTempoReferencia 
     tipo,
     executarEm,
     status: 'pendente',
+    // Registra a empresa dona deste agendamento, pra que o follow-up depois
+    // seja enviado pelo WhatsApp dela (e não pelo número global).
+    empresaId: empresaIdAtual(),
     dados,
     marcaTempoReferencia: marcaTempoReferencia || null,
     criadoEm: new Date().toISOString()
@@ -968,7 +1040,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
 // WEBHOOK — recebe mensagens da Z-API
 // ============================================================
 
-app.post('/webhook', async (req, res) => {
+async function tratarWebhook(req, res) {
   try {
     if (!db) {
       console.error('Firestore não inicializado — verifique FIREBASE_SERVICE_ACCOUNT');
@@ -1160,7 +1232,37 @@ app.post('/webhook', async (req, res) => {
     console.error('Erro no webhook:', err);
     res.sendStatus(500);
   }
-});
+}
+
+// Resolve a empresa do webhook e processa a mensagem dentro do contexto dela,
+// pra que os envios saiam pelo WhatsApp (Z-API) correto.
+//   - /webhook            → PDN (compatível com a configuração atual da Z-API)
+//   - /webhook/:empresaId → empresa específica (cada instância Z-API aponta
+//                            pra sua própria URL)
+async function comWebhook(req, res, empresaId) {
+  let empresa = null;
+  try {
+    empresa = empresaId ? await getEmpresaById(empresaId) : await getEmpresa();
+  } catch (err) {
+    console.error('Erro ao resolver empresa do webhook:', err.message);
+  }
+
+  if (empresaId && !empresa) {
+    console.warn(`[WEBHOOK] empresaId desconhecido: ${empresaId} — ignorando`);
+    return res.sendStatus(200);
+  }
+
+  const contexto = {
+    empresa,
+    empresaId: (empresa && empresa.id) || empresaId || EMPRESA_ID_PDN,
+    zapi: zapiDaEmpresa(empresa)
+  };
+
+  return tenantContext.run(contexto, () => tratarWebhook(req, res));
+}
+
+app.post('/webhook', (req, res) => comWebhook(req, res, null));
+app.post('/webhook/:empresaId', (req, res) => comWebhook(req, res, req.params.empresaId));
 
 // ============================================================
 // ROTAS DE ADMINISTRAÇÃO
@@ -1548,6 +1650,27 @@ app.post('/leads', async (req, res) => {
 // ============================================================
 
 async function processarAgendamento(agendamento) {
+  // Resolve a empresa dona do agendamento e processa dentro do contexto dela,
+  // pra que os envios saiam pelo WhatsApp correto. Agendamentos antigos (sem
+  // empresaId) caem na PDN — comportamento de hoje.
+  const empresaId = agendamento.empresaId || EMPRESA_ID_PDN;
+  let empresa = null;
+  try {
+    empresa = await getEmpresaById(empresaId);
+  } catch (err) {
+    console.error('Erro ao resolver empresa do agendamento:', err.message);
+  }
+  if (!empresa) empresa = await getEmpresa();
+
+  const contexto = {
+    empresa,
+    empresaId: empresa.id || empresaId,
+    zapi: zapiDaEmpresa(empresa)
+  };
+  return tenantContext.run(contexto, () => processarAgendamentoInterno(agendamento));
+}
+
+async function processarAgendamentoInterno(agendamento) {
   const empresa = await getEmpresa();
 
   if (agendamento.tipo === 'iniciar_conversa_recomendado') {
