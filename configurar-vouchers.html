@@ -6,20 +6,21 @@
 <title>Configurar Vouchers — RecomendaLeads</title>
 <style>
   :root {
-    --navy: #0a1628;
-    --navy-light: #132338;
-    --gold: #d4af37;
-    --gold-light: #f0d878;
-    --text: #e8edf4;
-    --text-dim: #9aabc0;
-    --success: #3ddc97;
-    --error: #ff6b6b;
+    --navy: #14202b;
+    --navy-light: #ffffff;
+    --gold: #ef7d1a;
+    --gold-light: #cb6411;
+    --text: #14202b;
+    --text-dim: #6b7a8a;
+    --success: #16a34a;
+    --error: #e25555;
+    --line: #e7ecf0;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    background: linear-gradient(160deg, var(--navy) 0%, #060d18 100%);
+    background: #f4f7f6;
     color: var(--text);
     min-height: 100vh;
     padding: 24px 16px 60px;
@@ -36,11 +37,11 @@
 
   .card {
     background: var(--navy-light);
-    border: 1px solid rgba(212, 175, 55, 0.18);
+    border: 1px solid var(--line);
     border-radius: 14px;
     padding: 22px 22px 20px;
     margin-bottom: 20px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    box-shadow: 0 1px 2px rgba(16,32,48,0.04), 0 6px 20px rgba(16,32,48,0.05);
   }
   .card-head {
     display: flex;
@@ -70,8 +71,8 @@
   }
   input[type="text"], textarea {
     width: 100%;
-    background: #0e1a2c;
-    border: 1px solid rgba(255,255,255,0.12);
+    background: #fbfcfd;
+    border: 1px solid var(--line);
     border-radius: 8px;
     padding: 10px 12px;
     color: var(--text);
@@ -139,8 +140,8 @@
     margin: 0;
   }
   .etapa-btn {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.12);
+    background: #fbfcfd;
+    border: 1px solid var(--line);
     color: var(--text-dim);
     width: 32px;
     height: 32px;
