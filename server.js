@@ -122,7 +122,7 @@ const EMPRESA_ID_PDN = 'MFMcfVJfqv35dA9MotLK';
 // ============================================================
 const EMPRESA_PADRAO = {
   nome: 'Empresa Demo',
-  mensagemAgradecimento: 'Olá! Muito obrigado por ser nosso cliente e confiar no nosso trabalho. 🙏',
+  mensagemAgradecimento: 'Olá! Muito obrigado(a) por ser nosso cliente e confiar no nosso trabalho. 🙏',
   vendedores: ['Carla Mendes', 'Roberto Lima', 'Juliana Alves'],
   faixasBonus: [
     { quantidade: 5, premio: 'Cupom de 10% de desconto na próxima compra', arquivo: null, link: null, texto: null },
@@ -133,12 +133,12 @@ const EMPRESA_PADRAO = {
   premioRecomendado: 'Desconto de 10% na primeira compra, cortesia de quem te recomendou',
   arquivoRecomendado: null,
   linkRecomendado: null,
-  ctaRecomendado: 'Gostaria de vir retirar?',
-  mensagemInicialRecomendado: 'Oi {nomeRecomendado}, aqui é {vendedor} da {empresa} e seu amigo(a) {recomendador} me recomendou você... Posso falar?',
-  mensagemAguardandoConfirmacao: 'Posso te contar mais sobre isso?',
+  ctaRecomendado: 'Que tal aproveitar e passar pra retirar o seu? 😊',
+  mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
+  mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
   cadenciaFollowupRecomendado: [
-    { esperaMin: 1440, texto: 'Oi, só passando pra saber se você viu minha mensagem 🙂' },
-    { esperaMin: 4320, texto: 'Seu presente ainda está disponível! Posso te contar mais?' }
+    { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' },
+    { esperaMin: 4320, texto: 'Olá, tudo bem? O presente segue reservado no seu nome 🎁 Se tiver interesse, é só me avisar que te envio. Caso não, sem problema 😊' }
   ],
   tempoEsperaConversaoMin: 60,
   tempoFollowupMin: 30,
@@ -328,6 +328,77 @@ function converterLinkDrive(url) {
 }
 
 // ============================================================
+// HELPER — baixa o arquivo do voucher e devolve em base64
+// ============================================================
+// Por que isto existe: passar a URL do Google Drive direto pro Z-API
+// não funciona — o link "uc?export=download" devolve uma PÁGINA HTML
+// de aviso (não os bytes), então a imagem aparecia só como um card.
+// Além disso, o link do Drive não tem extensão, então o tipo não dava
+// pra adivinhar pela URL. Aqui o bot baixa o conteúdo real e detecta o
+// tipo pelo content-type da resposta. Funciona com Drive, Firebase ou
+// qualquer link direto.
+
+async function baixarArquivo(url) {
+  if (!url) return null;
+
+  // Para links do Google Drive, monta as URLs que realmente servem bytes:
+  // tenta o download direto e, se vier a página de aviso (HTML), cai para
+  // o endpoint de miniatura, que sempre devolve uma imagem renderizável.
+  const driveMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  const candidatos = [];
+  if (driveMatch && driveMatch[1]) {
+    const id = driveMatch[1];
+    candidatos.push(`https://drive.google.com/uc?export=download&id=${id}`);
+    candidatos.push(`https://drive.google.com/thumbnail?id=${id}&sz=w2000`);
+  } else {
+    candidatos.push(url);
+  }
+
+  for (const candidato of candidatos) {
+    try {
+      const resp = await axios.get(candidato, {
+        responseType: 'arraybuffer',
+        maxRedirects: 5,
+        timeout: 15000
+      });
+      const contentType = (resp.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      // Página de aviso do Drive vem como text/html — tenta o próximo candidato
+      if (!contentType || contentType.startsWith('text/html')) continue;
+      const base64 = Buffer.from(resp.data).toString('base64');
+      return { contentType, base64 };
+    } catch (err) {
+      console.error(`Erro ao baixar arquivo (${candidato}):`, err.response?.status || err.message);
+    }
+  }
+  return null;
+}
+
+// Baixa o voucher e o envia como imagem OU documento conforme o tipo REAL
+// do arquivo (e não pela extensão da URL, que o Drive não fornece).
+async function enviarVoucher(telefone, arquivoUrl, caption, premioNome) {
+  const arquivo = await baixarArquivo(arquivoUrl);
+
+  if (!arquivo) {
+    // Não conseguiu baixar (link quebrado ou privado) — manda o link como
+    // texto pra pessoa não ficar totalmente sem o voucher.
+    console.error('[VOUCHER] Falha ao baixar arquivo, enviando link como texto:', arquivoUrl);
+    await sendText(telefone, arquivoUrl);
+    return;
+  }
+
+  const dataUri = `data:${arquivo.contentType};base64,${arquivo.base64}`;
+
+  if (arquivo.contentType.startsWith('image/')) {
+    await sendImage(telefone, dataUri, caption || '');
+  } else {
+    const extensao = arquivo.contentType.includes('pdf')
+      ? 'pdf'
+      : (arquivo.contentType.split('/')[1] || 'pdf');
+    await sendDocument(telefone, dataUri, `Voucher - ${premioNome || 'presente'}`, extensao);
+  }
+}
+
+// ============================================================
 // PARSER DE VCARD
 // ============================================================
 
@@ -419,7 +490,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
     const primeiraFaixa = empresa.faixasBonus[0];
     await sendText(telefone, `Show! Agora me envie o contato dos seus amigos para você receber ${primeiraFaixa.premio.toLowerCase()}.`);
-    await sendText(telefone, `Me envie ${primeiraFaixa.quantidade} recomendações e já garanta seu presente.\n\nVocê pode mandar o contato direto da sua agenda (toque em 📎 → Contato) ou digitar nome e telefone. Então, qual é a primeira pessoa que vem na sua mente? Lembrando que ela também vai ganhar um presente nosso 🎁`);
+    await sendText(telefone, `Me envie ${primeiraFaixa.quantidade} recomendações e já garanta seu presente.\n\nVocê pode mandar o contato direto da sua agenda. Então, qual é a primeira pessoa que vem na sua mente?\nLembrando que ela também vai ganhar um presente nosso 🎁`);
     return;
   }
 
@@ -501,7 +572,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
       sessao.excedentePendente = [];
       sessao.etapa = 'finalizado';
       await saveSessao(telefone, sessao);
-      await sendText(telefone, 'Sem problemas! Muito obrigado por participar e por confiar na gente 🙏');
+      await sendText(telefone, 'Sem problemas! Muito obrigado(a) por participar e por confiar na gente 🙏');
     }
     return;
   }
@@ -520,15 +591,7 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   }
 
   if (faixa.arquivo) {
-    const linkDownload = converterLinkDrive(faixa.arquivo);
-    const extensao = (faixa.arquivo.match(/\.(\w+)(\?|$)/) || [])[1] || 'pdf';
-    const ehImagem = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extensao.toLowerCase());
-
-    if (ehImagem) {
-      await sendImage(telefone, linkDownload, faixa.premio);
-    } else {
-      await sendDocument(telefone, linkDownload, `Voucher - ${faixa.premio}`, extensao);
-    }
+    await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
   }
 
   if (faixa.link) {
@@ -558,7 +621,7 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     sessao.etapa = 'finalizado';
     sessao.faixaFinal = faixa;
     await saveSessao(telefone, sessao);
-    await sendText(telefone, 'Muito obrigado por participar e por confiar na gente! 🙏');
+    await sendText(telefone, 'Muito obrigado(a) por participar e por confiar na gente! 🙏');
   } else {
     sessao.etapa = 'aguardando_autorizacao_proxima_faixa';
     sessao.excedentePendente = excedente;
@@ -713,19 +776,11 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
 }
 
 async function enviarPremioRecomendado(telefone, sessao, empresa) {
-  await sendText(telefone, `Por ter sido recomendado pelo seu amigo, você ganhou ${empresa.premioRecomendado}.`);
-  await sendText(telefone, `E já estou te enviando agora mesmo seu presente 🎁`);
+  await sendText(telefone, `🎉 Parabéns! Por ter sido recomendado(a) por quem gosta de você, acabou de garantir ${empresa.premioRecomendado}.`);
+  await sendText(telefone, `E olha só... já tô te enviando agora mesmo. É todo seu! 🎁✨`);
 
   if (empresa.arquivoRecomendado) {
-    const linkDownload = converterLinkDrive(empresa.arquivoRecomendado);
-    const extensao = (empresa.arquivoRecomendado.match(/\.(\w+)(\?|$)/) || [])[1] || 'pdf';
-    const ehImagem = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extensao.toLowerCase());
-
-    if (ehImagem) {
-      await sendImage(telefone, linkDownload, empresa.premioRecomendado || '');
-    } else {
-      await sendDocument(telefone, linkDownload, `Voucher - ${empresa.premioRecomendado || 'presente'}`, extensao);
-    }
+    await enviarVoucher(telefone, empresa.arquivoRecomendado, empresa.premioRecomendado || '', empresa.premioRecomendado || 'presente');
   }
 
   if (empresa.linkRecomendado) {
@@ -814,27 +869,27 @@ Regras estritas:
 const OBJECOES = [
   {
     gatilhos: ['nao quero', 'não quero', 'nao tenho interesse', 'não tenho interesse', 'sem interesse'],
-    resposta: 'Entendo sua frustração, mas estou programado para lhe entregar um presente... Vou cumprir meu papel! 🎁'
+    resposta: 'Sem problema, eu entendo! 😊 Só não queria que você ficasse sem o presente que o(a) {recomendador} recomendou para você. Posso te enviar? É rapidinho 🎁'
   },
   {
     gatilhos: ['nao conheco', 'não conheço', 'nao sei quem', 'não sei quem', 'quem e voce', 'quem é você', 'quem é vc', 'quem sao voces', 'não conheço vocês'],
-    resposta: 'Entendo que talvez não estamos falando da mesma pessoa, mas minha missão aqui é te entregar uma ferramenta que vai te ajudar a vender mais! 🎁'
+    resposta: 'Faz todo sentido! 😊 Sou {vendedor}, da {empresa}, e o(a) {recomendador} lembrou de você pra ganhar um presente nosso. Posso te entregar agora? 🎁'
   },
   {
     gatilhos: ['quem deu meu contato', 'quem passou meu numero', 'quem passou meu número', 'quem te deu', 'como conseguiu meu numero', 'como conseguiu meu número'],
-    resposta: 'Entendo que não autorizou dar seu número, mas acredito que quem o fez estava com as melhores intenções... Vou cumprir meu papel e te entregar meu presente! 🎁'
+    resposta: 'Boa pergunta, faz sentido perguntar! 😊 Foi o(a) {recomendador} que recomendou você para receber um presente nosso. Posso te explicar o que é? 🎁'
   },
   {
     gatilhos: ['nao autorizei', 'não autorizei', 'nao dei permissao', 'não dei permissão', 'nao permiti', 'não permiti'],
-    resposta: 'Entendo que se sinta invadido por não ter sido avisado. Vou ser breve e lhe entregar o que me foi solicitado! 🎁'
+    resposta: 'Entendo perfeitamente, e peço desculpa por chegar assim 🙏 Prometo ser breve: o(a) {recomendador} só queria te presentear. Deixa eu te entregar? 🎁'
   },
   {
     gatilhos: ['estou no trabalho', 'to no trabalho', 'ocupado', 'ocupada', 'agora nao', 'agora não', 'depois', 'pode ser depois', 'nao posso agora', 'não posso agora'],
-    resposta: 'Entendo! Vou ser rápido — é só um presente que {recomendador} separou pra você. Posso te enviar agora mesmo? 🎁'
+    resposta: 'Sem stress, vou ser rapidinho! 😊 É só um presente que o(a) {recomendador} separou pra você. Posso te enviar agora mesmo? 🎁'
   },
   {
     gatilhos: ['spam', 'golpe', 'fraude', 'mentira', 'nao acredito', 'não acredito', 'desconfio'],
-    resposta: 'Entendo sua desconfiança! Sou {vendedor} da {empresa} e seu amigo(a) {recomendador} me pediu pra te entregar um presente. É rápido e sem compromisso! 🎁'
+    resposta: 'Pode desconfiar mesmo, hoje em dia é o certo! 😊 Sou {vendedor}, da {empresa}, e o(a) {recomendador} me pediu pra te entregar um presente. Sem compromisso nenhum 🎁'
   }
 ];
 
@@ -883,7 +938,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
         // Qualquer outra coisa — repete a mensagem de confirmação do CRM
         const marcaTempo = new Date().toISOString();
         await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-        await sendText(telefone, empresa.mensagemAguardandoConfirmacao || 'Posso te contar mais sobre isso?');
+        await sendText(telefone, empresa.mensagemAguardandoConfirmacao || 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁');
         await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
       }
     }
@@ -900,7 +955,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
 
   if (sessao.etapa === 'aguardando_fechamento') {
     // Qualquer resposta encerra com mensagem de fechamento fixa
-    await sendText(telefone, empresa.mensagemFechamentoRecomendado || 'Combinado! Estamos à disposição 😊');
+    await sendText(telefone, empresa.mensagemFechamentoRecomendado || 'Combinado! 🙌 Vai ser um prazer te receber. Qualquer coisa, é só me chamar aqui 😊');
     await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
     console.log(`[ROTEIRO RECOMENDADO FINALIZADO] ${sessao.nomeRecomendado} (${telefone})`);
     return true;
