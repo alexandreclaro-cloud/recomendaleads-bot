@@ -1967,29 +1967,6 @@ app.get('/status', async (req, res) => {
   }
 });
 
-// DEBUG TEMPORÁRIO — diagnóstico do fluxo do recomendado
-app.get('/debug-fluxo', async (req, res) => {
-  try {
-    const agSnap = await AGENDAMENTOS_COL().orderBy('criadoEm', 'desc').limit(15).get();
-    const agendamentos = [];
-    agSnap.forEach(d => {
-      const x = d.data();
-      agendamentos.push({ tipo: x.tipo, status: x.status, executarEm: x.executarEm, empresaId: x.empresaId, telefone: x.dados?.contato?.telefone || x.dados?.telefone || null });
-    });
-    const pausSnap = await NUMEROS_PAUSADOS_COL().limit(40).get();
-    const pausados = []; pausSnap.forEach(d => pausados.push(d.id));
-    const recSnap = await SESSOES_RECOMENDADO_COL().limit(40).get();
-    const recomendado = []; recSnap.forEach(d => recomendado.push({ chave: d.id, etapa: d.data().etapa }));
-    const msgSnap = await MENSAGENS_CHAT_COL().orderBy('criadoEm', 'desc').limit(20).get();
-    const mensagens = []; msgSnap.forEach(d => { const x = d.data(); mensagens.push({ telefone: x.telefone, direcao: x.direcao, texto: (x.texto || '').slice(0, 45), criadoEm: x.criadoEm }); });
-    const zapiPdn = await getEmpresaById(EMPRESA_ID_PDN);
-    const zapiInfo = { temCredProprias: !!(zapiPdn && zapiPdn.zapiInstanceId), instanceId: zapiPdn && zapiPdn.zapiInstanceId ? String(zapiPdn.zapiInstanceId).slice(0, 6) + '...' : null };
-    res.json({ agora: new Date().toISOString(), zapiPdn: zapiInfo, agendamentos, pausados, recomendado, mensagens });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
 app.get('/config', async (req, res) => {
   try {
     const empresa = await getEmpresa();
@@ -2132,7 +2109,14 @@ async function processarAgendamentoInterno(agendamento) {
     const proximo = cadencia[indiceFollowup];
     if (!proximo) return;
 
-    await sendText(telefone, proximo.texto);
+    const variaveisFollowup = {
+      nomeRecomendado: sessaoAtual.nomeRecomendado ? sessaoAtual.nomeRecomendado.split(' ')[0] : 'você',
+      recomendado: sessaoAtual.nomeRecomendado ? sessaoAtual.nomeRecomendado.split(' ')[0] : 'você',
+      recomendador: sessaoAtual.nomeRecomendador ? sessaoAtual.nomeRecomendador.split(' ')[0] : 'seu amigo',
+      vendedor: sessaoAtual.vendedorNome || empresa.nome,
+      empresa: empresa.nome
+    };
+    await sendText(telefone, substituirVariaveis(proximo.texto, variaveisFollowup));
     const novaMarca = new Date().toISOString();
     await saveSessaoRecomendado(telefone, { ultimaMensagemEm: novaMarca });
     await agendarProximoFollowup(telefone, empresa, novaMarca, indiceFollowup + 1);
