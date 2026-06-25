@@ -4,22 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Configurar Vouchers — RecomendaLeads</title>
+<link rel="stylesheet" href="/theme.css">
 <style>
   :root {
-    --navy: #14202b;
+    --navy: #0F172A;
     --navy-light: #ffffff;
-    --gold: #ef7d1a;
-    --gold-light: #cb6411;
-    --text: #14202b;
-    --text-dim: #6b7a8a;
+    --gold: #2563EB;
+    --gold-light: #1D4ED8;
+    --action: #F97316;
+    --action-deep: #EA580C;
+    --text: #0F172A;
+    --text-dim: #64748B;
     --success: #16a34a;
-    --error: #e25555;
-    --line: #e7ecf0;
+    --error: #EF4444;
+    --line: #E2E8F0;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     background: #f4f7f6;
     color: var(--text);
     min-height: 100vh;
@@ -51,7 +54,7 @@
   }
   .card-head .badge {
     background: var(--gold);
-    color: var(--navy);
+    color: #fff;
     font-weight: 700;
     font-size: 0.85rem;
     padding: 4px 12px;
@@ -92,8 +95,8 @@
     margin-top: 16px;
   }
   button.save-btn {
-    background: var(--gold);
-    color: var(--navy);
+    background: var(--action);
+    color: #fff;
     border: none;
     font-weight: 700;
     font-size: 0.9rem;
@@ -110,8 +113,8 @@
   .status-msg.err { color: var(--error); }
 
   .drive-steps {
-    background: rgba(212, 175, 55, 0.07);
-    border: 1px solid rgba(212, 175, 55, 0.15);
+    background: rgba(37, 99, 235, 0.07);
+    border: 1px solid rgba(37, 99, 235, 0.15);
     border-radius: 10px;
     padding: 14px 16px;
     margin-bottom: 28px;
@@ -155,7 +158,7 @@
   .etapa-btn:disabled { opacity: 0.3; cursor: default; }
   .add-etapa-btn {
     background: transparent;
-    border: 1px dashed rgba(212,175,55,0.4);
+    border: 1px dashed rgba(37, 99, 235,0.4);
     color: var(--gold-light);
     padding: 8px 16px;
     border-radius: 8px;
@@ -163,7 +166,7 @@
     cursor: pointer;
     margin-top: 8px;
   }
-  .add-etapa-btn:hover { background: rgba(212,175,55,0.08); }
+  .add-etapa-btn:hover { background: rgba(37, 99, 235,0.08); }
 </style>
 </head>
 <body>
@@ -171,7 +174,7 @@
   <header>
     <h1>⚙️ Configuração da RecomendaLeads</h1>
     <p>Preencha os dados reais da sua empresa e os vouchers de cada faixa.</p>
-    <p style="margin-top:10px;"><a href="/crm" style="color:#f0d878; font-size:0.85rem; text-decoration:none;">📋 Ir para o CRM Kanban →</a></p>
+    <p style="margin-top:10px;"><a href="/crm" style="color:var(--gold); font-size:0.85rem; text-decoration:none;">📋 Ir para o CRM Kanban →</a></p>
   </header>
 
   <div class="card" id="empresaCard">
@@ -208,7 +211,7 @@
       <h2>Etapas do CRM Kanban</h2>
     </div>
     <p class="hint" style="margin-top:-6px; margin-bottom:14px;">
-      Estas são as colunas do seu CRM (<a href="/crm" style="color:#f0d878;">veja o quadro aqui</a>).
+      Estas são as colunas do seu CRM (<a href="/crm" style="color:var(--gold);">veja o quadro aqui</a>).
       Cada novo lead recomendado nasce na primeira coluna da lista. Você pode renomear, reordenar, adicionar ou remover etapas.
     </p>
 

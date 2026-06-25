@@ -1288,24 +1288,33 @@ app.get('/', (req, res) => {
     <html lang="pt-BR">
     <head>
       <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>RecomendaLeads</title>
+      <link rel="stylesheet" href="/theme.css">
       <style>
-        body { font-family: -apple-system, sans-serif; background: #0a1628; color: #e8edf4; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .box { text-align: center; }
-        h1 { color: #f0d878; margin-bottom: 6px; }
-        p { color: #9aabc0; margin-bottom: 28px; }
-        a { display: inline-block; margin: 6px; padding: 12px 22px; background: #d4af37; color: #0a1628; font-weight: 700; border-radius: 8px; text-decoration: none; }
-        a:hover { opacity: 0.9; }
+        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .box { text-align: center; max-width: 440px; width: 100%; padding: 40px 36px; }
+        .logo { width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 15px; background: var(--brand); color: #fff; display: grid; place-items: center; }
+        .logo .ti { width: 28px; height: 28px; }
+        h1 { font-size: 1.4rem; margin-bottom: 6px; }
+        .lead { color: var(--text-dim); margin: 0 0 28px; font-size: 0.95rem; }
+        .links { display: flex; flex-direction: column; gap: 10px; }
+        .links a { width: 100%; }
       </style>
     </head>
     <body>
-      <div class="box">
-        <h1>✅ RecomendaLeads Bot</h1>
-        <p>Servidor rodando — escolha um painel:</p>
-        <a href="/crm">📋 CRM Kanban</a>
-        <a href="/configurar-vouchers">⚙️ Configurações</a>
-        <a href="/login">🔑 Login da Empresa</a>
+      <div class="box card fade-in">
+        <div class="logo"><i data-lucide="gift"></i></div>
+        <h1>RecomendaLeads</h1>
+        <p class="lead">Servidor rodando. Escolha por onde começar:</p>
+        <div class="links">
+          <a class="btn btn-brand" href="/login"><i data-lucide="log-in"></i> Login da Empresa</a>
+          <a class="btn btn-secondary" href="/crm"><i data-lucide="kanban"></i> CRM Kanban</a>
+          <a class="btn btn-secondary" href="/configurar-vouchers"><i data-lucide="settings"></i> Configurações</a>
+        </div>
       </div>
+      <script src="https://unpkg.com/lucide@latest"></script>
+      <script>lucide.createIcons();</script>
     </body>
     </html>
   `);
