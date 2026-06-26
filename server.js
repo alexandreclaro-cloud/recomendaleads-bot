@@ -260,7 +260,7 @@ const EMPRESA_PADRAO = {
 
   etapasKanban: [
     { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
-    { id: 'aceitou_mensagem', nome: 'Aceitou Mensagem' },
+    { id: 'recebeu_premio', nome: 'Recebeu o Prêmio' },
     { id: 'agendou', nome: 'Agendou' },
     { id: 'comprou', nome: 'Comprou' },
     { id: 'nao_respondeu', nome: 'Não respondeu' },
@@ -936,6 +936,9 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
 }
 
 async function enviarPremioRecomendado(telefone, sessao, empresa) {
+  // Move o card para "Recebeu o Prêmio" assim que a pessoa aceita o presente.
+  await marcarLeadRecebeuPremio(telefone, empresa);
+
   // Mensagem-ponte: enviada logo após a pessoa responder, antes do presente.
   const ponte = substituirVariaveis(empresa.mensagemAntesPresente ?? EMPRESA_PADRAO.mensagemAntesPresente, variaveisRec(sessao, empresa));
   if (ponte && ponte.trim()) await sendText(telefone, ponte);
@@ -1057,6 +1060,39 @@ async function registrarEscolhaNoLead(telefone, dados, empresa, moverParaAgendou
     }
     await atualizarLead(lead.id, upd);
   } catch (e) { console.error('Erro ao registrar escolha no lead:', e.message); }
+}
+
+// Quando o recomendado aceita e recebe o presente, move o card automaticamente
+// para a coluna "Recebeu o Prêmio" (a 2ª coluna / logo ao lado da primeira).
+// Assim o painel mostra quantos leads de fato leram a mensagem e receberam.
+async function marcarLeadRecebeuPremio(telefone, empresa) {
+  try {
+    const snap = await LEADS_COL().where('telefoneRecomendado', '==', telefone).get();
+    let lead = null;
+    snap.forEach(d => {
+      const x = { id: d.id, ...d.data() };
+      if ((x.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) {
+        if (!lead || new Date(x.criadoEm || 0) > new Date(lead.criadoEm || 0)) lead = x;
+      }
+    });
+    if (!lead) return;
+
+    const etapas = (empresa.etapasKanban && empresa.etapasKanban.length) ? empresa.etapasKanban : EMPRESA_PADRAO.etapasKanban;
+    // Coluna alvo: por nome/id (prêmio/bônus/presente) ou, se não houver, a 2ª coluna.
+    const alvo = etapas.find(e => /pr[êe]mio|b[ôo]nus|presente/i.test(e.nome || '') || /premio|bonus|presente/i.test(e.id || ''))
+      || etapas[1] || etapas[0];
+    if (!alvo) return;
+
+    const upd = { bonusPago: true };
+    const idxAtual = etapas.findIndex(e => e.id === lead.etapa);
+    const idxAlvo = etapas.findIndex(e => e.id === alvo.id);
+    // Só avança o card; nunca puxa de volta um lead que já está mais à frente.
+    if (idxAlvo > idxAtual) upd.etapa = alvo.id;
+    await atualizarLead(lead.id, upd);
+    console.log(`[LEAD AUTO-MOVE] ${telefone} → ${alvo.nome} (bônus recebido)`);
+  } catch (e) {
+    console.error('Erro ao mover lead para "Recebeu o Prêmio":', e.message);
+  }
 }
 
 async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, diaLabel) {
