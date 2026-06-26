@@ -626,7 +626,7 @@
       <div class="subtabs">
         <button class="subtab-btn active" data-subtab="empresa">Empresa</button>
         <button class="subtab-btn" data-subtab="premioCliente">Prêmio Cliente</button>
-        <button class="subtab-btn" data-subtab="recomendado">Prêmio Recomendado</button>
+        <button class="subtab-btn" data-subtab="recomendado">Conversa do Recomendado</button>
         <button class="subtab-btn" data-subtab="faixas">Faixas de Bônus</button>
         <button class="subtab-btn" data-subtab="cadencia">Cadência de Follow-up</button>
         <button class="subtab-btn" data-subtab="etapas">Etapas do Pipeline</button>
@@ -675,12 +675,12 @@
         <div id="faixasContainerCliente"></div>
       </div>
 
-      <!-- Sub-aba: Prêmio do Recomendado -->
+      <!-- Sub-aba: Conversa do Recomendado (só textos; o presente fica em Faixas de Bônus) -->
       <div class="subtab-panel" id="subtabRecomendado">
         <div class="config-card">
-          <h2>Prêmio para quem é recomendado</h2>
+          <h2>Conversa com quem é recomendado</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-            Roteiro enviado automaticamente para a pessoa que foi recomendada. Use {nomeRecomendado}, {recomendador}, {vendedor} e {empresa} para personalizar.
+            Mensagens enviadas para a pessoa indicada. O <b>presente</b> dela é configurado na aba <b>Faixas de Bônus</b>. Variáveis: {nomeRecomendado}, {recomendador}, {vendedor}, {empresa}.
           </p>
 
           <label>1️⃣ Mensagem inicial (pede confirmação antes de seguir)</label>
@@ -688,23 +688,6 @@
 
           <label>Mensagem repetida enquanto a pessoa não confirma</label>
           <input type="text" id="mensagemAguardandoConfirmacaoInput" placeholder="Ex: Posso te contar mais sobre isso?">
-
-          <label>2️⃣ Prêmio (texto curto mostrado depois da confirmação)</label>
-          <input type="text" id="premioRecomendadoInput" placeholder="Ex: Desconto de 10% na primeira compra">
-
-          <label>Arquivo (imagem JPEG/PNG ou PDF)</label>
-          <div class="upload-row">
-            <input type="text" id="arquivoRecomendadoInput" placeholder="Cole um link ou use o botão ao lado →">
-            <label class="upload-btn" for="arquivoRecomendadoFile">📎 Escolher arquivo</label>
-            <input type="file" id="arquivoRecomendadoFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
-            <span class="upload-status" id="uploadStatusRecomendado"></span>
-          </div>
-
-          <label>Link</label>
-          <input type="text" id="linkRecomendadoInput" placeholder="https://...">
-
-          <label>3️⃣ Chamada para ação (CTA)</label>
-          <input type="text" id="ctaRecomendadoInput" placeholder="Ex: Gostaria de vir retirar?">
 
           <label>Tempo de espera antes de iniciar a conversa com o recomendado (minutos)</label>
           <input type="text" id="tempoEsperaConversaoMinInput" placeholder="Ex: 60">
@@ -754,7 +737,7 @@
           <textarea id="posAtendenteInput" rows="2"></textarea>
 
           <div class="config-row-save">
-            <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar prêmio do recomendado</button>
+            <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar conversa do recomendado</button>
             <span class="config-status-msg" id="statusRecomendado"></span>
           </div>
         </div>
@@ -762,6 +745,29 @@
 
       <!-- Sub-aba: Faixas de Bônus -->
       <div class="subtab-panel" id="subtabFaixas">
+        <div class="config-card" style="border:1px solid var(--gold);">
+          <h2>🎁 Presente de quem é indicado (o amigo recomendado)</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">
+            É o presente enviado para a pessoa que foi indicada. (As faixas abaixo são os prêmios de quem <b>indica</b>.)
+          </p>
+          <label>Prêmio (texto curto mostrado ao recomendado)</label>
+          <input type="text" id="premioRecomendadoInput" placeholder="Ex: 1 mentoria individual com Alexandre Claro">
+          <label>Arquivo (imagem JPEG/PNG ou PDF)</label>
+          <div class="upload-row">
+            <input type="text" id="arquivoRecomendadoInput" placeholder="Cole um link ou use o botão ao lado →">
+            <label class="upload-btn" for="arquivoRecomendadoFile">📎 Escolher arquivo</label>
+            <input type="file" id="arquivoRecomendadoFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+            <span class="upload-status" id="uploadStatusRecomendado"></span>
+          </div>
+          <label>Link (site, Instagram, etc.)</label>
+          <input type="text" id="linkRecomendadoInput" placeholder="https://...">
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarPresenteRecomendadoBtn">Salvar presente do recomendado</button>
+            <span class="config-status-msg" id="statusPresenteRecomendado"></span>
+          </div>
+        </div>
+
+        <h2 style="margin:6px 0 14px;">🏅 Faixas de bônus (prêmios de quem indica)</h2>
         <div id="faixasContainer"></div>
       </div>
 
@@ -1235,7 +1241,6 @@ async function carregarConfiguracao() {
     document.getElementById('premioRecomendadoInput').value = configuracaoAtual.premioRecomendado || '';
     document.getElementById('arquivoRecomendadoInput').value = configuracaoAtual.arquivoRecomendado || '';
     document.getElementById('linkRecomendadoInput').value = configuracaoAtual.linkRecomendado || '';
-    document.getElementById('ctaRecomendadoInput').value = configuracaoAtual.ctaRecomendado || '';
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('tempoEsperaConversaoMinInput').value = configuracaoAtual.tempoEsperaConversaoMin || 60;
@@ -1300,14 +1305,29 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
   }
 });
 
+document.getElementById('salvarPresenteRecomendadoBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarPresenteRecomendadoBtn');
+  const statusEl = document.getElementById('statusPresenteRecomendado');
+  const premioRecomendado = document.getElementById('premioRecomendadoInput').value.trim();
+  const arquivoRecomendado = document.getElementById('arquivoRecomendadoInput').value.trim() || null;
+  const linkRecomendado = document.getElementById('linkRecomendadoInput').value.trim() || null;
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ premioRecomendado, arquivoRecomendado, linkRecomendado })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000); }
+});
+
 document.getElementById('salvarRecomendadoBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarRecomendadoBtn');
   const statusEl = document.getElementById('statusRecomendado');
 
-  const premioRecomendado = document.getElementById('premioRecomendadoInput').value.trim();
-  const arquivoRecomendado = document.getElementById('arquivoRecomendadoInput').value.trim() || null;
-  const linkRecomendado = document.getElementById('linkRecomendadoInput').value.trim() || null;
-  const ctaRecomendado = document.getElementById('ctaRecomendadoInput').value.trim();
   const mensagemInicialRecomendado = document.getElementById('mensagemInicialRecomendadoInput').value.trim();
   const mensagemAguardandoConfirmacao = document.getElementById('mensagemAguardandoConfirmacaoInput').value.trim();
   const tempoEsperaConversaoMin = parseInt(document.getElementById('tempoEsperaConversaoMinInput').value) || 60;
@@ -1335,7 +1355,6 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({
-        premioRecomendado, arquivoRecomendado, linkRecomendado, ctaRecomendado,
         mensagemInicialRecomendado, mensagemAguardandoConfirmacao, tempoEsperaConversaoMin,
         posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
