@@ -81,10 +81,10 @@
             <div class="m-label"><i data-lucide="users"></i> Leads no total</div>
             <div class="m-value" id="mLeads">0</div>
           </div>
-          <div class="metric-card">
-            <div class="m-label"><i data-lucide="user-plus"></i> Novos na semana</div>
-            <div class="m-value" id="mSemana">0</div>
-          </div>
+          <a class="metric-card metric-action" href="/crm#ranking">
+            <div class="m-label"><i data-lucide="trophy"></i> Ranking de vendedores</div>
+            <div class="m-value sm" style="color:var(--brand)">Abrir <i data-lucide="arrow-right" style="width:18px;height:18px;vertical-align:-3px"></i></div>
+          </a>
           <a class="metric-card metric-action" href="/crm#config">
             <div class="m-label"><i data-lucide="settings"></i> Configurações</div>
             <div class="m-value sm" style="color:var(--brand)">Abrir <i data-lucide="arrow-right" style="width:18px;height:18px;vertical-align:-3px"></i></div>
@@ -249,8 +249,6 @@ async function carregarVisaoGeral() {
     const leads = (data && (data.leads || data)) || [];
     if (!Array.isArray(leads)) return;
     document.getElementById('mLeads').textContent = leads.length;
-    const seteDias = Date.now() - 7 * 86400 * 1000;
-    document.getElementById('mSemana').textContent = leads.filter(l => l.criadoEm && new Date(l.criadoEm).getTime() >= seteDias).length;
     const ordenados = [...leads].sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0)).slice(0, 8);
     const lista = document.getElementById('activityList');
     if (!ordenados.length) return;

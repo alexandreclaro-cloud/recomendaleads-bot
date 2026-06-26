@@ -507,6 +507,16 @@
   .lead-card .card-info { font-size: 0.76rem; color: var(--text-dim); display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
   .lead-card .card-info .ci-label { color: var(--text-faint); }
 
+  /* Filtro de período */
+  .periodo-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .periodo-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); padding: 7px 14px; border-radius: 999px; font-size: 0.82rem; font-weight: 500; cursor: pointer; font-family: inherit; }
+  .periodo-btn:hover { border-color: var(--gold); color: var(--gold-deep); }
+  .periodo-btn.active { background: var(--gold-soft); border-color: var(--gold); color: var(--gold-deep); font-weight: 600; }
+  .periodo-custom { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-dim); margin-left: 6px; }
+  .periodo-custom input { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 0.8rem; font-family: inherit; color: var(--text); }
+  .periodo-stat { font-size: 0.9rem; color: var(--text); margin-bottom: 16px; }
+  .periodo-stat b { color: var(--gold-deep); font-size: 1.05rem; }
+
   /* Ranking */
   .ranking-wrap { padding: 4px 2px; }
   .rank-title { font-size: 1.05rem; margin: 4px 0 18px; }
@@ -591,6 +601,16 @@
 
 <!-- ===================== ABA RANKING ===================== -->
 <div class="tab-panel" id="tabRanking">
+  <div class="periodo-bar" id="periodoBar">
+    <button class="periodo-btn active" data-periodo="7">Últimos 7 dias</button>
+    <button class="periodo-btn" data-periodo="30">Últimos 30 dias</button>
+    <button class="periodo-btn" data-periodo="all">Tudo</button>
+    <span class="periodo-custom">
+      <input type="date" id="periodoInicio"> até <input type="date" id="periodoFim">
+      <button class="periodo-btn" id="periodoAplicar">Aplicar</button>
+    </span>
+  </div>
+  <div class="periodo-stat" id="periodoStat"></div>
   <div class="ranking-wrap" id="rankingWrap">
     <p class="load-msg">Carregando ranking...</p>
   </div>
@@ -1520,12 +1540,51 @@ document.getElementById('arquivoRecomendadoFile').addEventListener('change', fun
 // ============================================================
 // RANKING DE VENDEDORES
 // ============================================================
+let periodoSel = { tipo: '7' };
+
+function leadsNoPeriodo() {
+  if (periodoSel.tipo === 'all') return leads;
+  let inicio = 0, fim = Date.now();
+  if (periodoSel.tipo === '7') inicio = Date.now() - 7 * 86400000;
+  else if (periodoSel.tipo === '30') inicio = Date.now() - 30 * 86400000;
+  else if (periodoSel.tipo === 'custom') {
+    inicio = periodoSel.inicio ? new Date(periodoSel.inicio + 'T00:00:00').getTime() : 0;
+    fim = periodoSel.fim ? new Date(periodoSel.fim + 'T23:59:59').getTime() : Date.now();
+  }
+  return leads.filter(l => { const t = l.criadoEm ? new Date(l.criadoEm).getTime() : 0; return t >= inicio && t <= fim; });
+}
+
+function rotuloPeriodo() {
+  if (periodoSel.tipo === '7') return 'nos últimos 7 dias';
+  if (periodoSel.tipo === '30') return 'nos últimos 30 dias';
+  if (periodoSel.tipo === 'all') return 'no total';
+  return 'no período selecionado';
+}
+
+document.querySelectorAll('#periodoBar .periodo-btn[data-periodo]').forEach(b => {
+  b.addEventListener('click', () => {
+    periodoSel = { tipo: b.dataset.periodo };
+    document.querySelectorAll('#periodoBar .periodo-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    renderRanking();
+  });
+});
+document.getElementById('periodoAplicar').addEventListener('click', () => {
+  periodoSel = { tipo: 'custom', inicio: document.getElementById('periodoInicio').value, fim: document.getElementById('periodoFim').value };
+  document.querySelectorAll('#periodoBar .periodo-btn').forEach(x => x.classList.remove('active'));
+  document.getElementById('periodoAplicar').classList.add('active');
+  renderRanking();
+});
+
 function renderRanking() {
   const wrap = document.getElementById('rankingWrap');
   if (!wrap) return;
+  const base = leadsNoPeriodo();
+  const statEl = document.getElementById('periodoStat');
+  if (statEl) statEl.innerHTML = `📊 <b>${base.length}</b> ${base.length === 1 ? 'lead chegou' : 'leads chegaram'} ${rotuloPeriodo()}.`;
   const etapaComprou = etapas.find(e => e.id.includes('comprou'));
   const mapa = {};
-  leads.forEach(l => {
+  base.forEach(l => {
     const v = (l.vendedor && l.vendedor.trim()) ? l.vendedor : 'Sem vendedor';
     if (!mapa[v]) mapa[v] = { vendedor: v, total: 0, convertidos: 0 };
     mapa[v].total++;
@@ -1533,7 +1592,7 @@ function renderRanking() {
   });
   const lista = Object.values(mapa).sort((a, b) => b.total - a.total || b.convertidos - a.convertidos);
   if (!lista.length) {
-    wrap.innerHTML = '<p class="load-msg">Ainda não há indicações para ranquear.</p>';
+    wrap.innerHTML = '<p class="load-msg">Nenhuma indicação nesse período.</p>';
     return;
   }
   const medalhas = ['🥇', '🥈', '🥉'];
@@ -1665,10 +1724,11 @@ document.getElementById('salvarEtapasBtn').addEventListener('click', async () =>
 carregarLeads();
 setInterval(carregarLeads, 60000);
 
-// Abre direto a aba Configurações quando acessado via /crm#config
+// Abre direto a aba certa quando acessado via /crm#config ou /crm#ranking
 if (location.hash === '#config') {
-  const cfgBtn = document.querySelector('.tab-btn[data-tab="config"]');
-  if (cfgBtn) cfgBtn.click();
+  const b = document.querySelector('.tab-btn[data-tab="config"]'); if (b) b.click();
+} else if (location.hash === '#ranking') {
+  const b = document.querySelector('.tab-btn[data-tab="ranking"]'); if (b) b.click();
 }
 </script>
 </body>
