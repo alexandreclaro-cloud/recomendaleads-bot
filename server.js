@@ -227,6 +227,7 @@ const EMPRESA_PADRAO = {
   ctaRecomendado: 'Que tal aproveitar e passar pra retirar o seu? 😊',
   mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
+  mensagemAntesPresente: 'Como forma de agradecer essa recomendação, preparamos um presente especial para você.',
   cadenciaFollowupRecomendado: [
     { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' },
     { esperaMin: 4320, texto: 'Olá, tudo bem? O presente segue reservado no seu nome 🎁 Se tiver interesse, é só me avisar que te envio. Caso não, sem problema 😊' }
@@ -927,6 +928,10 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
 }
 
 async function enviarPremioRecomendado(telefone, sessao, empresa) {
+  // Mensagem-ponte: enviada logo após a pessoa responder, antes do presente.
+  const ponte = substituirVariaveis(empresa.mensagemAntesPresente ?? EMPRESA_PADRAO.mensagemAntesPresente, variaveisRec(sessao, empresa));
+  if (ponte && ponte.trim()) await sendText(telefone, ponte);
+
   if (empresa.arquivoRecomendado) {
     await enviarVoucher(telefone, empresa.arquivoRecomendado, empresa.premioRecomendado || '', empresa.premioRecomendado || 'presente');
   }

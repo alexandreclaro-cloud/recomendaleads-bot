@@ -689,6 +689,9 @@
           <label>Mensagem repetida enquanto a pessoa não confirma</label>
           <input type="text" id="mensagemAguardandoConfirmacaoInput" placeholder="Ex: Posso te contar mais sobre isso?">
 
+          <label>2️⃣ Mensagem antes do presente (enviada logo após a pessoa responder, antes do banner)</label>
+          <textarea id="mensagemAntesPresenteInput" rows="2" placeholder="Ex: Como forma de agradecer essa recomendação, preparamos um presente especial para você."></textarea>
+
           <label>Tempo de espera antes de iniciar a conversa com o recomendado (minutos)</label>
           <input type="text" id="tempoEsperaConversaoMinInput" placeholder="Ex: 60">
 
@@ -1243,6 +1246,7 @@ async function carregarConfiguracao() {
     document.getElementById('linkRecomendadoInput').value = configuracaoAtual.linkRecomendado || '';
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
+    document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
     document.getElementById('tempoEsperaConversaoMinInput').value = configuracaoAtual.tempoEsperaConversaoMin || 60;
     document.getElementById('posMenuPrincipalInput').value = configuracaoAtual.posMenuPrincipal || '';
     document.getElementById('linkAgendamentoInput').value = configuracaoAtual.linkAgendamento || '';
@@ -1330,6 +1334,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
 
   const mensagemInicialRecomendado = document.getElementById('mensagemInicialRecomendadoInput').value.trim();
   const mensagemAguardandoConfirmacao = document.getElementById('mensagemAguardandoConfirmacaoInput').value.trim();
+  const mensagemAntesPresente = document.getElementById('mensagemAntesPresenteInput').value.trim();
   const tempoEsperaConversaoMin = parseInt(document.getElementById('tempoEsperaConversaoMinInput').value) || 60;
   const posMenuPrincipal = document.getElementById('posMenuPrincipalInput').value.trim() || null;
   const linkAgendamento = document.getElementById('linkAgendamentoInput').value.trim() || null;
@@ -1355,7 +1360,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({
-        mensagemInicialRecomendado, mensagemAguardandoConfirmacao, tempoEsperaConversaoMin,
+        mensagemInicialRecomendado, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
         posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         faqComoFunciona, faqValidade, enderecoEmpresa, horariosEmpresa, posAtendente
