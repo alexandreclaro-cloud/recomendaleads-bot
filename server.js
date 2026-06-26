@@ -934,27 +934,37 @@ function extrairOpcao(texto) {
 
 const PERIODOS_REC = { 1: 'manhã', 2: 'tarde', 3: 'noite' };
 
-async function enviarMenuPrincipalRec(telefone, sessao, marca) {
-  const recomendador = sessao.nomeRecomendador ? sessao.nomeRecomendador.split(' ')[0] : 'seu amigo';
-  await sendText(telefone,
-`🎉 *Prontinho!*
+const POS_MENU_PADRAO = `🎉 *Prontinho!*
 
 Espero que você goste do presente 😊
-O(a) ${recomendador} vai ficar feliz de saber que você recebeu.
+O(a) {recomendador} vai ficar feliz de saber que você recebeu.
 
-Agora é só escolher quando quer aproveitar 👇
+Agora é só escolher o que prefere 👇
 
 🟢 *1* — Quero usar meu presente
 🟡 *2* — Vou usar depois
 ⚪ *3* — Tenho uma dúvida
 
-👇 _Digite o número_`);
+👇 _Digite o número_`;
+
+function variaveisRec(sessao, empresa) {
+  return {
+    nomeRecomendado: sessao && sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
+    recomendado: sessao && sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
+    recomendador: sessao && sessao.nomeRecomendador ? sessao.nomeRecomendador.split(' ')[0] : 'seu amigo',
+    vendedor: (sessao && sessao.vendedorNome) || (empresa && empresa.nome) || '',
+    empresa: (empresa && empresa.nome) || ''
+  };
+}
+
+async function enviarMenuPrincipalRec(telefone, sessao, marca) {
+  const empresa = await getEmpresa();
+  const texto = substituirVariaveis(empresa.posMenuPrincipal || POS_MENU_PADRAO, variaveisRec(sessao, empresa));
+  await sendText(telefone, texto);
   await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', ultimaMensagemEm: marca || new Date().toISOString() });
 }
 
-async function enviarPerguntaPeriodoRec(telefone, fluxo) {
-  await sendText(telefone,
-`Perfeito! 😊 Vamos reservar sua visita.
+const POS_PERIODO_PADRAO = `Perfeito! 😊 Vamos combinar sua visita.
 
 Qual período fica melhor pra você?
 
@@ -962,7 +972,28 @@ Qual período fica melhor pra você?
 *2* — Tarde 🌤️
 *3* — Noite 🌙
 
-👇 _Digite o número_`);
+👇 _Digite o número_`;
+
+// Inicia o agendamento: se a empresa configurou um link de agendamento,
+// manda o link e encerra; senão, segue o fluxo de período + dia pelo bot.
+async function iniciarAgendamentoRec(telefone, empresa, sessao, fluxo) {
+  if (empresa.linkAgendamento && empresa.linkAgendamento.trim()) {
+    const intro = substituirVariaveis(
+      empresa.posLinkAgendamento || 'Perfeito! 😊 É só escolher o melhor horário pra você aqui:',
+      variaveisRec(sessao, empresa)
+    );
+    await sendText(telefone, intro);
+    await sendText(telefone, empresa.linkAgendamento.trim());
+    await registrarEscolhaNoLead(telefone, { agendamentoLink: empresa.linkAgendamento.trim(), agendamentoEm: new Date().toISOString() }, empresa, true);
+    await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
+    return;
+  }
+  await enviarPerguntaPeriodoRec(telefone, empresa, fluxo);
+}
+
+async function enviarPerguntaPeriodoRec(telefone, empresa, fluxo) {
+  const texto = substituirVariaveis((empresa && empresa.posPerguntaPeriodo) || POS_PERIODO_PADRAO, variaveisRec(null, empresa));
+  await sendText(telefone, texto);
   await saveSessaoRecomendado(telefone, { etapa: 'agendar_periodo', fluxoAgendamento: fluxo || 'agora', ultimaMensagemEm: new Date().toISOString() });
 }
 
@@ -1004,14 +1035,16 @@ async function registrarEscolhaNoLead(telefone, dados, empresa, moverParaAgendou
   } catch (e) { console.error('Erro ao registrar escolha no lead:', e.message); }
 }
 
-async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, diaLabel) {
-  await sendText(telefone,
-`🎉 *Tudo certo!*
+const POS_CONFIRMACAO_PADRAO = `🎉 *Tudo certo!*
 
 Sua visita foi reservada:
-📅 ${diaLabel} — período da ${periodoLabel}
+📅 {dia} — período da {periodo}
 
-Nossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`);
+Nossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`;
+
+async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, diaLabel) {
+  const vars = { ...variaveisRec(sessao, empresa), dia: diaLabel, periodo: periodoLabel };
+  await sendText(telefone, substituirVariaveis(empresa.posConfirmacaoAgendamento || POS_CONFIRMACAO_PADRAO, vars));
   await registrarEscolhaNoLead(telefone, {
     agendamentoPeriodo: periodoLabel,
     agendamentoDia: diaLabel,
@@ -1223,7 +1256,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   // ---- MENU PRINCIPAL (pós-presente) ----
   if (sessao.etapa === 'menu_principal') {
     const op = extrairOpcao(texto);
-    if (op === 1) await enviarPerguntaPeriodoRec(telefone, 'agora');
+    if (op === 1) await iniciarAgendamentoRec(telefone, empresa, sessao, 'agora');
     else if (op === 2) await enviarMenuDepoisRec(telefone);
     else if (op === 3) await enviarMenuDuvidasRec(telefone);
     else await sendText(telefone, 'É só me responder com o número da opção 😊\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida');
@@ -1234,7 +1267,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   if (sessao.etapa === 'menu_depois') {
     const op = extrairOpcao(texto);
     if (op === 1) {
-      await enviarPerguntaPeriodoRec(telefone, 'depois');
+      await iniciarAgendamentoRec(telefone, empresa, sessao, 'depois');
     } else if (op === 2) {
       await sendText(telefone, 'Perfeito! 😊 Vamos te lembrar no momento certo de aproveitar seu presente. Até breve! 👋');
       await agendarProximoFollowup(telefone, empresa, new Date().toISOString(), 0);

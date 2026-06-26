@@ -709,6 +709,30 @@
           <label>Tempo de espera antes de iniciar a conversa com o recomendado (minutos)</label>
           <input type="text" id="tempoEsperaConversaoMinInput" placeholder="Ex: 60">
 
+          <h2 style="margin-top:26px;border-top:1px solid var(--border);padding-top:20px;">🗓️ Fluxo depois do presente</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
+            Mensagens enviadas após o presente (menu de opções). Deixe em branco para usar o texto padrão. Variáveis: {nomeRecomendado}, {recomendador}, {empresa}.
+          </p>
+
+          <label>Menu principal (3 opções: usar / depois / dúvida)</label>
+          <textarea id="posMenuPrincipalInput" rows="5" placeholder="Padrão: 🎉 Prontinho! ... 🟢 1 — Quero usar meu presente / 🟡 2 — Vou usar depois / ⚪ 3 — Tenho uma dúvida"></textarea>
+
+          <label>Link de agendamento (opcional)</label>
+          <input type="text" id="linkAgendamentoInput" placeholder="Ex: https://calendly.com/sua-empresa — se preenchido, o bot envia este link em vez de perguntar período/dia">
+          <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Se preencher, ao escolher "Quero usar meu presente" o bot manda este link de agendamento. Se deixar em branco, o bot pergunta período e dia.</div>
+
+          <label>Pergunta de período (quando NÃO usa link)</label>
+          <textarea id="posPerguntaPeriodoInput" rows="4" placeholder="Padrão: Perfeito! Vamos combinar sua visita. Qual período fica melhor? 1 Manhã / 2 Tarde / 3 Noite"></textarea>
+
+          <label>Confirmação do agendamento (use {dia} e {periodo})</label>
+          <textarea id="posConfirmacaoInput" rows="4" placeholder="Padrão: 🎉 Tudo certo! Sua visita foi reservada: {dia} — período da {periodo}..."></textarea>
+
+          <label>Dúvidas — Onde fica a empresa (endereço)</label>
+          <input type="text" id="enderecoEmpresaInput" placeholder="Ex: Rua X, 123 — Centro, São Paulo">
+
+          <label>Dúvidas — Horários de atendimento</label>
+          <input type="text" id="horariosEmpresaInput" placeholder="Ex: Seg a Sex, 9h às 18h">
+
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar prêmio do recomendado</button>
             <span class="config-status-msg" id="statusRecomendado"></span>
@@ -1195,6 +1219,12 @@ async function carregarConfiguracao() {
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('tempoEsperaConversaoMinInput').value = configuracaoAtual.tempoEsperaConversaoMin || 60;
+    document.getElementById('posMenuPrincipalInput').value = configuracaoAtual.posMenuPrincipal || '';
+    document.getElementById('linkAgendamentoInput').value = configuracaoAtual.linkAgendamento || '';
+    document.getElementById('posPerguntaPeriodoInput').value = configuracaoAtual.posPerguntaPeriodo || '';
+    document.getElementById('posConfirmacaoInput').value = configuracaoAtual.posConfirmacaoAgendamento || '';
+    document.getElementById('enderecoEmpresaInput').value = configuracaoAtual.enderecoEmpresa || '';
+    document.getElementById('horariosEmpresaInput').value = configuracaoAtual.horariosEmpresa || '';
 
     renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
     renderFaixas(configuracaoAtual.faixasBonus || []);
@@ -1252,6 +1282,12 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const mensagemInicialRecomendado = document.getElementById('mensagemInicialRecomendadoInput').value.trim();
   const mensagemAguardandoConfirmacao = document.getElementById('mensagemAguardandoConfirmacaoInput').value.trim();
   const tempoEsperaConversaoMin = parseInt(document.getElementById('tempoEsperaConversaoMinInput').value) || 60;
+  const posMenuPrincipal = document.getElementById('posMenuPrincipalInput').value.trim() || null;
+  const linkAgendamento = document.getElementById('linkAgendamentoInput').value.trim() || null;
+  const posPerguntaPeriodo = document.getElementById('posPerguntaPeriodoInput').value.trim() || null;
+  const posConfirmacaoAgendamento = document.getElementById('posConfirmacaoInput').value.trim() || null;
+  const enderecoEmpresa = document.getElementById('enderecoEmpresaInput').value.trim() || null;
+  const horariosEmpresa = document.getElementById('horariosEmpresaInput').value.trim() || null;
 
   btn.disabled = true;
   statusEl.textContent = 'Salvando...';
@@ -1262,7 +1298,9 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
       method: 'POST',
       body: JSON.stringify({
         premioRecomendado, arquivoRecomendado, linkRecomendado, ctaRecomendado,
-        mensagemInicialRecomendado, mensagemAguardandoConfirmacao, tempoEsperaConversaoMin
+        mensagemInicialRecomendado, mensagemAguardandoConfirmacao, tempoEsperaConversaoMin,
+        posMenuPrincipal, linkAgendamento, posPerguntaPeriodo, posConfirmacaoAgendamento,
+        enderecoEmpresa, horariosEmpresa
       })
     });
     const data = await resp.json();
