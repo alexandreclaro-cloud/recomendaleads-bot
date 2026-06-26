@@ -946,7 +946,9 @@ Agora é só escolher quando quer aproveitar 👇
 
 🟢 *1* — Quero usar meu presente
 🟡 *2* — Vou usar depois
-⚪ *3* — Tenho uma dúvida`);
+⚪ *3* — Tenho uma dúvida
+
+👇 _Digite o número_`);
   await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', ultimaMensagemEm: marca || new Date().toISOString() });
 }
 
@@ -958,7 +960,9 @@ Qual período fica melhor pra você?
 
 *1* — Manhã ☀️
 *2* — Tarde 🌤️
-*3* — Noite 🌙`);
+*3* — Noite 🌙
+
+👇 _Digite o número_`);
   await saveSessaoRecomendado(telefone, { etapa: 'agendar_periodo', fluxoAgendamento: fluxo || 'agora', ultimaMensagemEm: new Date().toISOString() });
 }
 
@@ -975,7 +979,7 @@ function gerarOpcoesDias() {
 async function enviarPerguntaDiaRec(telefone) {
   const dias = gerarOpcoesDias();
   const linhas = dias.map(d => `*${d.idx}* — ${d.label}`).join('\n');
-  await sendText(telefone, `Ótimo! Agora escolha o melhor dia 📅\n\n${linhas}`);
+  await sendText(telefone, `Ótimo! Agora escolha o melhor dia 📅\n\n${linhas}\n\n👇 _Digite o número_`);
   await saveSessaoRecomendado(telefone, { etapa: 'agendar_dia', diasOpcoes: dias, ultimaMensagemEm: new Date().toISOString() });
 }
 
@@ -1024,7 +1028,9 @@ async function enviarMenuDepoisRec(telefone) {
 Como prefere fazer?
 
 🟢 *1* — Deixar uma data reservada
-🟡 *2* — Receber um lembrete depois`);
+🟡 *2* — Receber um lembrete depois
+
+👇 _Digite o número_`);
   await saveSessaoRecomendado(telefone, { etapa: 'menu_depois', ultimaMensagemEm: new Date().toISOString() });
 }
 
@@ -1036,7 +1042,9 @@ async function enviarMenuDuvidasRec(telefone) {
 *2* — Qual a validade?
 *3* — Onde fica a empresa?
 *4* — Horários de atendimento
-*5* — Falar com um atendente`);
+*5* — Falar com um atendente
+
+👇 _Digite o número_`);
   await saveSessaoRecomendado(telefone, { etapa: 'menu_duvidas', ultimaMensagemEm: new Date().toISOString() });
 }
 
