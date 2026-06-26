@@ -1030,7 +1030,7 @@ function atualizarStats() {
 }
 
 function esc(s) {
-  return (s || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 function leadsFiltrados() {
@@ -1162,16 +1162,16 @@ function abrirModalLead(leadId) {
     <div class="modal-overlay" id="modalOverlay">
       <div class="modal-box">
         <div class="modal-head">
-          <h2>${lead.nomeRecomendado || 'Sem nome'}</h2>
+          <h2>${esc(lead.nomeRecomendado) || 'Sem nome'}</h2>
           <button class="modal-close" id="modalCloseBtn">✕</button>
         </div>
         <div class="modal-field">
           <label>Telefone</label>
-          <div class="valor">${lead.telefoneRecomendado || 'Não informado'}</div>
+          <div class="valor">${esc(lead.telefoneRecomendado) || 'Não informado'}</div>
         </div>
         <div class="modal-field">
           <label>Recomendado por</label>
-          <div class="valor">${lead.nomeRecomendador || '—'}${lead.telefoneRecomendador ? ' · ' + lead.telefoneRecomendador : ''}</div>
+          <div class="valor">${esc(lead.nomeRecomendador) || '—'}${lead.telefoneRecomendador ? ' · ' + esc(lead.telefoneRecomendador) : ''}</div>
         </div>
         <div class="modal-field">
           <label>Etapa atual</label>

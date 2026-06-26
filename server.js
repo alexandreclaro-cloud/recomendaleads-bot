@@ -18,15 +18,51 @@ const app = express();
 // pra que urlBase() gere webhooks com https (exigido pela Z-API).
 app.set('trust proxy', true);
 app.use(express.json());
+// CORS restrito: só origens conhecidas (o painel é servido do mesmo domínio,
+// então requisições same-origin nem passam por CORS). Configurável por env
+// CORS_ORIGINS (lista separada por vírgula).
+const CORS_ORIGINS = (process.env.CORS_ORIGINS ||
+  'https://www.recomendaleads.com.br,https://recomendaleads.com.br')
+  .split(',').map(s => s.trim()).filter(Boolean);
+if (process.env.APP_BASE_URL) CORS_ORIGINS.push(process.env.APP_BASE_URL.trim());
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+  const origin = req.headers.origin;
+  if (origin && CORS_ORIGINS.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Key');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
   next();
 });
+
+// Rate limiting simples em memória (sem dependência externa). Suficiente para
+// frear brute force/abuso em endpoints sensíveis numa instância única.
+const rateBuckets = new Map();
+setInterval(() => {
+  const agora = Date.now();
+  for (const [k, b] of rateBuckets) if (agora > b.reset) rateBuckets.delete(k);
+}, 10 * 60 * 1000).unref?.();
+function rateLimit({ windowMs, max, prefix }) {
+  return (req, res, next) => {
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+    const key = `${prefix}:${ip}`;
+    const agora = Date.now();
+    let b = rateBuckets.get(key);
+    if (!b || agora > b.reset) { b = { count: 0, reset: agora + windowMs }; rateBuckets.set(key, b); }
+    b.count++;
+    if (b.count > max) {
+      res.set('Retry-After', String(Math.ceil((b.reset - agora) / 1000)));
+      return res.status(429).json({ ok: false, erro: 'Muitas tentativas. Aguarde alguns instantes e tente de novo.' });
+    }
+    next();
+  };
+}
+const limiteLogin = rateLimit({ windowMs: 5 * 60 * 1000, max: 10, prefix: 'login' });
+const limiteAdmin = rateLimit({ windowMs: 5 * 60 * 1000, max: 20, prefix: 'admin' });
 
 // ============================================================
 // CONFIGURAÇÃO — Z-API
@@ -1630,6 +1666,17 @@ async function comWebhook(req, res, empresaId) {
     return res.sendStatus(200);
   }
 
+  // Anti-forja: o payload do Z-API traz o instanceId. Se vier e não bater com
+  // a instância esperada da empresa, ignoramos (provável requisição forjada).
+  // Quando o instanceId não vem, não bloqueamos para não derrubar mensagens
+  // legítimas de payloads fora do padrão.
+  const instanceEsperada = (zapiDaEmpresa(empresa) || {}).instanceId;
+  const instanceRecebida = req.body && req.body.instanceId;
+  if (instanceRecebida && instanceEsperada && String(instanceRecebida) !== String(instanceEsperada)) {
+    console.warn(`[WEBHOOK] instanceId não confere (recebido: ${instanceRecebida}) — ignorando`);
+    return res.sendStatus(200);
+  }
+
   const contexto = {
     empresa,
     empresaId: (empresa && empresa.id) || empresaId || EMPRESA_ID_PDN,
@@ -1680,7 +1727,7 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'login.html'));
 });
 
-app.post('/login', async (req, res) => {
+app.post('/login', limiteLogin, async (req, res) => {
   try {
     const { email, senha } = req.body;
     if (!email || !senha) {
@@ -2191,7 +2238,7 @@ app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
 // ROTA DE CRIAÇÃO DE EMPRESA (admin)
 // ============================================================
 
-app.post('/admin/empresas', async (req, res) => {
+app.post('/admin/empresas', limiteAdmin, async (req, res) => {
   try {
     const chaveAdmin = req.headers['x-admin-key'];
     if (!chaveAdmin || chaveAdmin !== ADMIN_SECRET) {
@@ -2273,11 +2320,13 @@ app.post('/admin/empresas', async (req, res) => {
 // PAINEL DO DONO — área administrativa (protegida por X-Admin-Key)
 // ============================================================
 function exigirAdmin(req, res, next) {
-  const chave = req.headers['x-admin-key'];
-  if (!chave || chave !== ADMIN_SECRET) {
-    return res.status(401).json({ ok: false, erro: 'Chave administrativa inválida' });
-  }
-  next();
+  return limiteAdmin(req, res, () => {
+    const chave = req.headers['x-admin-key'];
+    if (!chave || chave !== ADMIN_SECRET) {
+      return res.status(401).json({ ok: false, erro: 'Chave administrativa inválida' });
+    }
+    next();
+  });
 }
 
 app.get('/admin', (req, res) => {
