@@ -127,8 +127,9 @@
     <label>Email de login</label>
     <input type="email" id="emailInput" placeholder="teste@empresa.com">
 
-    <label>Senha de login</label>
-    <input type="text" id="senhaInput" placeholder="Defina uma senha para testar">
+    <label>Senha provisória</label>
+    <input type="text" id="senhaInput" value="123mudar" placeholder="Senha provisória de primeiro acesso">
+    <div class="hint">Padrão: <b>123mudar</b>. O cliente será obrigado a definir a própria senha no primeiro login.</div>
 
     <div class="checkbox-row">
       <input type="checkbox" id="migrarConfigCheckbox">
@@ -144,8 +145,8 @@
     <div class="resultado" id="resultadoBox">
       <div>✅ Empresa <b id="resultadoNome"></b> cadastrada!</div>
       <div style="margin-top:8px;">Login: <b id="resultadoEmail"></b></div>
-      <div>Senha: <b id="resultadoSenha"></b></div>
-      <div style="margin-top:10px; color:var(--text-dim);">Teste agora em <a href="/login" style="color:var(--gold);">/login</a> com esses dados.</div>
+      <div>Senha provisória: <b id="resultadoSenha"></b></div>
+      <div style="margin-top:10px; color:var(--text-dim);">Envie esses dados ao cliente. Ele acessa <a href="/login" style="color:var(--gold);">/login</a> e define a senha própria no primeiro acesso.</div>
     </div>
   </div>
 </div>

@@ -124,6 +124,19 @@
             <span class="status-msg" id="statusEmpresa"></span>
           </div>
         </div>
+
+        <div class="card" style="margin-top:18px">
+          <div class="block-title"><i data-lucide="lock"></i> Senha de acesso</div>
+          <p class="sub">Defina uma nova senha para entrar no painel.</p>
+          <label class="label">Nova senha</label>
+          <input class="input" type="password" id="novaSenhaInput" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+          <label class="label">Confirme a nova senha</label>
+          <input class="input" type="password" id="confirmaSenhaInput" autocomplete="new-password">
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarSenhaBtn">Trocar senha</button>
+            <span class="status-msg" id="statusSenha"></span>
+          </div>
+        </div>
       </section>
 
       <section class="view fade-in" id="view-premios">
@@ -272,6 +285,27 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok'; configuracaoAtual = data.empresa; document.getElementById('userNome').textContent = nome || 'Empresa'; }
     else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
+});
+
+document.getElementById('salvarSenhaBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarSenhaBtn');
+  const statusEl = document.getElementById('statusSenha');
+  const nova = document.getElementById('novaSenhaInput').value;
+  const confirma = document.getElementById('confirmaSenhaInput').value;
+  statusEl.textContent = ''; statusEl.className = 'status-msg';
+  if (nova.length < 6) { statusEl.textContent = '❌ Mínimo 6 caracteres'; statusEl.className = 'status-msg err'; return; }
+  if (nova !== confirma) { statusEl.textContent = '❌ As senhas não coincidem'; statusEl.className = 'status-msg err'; return; }
+  btn.disabled = true; statusEl.textContent = 'Salvando...';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-senha`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ novaSenha: nova }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Senha trocada!'; statusEl.className = 'status-msg ok';
+      document.getElementById('novaSenhaInput').value = '';
+      document.getElementById('confirmaSenhaInput').value = '';
+    } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao trocar a senha'); statusEl.className = 'status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
   finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
 });

@@ -1728,7 +1728,26 @@ app.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign({ empresaLoginId: empresaLogin.id }, JWT_SECRET, { expiresIn: '30d' });
-    res.json({ ok: true, token, empresa: { id: empresaLogin.id, nome: empresaLogin.nome, email: empresaLogin.email } });
+    res.json({ ok: true, token, empresa: { id: empresaLogin.id, nome: empresaLogin.nome, email: empresaLogin.email, senhaProvisoria: !!empresaLogin.senhaProvisoria } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Troca de senha — usada na obrigatoriedade do primeiro acesso (e quando o
+// cliente quiser trocar). Remove o flag de senha provisória.
+app.post('/minha-senha', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const { novaSenha } = req.body;
+    if (!novaSenha || novaSenha.length < 6) {
+      return res.status(400).json({ ok: false, erro: 'A nova senha precisa ter ao menos 6 caracteres' });
+    }
+    const senhaHash = await bcrypt.hash(novaSenha, 10);
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set(
+      { senhaHash, senhaProvisoria: false },
+      { merge: true }
+    );
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -2008,6 +2027,7 @@ app.post('/admin/empresas', async (req, res) => {
       nome,
       email,
       senhaHash,
+      senhaProvisoria: true,
       criadoEm: new Date().toISOString(),
       configuracao: configuracaoInicial
     });
