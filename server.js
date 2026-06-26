@@ -168,6 +168,10 @@ async function despausarNumero(telefone) {
 }
 
 const EMPRESAS_COL = () => db.collection('empresas_login');
+// Usuários de login (multiusuário por empresa). Cada doc:
+//   { empresaId, nome, email, senhaHash, papel: 'gestor'|'atendente',
+//     senhaProvisoria, ativo, criadoEm }
+const USUARIOS_COL = () => db.collection('usuarios');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'oi', 'olá', 'ola',
@@ -1683,21 +1687,51 @@ app.post('/login', async (req, res) => {
       return res.status(400).json({ ok: false, erro: 'Informe email e senha' });
     }
 
-    const snap = await EMPRESAS_COL().where('email', '==', email).limit(1).get();
-    if (snap.empty) {
+    const emailNorm = String(email).trim().toLowerCase();
+
+    // Modelo novo: busca o usuário em `usuarios`. Fallback: empresas_login
+    // (legado), caso a migração ainda não tenha rodado para esta conta.
+    let usuario = null;
+    const snapU = await USUARIOS_COL().where('email', '==', emailNorm).limit(1).get();
+    if (!snapU.empty) {
+      const d = snapU.docs[0];
+      usuario = { id: d.id, ...d.data() };
+    } else {
+      const snapE = await EMPRESAS_COL().where('email', '==', emailNorm).limit(1).get();
+      if (!snapE.empty) {
+        const d = snapE.docs[0];
+        const e = d.data();
+        usuario = { id: null, empresaId: d.id, nome: e.nome, email: emailNorm, senhaHash: e.senhaHash, papel: 'gestor', senhaProvisoria: !!e.senhaProvisoria, ativo: true };
+      }
+    }
+
+    if (!usuario || usuario.ativo === false) {
       return res.status(401).json({ ok: false, erro: 'Email ou senha incorretos' });
     }
 
-    const doc = snap.docs[0];
-    const empresaLogin = { id: doc.id, ...doc.data() };
-
-    const senhaValida = await bcrypt.compare(senha, empresaLogin.senhaHash);
+    const senhaValida = await bcrypt.compare(senha, usuario.senhaHash || '');
     if (!senhaValida) {
       return res.status(401).json({ ok: false, erro: 'Email ou senha incorretos' });
     }
 
-    const token = jwt.sign({ empresaLoginId: empresaLogin.id }, JWT_SECRET, { expiresIn: '30d' });
-    res.json({ ok: true, token, empresa: { id: empresaLogin.id, nome: empresaLogin.nome, email: empresaLogin.email, senhaProvisoria: !!empresaLogin.senhaProvisoria } });
+    // Nome da empresa para exibição (e compatibilidade com o painel atual).
+    let nomeEmpresa = usuario.nome;
+    try {
+      const empDoc = await EMPRESAS_COL().doc(usuario.empresaId).get();
+      if (empDoc.exists) nomeEmpresa = empDoc.data().nome || nomeEmpresa;
+    } catch (_) {}
+
+    const token = jwt.sign(
+      { usuarioId: usuario.id, empresaLoginId: usuario.empresaId, papel: usuario.papel },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    res.json({
+      ok: true,
+      token,
+      usuario: { nome: usuario.nome, email: usuario.email, papel: usuario.papel },
+      empresa: { id: usuario.empresaId, nome: nomeEmpresa, email: usuario.email, papel: usuario.papel, senhaProvisoria: !!usuario.senhaProvisoria }
+    });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -1712,10 +1746,136 @@ app.post('/minha-senha', exigirLoginEmpresa, async (req, res) => {
       return res.status(400).json({ ok: false, erro: 'A nova senha precisa ter ao menos 6 caracteres' });
     }
     const senhaHash = await bcrypt.hash(novaSenha, 10);
-    await EMPRESAS_COL().doc(req.empresaLogin.id).set(
-      { senhaHash, senhaProvisoria: false },
-      { merge: true }
-    );
+    if (req.usuario && req.usuario.id) {
+      // Modelo novo: troca a senha do próprio usuário logado.
+      await USUARIOS_COL().doc(req.usuario.id).set(
+        { senhaHash, senhaProvisoria: false },
+        { merge: true }
+      );
+    } else {
+      // Legado (token antigo, sem usuarioId): mantém o comportamento anterior.
+      await EMPRESAS_COL().doc(req.empresaLogin.id).set(
+        { senhaHash, senhaProvisoria: false },
+        { merge: true }
+      );
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// EQUIPE — usuários da empresa (apenas gestor)
+// ============================================================
+
+// Conta gestores ativos da empresa sem exigir índice composto no Firestore.
+async function contarGestoresAtivos(empresaId) {
+  const snap = await USUARIOS_COL().where('empresaId', '==', empresaId).get();
+  return snap.docs.filter(d => d.data().papel === 'gestor' && d.data().ativo !== false).length;
+}
+
+app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const snap = await USUARIOS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const usuarios = snap.docs.map(d => {
+      const u = d.data();
+      return {
+        id: d.id,
+        nome: u.nome,
+        email: u.email,
+        papel: u.papel,
+        ativo: u.ativo !== false,
+        souEu: !!(req.usuario && req.usuario.id === d.id)
+      };
+    }).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    res.json({ ok: true, usuarios });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const { nome, email, senha, papel } = req.body;
+    if (!nome || !email || !senha) {
+      return res.status(400).json({ ok: false, erro: 'Informe nome, email e senha' });
+    }
+    if (String(senha).length < 6) {
+      return res.status(400).json({ ok: false, erro: 'A senha precisa ter ao menos 6 caracteres' });
+    }
+    const papelFinal = papel === 'gestor' ? 'gestor' : 'atendente';
+    const emailNorm = String(email).trim().toLowerCase();
+    const existe = await USUARIOS_COL().where('email', '==', emailNorm).limit(1).get();
+    if (!existe.empty) {
+      return res.status(409).json({ ok: false, erro: 'Já existe um usuário com esse email' });
+    }
+    const senhaHash = await bcrypt.hash(String(senha), 10);
+    const ref = await USUARIOS_COL().add({
+      empresaId: req.empresaLogin.id,
+      nome: String(nome).trim(),
+      email: emailNorm,
+      senhaHash,
+      papel: papelFinal,
+      senhaProvisoria: true,
+      ativo: true,
+      criadoEm: new Date().toISOString()
+    });
+    res.json({ ok: true, id: ref.id });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.patch('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const ref = USUARIOS_COL().doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+    }
+    const alvo = doc.data();
+    const { nome, papel, novaSenha } = req.body;
+    const update = {};
+    if (nome) update.nome = String(nome).trim();
+    if (papel === 'gestor' || papel === 'atendente') {
+      // Não permitir rebaixar o último gestor da empresa.
+      if (alvo.papel === 'gestor' && papel !== 'gestor' && (await contarGestoresAtivos(req.empresaLogin.id)) <= 1) {
+        return res.status(409).json({ ok: false, erro: 'A empresa precisa de ao menos um gestor.' });
+      }
+      update.papel = papel;
+    }
+    if (novaSenha) {
+      if (String(novaSenha).length < 6) {
+        return res.status(400).json({ ok: false, erro: 'A senha precisa ter ao menos 6 caracteres' });
+      }
+      update.senhaHash = await bcrypt.hash(String(novaSenha), 10);
+      update.senhaProvisoria = true;
+    }
+    if (!Object.keys(update).length) {
+      return res.status(400).json({ ok: false, erro: 'Nada para atualizar' });
+    }
+    await ref.set(update, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.delete('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    if (req.usuario && req.usuario.id === req.params.id) {
+      return res.status(409).json({ ok: false, erro: 'Você não pode remover a si mesmo.' });
+    }
+    const ref = USUARIOS_COL().doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+    }
+    if (doc.data().papel === 'gestor' && (await contarGestoresAtivos(req.empresaLogin.id)) <= 1) {
+      return res.status(409).json({ ok: false, erro: 'A empresa precisa de ao menos um gestor.' });
+    }
+    await ref.delete();
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -1739,16 +1899,43 @@ async function exigirLoginEmpresa(req, res, next) {
     }
 
     const payload = jwt.verify(token, JWT_SECRET);
-    const doc = await EMPRESAS_COL().doc(payload.empresaLoginId).get();
+    const empresaId = payload.empresaLoginId || payload.empresaId;
+    const doc = await EMPRESAS_COL().doc(empresaId).get();
     if (!doc.exists) {
       return res.status(401).json({ ok: false, erro: 'Empresa não encontrada' });
     }
 
     req.empresaLogin = { id: doc.id, ...doc.data() };
+    // Papel: tokens antigos (pré-multiusuário) não têm usuarioId nem papel —
+    // tratamos como gestor para não deslogar ninguém. Quando há usuarioId, a
+    // fonte da verdade é o doc do usuário (refletindo trocas de papel na hora).
+    req.papel = payload.papel || 'gestor';
+    req.usuario = null;
+    if (payload.usuarioId) {
+      const u = await USUARIOS_COL().doc(payload.usuarioId).get();
+      if (!u.exists || u.data().ativo === false) {
+        return res.status(401).json({ ok: false, erro: 'Usuário inativo ou removido' });
+      }
+      const dadosU = u.data();
+      if (dadosU.empresaId !== empresaId) {
+        return res.status(401).json({ ok: false, erro: 'Sessão inválida' });
+      }
+      req.usuario = { id: u.id, ...dadosU };
+      req.papel = dadosU.papel || req.papel;
+    }
     next();
   } catch (err) {
     return res.status(401).json({ ok: false, erro: 'Sessão inválida ou expirada' });
   }
+}
+
+// Exige que o usuário logado seja gestor (acesso total). Use sempre depois de
+// exigirLoginEmpresa, que popula req.papel.
+function exigirGestor(req, res, next) {
+  if (req.papel !== 'gestor') {
+    return res.status(403).json({ ok: false, erro: 'Apenas gestores podem fazer esta ação.' });
+  }
+  next();
 }
 
 app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
@@ -1762,7 +1949,7 @@ app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
-app.post('/minha-config', exigirLoginEmpresa, async (req, res) => {
+app.post('/minha-config', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const configuracaoAtual = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
     const novaConfiguracao = { ...configuracaoAtual, ...req.body };
@@ -1803,7 +1990,7 @@ app.get('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
-app.post('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
+app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const { zapiInstanceId, zapiToken, zapiClientToken } = req.body;
     if (!zapiInstanceId || !zapiToken) {
@@ -1937,7 +2124,7 @@ app.post('/minha-conversas/:telefone/devolver', exigirLoginEmpresa, async (req, 
   }
 });
 
-app.post('/minha-config/faixa', exigirLoginEmpresa, async (req, res) => {
+app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const { quantidade, novaQuantidade, arquivo, link, texto, premio } = req.body;
     const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
@@ -2211,7 +2398,7 @@ const uploadMiddleware = multer({
   }
 });
 
-app.post('/upload-arquivo', exigirLoginEmpresa, uploadMiddleware.single('arquivo'), async (req, res) => {
+app.post('/upload-arquivo', exigirLoginEmpresa, exigirGestor, uploadMiddleware.single('arquivo'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' });
@@ -2439,6 +2626,38 @@ async function executarAgendamentosPendentes() {
   }
 }
 
+// Migração idempotente: garante um usuário "gestor" para cada empresa_login,
+// reaproveitando o email/senhaHash atuais. Roda no boot. Quem loga hoje
+// continua logando igual — agora pela coleção `usuarios`.
+async function migrarUsuariosGestores() {
+  if (!db) return;
+  try {
+    const empresas = await EMPRESAS_COL().get();
+    let criados = 0;
+    for (const doc of empresas.docs) {
+      const e = doc.data() || {};
+      if (!e.email || !e.senhaHash) continue;
+      const emailNorm = String(e.email).trim().toLowerCase();
+      const jaExiste = await USUARIOS_COL().where('email', '==', emailNorm).limit(1).get();
+      if (!jaExiste.empty) continue;
+      await USUARIOS_COL().add({
+        empresaId: doc.id,
+        nome: e.nome || 'Gestor',
+        email: emailNorm,
+        senhaHash: e.senhaHash,
+        papel: 'gestor',
+        senhaProvisoria: !!e.senhaProvisoria,
+        ativo: true,
+        criadoEm: new Date().toISOString()
+      });
+      criados++;
+    }
+    if (criados) console.log(`[migração] ${criados} usuário(s) gestor criado(s) a partir de empresas_login`);
+  } catch (err) {
+    console.error('[migração] Falha ao migrar usuários gestores:', err.message);
+  }
+}
+
 function iniciarExecutorAgendamentos() {
   const INTERVALO_EXECUTOR_MS = 1 * 60 * 1000;
   executarAgendamentosPendentes();
@@ -2454,6 +2673,7 @@ app.listen(PORT, () => {
   console.log(`RecomendaLeads Bot v2 (Firestore) rodando na porta ${PORT}`);
   console.log(`Webhook disponível em: /webhook`);
   console.log(`Firestore inicializado: ${db ? 'SIM' : 'NÃO — verifique FIREBASE_SERVICE_ACCOUNT'}`);
+  migrarUsuariosGestores();
   iniciarExecutorAgendamentos();
   console.log('Executor de agendamentos iniciado (checagem a cada 1 min)');
 });
