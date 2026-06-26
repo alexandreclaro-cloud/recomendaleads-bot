@@ -2017,6 +2017,30 @@ app.get('/status', async (req, res) => {
   }
 });
 
+// TEMPORÁRIO — reset de sessões de um número (para reteste). Remover após uso.
+app.get('/reset-sessao/:telefone', async (req, res) => {
+  try {
+    const tel = req.params.telefone;
+    const feito = [];
+    await SESSOES_COL().doc(tel).delete().then(() => feito.push('sessao')).catch(() => {});
+    await SESSOES_RECOMENDADO_COL().doc(tel).delete().then(() => feito.push('sessao_recomendado')).catch(() => {});
+    await NUMEROS_PAUSADOS_COL().doc(tel).delete().then(() => feito.push('despausado')).catch(() => {});
+    try {
+      const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
+      const batch = db.batch(); let n = 0;
+      snap.forEach(d => {
+        const x = d.data();
+        const t = x.dados?.contato?.telefone || x.dados?.telefone || null;
+        if (t === tel) { batch.update(d.ref, { status: 'cancelado' }); n++; }
+      });
+      if (n) { await batch.commit(); feito.push(`${n} agendamentos cancelados`); }
+    } catch (e) {}
+    res.json({ ok: true, telefone: tel, feito });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.get('/config', async (req, res) => {
   try {
     const empresa = await getEmpresa();
