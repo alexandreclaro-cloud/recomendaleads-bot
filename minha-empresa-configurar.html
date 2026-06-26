@@ -485,8 +485,10 @@ async function atualizarEstadoWhats() {
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/status`);
     const data = await resp.json();
-    if (!data.provisionado) { setBadgeWhats(false); mostrarAreaWhats('naoprov'); pararPollQr(); return; }
+    // Conexão real primeiro: número global conectado (PDN) aparece como conectado.
     if (data.conectado) { setBadgeWhats(true); mostrarAreaWhats('conectado'); pararPollQr(); return; }
+    // Sem instância própria e não conectado → número gerido pela equipe (sem QR).
+    if (!data.provisionado) { setBadgeWhats(false); mostrarAreaWhats('naoprov'); pararPollQr(); return; }
     setBadgeWhats(false); mostrarAreaWhats('qr');
     const naAbaWhats = document.getElementById('view-whatsapp').classList.contains('active');
     if (naAbaWhats) {

@@ -1835,15 +1835,20 @@ function zapiCfgDaEmpresaLogin(e) {
 }
 
 app.get('/minha-whatsapp/status', exigirLoginEmpresa, async (req, res) => {
-  const cfg = zapiCfgDaEmpresaLogin(req.empresaLogin);
+  // Instância própria da empresa ou, na falta dela, a Z-API global (caso PDN).
+  // `provisionado` só é true quando a empresa tem instância PRÓPRIA — assim o
+  // painel oferece o QR apenas para quem realmente pode escanear; quem roda no
+  // número global (gerido pela equipe) vê só o status real de conexão.
+  const propria = zapiCfgDaEmpresaLogin(req.empresaLogin);
+  const cfg = propria || (ZAPI_GLOBAL.instanceId && ZAPI_GLOBAL.token ? ZAPI_GLOBAL : null);
   if (!cfg) return res.json({ ok: true, provisionado: false, conectado: false });
   try {
     const resp = await axios.get(`${zapiBaseUrl(cfg)}/status`, { headers: zapiHeaders(cfg) });
     const data = resp.data || {};
     const conectado = !!(data.connected || data.smartphoneConnected);
-    res.json({ ok: true, provisionado: true, conectado });
+    res.json({ ok: true, provisionado: !!propria, conectado });
   } catch (err) {
-    res.json({ ok: true, provisionado: true, conectado: false, erro: err.response?.data?.error || err.message });
+    res.json({ ok: true, provisionado: !!propria, conectado: false, erro: err.response?.data?.error || err.message });
   }
 });
 
