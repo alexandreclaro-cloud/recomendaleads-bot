@@ -549,6 +549,10 @@
   .etapa-btn:disabled { opacity: 0.3; cursor: default; }
   .add-etapa-btn { background: transparent; border: 1px dashed var(--border); color: var(--gold-deep); padding: 9px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin: 4px 0 10px; }
   .add-etapa-btn:hover { background: var(--gold-soft); border-color: var(--gold); }
+
+  .var-chip { cursor: pointer; display: inline-block; background: var(--gold-soft); color: var(--gold-deep); border: 1px solid var(--gold); border-radius: 6px; padding: 1px 7px; font-size: 0.78rem; margin: 2px 2px 0 0; user-select: none; }
+  .var-chip:hover { background: var(--gold); color: #fff; }
+  .var-chip.copiado { background: var(--success); border-color: var(--success); color: #fff; }
 </style>
 </head>
 <body>
@@ -673,7 +677,8 @@
         <div class="config-card">
           <h2>💬 Conversa com o cliente (quem indica)</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-            Mensagens da conversa com quem vai indicar amigos, na ordem em que são enviadas. Edite, apague ou reescreva. Variáveis: <code>{nome}</code> (do cliente), <code>{premio}</code>, <code>{quantidade}</code>, <code>{empresa}</code>.
+            Mensagens da conversa com quem vai indicar amigos, na ordem em que são enviadas. Edite, apague ou reescreva.<br>
+            Variáveis (clique para copiar): <code class="var-chip">{nome}</code> <code class="var-chip">{premio}</code> <code class="var-chip">{quantidade}</code> <code class="var-chip">{empresa}</code>
           </p>
 
           <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">1) Boas-vindas (1ª mensagem enviada ao cliente)</p>
@@ -711,7 +716,8 @@
         <div class="config-card">
           <h2>Conversa com quem é recomendado</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-            Mensagens enviadas para a pessoa indicada. O <b>presente</b> dela é configurado na aba <b>Faixas de Bônus</b>. Variáveis: {nomeRecomendado}, {recomendador}, {vendedor}, {empresa}.
+            Mensagens enviadas para a pessoa indicada. O <b>presente</b> dela é configurado na aba <b>Faixas de Bônus</b>.<br>
+            Variáveis (clique para copiar): <code class="var-chip">{nomeRecomendado}</code> <code class="var-chip">{recomendador}</code> <code class="var-chip">{vendedor}</code> <code class="var-chip">{empresa}</code>
           </p>
 
           <label>1️⃣ Mensagem inicial (pede confirmação antes de seguir)</label>
@@ -728,7 +734,8 @@
 
           <h2 style="margin-top:26px;border-top:1px solid var(--border);padding-top:20px;">🗓️ Sequência depois do presente</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-            Esta é a conversa que acontece <b>depois</b> que a pessoa recebe o presente, na ordem em que é enviada. Cada texto já vem pronto — edite, apague ou reescreva com a cara da sua empresa. Variáveis: <code>{nomeRecomendado}</code>, <code>{recomendador}</code>, <code>{empresa}</code>.
+            Esta é a conversa que acontece <b>depois</b> que a pessoa recebe o presente, na ordem em que é enviada. Cada texto já vem pronto — edite, apague ou reescreva com a cara da sua empresa.<br>
+            Variáveis (clique para copiar): <code class="var-chip">{nomeRecomendado}</code> <code class="var-chip">{recomendador}</code> <code class="var-chip">{empresa}</code> <code class="var-chip">{premio}</code> <code class="var-chip">{dia}</code> <code class="var-chip">{periodo}</code>
           </p>
 
           <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">1) Menu de opções (enviado logo após o presente)</p>
@@ -1874,6 +1881,18 @@ document.getElementById('salvarEtapasBtn').addEventListener('click', async () =>
     btn.disabled = false;
     setTimeout(() => { status.textContent = ''; status.className = 'config-status-msg'; }, 4000);
   }
+});
+
+// Clicar numa etiqueta de variável copia o texto dela
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('.var-chip');
+  if (!chip) return;
+  navigator.clipboard.writeText(chip.textContent.trim()).then(() => {
+    const orig = chip.textContent;
+    chip.classList.add('copiado');
+    chip.textContent = 'copiado!';
+    setTimeout(() => { chip.textContent = orig; chip.classList.remove('copiado'); }, 1000);
+  });
 });
 
 // ============================================================
