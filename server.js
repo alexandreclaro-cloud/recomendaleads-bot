@@ -233,6 +233,23 @@ const EMPRESA_PADRAO = {
   ],
   tempoEsperaConversaoMin: 60,
   tempoFollowupMin: 30,
+
+  // ===== Fluxo pós-presente (todos editáveis no painel, na sequência) =====
+  posMenuPrincipal: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida\n\n👇 _Digite o número_`,
+  posLinkAgendamento: 'Perfeito! 😊 É só escolher o melhor horário pra você aqui:',
+  posPerguntaPeriodo: `Perfeito! 😊 Vamos combinar sua visita.\n\nQual período fica melhor pra você?\n\n*1* — Manhã ☀️\n*2* — Tarde 🌤️\n*3* — Noite 🌙\n\n👇 _Digite o número_`,
+  posPerguntaDia: 'Ótimo! Agora escolha o melhor dia 📅',
+  posConfirmacaoAgendamento: `🎉 *Tudo certo!*\n\nSua visita foi reservada:\n📅 {dia} — período da {periodo}\n\nNossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`,
+  posMenuDepois: `Sem problemas! 😊 Seu presente continua reservado pra você.\n\nComo prefere fazer?\n\n🟢 *1* — Deixar uma data reservada\n🟡 *2* — Receber um lembrete depois\n\n👇 _Digite o número_`,
+  posLembrete: 'Perfeito! 😊 Vamos te lembrar no momento certo de aproveitar seu presente. Até breve! 👋',
+  posMenuDuvidas: `Claro! Sobre o que você gostaria de saber?\n\n*1* — Como funciona o presente?\n*2* — Qual a validade?\n*3* — Onde fica a empresa?\n*4* — Horários de atendimento\n*5* — Falar com um atendente\n\n👇 _Digite o número_`,
+  faqComoFunciona: 'Seu presente é: {premio}. É só apresentar essa mensagem quando vier nos visitar 😊',
+  faqValidade: 'É por tempo limitado, então recomendo aproveitar logo! 😉 Qualquer detalhe, nossa equipe te ajuda.',
+  enderecoEmpresa: '',
+  horariosEmpresa: '',
+  posAtendente: 'Claro! 😊 Já estou chamando um atendente pra falar com você por aqui. É só aguardar um pouquinho.',
+  linkAgendamento: '',
+
   etapasKanban: [
     { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
     { id: 'aceitou_mensagem', nome: 'Aceitou Mensagem' },
@@ -934,19 +951,6 @@ function extrairOpcao(texto) {
 
 const PERIODOS_REC = { 1: 'manhã', 2: 'tarde', 3: 'noite' };
 
-const POS_MENU_PADRAO = `🎉 *Prontinho!*
-
-Espero que você goste do presente 😊
-O(a) {recomendador} vai ficar feliz de saber que você recebeu.
-
-Agora é só escolher o que prefere 👇
-
-🟢 *1* — Quero usar meu presente
-🟡 *2* — Vou usar depois
-⚪ *3* — Tenho uma dúvida
-
-👇 _Digite o número_`;
-
 function variaveisRec(sessao, empresa) {
   return {
     nomeRecomendado: sessao && sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
@@ -959,27 +963,17 @@ function variaveisRec(sessao, empresa) {
 
 async function enviarMenuPrincipalRec(telefone, sessao, marca) {
   const empresa = await getEmpresa();
-  const texto = substituirVariaveis(empresa.posMenuPrincipal || POS_MENU_PADRAO, variaveisRec(sessao, empresa));
+  const texto = substituirVariaveis(empresa.posMenuPrincipal || EMPRESA_PADRAO.posMenuPrincipal, variaveisRec(sessao, empresa));
   await sendText(telefone, texto);
   await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', ultimaMensagemEm: marca || new Date().toISOString() });
 }
-
-const POS_PERIODO_PADRAO = `Perfeito! 😊 Vamos combinar sua visita.
-
-Qual período fica melhor pra você?
-
-*1* — Manhã ☀️
-*2* — Tarde 🌤️
-*3* — Noite 🌙
-
-👇 _Digite o número_`;
 
 // Inicia o agendamento: se a empresa configurou um link de agendamento,
 // manda o link e encerra; senão, segue o fluxo de período + dia pelo bot.
 async function iniciarAgendamentoRec(telefone, empresa, sessao, fluxo) {
   if (empresa.linkAgendamento && empresa.linkAgendamento.trim()) {
     const intro = substituirVariaveis(
-      empresa.posLinkAgendamento || 'Perfeito! 😊 É só escolher o melhor horário pra você aqui:',
+      empresa.posLinkAgendamento || EMPRESA_PADRAO.posLinkAgendamento,
       variaveisRec(sessao, empresa)
     );
     await sendText(telefone, intro);
@@ -992,7 +986,7 @@ async function iniciarAgendamentoRec(telefone, empresa, sessao, fluxo) {
 }
 
 async function enviarPerguntaPeriodoRec(telefone, empresa, fluxo) {
-  const texto = substituirVariaveis((empresa && empresa.posPerguntaPeriodo) || POS_PERIODO_PADRAO, variaveisRec(null, empresa));
+  const texto = substituirVariaveis((empresa && empresa.posPerguntaPeriodo) || EMPRESA_PADRAO.posPerguntaPeriodo, variaveisRec(null, empresa));
   await sendText(telefone, texto);
   await saveSessaoRecomendado(telefone, { etapa: 'agendar_periodo', fluxoAgendamento: fluxo || 'agora', ultimaMensagemEm: new Date().toISOString() });
 }
@@ -1008,9 +1002,11 @@ function gerarOpcoesDias() {
 }
 
 async function enviarPerguntaDiaRec(telefone) {
+  const empresa = await getEmpresa();
   const dias = gerarOpcoesDias();
   const linhas = dias.map(d => `*${d.idx}* — ${d.label}`).join('\n');
-  await sendText(telefone, `Ótimo! Agora escolha o melhor dia 📅\n\n${linhas}\n\n👇 _Digite o número_`);
+  const header = (empresa.posPerguntaDia || EMPRESA_PADRAO.posPerguntaDia);
+  await sendText(telefone, `${header}\n\n${linhas}\n\n👇 _Digite o número_`);
   await saveSessaoRecomendado(telefone, { etapa: 'agendar_dia', diasOpcoes: dias, ultimaMensagemEm: new Date().toISOString() });
 }
 
@@ -1035,16 +1031,9 @@ async function registrarEscolhaNoLead(telefone, dados, empresa, moverParaAgendou
   } catch (e) { console.error('Erro ao registrar escolha no lead:', e.message); }
 }
 
-const POS_CONFIRMACAO_PADRAO = `🎉 *Tudo certo!*
-
-Sua visita foi reservada:
-📅 {dia} — período da {periodo}
-
-Nossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`;
-
 async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, diaLabel) {
   const vars = { ...variaveisRec(sessao, empresa), dia: diaLabel, periodo: periodoLabel };
-  await sendText(telefone, substituirVariaveis(empresa.posConfirmacaoAgendamento || POS_CONFIRMACAO_PADRAO, vars));
+  await sendText(telefone, substituirVariaveis(empresa.posConfirmacaoAgendamento || EMPRESA_PADRAO.posConfirmacaoAgendamento, vars));
   await registrarEscolhaNoLead(telefone, {
     agendamentoPeriodo: periodoLabel,
     agendamentoDia: diaLabel,
@@ -1055,39 +1044,25 @@ async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, 
 }
 
 async function enviarMenuDepoisRec(telefone) {
-  await sendText(telefone,
-`Sem problemas! 😊 Seu presente continua reservado pra você.
-
-Como prefere fazer?
-
-🟢 *1* — Deixar uma data reservada
-🟡 *2* — Receber um lembrete depois
-
-👇 _Digite o número_`);
+  const empresa = await getEmpresa();
+  await sendText(telefone, substituirVariaveis(empresa.posMenuDepois || EMPRESA_PADRAO.posMenuDepois, variaveisRec(null, empresa)));
   await saveSessaoRecomendado(telefone, { etapa: 'menu_depois', ultimaMensagemEm: new Date().toISOString() });
 }
 
 async function enviarMenuDuvidasRec(telefone) {
-  await sendText(telefone,
-`Claro! Sobre o que você gostaria de saber?
-
-*1* — Como funciona o presente?
-*2* — Qual a validade?
-*3* — Onde fica a empresa?
-*4* — Horários de atendimento
-*5* — Falar com um atendente
-
-👇 _Digite o número_`);
+  const empresa = await getEmpresa();
+  await sendText(telefone, substituirVariaveis(empresa.posMenuDuvidas || EMPRESA_PADRAO.posMenuDuvidas, variaveisRec(null, empresa)));
   await saveSessaoRecomendado(telefone, { etapa: 'menu_duvidas', ultimaMensagemEm: new Date().toISOString() });
 }
 
 async function responderDuvidaRec(telefone, opcao, empresa) {
-  const faq = empresa.faqRecomendado || {};
+  const sessao = await getSessaoRecomendado(telefone);
+  const vars = { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' };
   let resposta;
-  if (opcao === 1) resposta = faq.comoFunciona || `Seu presente é: ${empresa.premioRecomendado}. É só apresentar essa mensagem quando vier nos visitar 😊`;
-  else if (opcao === 2) resposta = faq.validade || 'É por tempo limitado, então recomendo aproveitar logo! 😉 Qualquer detalhe, nossa equipe te ajuda.';
-  else if (opcao === 3) resposta = empresa.enderecoEmpresa ? `Estamos em: ${empresa.enderecoEmpresa} 📍` : (faq.endereco || 'Um atendente já te passa o endereço certinho 😊');
-  else if (opcao === 4) resposta = empresa.horariosEmpresa ? `Nosso atendimento: ${empresa.horariosEmpresa} 🕒` : (faq.horarios || 'Um atendente já te passa os horários 😊');
+  if (opcao === 1) resposta = substituirVariaveis(empresa.faqComoFunciona || EMPRESA_PADRAO.faqComoFunciona, vars);
+  else if (opcao === 2) resposta = substituirVariaveis(empresa.faqValidade || EMPRESA_PADRAO.faqValidade, vars);
+  else if (opcao === 3) resposta = empresa.enderecoEmpresa ? `Estamos em: ${empresa.enderecoEmpresa} 📍` : 'Um atendente já te passa o endereço certinho 😊';
+  else if (opcao === 4) resposta = empresa.horariosEmpresa ? `Nosso atendimento: ${empresa.horariosEmpresa} 🕒` : 'Um atendente já te passa os horários 😊';
   else return false;
   await sendText(telefone, resposta);
   await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona   *2* — Validade\n*3* — Endereço   *4* — Horários\n*5* — Falar com atendente\n\nOu responda *0* se estiver tudo certo 👍`);
@@ -1269,7 +1244,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     if (op === 1) {
       await iniciarAgendamentoRec(telefone, empresa, sessao, 'depois');
     } else if (op === 2) {
-      await sendText(telefone, 'Perfeito! 😊 Vamos te lembrar no momento certo de aproveitar seu presente. Até breve! 👋');
+      await sendText(telefone, substituirVariaveis(empresa.posLembrete || EMPRESA_PADRAO.posLembrete, variaveisRec(sessao, empresa)));
       await agendarProximoFollowup(telefone, empresa, new Date().toISOString(), 0);
       await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
     } else {
@@ -1314,7 +1289,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     if (op === 5) {
       await pausarNumero(telefone);
       await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
-      await sendText(telefone, 'Claro! 😊 Já estou chamando um atendente pra falar com você por aqui. É só aguardar um pouquinho.');
+      await sendText(telefone, substituirVariaveis(empresa.posAtendente || EMPRESA_PADRAO.posAtendente, variaveisRec(sessao, empresa)));
       await saveSessaoRecomendado(telefone, { etapa: 'finalizado_atendente' });
       return true;
     }
@@ -1700,7 +1675,9 @@ async function exigirLoginEmpresa(req, res, next) {
 
 app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
   try {
-    const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+    // Mescla com os padrões pra o painel mostrar todos os textos preenchidos
+    // (campos não personalizados vêm com o texto padrão, pronto pra editar).
+    const configuracao = { ...EMPRESA_PADRAO, ...(req.empresaLogin.configuracao || { nome: req.empresaLogin.nome }) };
     res.json({ ok: true, empresa: configuracao });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
