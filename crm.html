@@ -871,6 +871,15 @@ if (!token || !empresaLogada) {
 
 document.getElementById('empresaLogadaNome').textContent = empresaLogada ? empresaLogada.nome : '—';
 
+// Papel do usuário logado (default gestor p/ sessões antigas). Atendente não
+// edita configurações — escondemos a aba Configurações.
+const PAPEL = (empresaLogada && empresaLogada.papel) || 'gestor';
+const EH_GESTOR = PAPEL === 'gestor';
+if (!EH_GESTOR) {
+  const cfgTab = document.querySelector('.tab-btn[data-tab="config"]');
+  if (cfgTab) cfgTab.style.display = 'none';
+}
+
 document.getElementById('sairBtn').addEventListener('click', () => {
   localStorage.removeItem('recomendaleads_token');
   localStorage.removeItem('recomendaleads_empresa');
@@ -905,9 +914,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     } else if (btn.dataset.tab === 'ranking') {
       document.getElementById('tabRanking').classList.add('active');
       renderRanking();
-    } else {
+    } else if (EH_GESTOR) {
       document.getElementById('tabConfig').classList.add('active');
       if (!configuracaoCarregada) carregarConfiguracao();
+    } else {
+      // Atendente não acessa configurações — volta para os leads.
+      document.querySelector('.tab-btn[data-tab="leads"]').classList.add('active');
+      document.getElementById('tabLeads').classList.add('active');
     }
   });
 });
@@ -1969,7 +1982,7 @@ carregarLeads();
 setInterval(carregarLeads, 60000);
 
 // Abre direto a aba certa quando acessado via /crm#config ou /crm#ranking
-if (location.hash === '#config') {
+if (location.hash === '#config' && EH_GESTOR) {
   const b = document.querySelector('.tab-btn[data-tab="config"]'); if (b) b.click();
 } else if (location.hash === '#ranking') {
   const b = document.querySelector('.tab-btn[data-tab="ranking"]'); if (b) b.click();
