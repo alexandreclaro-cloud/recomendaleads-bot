@@ -1525,12 +1525,31 @@ async function tratarWebhook(req, res) {
 
     const sessaoExistenteSnap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
     const sessaoExiste = sessaoExistenteSnap.exists;
+    const sessaoClienteEtapa = sessaoExiste ? sessaoExistenteSnap.data().etapa : null;
+    // Cliente "ativo" = sessão em andamento (não finalizada). Uma sessão de
+    // cliente finalizada não deve bloquear o fluxo de recomendado.
+    const clienteAtivo = sessaoExiste && sessaoClienteEtapa !== 'finalizado';
     const ehGatilhoInicial = texto && texto.toLowerCase().includes('quero meu presente');
+
+    // Um mesmo número pode ter sido cliente/recomendador antes e agora estar
+    // recebendo o roteiro como RECOMENDADO. Se a sessão de cliente já está
+    // finalizada (ou não existe) e existe uma sessão de recomendado ATIVA,
+    // a mensagem pertence ao fluxo de recomendado — não ao de cliente.
+    const sessaoRecomendado = clienteAtivo ? null : await getSessaoRecomendado(telefone);
+    const recomendadoAtivo = sessaoRecomendado
+      && sessaoRecomendado.etapa
+      && !['finalizado', 'finalizado_negativo', 'finalizado_atendente'].includes(sessaoRecomendado.etapa);
 
     if (ehGatilhoInicial) {
       await resetSessao(telefone);
       await iniciarConversa(telefone);
+    } else if (clienteAtivo) {
+      await processarMensagem(telefone, texto, vCard, contatosMultiplos);
+    } else if (recomendadoAtivo) {
+      const empresa = await getEmpresa();
+      await processarMensagemRecomendado(telefone, texto, empresa);
     } else if (sessaoExiste) {
+      // Sessão de cliente finalizada e sem recomendado ativo — comportamento antigo.
       await processarMensagem(telefone, texto, vCard, contatosMultiplos);
     } else {
       const empresa = await getEmpresa();
