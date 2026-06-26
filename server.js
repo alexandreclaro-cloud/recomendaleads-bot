@@ -2194,15 +2194,26 @@ app.post('/admin/empresas/:id/resetar-senha', exigirAdmin, async (req, res) => {
 // Atualiza dados administrativos do cliente: plano, financeiro, Z-API, notas.
 app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
   try {
-    const doc = await EMPRESAS_COL().doc(req.params.id).get();
+    const ref = EMPRESAS_COL().doc(req.params.id);
+    const doc = await ref.get();
     if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    const atual = doc.data();
     const b = req.body || {};
     const upd = {};
     ['plano', 'statusPagamento', 'valorMensal', 'observacoes', 'zapiInstanceId', 'zapiToken', 'zapiClientToken'].forEach(k => {
       if (b[k] !== undefined) upd[k] = (b[k] === '' ? null : b[k]);
     });
+    if (b.nome !== undefined && String(b.nome).trim()) {
+      upd.nome = String(b.nome).trim();
+      // mantém o nome de exibição usado nas mensagens em sincronia
+      upd.configuracao = { ...(atual.configuracao || {}), nome: upd.nome };
+    }
+    if (b.email !== undefined && String(b.email).trim()) upd.email = String(b.email).trim().toLowerCase();
+    if (b.cadastro && typeof b.cadastro === 'object') {
+      upd.cadastro = { ...(atual.cadastro || {}), ...b.cadastro };
+    }
     if (!Object.keys(upd).length) return res.json({ ok: true });
-    await EMPRESAS_COL().doc(req.params.id).set(upd, { merge: true });
+    await ref.set(upd, { merge: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
