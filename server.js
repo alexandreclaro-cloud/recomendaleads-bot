@@ -701,14 +701,17 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
 async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFaixa, excedente) {
   await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
-  await sendText(telefone, `Seu presente: ${faixa.premio}`);
+  await sendText(telefone, `🎁 Aqui está o seu presente:`);
+
+  // Ordem congruente: presente (imagem) → mensagem de orientação → link
+  if (faixa.arquivo) {
+    await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
+  } else {
+    await sendText(telefone, faixa.premio);
+  }
 
   if (faixa.texto) {
     await sendText(telefone, faixa.texto);
-  }
-
-  if (faixa.arquivo) {
-    await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
   }
 
   if (faixa.link) {
