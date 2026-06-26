@@ -241,6 +241,28 @@
   </main>
 </div>
 
+<!-- Tela de aceite do contrato de assinatura (bloqueante, só gestor) -->
+<div id="contratoOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:9999; align-items:center; justify-content:center; padding:18px;">
+  <div style="background:#fff; border-radius:16px; max-width:760px; width:100%; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <div style="padding:18px 22px; border-bottom:1px solid var(--border,#e3e6ea);">
+      <h2 style="margin:0; font-size:1.15rem;">Contrato de Assinatura</h2>
+      <p style="margin:6px 0 0; font-size:.85rem; color:var(--text-dim,#6b7280);">Para usar a plataforma, leia e aceite o contrato, os termos de uso e a política de privacidade.</p>
+    </div>
+    <iframe id="contratoFrame" src="/contrato" style="flex:1; min-height:340px; border:0; width:100%;"></iframe>
+    <div style="padding:16px 22px; border-top:1px solid var(--border,#e3e6ea);">
+      <label style="display:flex; align-items:flex-start; gap:10px; font-size:.88rem; cursor:pointer;">
+        <input type="checkbox" id="contratoCheck" style="margin-top:3px;">
+        <span>Li e aceito o Contrato de Assinatura, os Termos de Uso e a Política de Privacidade. Declaro ter poderes para aceitar em nome da empresa. <a href="/contrato" target="_blank" style="color:var(--brand,#b8860b);">Abrir em nova aba</a></span>
+      </label>
+      <div style="display:flex; align-items:center; gap:12px; margin-top:14px;">
+        <button class="btn btn-action" id="contratoAceitarBtn" disabled style="opacity:.5;">Aceitar e continuar</button>
+        <span class="status-msg" id="contratoStatus"></span>
+        <button class="btn btn-secondary" id="contratoSairBtn" style="margin-left:auto;">Sair</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
 const API_BASE = window.location.origin;
@@ -686,11 +708,50 @@ if (addUserBtn) addUserBtn.addEventListener('click', async () => {
   finally { addUserBtn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
 });
 
+// ===================== ACEITE DO CONTRATO (só gestor) =====================
+async function verificarContrato() {
+  if (!EH_GESTOR) return; // o aceite é do gestor, em nome da empresa
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/meu-contrato`);
+    const data = await resp.json();
+    if (data.ok && !data.aceito) {
+      document.getElementById('contratoOverlay').style.display = 'flex';
+    }
+  } catch (err) {}
+}
+const contratoCheck = document.getElementById('contratoCheck');
+const contratoAceitarBtn = document.getElementById('contratoAceitarBtn');
+if (contratoCheck) contratoCheck.addEventListener('change', () => {
+  contratoAceitarBtn.disabled = !contratoCheck.checked;
+  contratoAceitarBtn.style.opacity = contratoCheck.checked ? '1' : '.5';
+});
+if (contratoAceitarBtn) contratoAceitarBtn.addEventListener('click', async () => {
+  const st = document.getElementById('contratoStatus');
+  contratoAceitarBtn.disabled = true; st.textContent = 'Registrando aceite...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/meu-contrato/aceitar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      document.getElementById('contratoOverlay').style.display = 'none';
+    } else {
+      st.textContent = '❌ ' + (data.erro || 'Erro ao registrar'); st.className = 'status-msg err';
+      contratoAceitarBtn.disabled = false;
+    }
+  } catch (err) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; contratoAceitarBtn.disabled = false; }
+});
+const contratoSairBtn = document.getElementById('contratoSairBtn');
+if (contratoSairBtn) contratoSairBtn.addEventListener('click', () => {
+  localStorage.removeItem('recomendaleads_token');
+  localStorage.removeItem('recomendaleads_empresa');
+  window.location.href = '/login';
+});
+
 aplicarGating();
 icons();
 carregarConfiguracao();
 if (EH_GESTOR) carregarWhatsapp();
 carregarVisaoGeral();
+verificarContrato();
 </script>
 </body>
 </html>

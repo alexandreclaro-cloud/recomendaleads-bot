@@ -1727,6 +1727,11 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'login.html'));
 });
 
+// Contrato de assinatura / Termos de Uso / Política de Privacidade (público).
+app.get('/contrato', (req, res) => {
+  res.sendFile(path.join(__dirname, 'contrato.html'));
+});
+
 app.post('/login', limiteLogin, async (req, res) => {
   try {
     const { email, senha } = req.body;
@@ -1807,6 +1812,43 @@ app.post('/minha-senha', exigirLoginEmpresa, async (req, res) => {
       );
     }
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// CONTRATO DE ASSINATURA — aceite eletrônico (LGPD/CDC, Arts. 22 e 26.8)
+// ============================================================
+// Versão vigente do contrato. Ao publicar uma nova versão, troque aqui para
+// re-exigir o aceite de todas as empresas.
+const CONTRATO_VERSAO = '1.0-2026-06-26';
+
+// Status do aceite da empresa logada.
+app.get('/meu-contrato', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const aceite = req.empresaLogin.contratoAceite || null;
+    const aceito = !!(aceite && aceite.versao === CONTRATO_VERSAO);
+    res.json({ ok: true, aceito, versaoAtual: CONTRATO_VERSAO, aceite });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Registra o aceite (apenas gestor aceita em nome da empresa). Grava versão,
+// data/hora, IP e quem aceitou — prova do aceite eletrônico.
+app.post('/meu-contrato/aceitar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
+    const aceite = {
+      versao: CONTRATO_VERSAO,
+      em: new Date().toISOString(),
+      ip,
+      porUsuarioId: (req.usuario && req.usuario.id) || null,
+      porEmail: (req.usuario && req.usuario.email) || req.empresaLogin.email || ''
+    };
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ contratoAceite: aceite }, { merge: true });
+    res.json({ ok: true, aceite });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
