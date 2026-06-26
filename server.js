@@ -1643,41 +1643,7 @@ app.post('/webhook/:empresaId', (req, res) => comWebhook(req, res, req.params.em
 // ============================================================
 
 app.get('/', (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>RecomendaLeads</title>
-      <link rel="stylesheet" href="/theme.css">
-      <style>
-        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-        .box { text-align: center; max-width: 440px; width: 100%; padding: 40px 36px; }
-        .logo { width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 15px; background: var(--brand); color: #fff; display: grid; place-items: center; }
-        .logo .ti { width: 28px; height: 28px; }
-        h1 { font-size: 1.4rem; margin-bottom: 6px; }
-        .lead { color: var(--text-dim); margin: 0 0 28px; font-size: 0.95rem; }
-        .links { display: flex; flex-direction: column; gap: 10px; }
-        .links a { width: 100%; }
-      </style>
-    </head>
-    <body>
-      <div class="box card fade-in">
-        <div class="logo"><i data-lucide="gift"></i></div>
-        <h1>RecomendaLeads</h1>
-        <p class="lead">Servidor rodando. Escolha por onde começar:</p>
-        <div class="links">
-          <a class="btn btn-brand" href="/login"><i data-lucide="log-in"></i> Login da Empresa</a>
-          <a class="btn btn-secondary" href="/crm"><i data-lucide="kanban"></i> CRM Kanban</a>
-          <a class="btn btn-secondary" href="/configurar-vouchers"><i data-lucide="settings"></i> Configurações</a>
-        </div>
-      </div>
-      <script src="https://unpkg.com/lucide@latest"></script>
-      <script>lucide.createIcons();</script>
-    </body>
-    </html>
-  `);
+  res.sendFile(path.join(__dirname, 'landing.html'));
 });
 
 // Design system compartilhado por todas as telas

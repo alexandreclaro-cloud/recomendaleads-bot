@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RecomendaLeads — Transforme clientes satisfeitos em novas vendas no WhatsApp</title>
+<meta name="description" content="O RecomendaLeads pede indicações, presenteia quem foi indicado e organiza tudo num CRM — no automático, pelo WhatsApp. Boca a boca que vira venda.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<style>
+  :root {
+    --brand: #2563EB; --brand-deep: #1D4ED8; --wpp: #22C55E; --wpp-deep: #16A34A;
+    --ink: #0F172A; --dim: #475569; --faint: #64748B; --line: #E2E8F0; --bg: #F8FAFC; --gold: #F59E0B;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); line-height: 1.55; background: #fff; -webkit-font-smoothing: antialiased; }
+  a { text-decoration: none; color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 22px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.95rem; padding: 13px 22px; border-radius: 12px; cursor: pointer; border: none; transition: transform .12s, box-shadow .12s, background .12s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-wpp { background: var(--wpp); color: #fff; box-shadow: 0 8px 20px rgba(34,197,94,.3); }
+  .btn-wpp:hover { background: var(--wpp-deep); }
+  .btn-brand { background: var(--brand); color: #fff; box-shadow: 0 8px 20px rgba(37,99,235,.25); }
+  .btn-brand:hover { background: var(--brand-deep); }
+  .btn-ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  .btn-ghost:hover { border-color: var(--brand); color: var(--brand); }
+
+  /* NAV */
+  nav { position: sticky; top: 0; z-index: 30; background: rgba(255,255,255,.9); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  nav .row { display: flex; align-items: center; justify-content: space-between; height: 66px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.1rem; }
+  .logo .mark { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, var(--brand), var(--wpp)); display: grid; place-items: center; color: #fff; font-size: 1.1rem; }
+  nav .links { display: flex; align-items: center; gap: 26px; }
+  nav .links a.nlink { color: var(--dim); font-weight: 600; font-size: 0.92rem; }
+  nav .links a.nlink:hover { color: var(--ink); }
+  @media (max-width: 720px) { nav .links a.nlink { display: none; } }
+
+  /* HERO */
+  .hero { background: radial-gradient(1200px 500px at 70% -10%, #EFF6FF 0%, #fff 60%); padding: 70px 0 60px; }
+  .hero .grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; }
+  @media (max-width: 900px) { .hero .grid { grid-template-columns: 1fr; gap: 36px; } }
+  .tag { display: inline-flex; align-items: center; gap: 7px; background: #ECFDF5; color: var(--wpp-deep); font-weight: 700; font-size: 0.8rem; padding: 6px 13px; border-radius: 999px; margin-bottom: 18px; }
+  h1.title { font-size: 3rem; line-height: 1.08; letter-spacing: -0.02em; font-weight: 800; }
+  h1.title .hl { background: linear-gradient(120deg, var(--brand), var(--wpp)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  @media (max-width: 720px) { h1.title { font-size: 2.1rem; } }
+  .lead { font-size: 1.15rem; color: var(--dim); margin: 20px 0 30px; max-width: 540px; }
+  .cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .mini { margin-top: 16px; font-size: 0.85rem; color: var(--faint); display: flex; gap: 16px; flex-wrap: wrap; }
+  .mini span { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* PHONE MOCKUP */
+  .phone { justify-self: center; width: 300px; max-width: 100%; background: #0B141A; border-radius: 30px; padding: 12px; box-shadow: 0 30px 60px rgba(15,23,42,.25); }
+  .phone .screen { background: #E5DDD5; border-radius: 20px; overflow: hidden; }
+  .phone .bar { background: #075E54; color: #fff; padding: 14px 16px; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 0.9rem; }
+  .phone .bar .av { width: 30px; height: 30px; border-radius: 50%; background: #25D366; display: grid; place-items: center; font-size: 0.8rem; }
+  .chat { padding: 16px 12px; display: flex; flex-direction: column; gap: 9px; min-height: 360px; }
+  .bub { max-width: 82%; padding: 9px 12px; border-radius: 12px; font-size: 0.84rem; box-shadow: 0 1px 1px rgba(0,0,0,.06); }
+  .bub.in { background: #fff; align-self: flex-start; border-top-left-radius: 3px; }
+  .bub.out { background: #DCF8C6; align-self: flex-end; border-top-right-radius: 3px; }
+  .bub .t { font-size: 0.62rem; color: #667781; text-align: right; margin-top: 3px; }
+
+  /* SECTIONS */
+  section.block { padding: 76px 0; }
+  section.alt { background: var(--bg); }
+  .eyebrow { color: var(--brand); font-weight: 800; font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; text-align: center; }
+  h2.sec { font-size: 2.1rem; font-weight: 800; letter-spacing: -0.02em; text-align: center; margin: 8px auto 10px; max-width: 720px; }
+  p.secsub { text-align: center; color: var(--dim); max-width: 620px; margin: 0 auto 46px; font-size: 1.05rem; }
+  @media (max-width: 720px) { h2.sec { font-size: 1.6rem; } }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  @media (max-width: 820px) { .steps { grid-template-columns: 1fr; } }
+  .step { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 26px; }
+  .step .n { width: 40px; height: 40px; border-radius: 11px; background: #EFF6FF; color: var(--brand); font-weight: 800; display: grid; place-items: center; margin-bottom: 14px; font-size: 1.05rem; }
+  .step h3 { font-size: 1.15rem; margin-bottom: 6px; }
+  .step p { color: var(--dim); font-size: 0.94rem; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 820px) { .cards { grid-template-columns: 1fr; } }
+  .feat { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+  .feat .ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 14px; font-size: 1.3rem; }
+  .feat h3 { font-size: 1.08rem; margin-bottom: 5px; }
+  .feat p { color: var(--dim); font-size: 0.92rem; }
+
+  /* CTA BAND */
+  .ctaband { background: linear-gradient(120deg, var(--brand), #4F46E5); color: #fff; border-radius: 24px; padding: 54px 40px; text-align: center; }
+  .ctaband h2 { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; }
+  .ctaband p { opacity: .92; margin: 12px auto 26px; max-width: 540px; font-size: 1.05rem; }
+  .ctaband .btn-wpp { box-shadow: 0 10px 26px rgba(0,0,0,.2); }
+
+  footer { padding: 40px 0; border-top: 1px solid var(--line); color: var(--faint); font-size: 0.88rem; }
+  footer .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<!-- ⚠️ TROCAR: número de WhatsApp de contato (formato 55 + DDD + número) -->
+<script>window.WPP_CONTATO = '5511999999999';</script>
+
+<nav>
+  <div class="wrap row">
+    <div class="logo"><span class="mark">★</span> RecomendaLeads</div>
+    <div class="links">
+      <a class="nlink" href="#como">Como funciona</a>
+      <a class="nlink" href="#beneficios">Benefícios</a>
+      <a class="btn btn-ghost" href="/login">Entrar</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="wrap grid">
+    <div>
+      <span class="tag">🟢 100% no WhatsApp · no automático</span>
+      <h1 class="title">Transforme clientes satisfeitos em <span class="hl">novas vendas</span> todo dia</h1>
+      <p class="lead">O RecomendaLeads pede indicações, presenteia quem foi indicado e organiza cada lead num CRM — sozinho, pelo WhatsApp. O boca a boca da sua empresa virando venda, sem você levantar um dedo.</p>
+      <div class="cta-row">
+        <a class="btn btn-wpp" id="ctaTop" href="#"><i data-lucide="message-circle"></i> Quero contratar</a>
+        <a class="btn btn-ghost" href="/login"><i data-lucide="log-in"></i> Já sou cliente</a>
+      </div>
+      <div class="mini">
+        <span><i data-lucide="check" style="width:15px;color:var(--wpp-deep)"></i> Seu número, sua marca</span>
+        <span><i data-lucide="check" style="width:15px;color:var(--wpp-deep)"></i> CRM incluso</span>
+        <span><i data-lucide="check" style="width:15px;color:var(--wpp-deep)"></i> Sem instalar nada</span>
+      </div>
+    </div>
+
+    <div class="phone">
+      <div class="screen">
+        <div class="bar"><span class="av">★</span> RecomendaLeads</div>
+        <div class="chat">
+          <div class="bub out">Oi João! 🎁 O Pedro recomendou você pra ganhar um presente nosso. Posso te explicar rapidinho?<div class="t">09:41 ✓✓</div></div>
+          <div class="bub in">Pode sim!<div class="t">09:42</div></div>
+          <div class="bub out">Show! Aqui está o seu presente 🎉 Quando quiser passar pra usar, é só me chamar.<div class="t">09:42 ✓✓</div></div>
+          <div class="bub in">Que legal, obrigado! 🙌<div class="t">09:43</div></div>
+          <div class="bub out">✅ Lead registrado no CRM e vendedor avisado.<div class="t">09:43 ✓✓</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- COMO FUNCIONA -->
+<section class="block" id="como">
+  <div class="wrap">
+    <p class="eyebrow">Como funciona</p>
+    <h2 class="sec">Três passos. O resto é no automático.</h2>
+    <p class="secsub">Você configura uma vez. O robô cuida da conversa, dos presentes e dos registros.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <h3>Seu cliente recomenda</h3>
+        <p>O robô pede indicações de amigos pelo WhatsApp e premia quem indica com faixas de bônus que você define.</p>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <h3>O robô fala com os indicados</h3>
+        <p>Conversa natural, entrega um presente e desperta o interesse — sem parecer robô e sem você digitar nada.</p>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <h3>Você acompanha e fecha</h3>
+        <p>Cada indicado vira um lead no seu CRM, com ranking de vendedores e status. É só fechar a venda.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BENEFÍCIOS -->
+<section class="block alt" id="beneficios">
+  <div class="wrap">
+    <p class="eyebrow">Benefícios</p>
+    <h2 class="sec">Uma máquina de indicações completa</h2>
+    <p class="secsub">Tudo que você precisa pra transformar clientes em vendedores da sua marca.</p>
+    <div class="cards">
+      <div class="feat"><div class="ic" style="background:#ECFDF5;color:var(--wpp-deep)"><i data-lucide="message-circle"></i></div><h3>100% no WhatsApp</h3><p>Onde seu cliente já está. Pelo seu próprio número, com a sua marca.</p></div>
+      <div class="feat"><div class="ic" style="background:#EFF6FF;color:var(--brand)"><i data-lucide="bot"></i></div><h3>Robô que conversa sozinho</h3><p>Pede indicações, responde dúvidas e entrega presentes automaticamente.</p></div>
+      <div class="feat"><div class="ic" style="background:#FEF3C7;color:#B45309"><i data-lucide="kanban"></i></div><h3>CRM de leads incluso</h3><p>Cada indicação vira um card no pipeline. Acompanhe do primeiro contato à venda.</p></div>
+      <div class="feat"><div class="ic" style="background:#FCE7F3;color:#BE185D"><i data-lucide="gift"></i></div><h3>Prêmios configuráveis</h3><p>Defina o presente do indicado e as faixas de bônus de quem indica.</p></div>
+      <div class="feat"><div class="ic" style="background:#EDE9FE;color:#6D28D9"><i data-lucide="trophy"></i></div><h3>Ranking de vendedores</h3><p>Veja quem mais traz recomendações e quem converte, por período.</p></div>
+      <div class="feat"><div class="ic" style="background:#E0F2FE;color:#0369A1"><i data-lucide="shield-check"></i></div><h3>Tudo num painel só</h3><p>Mensagens, prêmios, conexão do WhatsApp e leads — fácil de configurar.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA FINAL -->
+<section class="block">
+  <div class="wrap">
+    <div class="ctaband">
+      <h2>Pronto para vender mais com indicações?</h2>
+      <p>Comece a transformar seus clientes satisfeitos em novos clientes ainda esta semana.</p>
+      <a class="btn btn-wpp" id="ctaBottom" href="#"><i data-lucide="message-circle"></i> Falar com a gente no WhatsApp</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap row">
+    <div class="logo" style="font-size:1rem;"><span class="mark" style="width:28px;height:28px;font-size:0.95rem;">★</span> RecomendaLeads</div>
+    <div>© <span id="ano"></span> RecomendaLeads · <a href="/login" style="color:var(--brand);font-weight:600;">Acessar painel</a></div>
+  </div>
+</footer>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  try { lucide.createIcons(); } catch (e) {}
+  document.getElementById('ano').textContent = new Date().getFullYear();
+  const msg = encodeURIComponent('Olá! Quero conhecer o RecomendaLeads para a minha empresa.');
+  const link = `https://wa.me/${window.WPP_CONTATO}?text=${msg}`;
+  document.getElementById('ctaTop').href = link;
+  document.getElementById('ctaBottom').href = link;
+</script>
+</body>
+</html>
