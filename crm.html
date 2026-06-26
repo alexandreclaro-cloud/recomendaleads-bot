@@ -732,12 +732,12 @@
         <div id="faixasContainerCliente"></div>
       </div>
 
-      <!-- Sub-aba: Conversa do Recomendado (textos + presente do indicado) -->
+      <!-- Sub-aba: Conversa do Recomendado (textos do recomendado) -->
       <div class="subtab-panel" id="subtabRecomendado">
         <div class="config-card">
           <h2>Conversa com quem é recomendado</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-            Mensagens enviadas para a pessoa indicada. O <b>presente</b> dela é configurado na aba <b>Presente Recomendado</b>.<br>
+            Mensagens enviadas para a pessoa recomendada. O <b>presente</b> dela é configurado na aba <b>Presente Recomendado</b>.<br>
             Variáveis (clique para copiar): <code class="var-chip">{nomeRecomendado}</code> <code class="var-chip">{recomendador}</code> <code class="var-chip">{vendedor}</code> <code class="var-chip">{empresa}</code>
           </p>
 
@@ -805,12 +805,12 @@
         </div>
       </div>
 
-      <!-- Sub-aba: Bônus Recomendado (presente do amigo indicado) -->
+      <!-- Sub-aba: Presente Recomendado (presente do amigo recomendado) -->
       <div class="subtab-panel" id="subtabFaixas">
-        <div class="config-card" style="border:1px solid var(--gold);">
-          <h2>🎁 Presente do Recomendado (o amigo indicado)</h2>
+        <div class="config-card">
+          <h2>🎁 Presente do Recomendado (o amigo recomendado)</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">
-            É o presente enviado para a pessoa que foi <b>indicada</b>. (Os prêmios de quem <b>indica</b> ficam na aba <b>Presente Cliente</b>.)
+            É o presente enviado para a pessoa que foi <b>recomendada</b>. (Os prêmios de quem <b>recomenda</b> ficam na aba <b>Presente Cliente</b>.)
           </p>
           <label>Prêmio (texto curto mostrado ao recomendado)</label>
           <input type="text" id="premioRecomendadoInput" placeholder="Ex: 1 mentoria individual com Alexandre Claro">
@@ -823,6 +823,8 @@
           </div>
           <label>Link (site, Instagram, etc.)</label>
           <input type="text" id="linkRecomendadoInput" placeholder="https://...">
+          <label>Texto de orientação</label>
+          <textarea id="textoRecomendadoInput" rows="3" placeholder="Mensagem enviada logo após o presente (opcional)"></textarea>
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarPresenteRecomendadoBtn">Salvar presente do recomendado</button>
             <span class="config-status-msg" id="statusPresenteRecomendado"></span>
@@ -1315,6 +1317,7 @@ async function carregarConfiguracao() {
     document.getElementById('premioRecomendadoInput').value = configuracaoAtual.premioRecomendado || '';
     document.getElementById('arquivoRecomendadoInput').value = configuracaoAtual.arquivoRecomendado || '';
     document.getElementById('linkRecomendadoInput').value = configuracaoAtual.linkRecomendado || '';
+    document.getElementById('textoRecomendadoInput').value = configuracaoAtual.textoRecomendado || '';
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
@@ -1410,11 +1413,12 @@ document.getElementById('salvarPresenteRecomendadoBtn').addEventListener('click'
   const premioRecomendado = document.getElementById('premioRecomendadoInput').value.trim();
   const arquivoRecomendado = document.getElementById('arquivoRecomendadoInput').value.trim() || null;
   const linkRecomendado = document.getElementById('linkRecomendadoInput').value.trim() || null;
+  const textoRecomendado = document.getElementById('textoRecomendadoInput').value.trim() || null;
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ premioRecomendado, arquivoRecomendado, linkRecomendado })
+      body: JSON.stringify({ premioRecomendado, arquivoRecomendado, linkRecomendado, textoRecomendado })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }

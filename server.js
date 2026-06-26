@@ -224,6 +224,7 @@ const EMPRESA_PADRAO = {
   premioRecomendado: 'Desconto de 10% na primeira compra, cortesia de quem te recomendou',
   arquivoRecomendado: null,
   linkRecomendado: null,
+  textoRecomendado: null,
   ctaRecomendado: 'Que tal aproveitar e passar pra retirar o seu? 😊',
   mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
@@ -949,6 +950,11 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
 
   if (empresa.linkRecomendado) {
     await sendText(telefone, empresa.linkRecomendado);
+  }
+
+  if (empresa.textoRecomendado && empresa.textoRecomendado.trim()) {
+    const orientacao = substituirVariaveis(empresa.textoRecomendado, { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' });
+    await sendText(telefone, orientacao);
   }
 
   const marcaTempo = new Date().toISOString();
