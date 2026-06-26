@@ -1857,6 +1857,42 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Modelo "você dona a Z-API": o admin provisiona a instância da empresa e o
+// cliente só ESCANEIA o QR no painel. Estes endpoints falam com a Z-API usando
+// as credenciais da própria empresa (sem fallback pro número global).
+function zapiCfgDaEmpresaLogin(e) {
+  if (!e || !e.zapiInstanceId || !e.zapiToken) return null;
+  return { instanceId: e.zapiInstanceId, token: e.zapiToken, clientToken: e.zapiClientToken || '' };
+}
+
+app.get('/minha-whatsapp/status', exigirLoginEmpresa, async (req, res) => {
+  const cfg = zapiCfgDaEmpresaLogin(req.empresaLogin);
+  if (!cfg) return res.json({ ok: true, provisionado: false, conectado: false });
+  try {
+    const resp = await axios.get(`${zapiBaseUrl(cfg)}/status`, { headers: zapiHeaders(cfg) });
+    const data = resp.data || {};
+    const conectado = !!(data.connected || data.smartphoneConnected);
+    res.json({ ok: true, provisionado: true, conectado });
+  } catch (err) {
+    res.json({ ok: true, provisionado: true, conectado: false, erro: err.response?.data?.error || err.message });
+  }
+});
+
+app.get('/minha-whatsapp/qr', exigirLoginEmpresa, async (req, res) => {
+  const cfg = zapiCfgDaEmpresaLogin(req.empresaLogin);
+  if (!cfg) return res.json({ ok: false, provisionado: false, erro: 'WhatsApp ainda não provisionado para esta conta.' });
+  try {
+    const resp = await axios.get(`${zapiBaseUrl(cfg)}/qr-code/image`, { headers: zapiHeaders(cfg) });
+    const data = resp.data || {};
+    if (data.connected) return res.json({ ok: true, conectado: true });
+    if (data.value) return res.json({ ok: true, qr: data.value });
+    res.json({ ok: false, erro: data.error || 'QR indisponível no momento.' });
+  } catch (err) {
+    // Z-API costuma responder erro quando já está conectado.
+    res.json({ ok: false, erro: err.response?.data?.error || err.message });
+  }
+});
+
 // ============================================================
 // CAIXA DE ENTRADA DO WHATSAPP — conversas da empresa logada
 // ============================================================
@@ -2006,6 +2042,8 @@ app.post('/admin/empresas', async (req, res) => {
       razaoSocial, nomeFantasia, cnpj, enderecoEmpresa, emailEmpresa, telefoneEmpresa,
       // dados do sócio
       nomeSocio, cpfSocio, emailSocio, enderecoSocio, whatsappSocio,
+      // instância Z-API provisionada para o cliente (opcional)
+      zapiInstanceId, zapiToken, zapiClientToken,
       // acesso / compatibilidade com a versão antiga
       nome, email, senha, migrarConfigPrincipal, empresaTeste
     } = req.body;
@@ -2057,6 +2095,9 @@ app.post('/admin/empresas', async (req, res) => {
       senhaHash,
       senhaProvisoria: true,
       cadastro,
+      zapiInstanceId: zapiInstanceId ? String(zapiInstanceId).trim() : null,
+      zapiToken: zapiToken ? String(zapiToken).trim() : null,
+      zapiClientToken: zapiClientToken ? String(zapiClientToken).trim() : null,
       criadoEm: new Date().toISOString(),
       configuracao: configuracaoInicial
     });

@@ -154,6 +154,15 @@
     <input type="text" id="senhaInput" value="123mudar" placeholder="Senha provisória de primeiro acesso">
     <div class="hint">Padrão: <b>123mudar</b>. O cliente será obrigado a definir a própria senha no primeiro login.</div>
 
+    <div class="sec">WhatsApp (Z-API) — opcional</div>
+    <div class="hint" style="margin-bottom:6px">O cliente compra a Z-API, conecta o número dele e te envia o Instance ID e o Token. Cole aqui para deixar tudo pronto. Pode deixar em branco e preencher depois.</div>
+    <label>Instance ID</label>
+    <input type="text" id="zapiInstanceInput" placeholder="ID da instância na Z-API">
+    <label>Token da instância</label>
+    <input type="text" id="zapiTokenInput" placeholder="Token da instância">
+    <label>Client-Token (segurança da conta)</label>
+    <input type="text" id="zapiClientTokenInput" placeholder="Client-Token da sua conta Z-API">
+
     <div class="checkbox-row">
       <input type="checkbox" id="migrarConfigCheckbox">
       <div>
@@ -169,7 +178,9 @@
       <div>✅ Empresa <b id="resultadoNome"></b> cadastrada!</div>
       <div style="margin-top:8px;">Login: <b id="resultadoEmail"></b></div>
       <div>Senha provisória: <b id="resultadoSenha"></b></div>
-      <div style="margin-top:10px; color:var(--text-dim);">Envie esses dados ao cliente. Ele acessa <a href="/login" style="color:var(--gold);">/login</a> e define a senha própria no primeiro acesso.</div>
+      <div style="margin-top:10px;">Webhook (cole na Z-API do cliente, em "Ao receber"):</div>
+      <div style="margin-top:4px; word-break:break-all;"><b id="resultadoWebhook" style="color:var(--gold-light)"></b></div>
+      <div style="margin-top:10px; color:var(--text-dim);">Envie o login ao cliente. Ele acessa <a href="/login" style="color:var(--gold);">/login</a> e define a senha própria no primeiro acesso.</div>
     </div>
   </div>
 </div>
@@ -199,6 +210,9 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     emailSocio: val('emailSocioInput'),
     enderecoSocio: val('enderecoSocioInput'),
     whatsappSocio: val('whatsappSocioInput'),
+    zapiInstanceId: val('zapiInstanceInput'),
+    zapiToken: val('zapiTokenInput'),
+    zapiClientToken: val('zapiClientTokenInput'),
     senha,
     migrarConfigPrincipal
   };
@@ -230,9 +244,10 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
       document.getElementById('resultadoNome').textContent = data.empresa.nome;
       document.getElementById('resultadoEmail').textContent = data.empresa.email;
       document.getElementById('resultadoSenha').textContent = senha;
+      document.getElementById('resultadoWebhook').textContent = `${API_BASE}/webhook/${data.empresa.id}`;
       resultadoBox.classList.add('show');
 
-      ['razaoSocialInput','nomeFantasiaInput','cnpjInput','enderecoEmpresaInput','emailEmpresaInput','telefoneEmpresaInput','nomeSocioInput','cpfSocioInput','emailSocioInput','enderecoSocioInput','whatsappSocioInput'].forEach(id => { document.getElementById(id).value = ''; });
+      ['razaoSocialInput','nomeFantasiaInput','cnpjInput','enderecoEmpresaInput','emailEmpresaInput','telefoneEmpresaInput','nomeSocioInput','cpfSocioInput','emailSocioInput','enderecoSocioInput','whatsappSocioInput','zapiInstanceInput','zapiTokenInput','zapiClientTokenInput'].forEach(id => { document.getElementById(id).value = ''; });
       document.getElementById('senhaInput').value = '123mudar';
       document.getElementById('migrarConfigCheckbox').checked = false;
     } else {

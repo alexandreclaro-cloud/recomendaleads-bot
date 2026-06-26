@@ -146,28 +146,53 @@
       <section class="view fade-in" id="view-whatsapp">
         <div class="card">
           <div class="block-title"><i data-lucide="smartphone"></i> Meu WhatsApp</div>
-          <p class="sub">Conecte o WhatsApp da sua empresa para o robô falar pelo seu número. Crie uma conta na <strong>Z-API</strong>, conecte seu WhatsApp lendo o QR code, e cole abaixo os dados da sua instância.</p>
+          <p class="sub">Conecte o número que o robô vai usar para falar com seus clientes.</p>
 
           <span id="whatsappStatus" class="badge badge-danger">Verificando conexão...</span>
 
-          <label class="label">Instance ID (ID da instância na Z-API)</label>
-          <input class="input" type="text" id="zapiInstanceInput" placeholder="Ex: 3D1A2B3C4D5E...">
-          <label class="label">Token da instância</label>
-          <input class="input" type="text" id="zapiTokenInput" placeholder="Token da sua instância Z-API">
-          <label class="label">Client-Token (Token de segurança da conta — opcional, mas recomendado)</label>
-          <input class="input" type="text" id="zapiClientTokenInput" placeholder="Client-Token da sua conta Z-API">
-
-          <label class="label">Sua URL de Webhook (cole isto na configuração da Z-API)</label>
-          <div class="webhook-box">
-            <code id="webhookUrlText">—</code>
-            <button type="button" class="btn btn-secondary" id="copyWebhookBtn" style="padding:7px 14px;font-size:0.8rem">Copiar</button>
+          <!-- Conectado -->
+          <div id="conectadoArea" style="margin-top:16px; display:none;">
+            <p class="sub">✅ Seu WhatsApp está <b>conectado</b> e pronto para enviar mensagens.</p>
           </div>
-          <div class="hint">Na Z-API, em "Ao receber" (webhook de mensagens recebidas), cole exatamente esta URL.</div>
 
-          <div class="row-save">
-            <button class="btn btn-action" id="salvarWhatsappBtn">Salvar WhatsApp</button>
-            <span class="status-msg" id="statusWhatsapp"></span>
+          <!-- Não provisionado ainda -->
+          <div id="naoProvisionadoArea" style="margin-top:16px; display:none;">
+            <p class="sub">Seu número está sendo preparado pela nossa equipe. Assim que ficar pronto, o QR Code aparece aqui para você escanear. 😊</p>
           </div>
+
+          <!-- Escanear QR -->
+          <div id="qrArea" style="margin-top:16px; display:none; text-align:center;">
+            <p class="sub" style="margin-bottom:12px">No celular: abra o <b>WhatsApp</b> → <b>Aparelhos conectados</b> → <b>Conectar aparelho</b> e aponte a câmera para o código abaixo.</p>
+            <img id="qrImg" alt="QR Code do WhatsApp" style="width:240px; height:240px; border:1px solid var(--border); border-radius:14px; background:#fff; padding:10px; object-fit:contain;">
+            <div class="row-save" style="justify-content:center; margin-top:10px;">
+              <button class="btn btn-secondary" id="atualizarQrBtn">Atualizar QR Code</button>
+            </div>
+            <div class="hint" id="qrHint">O código expira rápido — se não funcionar, clique em "Atualizar QR Code".</div>
+          </div>
+
+          <details style="margin-top:20px">
+            <summary style="cursor:pointer; font-size:0.84rem; color:var(--text-dim)">Configuração avançada (Z-API)</summary>
+            <div style="margin-top:12px">
+              <label class="label">Instance ID (ID da instância na Z-API)</label>
+              <input class="input" type="text" id="zapiInstanceInput" placeholder="Ex: 3D1A2B3C4D5E...">
+              <label class="label">Token da instância</label>
+              <input class="input" type="text" id="zapiTokenInput" placeholder="Token da sua instância Z-API">
+              <label class="label">Client-Token (Token de segurança da conta — opcional)</label>
+              <input class="input" type="text" id="zapiClientTokenInput" placeholder="Client-Token da sua conta Z-API">
+
+              <label class="label">URL de Webhook (cole na configuração da Z-API)</label>
+              <div class="webhook-box">
+                <code id="webhookUrlText">—</code>
+                <button type="button" class="btn btn-secondary" id="copyWebhookBtn" style="padding:7px 14px;font-size:0.8rem">Copiar</button>
+              </div>
+              <div class="hint">Na Z-API, em "Ao receber" (webhook de mensagens recebidas), cole exatamente esta URL.</div>
+
+              <div class="row-save">
+                <button class="btn btn-action" id="salvarWhatsappBtn">Salvar WhatsApp</button>
+                <span class="status-msg" id="statusWhatsapp"></span>
+              </div>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -212,6 +237,9 @@ function trocarSecao(secao) {
   document.getElementById('pageTitle').textContent = t.replace('{nome}', nomeEmpresa || 'tudo bem?');
   document.getElementById('pageSub').textContent = s;
   window.scrollTo({ top: 0 });
+  // Só verifica/atualiza o QR enquanto a aba WhatsApp está aberta.
+  if (secao === 'whatsapp') { if (typeof atualizarEstadoWhats === 'function') atualizarEstadoWhats(); }
+  else if (typeof pararPollQr === 'function') pararPollQr();
 }
 
 document.querySelectorAll('#nav .nav-item[data-section]').forEach(a => a.addEventListener('click', () => trocarSecao(a.dataset.section)));
@@ -416,26 +444,70 @@ async function salvarFaixa(btn) {
   finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
 }
 
+let qrPollTimer = null;
+function pararPollQr() { if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null; } }
+
+function mostrarAreaWhats(qual) {
+  document.getElementById('conectadoArea').style.display = qual === 'conectado' ? 'block' : 'none';
+  document.getElementById('naoProvisionadoArea').style.display = qual === 'naoprov' ? 'block' : 'none';
+  document.getElementById('qrArea').style.display = qual === 'qr' ? 'block' : 'none';
+}
+
+function setBadgeWhats(conectado) {
+  const statusEl = document.getElementById('whatsappStatus');
+  const mWhats = document.getElementById('mWhats');
+  if (conectado) {
+    statusEl.textContent = '✅ WhatsApp conectado'; statusEl.className = 'badge badge-success';
+    if (mWhats) mWhats.textContent = 'Conectado';
+  } else {
+    statusEl.textContent = '⚠️ Não conectado'; statusEl.className = 'badge badge-danger';
+    if (mWhats) mWhats.textContent = 'Não conectado';
+  }
+}
+
 async function carregarWhatsapp() {
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp`);
-    const data = await resp.json();
-    if (!resp.ok || !data.ok) return;
-    const statusEl = document.getElementById('whatsappStatus');
-    const mWhats = document.getElementById('mWhats');
-    if (data.conectado) {
-      statusEl.textContent = '✅ WhatsApp conectado'; statusEl.className = 'badge badge-success';
-      mWhats.textContent = 'Conectado';
-    } else {
-      statusEl.textContent = '⚠️ Ainda não conectado'; statusEl.className = 'badge badge-danger';
-      mWhats.textContent = 'Não conectado';
+    // Provisionamento + webhook (config avançada)
+    const respCfg = await fetchAutenticado(`${API_BASE}/minha-whatsapp`);
+    const cfg = await respCfg.json();
+    if (cfg.ok) {
+      document.getElementById('zapiInstanceInput').value = cfg.zapiInstanceId || '';
+      document.getElementById('zapiTokenInput').placeholder = cfg.temToken ? '•••••• (já salvo — preencha para trocar)' : 'Token da sua instância Z-API';
+      document.getElementById('zapiClientTokenInput').placeholder = cfg.temClientToken ? '•••••• (já salvo — preencha para trocar)' : 'Client-Token da sua conta Z-API';
+      document.getElementById('webhookUrlText').textContent = cfg.webhookUrl || '—';
     }
-    document.getElementById('zapiInstanceInput').value = data.zapiInstanceId || '';
-    document.getElementById('zapiTokenInput').placeholder = data.temToken ? '•••••• (já salvo — preencha para trocar)' : 'Token da sua instância Z-API';
-    document.getElementById('zapiClientTokenInput').placeholder = data.temClientToken ? '•••••• (já salvo — preencha para trocar)' : 'Client-Token da sua conta Z-API';
-    document.getElementById('webhookUrlText').textContent = data.webhookUrl || '—';
+    await atualizarEstadoWhats();
   } catch (err) {}
 }
+
+async function atualizarEstadoWhats() {
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/status`);
+    const data = await resp.json();
+    if (!data.provisionado) { setBadgeWhats(false); mostrarAreaWhats('naoprov'); pararPollQr(); return; }
+    if (data.conectado) { setBadgeWhats(true); mostrarAreaWhats('conectado'); pararPollQr(); return; }
+    setBadgeWhats(false); mostrarAreaWhats('qr');
+    const naAbaWhats = document.getElementById('view-whatsapp').classList.contains('active');
+    if (naAbaWhats) {
+      await carregarQr();
+      if (!qrPollTimer) qrPollTimer = setInterval(atualizarEstadoWhats, 5000);
+    }
+  } catch (err) {}
+}
+
+async function carregarQr() {
+  const img = document.getElementById('qrImg');
+  const hint = document.getElementById('qrHint');
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/qr`);
+    const data = await resp.json();
+    if (data.conectado) { setBadgeWhats(true); mostrarAreaWhats('conectado'); pararPollQr(); return; }
+    if (data.qr) { img.src = data.qr; hint.textContent = 'O código expira rápido — se não funcionar, clique em "Atualizar QR Code".'; }
+    else { img.removeAttribute('src'); hint.textContent = data.erro || 'QR indisponível no momento. Tente atualizar em instantes.'; }
+  } catch (err) { hint.textContent = 'Não foi possível carregar o QR agora.'; }
+}
+
+document.getElementById('atualizarQrBtn').addEventListener('click', carregarQr);
 
 document.getElementById('copyWebhookBtn').addEventListener('click', () => {
   const url = document.getElementById('webhookUrlText').textContent;
