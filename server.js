@@ -228,6 +228,12 @@ const EMPRESA_PADRAO = {
   mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
   mensagemAntesPresente: 'Como forma de agradecer essa recomendação, preparamos um presente especial para você.',
+
+  // ===== Conversa do CLIENTE (quem indica) — editável =====
+  mensagemPedeNome: 'Pra começar, qual é o seu nome?',
+  mensagemPedeVendedor: 'Prazer, {nome}! E me diz, quem te atendeu hoje?',
+  mensagemPedeContatos: 'Show! Agora me envie o contato dos seus amigos para você receber {premio}.',
+  mensagemColeta: 'Me envie {quantidade} recomendações e já garanta seu presente.\n\nVocê pode mandar o contato direto da sua agenda. Então, qual é a primeira pessoa que vem na sua mente?\nLembrando que ela também vai ganhar um presente nosso 🎁',
   cadenciaFollowupRecomendado: [
     { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' },
     { esperaMin: 4320, texto: 'Olá, tudo bem? O presente segue reservado no seu nome 🎁 Se tiver interesse, é só me avisar que te envio. Caso não, sem problema 😊' }
@@ -584,8 +590,8 @@ function mensagemNaoEntendiPorEtapa(etapa, empresa) {
 async function iniciarConversa(telefone) {
   const empresa = await getEmpresa();
   await getSessao(telefone);
-  await sendText(telefone, empresa.mensagemAgradecimento);
-  await sendText(telefone, 'Pra começar, qual é o seu nome?');
+  await sendText(telefone, substituirVariaveis(empresa.mensagemAgradecimento, { empresa: empresa.nome }));
+  await sendText(telefone, substituirVariaveis(empresa.mensagemPedeNome || EMPRESA_PADRAO.mensagemPedeNome, { empresa: empresa.nome }));
 }
 
 async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
@@ -598,7 +604,8 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     await saveSessao(telefone, sessao);
 
     const listaVendedores = empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
-    await sendText(telefone, `Prazer, ${sessao.clienteNome.split(' ')[0]}! E me diz, quem te atendeu hoje?\n\n${listaVendedores}\n\nResponda com o número ou o nome.`);
+    const perguntaVendedor = substituirVariaveis(empresa.mensagemPedeVendedor || EMPRESA_PADRAO.mensagemPedeVendedor, { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome });
+    await sendText(telefone, `${perguntaVendedor}\n\n${listaVendedores}\n\nResponda com o número ou o nome.`);
     return;
   }
 
@@ -625,8 +632,9 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     await saveSessao(telefone, sessao);
 
     const primeiraFaixa = empresa.faixasBonus[0];
-    await sendText(telefone, `Show! Agora me envie o contato dos seus amigos para você receber ${primeiraFaixa.premio.toLowerCase()}.`);
-    await sendText(telefone, `Me envie ${primeiraFaixa.quantidade} recomendações e já garanta seu presente.\n\nVocê pode mandar o contato direto da sua agenda. Então, qual é a primeira pessoa que vem na sua mente?\nLembrando que ela também vai ganhar um presente nosso 🎁`);
+    const varsCliente = { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome, premio: primeiraFaixa.premio, quantidade: primeiraFaixa.quantidade };
+    await sendText(telefone, substituirVariaveis(empresa.mensagemPedeContatos || EMPRESA_PADRAO.mensagemPedeContatos, varsCliente));
+    await sendText(telefone, substituirVariaveis(empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta, varsCliente));
     return;
   }
 
@@ -824,7 +832,7 @@ function substituirVariaveis(template, variaveis) {
     recomendador: v.recomendador, amigo: v.recomendador, indicou: v.recomendador,
     vendedor: v.vendedor, atendente: v.vendedor, consultor: v.vendedor,
     empresa: v.empresa, negocio: v.empresa,
-    premio: v.premio, dia: v.dia, periodo: v.periodo
+    premio: v.premio, dia: v.dia, periodo: v.periodo, quantidade: v.quantidade
   };
   return template.replace(/\{(\w+)\}/g, (match, chave) => {
     const val = mapa[chave.toLowerCase()];

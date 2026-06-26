@@ -625,6 +625,7 @@
     <div id="configConteudo" style="display:none">
       <div class="subtabs">
         <button class="subtab-btn active" data-subtab="empresa">Empresa</button>
+        <button class="subtab-btn" data-subtab="clienteConversa">Conversa do Cliente</button>
         <button class="subtab-btn" data-subtab="premioCliente">Prêmio Cliente</button>
         <button class="subtab-btn" data-subtab="recomendado">Conversa do Recomendado</button>
         <button class="subtab-btn" data-subtab="faixas">Faixas de Bônus</button>
@@ -666,6 +667,38 @@
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarEmpresaBtn">Salvar dados da empresa</button>
             <span class="config-status-msg" id="statusEmpresa"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-aba: Conversa do Cliente (quem indica) -->
+      <div class="subtab-panel" id="subtabClienteConversa">
+        <div class="config-card">
+          <h2>💬 Conversa com o cliente (quem indica)</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
+            Mensagens da conversa com quem vai indicar amigos, na ordem em que são enviadas. Edite, apague ou reescreva. Variáveis: <code>{nome}</code> (do cliente), <code>{premio}</code>, <code>{quantidade}</code>, <code>{empresa}</code>.
+          </p>
+
+          <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">1) Boas-vindas</p>
+          <p style="font-size:0.78rem;color:var(--text-dim);margin:2px 0 0;">A 1ª mensagem (agradecimento) é editada na aba <b>Empresa</b>.</p>
+
+          <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">2) Pede o nome</p>
+          <label>Mensagem que pede o nome</label>
+          <textarea id="mensagemPedeNomeInput" rows="2"></textarea>
+
+          <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">3) Pergunta o vendedor</p>
+          <label>Pergunta de "quem te atendeu" (a lista de vendedores entra automático)</label>
+          <textarea id="mensagemPedeVendedorInput" rows="2"></textarea>
+
+          <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">4) Pede os contatos</p>
+          <label>Convite para enviar os contatos (use {premio})</label>
+          <textarea id="mensagemPedeContatosInput" rows="3"></textarea>
+          <label>Instrução de coleta (use {quantidade})</label>
+          <textarea id="mensagemColetaInput" rows="4"></textarea>
+
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarClienteConversaBtn">Salvar conversa do cliente</button>
+            <span class="config-status-msg" id="statusClienteConversa"></span>
           </div>
         </div>
       </div>
@@ -856,6 +889,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 const MAPA_SUBTABS = {
   empresa: 'subtabEmpresa',
+  clienteConversa: 'subtabClienteConversa',
   premioCliente: 'subtabPremioCliente',
   recomendado: 'subtabRecomendado',
   faixas: 'subtabFaixas',
@@ -1247,6 +1281,10 @@ async function carregarConfiguracao() {
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
+    document.getElementById('mensagemPedeNomeInput').value = configuracaoAtual.mensagemPedeNome || '';
+    document.getElementById('mensagemPedeVendedorInput').value = configuracaoAtual.mensagemPedeVendedor || '';
+    document.getElementById('mensagemPedeContatosInput').value = configuracaoAtual.mensagemPedeContatos || '';
+    document.getElementById('mensagemColetaInput').value = configuracaoAtual.mensagemColeta || '';
     document.getElementById('tempoEsperaConversaoMinInput').value = configuracaoAtual.tempoEsperaConversaoMin || 60;
     document.getElementById('posMenuPrincipalInput').value = configuracaoAtual.posMenuPrincipal || '';
     document.getElementById('linkAgendamentoInput').value = configuracaoAtual.linkAgendamento || '';
@@ -1307,6 +1345,26 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
     btn.disabled = false;
     setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
   }
+});
+
+document.getElementById('salvarClienteConversaBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarClienteConversaBtn');
+  const statusEl = document.getElementById('statusClienteConversa');
+  const mensagemPedeNome = document.getElementById('mensagemPedeNomeInput').value.trim() || null;
+  const mensagemPedeVendedor = document.getElementById('mensagemPedeVendedorInput').value.trim() || null;
+  const mensagemPedeContatos = document.getElementById('mensagemPedeContatosInput').value.trim() || null;
+  const mensagemColeta = document.getElementById('mensagemColetaInput').value.trim() || null;
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000); }
 });
 
 document.getElementById('salvarPresenteRecomendadoBtn').addEventListener('click', async () => {
