@@ -77,10 +77,10 @@
 
       <section class="view active fade-in" id="view-overview">
         <div class="grid grid-metrics" style="margin-bottom:18px">
-          <div class="metric-card">
-            <div class="m-label"><i data-lucide="users"></i> Leads no total</div>
-            <div class="m-value" id="mLeads">0</div>
-          </div>
+          <a class="metric-card metric-action" href="/conversas">
+            <div class="m-label"><i data-lucide="message-circle"></i> Conversas</div>
+            <div class="m-value sm" style="color:var(--brand)">Abrir <i data-lucide="arrow-right" style="width:18px;height:18px;vertical-align:-3px"></i></div>
+          </a>
           <a class="metric-card metric-action" href="/crm#ranking">
             <div class="m-label"><i data-lucide="trophy"></i> Ranking de vendedores</div>
             <div class="m-value sm" style="color:var(--brand)">Abrir <i data-lucide="arrow-right" style="width:18px;height:18px;vertical-align:-3px"></i></div>
@@ -289,7 +289,8 @@ async function carregarVisaoGeral() {
     const data = await resp.json();
     const leads = (data && (data.leads || data)) || [];
     if (!Array.isArray(leads)) return;
-    document.getElementById('mLeads').textContent = leads.length;
+    const mLeadsEl = document.getElementById('mLeads');
+    if (mLeadsEl) mLeadsEl.textContent = leads.length;
     const ordenados = [...leads].sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0)).slice(0, 8);
     const lista = document.getElementById('activityList');
     if (!ordenados.length) return;

@@ -15,7 +15,8 @@ Configure estas 3 variáveis no painel do Render (ou no arquivo `.env` localment
 ## Como configurar o webhook na Z-API
 
 1. No painel da Z-API, vá em "Webhooks e configurações gerais"
-2. Em "Ao receber", cole a URL: `https://SEU-APP.onrender.com/webhook`
+2. Em "Ao receber", cole a URL exibida no painel admin de cada empresa
+   (formato `https://www.recomendaleads.com.br/webhook/ID-DA-EMPRESA`)
 3. Salve
 
 ## Rotas disponíveis
