@@ -658,9 +658,6 @@
           <label>Nome da empresa</label>
           <input type="text" id="empresaNomeInput">
 
-          <label>Mensagem de agradecimento (primeira mensagem enviada ao cliente)</label>
-          <textarea id="empresaMsgInput" rows="2"></textarea>
-
           <label>Vendedores (um por linha)</label>
           <textarea id="empresaVendedoresInput" rows="4"></textarea>
 
@@ -679,8 +676,9 @@
             Mensagens da conversa com quem vai indicar amigos, na ordem em que são enviadas. Edite, apague ou reescreva. Variáveis: <code>{nome}</code> (do cliente), <code>{premio}</code>, <code>{quantidade}</code>, <code>{empresa}</code>.
           </p>
 
-          <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">1) Boas-vindas</p>
-          <p style="font-size:0.78rem;color:var(--text-dim);margin:2px 0 0;">A 1ª mensagem (agradecimento) é editada na aba <b>Empresa</b>.</p>
+          <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">1) Boas-vindas (1ª mensagem enviada ao cliente)</p>
+          <label>Mensagem de agradecimento</label>
+          <textarea id="empresaMsgInput" rows="2"></textarea>
 
           <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">2) Pede o nome</p>
           <label>Mensagem que pede o nome</label>
@@ -1314,7 +1312,6 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
   const statusEl = document.getElementById('statusEmpresa');
 
   const nome = document.getElementById('empresaNomeInput').value.trim();
-  const mensagemAgradecimento = document.getElementById('empresaMsgInput').value.trim();
   const vendedores = document.getElementById('empresaVendedoresInput').value
     .split('\n').map(v => v.trim()).filter(v => v.length > 0);
 
@@ -1325,7 +1322,7 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ nome, mensagemAgradecimento, vendedores })
+      body: JSON.stringify({ nome, vendedores })
     });
     const data = await resp.json();
 
@@ -1350,6 +1347,7 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
 document.getElementById('salvarClienteConversaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarClienteConversaBtn');
   const statusEl = document.getElementById('statusClienteConversa');
+  const mensagemAgradecimento = document.getElementById('empresaMsgInput').value.trim();
   const mensagemPedeNome = document.getElementById('mensagemPedeNomeInput').value.trim() || null;
   const mensagemPedeVendedor = document.getElementById('mensagemPedeVendedorInput').value.trim() || null;
   const mensagemPedeContatos = document.getElementById('mensagemPedeContatosInput').value.trim() || null;
@@ -1358,7 +1356,7 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta })
+      body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
