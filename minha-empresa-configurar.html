@@ -57,6 +57,7 @@
       <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
       <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
       <button class="nav-item" data-section="equipe" data-gestor><i data-lucide="users"></i><span class="txt">Equipe</span></button>
+      <button class="nav-item" data-section="assinatura" data-gestor><i data-lucide="credit-card"></i><span class="txt">Assinatura</span></button>
       <a class="nav-item" href="/crm#config" data-gestor><i data-lucide="settings"></i><span class="txt">Configurações</span></a>
     </nav>
     <div class="user-box">
@@ -237,6 +238,19 @@
         </div>
       </section>
 
+      <section class="view fade-in" id="view-assinatura">
+        <div class="card">
+          <div class="block-title"><i data-lucide="credit-card"></i> Sua assinatura</div>
+          <div id="assinaturaStatus"><p class="sub">Carregando...</p></div>
+        </div>
+        <div class="card" style="margin-top:18px">
+          <div class="block-title"><i data-lucide="gift"></i> Planos</div>
+          <p class="sub">Escolha um plano para ativar ou renovar seu acesso.</p>
+          <div class="grid grid-tiles" id="planosLista"><div class="empty">Carregando planos...</div></div>
+          <div class="hint" id="assinaturaMsg" style="margin-top:10px"></div>
+        </div>
+      </section>
+
     </div>
   </main>
 </div>
@@ -273,7 +287,7 @@ if (!TOKEN) { window.location.href = '/login'; }
 const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') || '{}');
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
-const SECOES_GESTOR = ['empresa', 'premios', 'whatsapp', 'equipe'];
+const SECOES_GESTOR = ['empresa', 'premios', 'whatsapp', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
@@ -300,7 +314,8 @@ const TITULOS = {
   empresa: ['Minha empresa', 'Ajuste os dados que aparecem nas mensagens.'],
   premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
   whatsapp: ['WhatsApp', 'Conecte o número que o robô vai usar.'],
-  equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.']
+  equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
+  assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.']
 };
 
 function trocarSecao(secao) {
@@ -319,6 +334,7 @@ function trocarSecao(secao) {
   if (secao === 'whatsapp') { if (typeof atualizarEstadoWhats === 'function') atualizarEstadoWhats(); }
   else if (typeof pararPollQr === 'function') pararPollQr();
   if (secao === 'equipe' && typeof carregarEquipe === 'function') carregarEquipe();
+  if (secao === 'assinatura' && typeof carregarAssinatura === 'function') carregarAssinatura();
 }
 
 document.querySelectorAll('#nav .nav-item[data-section]').forEach(a => a.addEventListener('click', () => trocarSecao(a.dataset.section)));
@@ -746,12 +762,86 @@ if (contratoSairBtn) contratoSairBtn.addEventListener('click', () => {
   window.location.href = '/login';
 });
 
+// ===================== ASSINATURA (Stripe) =====================
+const ROTULO_STATUS = {
+  sem_assinatura: ['Sem assinatura', 'badge-danger'],
+  trial: ['Período de teste', 'badge-success'],
+  ativa: ['Ativa', 'badge-success'],
+  atrasada: ['Pagamento atrasado', 'badge-danger'],
+  bloqueada: ['Bloqueada', 'badge-danger'],
+  cancelada: ['Cancelada', 'badge-danger']
+};
+function dataBR(iso) { try { return new Date(iso).toLocaleDateString('pt-BR'); } catch (e) { return '—'; } }
+function moedaBR(centavos) { return (centavos/100).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
+
+async function carregarAssinatura() {
+  const stEl = document.getElementById('assinaturaStatus');
+  const planosEl = document.getElementById('planosLista');
+  if (!stEl) return;
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-assinatura`);
+    const data = await resp.json();
+    if (!data.ok) throw new Error();
+    const a = data.assinatura;
+    const [rotulo, cls] = ROTULO_STATUS[a.status] || ['—', 'badge'];
+    let extra = '';
+    if (a.acessoAte && (a.status === 'ativa' || a.status === 'trial')) extra = `<p class="sub">Acesso garantido até <b>${dataBR(a.acessoAte)}</b>.</p>`;
+    else if (a.status === 'atrasada') extra = `<p class="sub" style="color:var(--error)">Pagamento vencido há ${a.diasAtraso} dia(s). Você tem ${a.carenciaDias} dias de carência antes do bloqueio — renove abaixo.</p>`;
+    else if (a.status === 'bloqueada') extra = `<p class="sub" style="color:var(--error)">Seu acesso está suspenso por falta de pagamento. Escolha um plano abaixo para reativar.</p>`;
+    else if (a.status === 'sem_assinatura') extra = `<p class="sub">Você ainda não tem um plano ativo. Escolha um abaixo.</p>`;
+    stEl.innerHTML = `<span class="badge ${cls}">${rotulo}</span>${extra}`;
+
+    if (!data.stripeConfigurado) {
+      planosEl.innerHTML = '<div class="empty">Pagamento em configuração. Tente novamente em breve.</div>';
+      return;
+    }
+    planosEl.innerHTML = (data.planos || []).map(p => `
+      <a class="tile" data-plano="${p.id}" style="cursor:pointer">
+        <div class="ic"><i data-lucide="gift"></i></div>
+        <b>${p.nome}</b><small>${p.descricao}</small>
+        <span style="margin-top:8px; font-weight:700; color:var(--brand,#b8860b)">${moedaBR(p.valorCentavos)}${p.tipo==='assinatura'?'/mês':''}</span>
+      </a>`).join('');
+    planosEl.querySelectorAll('[data-plano]').forEach(el => el.addEventListener('click', () => assinarPlano(el.dataset.plano)));
+    icons();
+  } catch (err) { stEl.innerHTML = '<p class="sub">Não foi possível carregar a assinatura.</p>'; }
+}
+
+async function assinarPlano(plano) {
+  const msg = document.getElementById('assinaturaMsg');
+  if (msg) { msg.textContent = 'Abrindo o pagamento seguro...'; }
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-assinatura/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plano }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok && data.url) { window.location.href = data.url; }
+    else if (msg) { msg.textContent = '❌ ' + (data.erro || 'Não foi possível iniciar o pagamento.'); }
+  } catch (err) { if (msg) msg.textContent = '❌ Erro de conexão.'; }
+}
+
+// Bloqueio: se a empresa estiver bloqueada, manda o gestor pra Assinatura.
+async function verificarAcesso() {
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-assinatura`);
+    const data = await resp.json();
+    if (!data.ok) return;
+    if (!data.assinatura.acesso) {
+      if (EH_GESTOR) { trocarSecao('assinatura'); }
+    }
+  } catch (err) {}
+}
+
+// Mensagem de retorno do checkout do Stripe.
+(function () {
+  const p = new URLSearchParams(location.search);
+  if (p.get('assinatura') === 'ok') { setTimeout(() => { if (EH_GESTOR) trocarSecao('assinatura'); }, 300); }
+})();
+
 aplicarGating();
 icons();
 carregarConfiguracao();
 if (EH_GESTOR) carregarWhatsapp();
 carregarVisaoGeral();
 verificarContrato();
+verificarAcesso();
 </script>
 </body>
 </html>

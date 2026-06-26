@@ -17,7 +17,9 @@ const app = express();
 // Atrás do proxy do Render: faz req.protocol refletir https (X-Forwarded-Proto),
 // pra que urlBase() gere webhooks com https (exigido pela Z-API).
 app.set('trust proxy', true);
-app.use(express.json());
+// Guarda o corpo bruto (rawBody) — necessário para validar a assinatura do
+// webhook do Stripe, que exige o payload exatamente como recebido.
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 // CORS restrito: só origens conhecidas (o painel é servido do mesmo domínio,
 // então requisições same-origin nem passam por CORS). Configurável por env
 // CORS_ORIGINS (lista separada por vírgula).
@@ -63,6 +65,69 @@ function rateLimit({ windowMs, max, prefix }) {
 }
 const limiteLogin = rateLimit({ windowMs: 5 * 60 * 1000, max: 10, prefix: 'login' });
 const limiteAdmin = rateLimit({ windowMs: 5 * 60 * 1000, max: 20, prefix: 'admin' });
+
+// ============================================================
+// CONFIGURAÇÃO — STRIPE (assinaturas)
+// ============================================================
+// Chaves vêm do ambiente (Render). Em teste use sk_test_... / whsec_... .
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+const stripe = STRIPE_SECRET_KEY ? require('stripe')(STRIPE_SECRET_KEY) : null;
+// Dias de tolerância após o vencimento antes de bloquear o painel.
+const CARENCIA_DIAS = 7;
+
+// Planos: mesmo produto em 3 ciclos. Valores em centavos (BRL).
+// - mensal: assinatura recorrente no cartão (auto-renova)
+// - semestral/anual: pagamento único que libera N meses de acesso
+const PLANOS = {
+  mensal: {
+    nome: 'Mensal', tipo: 'assinatura', meses: 1,
+    valorCentavos: 39700, intervalo: 'month', intervaloQtd: 1,
+    metodos: ['card'],
+    descricao: 'R$ 397/mês no cartão, renovação automática'
+  },
+  semestral: {
+    nome: 'Semestral', tipo: 'unico', meses: 6,
+    valorCentavos: 208200, // 6 x 347,00
+    metodos: ['card', 'boleto', 'pix'],
+    descricao: 'R$ 347/mês — R$ 2.082 cobrados de uma vez (6 meses)'
+  },
+  anual: {
+    nome: 'Anual', tipo: 'unico', meses: 12,
+    valorCentavos: 356400, // 12 x 297,00
+    metodos: ['card', 'boleto', 'pix'],
+    descricao: 'R$ 297/mês — R$ 3.564 cobrados de uma vez (12 meses)'
+  }
+};
+
+// Calcula o status efetivo da assinatura e se a empresa tem acesso agora.
+// Empresas SEM o campo `assinatura` (ex.: PDN e clientes antigos) NÃO são
+// bloqueadas — ficam grandfathered até o admin atribuir uma cobrança.
+function billingStatus(empresa) {
+  const a = (empresa && empresa.assinatura) || null;
+  if (!a || !a.status) return { status: 'sem_assinatura', acesso: true, acessoAte: null };
+  const agora = Date.now();
+  const ate = a.acessoAte ? new Date(a.acessoAte).getTime() : 0;
+  if (ate >= agora) {
+    const st = a.status === 'trial' ? 'trial' : 'ativa';
+    return { status: st, acesso: true, acessoAte: a.acessoAte, ciclo: a.ciclo || null };
+  }
+  // acesso expirado
+  const diasAtraso = Math.floor((agora - ate) / 86400000);
+  if (a.status !== 'cancelada' && diasAtraso <= CARENCIA_DIAS) {
+    return { status: 'atrasada', acesso: true, acessoAte: a.acessoAte, ciclo: a.ciclo || null, diasAtraso, carenciaDias: CARENCIA_DIAS };
+  }
+  return { status: 'bloqueada', acesso: false, acessoAte: a.acessoAte, ciclo: a.ciclo || null, diasAtraso };
+}
+
+// Acha a empresa dona de um customer do Stripe (eventos de webhook).
+async function acharEmpresaPorStripeCustomer(customerId) {
+  if (!customerId) return null;
+  const snap = await EMPRESAS_COL().where('assinatura.stripeCustomerId', '==', customerId).limit(1).get();
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() };
+}
 
 // ============================================================
 // CONFIGURAÇÃO — Z-API
@@ -1690,6 +1755,85 @@ app.post('/webhook', (req, res) => comWebhook(req, res, null));
 app.post('/webhook/:empresaId', (req, res) => comWebhook(req, res, req.params.empresaId));
 
 // ============================================================
+// WEBHOOK DO STRIPE — eventos de pagamento/assinatura
+// ============================================================
+async function gravarAssinatura(empresaId, dados) {
+  await EMPRESAS_COL().doc(empresaId).set({ assinatura: dados }, { merge: true });
+}
+function dataMaisMeses(meses) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + meses);
+  return d.toISOString();
+}
+
+app.post('/webhook-stripe', async (req, res) => {
+  if (!stripe || !STRIPE_WEBHOOK_SECRET) return res.sendStatus(200);
+  let evento;
+  try {
+    const sig = req.headers['stripe-signature'];
+    evento = stripe.webhooks.constructEvent(req.rawBody, sig, STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('[STRIPE] assinatura do webhook inválida:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+  try {
+    const obj = evento.data.object;
+    if (evento.type === 'checkout.session.completed') {
+      const empresaId = (obj.metadata && obj.metadata.empresaId) || obj.client_reference_id;
+      const planoId = obj.metadata && obj.metadata.plano;
+      const plano = PLANOS[planoId];
+      if (empresaId && plano) {
+        const base = {
+          stripeCustomerId: obj.customer || null,
+          ciclo: planoId,
+          status: 'ativa',
+          atualizadoEm: new Date().toISOString()
+        };
+        if (obj.mode === 'payment') {
+          // Pagamento único: libera N meses a partir de agora.
+          base.acessoAte = dataMaisMeses(plano.meses);
+        } else if (obj.mode === 'subscription') {
+          base.stripeSubId = obj.subscription || null;
+          base.acessoAte = dataMaisMeses(1); // corrigido no invoice.paid
+        }
+        await gravarAssinatura(empresaId, base);
+        console.log(`[STRIPE] checkout concluído — empresa ${empresaId}, plano ${planoId}`);
+      }
+    } else if (evento.type === 'invoice.paid') {
+      const empresa = await acharEmpresaPorStripeCustomer(obj.customer);
+      if (empresa) {
+        let acessoAte = dataMaisMeses(1);
+        const linha = obj.lines && obj.lines.data && obj.lines.data[0];
+        if (linha && linha.period && linha.period.end) acessoAte = new Date(linha.period.end * 1000).toISOString();
+        await gravarAssinatura(empresa.id, {
+          ...(empresa.assinatura || {}), status: 'ativa', acessoAte, atualizadoEm: new Date().toISOString()
+        });
+        console.log(`[STRIPE] fatura paga — empresa ${empresa.id}`);
+      }
+    } else if (evento.type === 'invoice.payment_failed') {
+      const empresa = await acharEmpresaPorStripeCustomer(obj.customer);
+      if (empresa) {
+        await gravarAssinatura(empresa.id, {
+          ...(empresa.assinatura || {}), status: 'atrasada', atualizadoEm: new Date().toISOString()
+        });
+        console.log(`[STRIPE] pagamento falhou — empresa ${empresa.id}`);
+      }
+    } else if (evento.type === 'customer.subscription.deleted') {
+      const empresa = await acharEmpresaPorStripeCustomer(obj.customer);
+      if (empresa) {
+        await gravarAssinatura(empresa.id, {
+          ...(empresa.assinatura || {}), status: 'cancelada', atualizadoEm: new Date().toISOString()
+        });
+        console.log(`[STRIPE] assinatura cancelada — empresa ${empresa.id}`);
+      }
+    }
+  } catch (err) {
+    console.error('[STRIPE] erro ao processar evento:', err.message);
+  }
+  res.sendStatus(200);
+});
+
+// ============================================================
 // ROTAS DE ADMINISTRAÇÃO
 // ============================================================
 
@@ -1850,6 +1994,75 @@ app.post('/meu-contrato/aceitar', exigirLoginEmpresa, exigirGestor, async (req, 
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ contratoAceite: aceite }, { merge: true });
     res.json({ ok: true, aceite });
   } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// ASSINATURA — Stripe (status, checkout)
+// ============================================================
+
+// Status da assinatura da empresa logada + planos disponíveis.
+app.get('/minha-assinatura', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const st = billingStatus(req.empresaLogin);
+    const planos = Object.entries(PLANOS).map(([id, p]) => ({
+      id, nome: p.nome, tipo: p.tipo, meses: p.meses,
+      valorCentavos: p.valorCentavos, descricao: p.descricao
+    }));
+    res.json({ ok: true, assinatura: st, planos, stripeConfigurado: !!stripe });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Cria a sessão de checkout do Stripe para o plano escolhido (apenas gestor).
+app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    if (!stripe) return res.status(503).json({ ok: false, erro: 'Pagamento ainda não configurado.' });
+    const planoId = String((req.body && req.body.plano) || '').toLowerCase();
+    const plano = PLANOS[planoId];
+    if (!plano) return res.status(400).json({ ok: false, erro: 'Plano inválido' });
+
+    const empresa = req.empresaLogin;
+    // Reaproveita ou cria o customer do Stripe para esta empresa.
+    let customerId = empresa.assinatura && empresa.assinatura.stripeCustomerId;
+    if (!customerId) {
+      const cliente = await stripe.customers.create({
+        email: empresa.email || undefined,
+        name: empresa.nome || undefined,
+        metadata: { empresaId: empresa.id }
+      });
+      customerId = cliente.id;
+      await EMPRESAS_COL().doc(empresa.id).set(
+        { assinatura: { ...(empresa.assinatura || {}), stripeCustomerId: customerId } },
+        { merge: true }
+      );
+    }
+
+    const base = urlBase(req);
+    const ehAssinatura = plano.tipo === 'assinatura';
+    const session = await stripe.checkout.sessions.create({
+      mode: ehAssinatura ? 'subscription' : 'payment',
+      customer: customerId,
+      client_reference_id: empresa.id,
+      metadata: { empresaId: empresa.id, plano: planoId },
+      ...(ehAssinatura ? { subscription_data: { metadata: { empresaId: empresa.id, plano: planoId } } } : {}),
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: 'brl',
+          unit_amount: plano.valorCentavos,
+          product_data: { name: `RecomendaLeads — Plano ${plano.nome}` },
+          ...(ehAssinatura ? { recurring: { interval: plano.intervalo, interval_count: plano.intervaloQtd } } : {})
+        }
+      }],
+      success_url: `${base}/minha-empresa/configurar?assinatura=ok`,
+      cancel_url: `${base}/minha-empresa/configurar?assinatura=cancelado`
+    });
+    res.json({ ok: true, url: session.url });
+  } catch (err) {
+    console.error('Erro no checkout Stripe:', err.message);
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
@@ -2423,6 +2636,24 @@ app.post('/admin/empresas/:id/impersonar', exigirAdmin, async (req, res) => {
     const d = doc.data();
     const token = jwt.sign({ empresaLoginId: doc.id }, JWT_SECRET, { expiresIn: '1d' });
     res.json({ ok: true, token, empresa: { id: doc.id, nome: d.nome, email: d.email } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Libera um período de teste (trial) para a empresa — concedido manualmente
+// pelo admin. Body: { dias } (padrão 14).
+app.post('/admin/empresas/:id/trial', exigirAdmin, async (req, res) => {
+  try {
+    const doc = await EMPRESAS_COL().doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    const dias = Math.max(1, parseInt((req.body && req.body.dias), 10) || 14);
+    const ate = new Date(); ate.setDate(ate.getDate() + dias);
+    const atual = doc.data().assinatura || {};
+    await EMPRESAS_COL().doc(req.params.id).set({
+      assinatura: { ...atual, status: 'trial', ciclo: 'trial', acessoAte: ate.toISOString(), atualizadoEm: new Date().toISOString() }
+    }, { merge: true });
+    res.json({ ok: true, acessoAte: ate.toISOString(), dias });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
