@@ -68,7 +68,7 @@
   <main class="main">
     <div class="page-head">
       <h1 id="pageTitle">Olá!</h1>
-      <p id="pageSub">Resumo do que está acontecendo no seu programa de indicações.</p>
+      <p id="pageSub">Resumo do que está acontecendo no seu programa de recomendações.</p>
     </div>
 
     <div id="loadMsg" class="empty">Carregando...</div>
@@ -99,13 +99,13 @@
           <a class="tile" data-go="empresa"><div class="ic"><i data-lucide="building-2"></i></div><b>Minha empresa</b><small>Nome, mensagem, vendedores</small></a>
           <a class="tile" data-go="premios"><div class="ic"><i data-lucide="gift"></i></div><b>Prêmios</b><small>Faixas e vouchers</small></a>
           <a class="tile" data-go="whatsapp"><div class="ic"><i data-lucide="smartphone"></i></div><b>WhatsApp</b><small>Conectar seu número</small></a>
-          <a class="tile" href="/crm"><div class="ic"><i data-lucide="kanban"></i></div><b>CRM / Leads</b><small>Acompanhar indicações</small></a>
+          <a class="tile" href="/crm"><div class="ic"><i data-lucide="kanban"></i></div><b>CRM / Leads</b><small>Acompanhar recomendações</small></a>
         </div>
 
         <div class="card" style="margin-top:18px">
           <div class="block-title"><i data-lucide="activity"></i> Atividade recente</div>
-          <p class="sub">Últimas indicações que chegaram.</p>
-          <div class="activity" id="activityList"><div class="empty">Sem indicações ainda.</div></div>
+          <p class="sub">Últimas recomendações que chegaram.</p>
+          <div class="activity" id="activityList"><div class="empty">Sem recomendações ainda.</div></div>
         </div>
       </section>
 
@@ -196,7 +196,7 @@ async function fetchAutenticado(url, options = {}) {
 
 let configuracaoAtual = null;
 const TITULOS = {
-  overview: ['Olá, {nome}', 'Resumo do que está acontecendo no seu programa de indicações.'],
+  overview: ['Olá, {nome}', 'Resumo do que está acontecendo no seu programa de recomendações.'],
   empresa: ['Minha empresa', 'Ajuste os dados que aparecem nas mensagens.'],
   premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
   whatsapp: ['WhatsApp', 'Conecte o número que o robô vai usar.']
@@ -268,7 +268,7 @@ async function carregarVisaoGeral() {
     lista.innerHTML = ordenados.map(l => `
       <div class="item"><span class="dot"></span>
         <div class="who"><b>${(l.nomeRecomendado || 'Contato').replace(/</g,'&lt;')}</b>
-        <small>${l.nomeRecomendador ? 'indicado por ' + l.nomeRecomendador.replace(/</g,'&lt;') : 'nova indicação'}</small></div>
+        <small>${l.nomeRecomendador ? 'recomendado por ' + l.nomeRecomendador.replace(/</g,'&lt;') : 'nova recomendação'}</small></div>
         <span class="when">${tempoRelativo(l.criadoEm)}</span></div>`).join('');
   } catch (err) {}
 }

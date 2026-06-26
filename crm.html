@@ -693,12 +693,12 @@
         </div>
       </div>
 
-      <!-- Sub-aba: Conversa do Cliente (quem indica) -->
+      <!-- Sub-aba: Conversa do Cliente (quem recomenda) -->
       <div class="subtab-panel" id="subtabClienteConversa">
         <div class="config-card">
-          <h2>💬 Conversa com o cliente (quem indica)</h2>
+          <h2>💬 Conversa com o cliente (quem recomenda)</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-            Mensagens da conversa com quem vai indicar amigos, na ordem em que são enviadas. Edite, apague ou reescreva.<br>
+            Mensagens da conversa com quem vai recomendar amigos, na ordem em que são enviadas. Edite, apague ou reescreva.<br>
             Variáveis (clique para copiar): <code class="var-chip">{nome}</code> <code class="var-chip">{premio}</code> <code class="var-chip">{quantidade}</code> <code class="var-chip">{empresa}</code>
           </p>
 
@@ -1824,7 +1824,7 @@ function renderRanking() {
   });
   const lista = Object.values(mapa).sort((a, b) => b.total - a.total || b.convertidos - a.convertidos);
   if (!lista.length) {
-    wrap.innerHTML = '<p class="load-msg">Nenhuma indicação nesse período.</p>';
+    wrap.innerHTML = '<p class="load-msg">Nenhuma recomendação nesse período.</p>';
     return;
   }
   const medalhas = ['🥇', '🥈', '🥉'];
@@ -1833,18 +1833,18 @@ function renderRanking() {
       <div class="rank-medal">${medalhas[i]}</div>
       <div class="rank-name">${esc(v.vendedor)}</div>
       <div class="rank-big">${v.total}</div>
-      <div class="rank-sub">indicações</div>
+      <div class="rank-sub">recomendações</div>
       <div class="rank-conv">${v.convertidos} converteram</div>
     </div>`).join('');
   const linhas = lista.map((v, i) => `
     <div class="rank-row ${i < 3 ? 'top' : ''}">
       <span class="rank-pos">${i + 1}º</span>
       <span class="rank-vend">${esc(v.vendedor)}</span>
-      <span class="rank-num">${v.total} indicações</span>
+      <span class="rank-num">${v.total} recomendações</span>
       <span class="rank-num conv">${v.convertidos} converteram</span>
     </div>`).join('');
   wrap.innerHTML = `
-    <h2 class="rank-title">Quem mais está trazendo indicações</h2>
+    <h2 class="rank-title">Quem mais está trazendo recomendações</h2>
     <div class="rank-podium-wrap">${podio}</div>
     <div class="rank-list">${linhas}</div>
   `;

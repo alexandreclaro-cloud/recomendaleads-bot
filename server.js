@@ -230,7 +230,7 @@ const EMPRESA_PADRAO = {
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
   mensagemAntesPresente: 'Como forma de agradecer essa recomendação, preparamos um presente especial para você.',
 
-  // ===== Conversa do CLIENTE (quem indica) — editável =====
+  // ===== Conversa do CLIENTE (quem recomenda) — editável =====
   mensagemPedeNome: 'Pra começar, qual é o seu nome?',
   mensagemPedeVendedor: 'Prazer, {nome}! E me diz, quem te atendeu hoje?',
   mensagemPedeContatos: 'Show! Agora me envie o contato dos seus amigos para você receber {premio}.',
@@ -830,7 +830,7 @@ function substituirVariaveis(template, variaveis) {
   // pra perdoar variações que o usuário escreva no painel.
   const mapa = {
     nomerecomendado: v.nomeRecomendado, nome: v.nomeRecomendado, recomendado: v.nomeRecomendado, cliente: v.nomeRecomendado,
-    recomendador: v.recomendador, amigo: v.recomendador, indicou: v.recomendador,
+    recomendador: v.recomendador, amigo: v.recomendador, recomendou: v.recomendador,
     vendedor: v.vendedor, atendente: v.vendedor, consultor: v.vendedor,
     empresa: v.empresa, negocio: v.empresa,
     premio: v.premio, dia: v.dia, periodo: v.periodo, quantidade: v.quantidade
