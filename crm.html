@@ -730,6 +730,8 @@
           <textarea id="posPerguntaDiaInput" rows="2"></textarea>
           <label>Confirmação do agendamento (use {dia} e {periodo})</label>
           <textarea id="posConfirmacaoInput" rows="5"></textarea>
+          <label>Checagem ~3 min depois ("conseguiu confirmar?")</label>
+          <textarea id="posConfirmacaoCheckInput" rows="2"></textarea>
 
           <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">3) Se escolher "Vou usar depois"</p>
           <label>Menu "usar depois"</label>
@@ -1243,6 +1245,7 @@ async function carregarConfiguracao() {
     document.getElementById('posPerguntaPeriodoInput').value = configuracaoAtual.posPerguntaPeriodo || '';
     document.getElementById('posPerguntaDiaInput').value = configuracaoAtual.posPerguntaDia || '';
     document.getElementById('posConfirmacaoInput').value = configuracaoAtual.posConfirmacaoAgendamento || '';
+    document.getElementById('posConfirmacaoCheckInput').value = configuracaoAtual.posConfirmacaoCheck || '';
     document.getElementById('posMenuDepoisInput').value = configuracaoAtual.posMenuDepois || '';
     document.getElementById('posLembreteInput').value = configuracaoAtual.posLembrete || '';
     document.getElementById('posMenuDuvidasInput').value = configuracaoAtual.posMenuDuvidas || '';
@@ -1314,6 +1317,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const posPerguntaPeriodo = document.getElementById('posPerguntaPeriodoInput').value.trim() || null;
   const posPerguntaDia = document.getElementById('posPerguntaDiaInput').value.trim() || null;
   const posConfirmacaoAgendamento = document.getElementById('posConfirmacaoInput').value.trim() || null;
+  const posConfirmacaoCheck = document.getElementById('posConfirmacaoCheckInput').value.trim() || null;
   const posMenuDepois = document.getElementById('posMenuDepoisInput').value.trim() || null;
   const posLembrete = document.getElementById('posLembreteInput').value.trim() || null;
   const posMenuDuvidas = document.getElementById('posMenuDuvidasInput').value.trim() || null;
@@ -1334,7 +1338,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
         premioRecomendado, arquivoRecomendado, linkRecomendado, ctaRecomendado,
         mensagemInicialRecomendado, mensagemAguardandoConfirmacao, tempoEsperaConversaoMin,
         posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia,
-        posConfirmacaoAgendamento, posMenuDepois, posLembrete, posMenuDuvidas,
+        posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         faqComoFunciona, faqValidade, enderecoEmpresa, horariosEmpresa, posAtendente
       })
     });

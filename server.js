@@ -240,6 +240,7 @@ const EMPRESA_PADRAO = {
   posPerguntaPeriodo: `Perfeito! 😊 Vamos combinar sua visita.\n\nQual período fica melhor pra você?\n\n*1* — Manhã ☀️\n*2* — Tarde 🌤️\n*3* — Noite 🌙\n\n👇 _Digite o número_`,
   posPerguntaDia: 'Ótimo! Agora escolha o melhor dia 📅',
   posConfirmacaoAgendamento: `🎉 *Tudo certo!*\n\nSua visita foi reservada:\n📅 {dia} — período da {periodo}\n\nNossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`,
+  posConfirmacaoCheck: 'Oi {nomeRecomendado}! 😊 Conseguiu confirmar seu agendamento? Se ficou alguma dúvida, é só me chamar aqui 👍',
   posMenuDepois: `Sem problemas! 😊 Seu presente continua reservado pra você.\n\nComo prefere fazer?\n\n🟢 *1* — Deixar uma data reservada\n🟡 *2* — Receber um lembrete depois\n\n👇 _Digite o número_`,
   posLembrete: 'Perfeito! 😊 Vamos te lembrar no momento certo de aproveitar seu presente. Até breve! 👋',
   posMenuDuvidas: `Claro! Sobre o que você gostaria de saber?\n\n*1* — Como funciona o presente?\n*2* — Qual a validade?\n*3* — Onde fica a empresa?\n*4* — Horários de atendimento\n*5* — Falar com um atendente\n\n👇 _Digite o número_`,
@@ -814,10 +815,20 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
 
 function substituirVariaveis(template, variaveis) {
   if (!template) return '';
-  // Aceita {recomendado} como alias de {nomeRecomendado} para compatibilidade
-  // com mensagens configuradas antes da variável ser renomeada
-  const variaveisExpandidas = { ...variaveis, recomendado: variaveis.nomeRecomendado };
-  return template.replace(/\{(\w+)\}/g, (match, chave) => variaveisExpandidas[chave] ?? match);
+  const v = variaveis || {};
+  // Mapa de variáveis aceitas (case-insensitive) com apelidos amigáveis,
+  // pra perdoar variações que o usuário escreva no painel.
+  const mapa = {
+    nomerecomendado: v.nomeRecomendado, nome: v.nomeRecomendado, recomendado: v.nomeRecomendado, cliente: v.nomeRecomendado,
+    recomendador: v.recomendador, amigo: v.recomendador, indicou: v.recomendador,
+    vendedor: v.vendedor, atendente: v.vendedor, consultor: v.vendedor,
+    empresa: v.empresa, negocio: v.empresa,
+    premio: v.premio, dia: v.dia, periodo: v.periodo
+  };
+  return template.replace(/\{(\w+)\}/g, (match, chave) => {
+    const val = mapa[chave.toLowerCase()];
+    return (val != null && val !== '') ? val : match;
+  });
 }
 
 async function getSessaoRecomendado(telefone) {
@@ -916,9 +927,6 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
 }
 
 async function enviarPremioRecomendado(telefone, sessao, empresa) {
-  await sendText(telefone, `🎉 Parabéns! Por ter sido recomendado(a) por quem gosta de você, acabou de garantir ${empresa.premioRecomendado}.`);
-  await sendText(telefone, `E olha só... já tô te enviando agora mesmo. É todo seu! 🎁✨`);
-
   if (empresa.arquivoRecomendado) {
     await enviarVoucher(telefone, empresa.arquivoRecomendado, empresa.premioRecomendado || '', empresa.premioRecomendado || 'presente');
   }
@@ -968,6 +976,12 @@ async function enviarMenuPrincipalRec(telefone, sessao, marca) {
   await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', ultimaMensagemEm: marca || new Date().toISOString() });
 }
 
+// Agenda a checagem de confirmação ~3 min após o agendamento.
+async function agendarCheckConfirmacao(telefone) {
+  const executarEm = new Date(Date.now() + 3 * 60 * 1000).toISOString();
+  await criarAgendamento({ tipo: 'confirmar_agendamento_check', executarEm, dados: { telefone } });
+}
+
 // Inicia o agendamento: se a empresa configurou um link de agendamento,
 // manda o link e encerra; senão, segue o fluxo de período + dia pelo bot.
 async function iniciarAgendamentoRec(telefone, empresa, sessao, fluxo) {
@@ -980,6 +994,7 @@ async function iniciarAgendamentoRec(telefone, empresa, sessao, fluxo) {
     await sendText(telefone, empresa.linkAgendamento.trim());
     await registrarEscolhaNoLead(telefone, { agendamentoLink: empresa.linkAgendamento.trim(), agendamentoEm: new Date().toISOString() }, empresa, true);
     await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
+    await agendarCheckConfirmacao(telefone);
     return;
   }
   await enviarPerguntaPeriodoRec(telefone, empresa, fluxo);
@@ -1040,6 +1055,7 @@ async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, 
     agendamentoEm: new Date().toISOString()
   }, empresa, true);
   await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
+  await agendarCheckConfirmacao(telefone);
   console.log(`[RECOMENDADO AGENDOU] ${telefone} — ${diaLabel} (${periodoLabel})`);
 }
 
@@ -1210,7 +1226,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
         // Qualquer outra coisa — repete a mensagem de confirmação do CRM
         const marcaTempo = new Date().toISOString();
         await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-        await sendText(telefone, empresa.mensagemAguardandoConfirmacao || 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁');
+        await sendText(telefone, substituirVariaveis(empresa.mensagemAguardandoConfirmacao || 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁', variaveis));
         await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
       }
     }
@@ -2096,6 +2112,14 @@ async function processarAgendamento(agendamento) {
 
 async function processarAgendamentoInterno(agendamento) {
   const empresa = await getEmpresa();
+
+  if (agendamento.tipo === 'confirmar_agendamento_check') {
+    const { telefone } = agendamento.dados;
+    if (await numeroEstaPausado(telefone)) return;
+    const sessao = await getSessaoRecomendado(telefone);
+    await sendText(telefone, substituirVariaveis(empresa.posConfirmacaoCheck || EMPRESA_PADRAO.posConfirmacaoCheck, variaveisRec(sessao, empresa)));
+    return;
+  }
 
   if (agendamento.tipo === 'iniciar_conversa_recomendado') {
     const { contato, nomeRecomendador, vendedorNome } = agendamento.dados;
