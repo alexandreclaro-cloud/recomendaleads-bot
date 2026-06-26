@@ -2001,38 +2001,67 @@ app.post('/admin/empresas', async (req, res) => {
       return res.status(401).json({ ok: false, erro: 'Chave administrativa inválida' });
     }
 
-    const { nome, email, senha, migrarConfigPrincipal, empresaTeste } = req.body;
-    if (!nome || !email || !senha) {
-      return res.status(400).json({ ok: false, erro: 'Informe nome, email e senha' });
+    const {
+      // dados da empresa
+      razaoSocial, nomeFantasia, cnpj, enderecoEmpresa, emailEmpresa, telefoneEmpresa,
+      // dados do sócio
+      nomeSocio, cpfSocio, emailSocio, enderecoSocio, whatsappSocio,
+      // acesso / compatibilidade com a versão antiga
+      nome, email, senha, migrarConfigPrincipal, empresaTeste
+    } = req.body;
+
+    // Nome de exibição (usado nas mensagens): fantasia > razão social > compat
+    const nomeEmpresa = (nomeFantasia || razaoSocial || nome || '').trim();
+    // E-mail de login: e-mail da empresa > sócio > compat
+    const emailLogin = (emailEmpresa || emailSocio || email || '').trim().toLowerCase();
+
+    if (!nomeEmpresa || !emailLogin || !senha) {
+      return res.status(400).json({ ok: false, erro: 'Informe ao menos nome da empresa, e-mail de acesso e senha' });
     }
 
-    const existenteSnap = await EMPRESAS_COL().where('email', '==', email).limit(1).get();
+    const existenteSnap = await EMPRESAS_COL().where('email', '==', emailLogin).limit(1).get();
     if (!existenteSnap.empty) {
-      return res.status(409).json({ ok: false, erro: 'Já existe uma empresa cadastrada com este email' });
+      return res.status(409).json({ ok: false, erro: 'Já existe uma empresa cadastrada com este e-mail' });
     }
 
-    let configuracaoInicial = { ...EMPRESA_PADRAO, nome };
+    let configuracaoInicial = { ...EMPRESA_PADRAO, nome: nomeEmpresa };
 
     if (empresaTeste) {
       // Empresa de teste: faixa 1 com quantidade = 1 e tempo de espera = 1 min
       // para validar todo o fluxo rapidamente sem precisar mandar 5 contatos
-      configuracaoInicial = { ...EMPRESA_TESTE_CONFIG, nome };
+      configuracaoInicial = { ...EMPRESA_TESTE_CONFIG, nome: nomeEmpresa };
     } else if (migrarConfigPrincipal) {
       const empresaReal = await getEmpresa();
       configuracaoInicial = { ...empresaReal };
     }
 
+    // Dados cadastrais completos — base para gerar o contrato depois.
+    const cadastro = {
+      razaoSocial: razaoSocial || null,
+      nomeFantasia: nomeFantasia || null,
+      cnpj: cnpj || null,
+      enderecoEmpresa: enderecoEmpresa || null,
+      emailEmpresa: emailEmpresa || null,
+      telefoneEmpresa: telefoneEmpresa || null,
+      nomeSocio: nomeSocio || null,
+      cpfSocio: cpfSocio || null,
+      emailSocio: emailSocio || null,
+      enderecoSocio: enderecoSocio || null,
+      whatsappSocio: whatsappSocio || null
+    };
+
     const senhaHash = await bcrypt.hash(senha, 10);
     const ref = await EMPRESAS_COL().add({
-      nome,
-      email,
+      nome: nomeEmpresa,
+      email: emailLogin,
       senhaHash,
       senhaProvisoria: true,
+      cadastro,
       criadoEm: new Date().toISOString(),
       configuracao: configuracaoInicial
     });
 
-    res.json({ ok: true, empresa: { id: ref.id, nome, email, empresaTeste: !!empresaTeste } });
+    res.json({ ok: true, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, empresaTeste: !!empresaTeste } });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
