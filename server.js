@@ -14,11 +14,14 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 
 const app = express();
+// Atrás do proxy do Render: faz req.protocol refletir https (X-Forwarded-Proto),
+// pra que urlBase() gere webhooks com https (exigido pela Z-API).
+app.set('trust proxy', true);
 app.use(express.json());
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Key');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
