@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel do Dono — RecomendaLeads</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { margin: 0; padding: 24px 18px 60px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .topo h1 { font-size: 1.35rem; margin: 0; }
+  .topo .acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* gate */
+  #gate { max-width: 380px; margin: 60px auto; text-align: center; padding: 32px 28px; }
+  #gate .logo { width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 14px; background: var(--brand); color: #fff; display: grid; place-items: center; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr.sel { background: #EBF1FF; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+  .pill.ok { background: #DCFCE7; color: #166534; }
+  .pill.off { background: #FEE2E2; color: #991B1B; }
+  .pill.warn { background: #FEF9C3; color: #854D0E; }
+
+  .det { margin-top: 22px; }
+  .det h2 { font-size: 1.05rem; margin: 0 0 4px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+  .campo { margin-bottom: 10px; }
+  .campo label { display: block; font-size: 0.76rem; color: var(--text-dim); margin-bottom: 3px; }
+  .campo .v { font-size: 0.9rem; }
+  .det-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .status-msg { font-size: 0.82rem; font-weight: 600; }
+  .status-msg.ok { color: var(--success-dark, #166534); }
+  .status-msg.err { color: var(--danger-dark, #991B1B); }
+  .muted { color: var(--text-dim); font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<!-- Gate da chave administrativa -->
+<div id="gate" class="card">
+  <div class="logo"><i data-lucide="shield"></i></div>
+  <h1 style="font-size:1.2rem;margin-bottom:6px;">Painel do Dono</h1>
+  <p class="muted" style="margin:0 0 18px;">Informe a chave administrativa para entrar.</p>
+  <input class="input" type="password" id="adminKeyInput" placeholder="Chave administrativa (ADMIN_SECRET)">
+  <button class="btn btn-brand" id="entrarBtn" style="width:100%;margin-top:10px;">Entrar</button>
+  <div class="status-msg err" id="gateMsg" style="margin-top:10px;"></div>
+</div>
+
+<!-- Painel -->
+<div class="wrap" id="painel" style="display:none;">
+  <div class="topo">
+    <h1>🏢 Meus Clientes</h1>
+    <div class="acoes">
+      <a class="btn btn-brand" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
+      <button class="btn btn-secondary" id="atualizarBtn">↻ Atualizar</button>
+      <button class="btn btn-secondary" id="sairBtn">Sair</button>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>Cliente</th><th>E-mail (login)</th><th>WhatsApp</th><th>Leads</th><th>Plano</th><th>Pagamento</th><th>Cadastro</th>
+        </tr>
+      </thead>
+      <tbody id="tabela"><tr><td colspan="7" class="muted" style="padding:18px;">Carregando...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card det" id="detalhe" style="display:none;"></div>
+</div>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+const API_BASE = window.location.origin;
+let ADMIN_KEY = localStorage.getItem('recomendaleads_admin_key') || '';
+let empresas = [];
+let selId = null;
+
+function icons() { try { lucide.createIcons(); } catch (e) {} }
+icons();
+
+async function adminFetch(url, options = {}) {
+  return fetch(url, { ...options, headers: { ...(options.headers || {}), 'X-Admin-Key': ADMIN_KEY } });
+}
+
+function esc(s) { return (s || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function fmtData(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleDateString('pt-BR'); } catch (e) { return '—'; } }
+
+// ---- Gate ----
+document.getElementById('entrarBtn').addEventListener('click', entrar);
+document.getElementById('adminKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
+
+async function entrar() {
+  const key = document.getElementById('adminKeyInput').value.trim();
+  const msg = document.getElementById('gateMsg');
+  msg.textContent = '';
+  if (!key) { msg.textContent = 'Informe a chave.'; return; }
+  ADMIN_KEY = key;
+  const resp = await adminFetch(`${API_BASE}/admin/empresas`);
+  if (resp.status === 401) { msg.textContent = 'Chave inválida.'; return; }
+  localStorage.setItem('recomendaleads_admin_key', key);
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('painel').style.display = 'block';
+  const data = await resp.json();
+  renderTabela(data.empresas || []);
+}
+
+document.getElementById('sairBtn').addEventListener('click', () => {
+  localStorage.removeItem('recomendaleads_admin_key');
+  location.reload();
+});
+document.getElementById('atualizarBtn').addEventListener('click', carregar);
+
+async function carregar() {
+  const resp = await adminFetch(`${API_BASE}/admin/empresas`);
+  if (!resp.ok) return;
+  const data = await resp.json();
+  renderTabela(data.empresas || []);
+  if (selId) abrirDetalhe(selId);
+}
+
+function renderTabela(lista) {
+  empresas = lista;
+  const tb = document.getElementById('tabela');
+  if (!lista.length) { tb.innerHTML = '<tr><td colspan="7" class="muted" style="padding:18px;">Nenhum cliente cadastrado ainda.</td></tr>'; return; }
+  tb.innerHTML = lista.map(e => `
+    <tr data-id="${e.id}" class="${e.id === selId ? 'sel' : ''}">
+      <td><b>${esc(e.nome) || '—'}</b></td>
+      <td>${esc(e.email) || '—'}</td>
+      <td>${e.whatsappProvisionado ? '<span class="pill ok">Provisionado</span>' : '<span class="pill off">Pendente</span>'}</td>
+      <td>${e.leads}</td>
+      <td>${esc(e.plano) || '—'}</td>
+      <td>${pagamentoPill(e.statusPagamento)}</td>
+      <td>${fmtData(e.criadoEm)}</td>
+    </tr>`).join('');
+  tb.querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', () => abrirDetalhe(tr.dataset.id)));
+  icons();
+}
+
+function pagamentoPill(s) {
+  if (!s) return '—';
+  const map = { 'Em dia': 'ok', 'Teste': 'warn', 'Pendente': 'warn', 'Atrasado': 'off', 'Cancelado': 'off' };
+  return `<span class="pill ${map[s] || 'warn'}">${esc(s)}</span>`;
+}
+
+function abrirDetalhe(id) {
+  selId = id;
+  const e = empresas.find(x => x.id === id);
+  if (!e) return;
+  document.querySelectorAll('#tabela tr[data-id]').forEach(tr => tr.classList.toggle('sel', tr.dataset.id === id));
+  const c = e.cadastro || {};
+  const det = document.getElementById('detalhe');
+  det.style.display = 'block';
+  det.innerHTML = `
+    <h2>${esc(e.nome) || 'Cliente'}</h2>
+    <p class="muted" style="margin:0 0 16px;">${esc(e.email)} · cadastrado em ${fmtData(e.criadoEm)} · ${e.leads} leads</p>
+
+    <div class="grid2">
+      <div>
+        <h3 style="margin:0 0 8px;font-size:0.9rem;">Dados da empresa</h3>
+        ${campoRO('Razão social', c.razaoSocial)}
+        ${campoRO('Nome fantasia', c.nomeFantasia)}
+        ${campoRO('CNPJ', c.cnpj)}
+        ${campoRO('Endereço', c.enderecoEmpresa)}
+        ${campoRO('E-mail', c.emailEmpresa)}
+        ${campoRO('Telefone', c.telefoneEmpresa)}
+      </div>
+      <div>
+        <h3 style="margin:0 0 8px;font-size:0.9rem;">Dados do sócio</h3>
+        ${campoRO('Nome', c.nomeSocio)}
+        ${campoRO('CPF', c.cpfSocio)}
+        ${campoRO('E-mail', c.emailSocio)}
+        ${campoRO('Endereço', c.enderecoSocio)}
+        ${campoRO('WhatsApp', c.whatsappSocio)}
+      </div>
+    </div>
+
+    <h3 style="margin:18px 0 8px;font-size:0.9rem;">Plano & Financeiro</h3>
+    <div class="grid2">
+      <div class="campo"><label>Plano</label><input class="input" id="f_plano" value="${esc(e.plano)}" placeholder="Ex: Mensal, Anual, Trial"></div>
+      <div class="campo"><label>Valor mensal</label><input class="input" id="f_valor" value="${esc(e.valorMensal)}" placeholder="Ex: 297"></div>
+      <div class="campo"><label>Status do pagamento</label>
+        <select class="input" id="f_status">
+          ${['','Teste','Em dia','Pendente','Atrasado','Cancelado'].map(s => `<option value="${s}" ${s === (e.statusPagamento || '') ? 'selected' : ''}>${s || '—'}</option>`).join('')}
+        </select>
+      </div>
+      <div class="campo"><label>Observações</label><input class="input" id="f_obs" value="${esc(e.observacoes)}" placeholder="Anotações internas"></div>
+    </div>
+
+    <h3 style="margin:18px 0 8px;font-size:0.9rem;">WhatsApp (Z-API) ${e.whatsappProvisionado ? '<span class="pill ok">Provisionado</span>' : '<span class="pill off">Pendente</span>'}</h3>
+    <div class="grid2">
+      <div class="campo"><label>Instance ID</label><input class="input" id="f_inst" value="${esc(e.zapiInstanceId)}" placeholder="ID da instância"></div>
+      <div class="campo"><label>Token</label><input class="input" id="f_tok" value="${esc(e.zapiToken)}" placeholder="Token da instância"></div>
+      <div class="campo"><label>Client-Token</label><input class="input" id="f_ctok" value="${esc(e.zapiClientToken)}" placeholder="Client-Token"></div>
+      <div class="campo"><label>Webhook (cole na Z-API do cliente)</label><input class="input" readonly value="${API_BASE}/webhook/${e.id}"></div>
+    </div>
+
+    <div class="det-actions">
+      <button class="btn btn-action" id="salvarBtn">Salvar alterações</button>
+      <button class="btn btn-brand" id="entrarComoBtn"><i data-lucide="log-in"></i> Entrar como cliente</button>
+      <button class="btn btn-secondary" id="resetSenhaBtn">Resetar senha (123mudar)</button>
+      <span class="status-msg" id="detMsg"></span>
+    </div>
+  `;
+  document.getElementById('salvarBtn').addEventListener('click', () => salvar(id));
+  document.getElementById('entrarComoBtn').addEventListener('click', () => entrarComo(id));
+  document.getElementById('resetSenhaBtn').addEventListener('click', () => resetSenha(id));
+  icons();
+  det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function campoRO(label, valor) {
+  return `<div class="campo"><label>${label}</label><div class="v">${esc(valor) || '<span class="muted">—</span>'}</div></div>`;
+}
+
+async function salvar(id) {
+  const msg = document.getElementById('detMsg');
+  msg.textContent = 'Salvando...'; msg.className = 'status-msg';
+  const body = {
+    plano: document.getElementById('f_plano').value.trim(),
+    valorMensal: document.getElementById('f_valor').value.trim(),
+    statusPagamento: document.getElementById('f_status').value,
+    observacoes: document.getElementById('f_obs').value.trim(),
+    zapiInstanceId: document.getElementById('f_inst').value.trim(),
+    zapiToken: document.getElementById('f_tok').value.trim(),
+    zapiClientToken: document.getElementById('f_ctok').value.trim()
+  };
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { msg.textContent = '✅ Salvo!'; msg.className = 'status-msg ok'; await carregar(); }
+    else { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
+  setTimeout(() => { msg.textContent = ''; }, 4000);
+}
+
+async function entrarComo(id) {
+  const msg = document.getElementById('detMsg');
+  msg.textContent = 'Abrindo...'; msg.className = 'status-msg';
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}/impersonar`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      localStorage.setItem('recomendaleads_token', data.token);
+      localStorage.setItem('recomendaleads_empresa', JSON.stringify(data.empresa));
+      msg.textContent = '';
+      window.open('/minha-empresa/configurar', '_blank');
+    } else { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
+}
+
+async function resetSenha(id) {
+  if (!confirm('Resetar a senha deste cliente para 123mudar? Ele será obrigado a definir uma nova no próximo acesso.')) return;
+  const msg = document.getElementById('detMsg');
+  msg.textContent = 'Resetando...'; msg.className = 'status-msg';
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}/resetar-senha`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { msg.textContent = `✅ Senha resetada para "${data.senha}"`; msg.className = 'status-msg ok'; }
+    else { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
+}
+
+// Auto-entra se já tem a chave salva
+if (ADMIN_KEY) {
+  adminFetch(`${API_BASE}/admin/empresas`).then(async resp => {
+    if (resp.ok) {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('painel').style.display = 'block';
+      const data = await resp.json();
+      renderTabela(data.empresas || []);
+    }
+  }).catch(() => {});
+}
+</script>
+</body>
+</html>

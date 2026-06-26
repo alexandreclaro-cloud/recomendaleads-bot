@@ -2109,6 +2109,107 @@ app.post('/admin/empresas', async (req, res) => {
 });
 
 // ============================================================
+// PAINEL DO DONO — área administrativa (protegida por X-Admin-Key)
+// ============================================================
+function exigirAdmin(req, res, next) {
+  const chave = req.headers['x-admin-key'];
+  if (!chave || chave !== ADMIN_SECRET) {
+    return res.status(401).json({ ok: false, erro: 'Chave administrativa inválida' });
+  }
+  next();
+}
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+// Lista todos os clientes com um resumo para o painel do dono.
+app.get('/admin/empresas', exigirAdmin, async (req, res) => {
+  try {
+    const snap = await EMPRESAS_COL().get();
+    const empresas = [];
+    snap.forEach(d => {
+      const data = d.data();
+      empresas.push({
+        id: d.id,
+        nome: data.nome || null,
+        email: data.email || null,
+        criadoEm: data.criadoEm || null,
+        senhaProvisoria: !!data.senhaProvisoria,
+        cadastro: data.cadastro || null,
+        plano: data.plano || null,
+        statusPagamento: data.statusPagamento || null,
+        valorMensal: data.valorMensal || null,
+        observacoes: data.observacoes || null,
+        zapiInstanceId: data.zapiInstanceId || null,
+        zapiToken: data.zapiToken || null,
+        zapiClientToken: data.zapiClientToken || null,
+        whatsappProvisionado: !!(data.zapiInstanceId && data.zapiToken),
+        leads: 0
+      });
+    });
+    // Conta leads por empresa
+    try {
+      const leadsSnap = await LEADS_COL().get();
+      const contagem = {};
+      leadsSnap.forEach(d => { const e = d.data().empresaId; if (e) contagem[e] = (contagem[e] || 0) + 1; });
+      empresas.forEach(e => { e.leads = contagem[e.id] || 0; });
+    } catch (e) { /* contagem é best-effort */ }
+    empresas.sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, empresas });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// "Entrar como" — emite um token de sessão da empresa para o dono configurar
+// o painel do cliente sem precisar da senha dele.
+app.post('/admin/empresas/:id/impersonar', exigirAdmin, async (req, res) => {
+  try {
+    const doc = await EMPRESAS_COL().doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    const d = doc.data();
+    const token = jwt.sign({ empresaLoginId: doc.id }, JWT_SECRET, { expiresIn: '1d' });
+    res.json({ ok: true, token, empresa: { id: doc.id, nome: d.nome, email: d.email } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Reseta a senha do cliente para uma provisória (padrão 123mudar) e reativa a
+// troca obrigatória no próximo acesso.
+app.post('/admin/empresas/:id/resetar-senha', exigirAdmin, async (req, res) => {
+  try {
+    const doc = await EMPRESAS_COL().doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    const novaSenha = (req.body && req.body.senha) || '123mudar';
+    const senhaHash = await bcrypt.hash(novaSenha, 10);
+    await EMPRESAS_COL().doc(req.params.id).set({ senhaHash, senhaProvisoria: true }, { merge: true });
+    res.json({ ok: true, senha: novaSenha });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Atualiza dados administrativos do cliente: plano, financeiro, Z-API, notas.
+app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
+  try {
+    const doc = await EMPRESAS_COL().doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    const b = req.body || {};
+    const upd = {};
+    ['plano', 'statusPagamento', 'valorMensal', 'observacoes', 'zapiInstanceId', 'zapiToken', 'zapiClientToken'].forEach(k => {
+      if (b[k] !== undefined) upd[k] = (b[k] === '' ? null : b[k]);
+    });
+    if (!Object.keys(upd).length) return res.json({ ok: true });
+    await EMPRESAS_COL().doc(req.params.id).set(upd, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
 // UPLOAD DE ARQUIVO — Firebase Storage
 // ============================================================
 
