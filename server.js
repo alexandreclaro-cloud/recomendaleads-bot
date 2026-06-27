@@ -1155,16 +1155,44 @@ async function enviarPerguntaDiaRec(telefone) {
   await saveSessaoRecomendado(telefone, { etapa: 'agendar_dia', diasOpcoes: dias, ultimaMensagemEm: new Date().toISOString() });
 }
 
+// Compara telefones ignorando formatação e DDI (casa pelo final dos dígitos).
+function soDigitosTel(t) { return String(t || '').replace(/\D/g, ''); }
+function mesmoTelefone(a, b) {
+  a = soDigitosTel(a); b = soDigitosTel(b);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const n = Math.min(a.length, b.length);
+  return n >= 8 && a.slice(-n) === b.slice(-n);
+}
+
+// Acha o lead (recomendado) da empresa atual por telefone, tolerante a formato
+// (ex.: com/sem o "55", com parênteses/traços). Primeiro tenta match exato
+// (rápido); se não achar, varre os leads da empresa casando por dígitos.
+async function acharLeadRecPorTelefone(telefone) {
+  let lead = null;
+  const considerar = (d) => {
+    const x = { id: d.id, ...d.data() };
+    if ((x.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) {
+      if (!lead || new Date(x.criadoEm || 0) > new Date(lead.criadoEm || 0)) lead = x;
+    }
+  };
+  const exato = await LEADS_COL().where('telefoneRecomendado', '==', telefone).get();
+  exato.forEach(considerar);
+  if (lead) return lead;
+  // Fallback tolerante a formato.
+  const daEmpresa = await LEADS_COL().where('empresaId', '==', empresaIdAtual()).get();
+  daEmpresa.forEach(d => {
+    const x = { id: d.id, ...d.data() };
+    if (mesmoTelefone(x.telefoneRecomendado, telefone)) {
+      if (!lead || new Date(x.criadoEm || 0) > new Date(lead.criadoEm || 0)) lead = x;
+    }
+  });
+  return lead;
+}
+
 async function registrarEscolhaNoLead(telefone, dados, empresa, moverParaAgendou) {
   try {
-    const snap = await LEADS_COL().where('telefoneRecomendado', '==', telefone).get();
-    let lead = null;
-    snap.forEach(d => {
-      const x = { id: d.id, ...d.data() };
-      if ((x.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) {
-        if (!lead || new Date(x.criadoEm || 0) > new Date(lead.criadoEm || 0)) lead = x;
-      }
-    });
+    const lead = await acharLeadRecPorTelefone(telefone);
     if (!lead) return;
     const upd = { ...dados };
     if (moverParaAgendou) {
@@ -1181,15 +1209,11 @@ async function registrarEscolhaNoLead(telefone, dados, empresa, moverParaAgendou
 // Assim o painel mostra quantos leads de fato leram a mensagem e receberam.
 async function marcarLeadRecebeuPremio(telefone, empresa) {
   try {
-    const snap = await LEADS_COL().where('telefoneRecomendado', '==', telefone).get();
-    let lead = null;
-    snap.forEach(d => {
-      const x = { id: d.id, ...d.data() };
-      if ((x.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) {
-        if (!lead || new Date(x.criadoEm || 0) > new Date(lead.criadoEm || 0)) lead = x;
-      }
-    });
-    if (!lead) return;
+    const lead = await acharLeadRecPorTelefone(telefone);
+    if (!lead) {
+      console.warn(`[LEAD AUTO-MOVE] lead não encontrado para o telefone ${telefone} — card não movido`);
+      return;
+    }
 
     const etapas = (empresa.etapasKanban && empresa.etapasKanban.length) ? empresa.etapasKanban : EMPRESA_PADRAO.etapasKanban;
     // Coluna alvo: por nome/id (prêmio/bônus/presente) ou, se não houver, a 2ª coluna.
