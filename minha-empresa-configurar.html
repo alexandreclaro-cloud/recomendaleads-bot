@@ -105,10 +105,26 @@
           <a class="tile" data-go="equipe" data-gestor><div class="ic"><i data-lucide="users"></i></div><b>Equipe</b><small>Usuários e permissões</small></a>
         </div>
 
-        <div class="card" style="margin-top:18px">
-          <div class="block-title"><i data-lucide="activity"></i> Atividade recente</div>
-          <p class="sub">Últimas recomendações que chegaram.</p>
-          <div class="activity" id="activityList"><div class="empty">Sem recomendações ainda.</div></div>
+        <style>
+          .dash-pbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:6px 0 18px; }
+          .dash-pbtn { padding:7px 12px; font-size:0.8rem; border:1px solid var(--border,#e3e6ea); background:var(--surface-2,#fff); color:var(--text,#1a1a1a); border-radius:999px; cursor:pointer; }
+          .dash-pbtn:hover { border-color:var(--brand,#b8860b); }
+          .dash-pbtn.active { background:var(--brand,#b8860b); color:#fff; border-color:var(--brand,#b8860b); }
+          .dash-pbar input[type=date] { padding:6px 8px; border:1px solid var(--border,#e3e6ea); border-radius:8px; font-size:0.8rem; }
+        </style>
+        <div class="card" style="margin-top:18px" id="dashboardCard">
+          <div class="block-title"><i data-lucide="bar-chart-3"></i> Dashboard de conversão</div>
+          <div class="dash-pbar" id="dashPbar">
+            <button class="dash-pbtn" data-p="hoje">Hoje</button>
+            <button class="dash-pbtn active" data-p="mes">Este mês</button>
+            <button class="dash-pbtn" data-p="7">Últimos 7 dias</button>
+            <button class="dash-pbtn" data-p="30">Últimos 30 dias</button>
+            <span style="display:inline-flex; gap:6px; align-items:center; font-size:0.8rem; color:var(--text-dim,#6b7280);">
+              <input type="date" id="dashDe"> até <input type="date" id="dashAte">
+              <button class="dash-pbtn" id="dashAplicar">Aplicar</button>
+            </span>
+          </div>
+          <div id="dashboardConteudo"><p class="sub">Carregando dados...</p></div>
         </div>
       </section>
 
@@ -373,10 +389,15 @@ async function carregarConfiguracao() {
     renderFaixas(faixas);
     const mPremios = document.getElementById('mPremios');
     if (mPremios) mPremios.textContent = faixas.length;
+    if (leadsVG && leadsVG.length) renderDashboardVG();
     trocarSecao('overview');
     icons();
   } catch (err) { loadMsg.textContent = 'Não foi possível carregar a configuração.'; }
 }
+
+// ===================== DASHBOARD DE CONVERSÃO =====================
+let leadsVG = [];
+let dashPeriodo = 'mes';
 
 async function carregarVisaoGeral() {
   try {
@@ -384,18 +405,134 @@ async function carregarVisaoGeral() {
     const data = await resp.json();
     const leads = (data && (data.leads || data)) || [];
     if (!Array.isArray(leads)) return;
-    const mLeadsEl = document.getElementById('mLeads');
-    if (mLeadsEl) mLeadsEl.textContent = leads.length;
-    const ordenados = [...leads].sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0)).slice(0, 8);
-    const lista = document.getElementById('activityList');
-    if (!ordenados.length) return;
-    lista.innerHTML = ordenados.map(l => `
-      <div class="item"><span class="dot"></span>
-        <div class="who"><b>${(l.nomeRecomendado || 'Contato').replace(/</g,'&lt;')}</b>
-        <small>${l.nomeRecomendador ? 'recomendado por ' + l.nomeRecomendador.replace(/</g,'&lt;') : 'nova recomendação'}</small></div>
-        <span class="when">${tempoRelativo(l.criadoEm)}</span></div>`).join('');
+    leadsVG = leads;
+    renderDashboardVG();
   } catch (err) {}
 }
+
+function vgEtapas() {
+  return (configuracaoAtual && configuracaoAtual.etapasKanban && configuracaoAtual.etapasKanban.length)
+    ? configuracaoAtual.etapasKanban
+    : [{ id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' }, { id: 'recebeu_premio', nome: 'Recebeu o Prêmio' }];
+}
+function vgEhComprou(e) { return !!e && (/comprou|comprar|vendeu|venda|fechou/i.test(e.nome || '') || /comprou|comprar|vendeu|venda|fechou/i.test(e.id || '')); }
+function vgComprou(l) { return vgEhComprou(vgEtapas().find(e => e.id === l.etapa)) || (l.valorCompra != null); }
+function vgRecebeu(l) {
+  const ets = vgEtapas();
+  const pi = ets.findIndex(e => /pr[êe]mio|b[ôo]nus|presente/i.test(e.nome || '') || /premio|bonus|presente/i.test(e.id || ''));
+  const i = ets.findIndex(e => e.id === l.etapa);
+  return l.bonusPago === true || (pi >= 0 && i >= pi) || vgComprou(l);
+}
+function vgBRL(n) { return (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+function vgRange() {
+  const now = new Date();
+  const sd = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  const ed = d => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
+  const D = 86400000;
+  if (dashPeriodo === 'hoje') return { a: sd(now), b: ed(now), pa: sd(new Date(now - D)), pb: ed(new Date(now - D)) };
+  if (dashPeriodo === '7') return { a: sd(new Date(now - 6 * D)), b: ed(now), pa: sd(new Date(now - 13 * D)), pb: ed(new Date(now - 7 * D)) };
+  if (dashPeriodo === '30') return { a: sd(new Date(now - 29 * D)), b: ed(now), pa: sd(new Date(now - 59 * D)), pb: ed(new Date(now - 30 * D)) };
+  if (dashPeriodo === 'custom') {
+    const de = document.getElementById('dashDe').value, ate = document.getElementById('dashAte').value;
+    if (de && ate) { const a = sd(de), b = ed(ate); const len = b - a; return { a, b, pa: new Date(a - 1 - len), pb: new Date(a - 1) }; }
+  }
+  const a = new Date(now.getFullYear(), now.getMonth(), 1);
+  const b = ed(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const pa = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const pb = ed(new Date(now.getFullYear(), now.getMonth(), 0));
+  return { a, b, pa, pb };
+}
+function vgFiltrar(a, b) { return leadsVG.filter(l => { const t = new Date(l.criadoEm || 0).getTime(); return t >= a.getTime() && t <= b.getTime(); }); }
+function vgCalc(lista) {
+  return {
+    total: lista.length,
+    receb: lista.filter(vgRecebeu).length,
+    compr: lista.filter(vgComprou).length,
+    valor: lista.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0)
+  };
+}
+
+function renderDashboardVG() {
+  const cont = document.getElementById('dashboardConteudo');
+  if (!cont) return;
+  const { a, b, pa, pb } = vgRange();
+  const at = vgCalc(vgFiltrar(a, b));
+  const an = vgCalc(vgFiltrar(pa, pb));
+  const dpct = (c, p) => p > 0 ? Math.round((c - p) / p * 100) : (c > 0 ? 100 : 0);
+  const tdr = v => v > 0 ? '▲' : (v < 0 ? '▼' : '▬');
+  const cpct = (x) => at.total > 0 ? Math.round(x / at.total * 100) : 0;
+
+  const tile = (label, val, prev, d, cor) => `
+    <div style="background:${cor};border-radius:14px;padding:16px 18px;color:#fff;">
+      <div style="font-size:0.85rem;opacity:.95;margin-bottom:6px;">${label}</div>
+      <div style="font-size:1.7rem;font-weight:800;line-height:1;">${val}</div>
+      <div style="display:flex;gap:16px;margin-top:14px;font-size:0.7rem;opacity:.95;">
+        <span>Anterior<br><b style="font-size:0.82rem;">${prev}</b></span>
+        <span>Variação<br><b style="font-size:0.82rem;">${d >= 0 ? '+' : ''}${d}%</b></span>
+        <span>Tend.<br><b style="font-size:0.82rem;">${tdr(d)}</b></span>
+      </div>
+    </div>`;
+  const barra = (label, n, p, cor) => `
+    <div style="margin-bottom:13px;">
+      <div style="display:flex;justify-content:space-between;font-size:0.84rem;margin-bottom:4px;">
+        <span style="font-weight:600;">${label}</span>
+        <span style="color:var(--text-dim,#6b7280);"><b style="color:var(--text,#1a1a1a);">${n}</b> · ${p}%</span>
+      </div>
+      <div style="background:var(--surface-1,#eceff1);border-radius:8px;height:20px;overflow:hidden;">
+        <div style="width:${Math.max(p, 2)}%;height:100%;background:${cor};border-radius:8px;"></div>
+      </div>
+    </div>`;
+
+  // Vendas por mês (últimos 6 meses, por data de entrada do lead)
+  const now = new Date(); const meses = [];
+  for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); meses.push({ y: d.getFullYear(), m: d.getMonth(), label: d.toLocaleDateString('pt-BR', { month: 'short' }), valor: 0 }); }
+  leadsVG.forEach(l => { const d = new Date(l.criadoEm || 0); const mm = meses.find(x => x.y === d.getFullYear() && x.m === d.getMonth()); if (mm) mm.valor += Number(l.valorCompra) || 0; });
+  const maxV = Math.max(1, ...meses.map(m => m.valor));
+  const barrasMes = meses.map(m => `
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <div style="font-size:0.62rem;color:var(--text-dim,#6b7280);">${m.valor > 0 ? 'R$' + Math.round(m.valor / 1000 * 10) / 10 + 'k' : ''}</div>
+      <div style="width:60%;height:${Math.round(m.valor / maxV * 90) + 4}px;background:var(--brand,#b8860b);border-radius:6px 6px 0 0;min-height:4px;"></div>
+      <div style="font-size:0.68rem;color:var(--text-dim,#6b7280);text-transform:capitalize;">${m.label}</div>
+    </div>`).join('');
+
+  cont.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;">
+      ${tile('Leads recebidos', at.total, an.total, dpct(at.total, an.total), '#2e9e5b')}
+      ${tile('Receberam o presente', at.receb, an.receb, dpct(at.receb, an.receb), '#3b82c4')}
+      ${tile('Compraram', at.compr, an.compr, dpct(at.compr, an.compr), '#d98a2b')}
+      ${tile('Vendas', vgBRL(at.valor), vgBRL(an.valor), dpct(at.valor, an.valor), '#5b7fb9')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+      <div style="background:var(--surface-2,#fff);border:1px solid var(--border,#e3e6ea);border-radius:12px;padding:16px;">
+        <div style="font-weight:600;margin-bottom:12px;">Funil de conversão</div>
+        ${barra('Leads recebidos', at.total, 100, '#2e9e5b')}
+        ${barra('Receberam o presente', at.receb, cpct(at.receb), '#3b82c4')}
+        ${barra('Compraram', at.compr, cpct(at.compr), '#d98a2b')}
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#e3e6ea);font-size:0.82rem;color:var(--text-dim,#6b7280);">🎯 Conversão final: <b style="color:var(--text,#1a1a1a);">${cpct(at.compr)}%</b></div>
+      </div>
+      <div style="background:var(--surface-2,#fff);border:1px solid var(--border,#e3e6ea);border-radius:12px;padding:16px;">
+        <div style="font-weight:600;margin-bottom:12px;">Vendas por mês (6 meses)</div>
+        <div style="display:flex;align-items:flex-end;gap:6px;height:130px;">${barrasMes}</div>
+      </div>
+    </div>`;
+}
+
+document.querySelectorAll('#dashPbar .dash-pbtn[data-p]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    dashPeriodo = btn.dataset.p;
+    document.querySelectorAll('#dashPbar .dash-pbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderDashboardVG();
+  });
+});
+document.getElementById('dashAplicar').addEventListener('click', () => {
+  const de = document.getElementById('dashDe').value, ate = document.getElementById('dashAte').value;
+  if (!de || !ate) { return; }
+  dashPeriodo = 'custom';
+  document.querySelectorAll('#dashPbar .dash-pbtn[data-p]').forEach(b => b.classList.remove('active'));
+  renderDashboardVG();
+});
 
 document.getElementById('salvarEmpresaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarEmpresaBtn');
