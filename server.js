@@ -276,6 +276,8 @@ const USUARIOS_COL = () => db.collection('usuarios');
 // Controle de envios da Agenda de Marketing (recorrência por recomendador).
 // Doc id: `${empresaId}__${telefone}` → { ultimoEnvioEm, proximoEm }
 const MARKETING_ENVIOS_COL = () => db.collection('marketing_envios');
+// Aviso global do dono para todos os clientes (popup na tela). Doc único.
+const AVISO_DOC = () => db.collection('config').doc('aviso');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'oi', 'olá', 'ola',
@@ -2090,6 +2092,17 @@ app.get('/minha-assinatura', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Aviso global ativo (popup) — visto pelo cliente logado.
+app.get('/aviso', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const snap = await AVISO_DOC().get();
+    const aviso = snap.exists ? snap.data() : null;
+    res.json({ ok: true, aviso: (aviso && aviso.ativo) ? aviso : null });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Cria a sessão de checkout do Stripe para o plano escolhido (apenas gestor).
 app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
@@ -2716,6 +2729,36 @@ function exigirAdmin(req, res, next) {
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+// Aviso global — consultar (admin) e publicar para todos os clientes.
+app.get('/admin/aviso', exigirAdmin, async (req, res) => {
+  try {
+    const snap = await AVISO_DOC().get();
+    res.json({ ok: true, aviso: snap.exists ? snap.data() : null });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/admin/aviso', exigirAdmin, async (req, res) => {
+  try {
+    const { titulo, mensagem, ativo } = req.body || {};
+    if (ativo && !String(mensagem || '').trim()) {
+      return res.status(400).json({ ok: false, erro: 'Escreva a mensagem do aviso.' });
+    }
+    const aviso = {
+      id: Date.now().toString(),
+      titulo: String(titulo || '').trim(),
+      mensagem: String(mensagem || '').trim(),
+      ativo: !!ativo,
+      criadoEm: new Date().toISOString()
+    };
+    await AVISO_DOC().set(aviso);
+    res.json({ ok: true, aviso });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
 });
 
 // Lista todos os clientes com um resumo para o painel do dono.

@@ -2195,6 +2195,32 @@ if (location.hash === '#config' && EH_GESTOR) {
 } else if (location.hash === '#ranking') {
   const b = document.querySelector('.tab-btn[data-tab="ranking"]'); if (b) b.click();
 }
+
+// ===================== AVISO GLOBAL (popup do dono) =====================
+(async function verificarAviso() {
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/aviso`);
+    const data = await resp.json();
+    const a = data && data.aviso;
+    if (!a || !a.ativo) return;
+    if (localStorage.getItem('recomendaleads_aviso_visto') === a.id) return;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:18px;';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:16px;max-width:440px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center;">
+        <div style="font-size:2rem;margin-bottom:8px;">📢</div>
+        <h2 style="margin:0 0 10px;font-size:1.2rem;color:#1a1a1a;">${esc(a.titulo || 'Aviso')}</h2>
+        <p style="margin:0 0 20px;font-size:0.95rem;color:#444;white-space:pre-wrap;">${esc(a.mensagem || '')}</p>
+        <div style="display:flex;gap:10px;justify-content:center;">
+          <button id="avisoReload" class="save-vendedor-btn">Atualizar tela</button>
+          <button id="avisoOk" class="config-save-btn" style="background:transparent;border:1px solid var(--border);color:var(--text);">Entendi</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('#avisoOk').addEventListener('click', () => { localStorage.setItem('recomendaleads_aviso_visto', a.id); ov.remove(); });
+    ov.querySelector('#avisoReload').addEventListener('click', () => { localStorage.setItem('recomendaleads_aviso_visto', a.id); location.reload(); });
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>
