@@ -572,7 +572,6 @@
     <nav class="crm-nav">
       <a class="tab-btn" href="/minha-empresa/configurar" style="text-decoration:none">🏠 Início</a>
       <button class="tab-btn active" data-tab="leads">📋 Leads</button>
-      <button class="tab-btn" data-tab="dashboard">📊 Dashboard</button>
       <button class="tab-btn" data-tab="ranking">🏆 Ranking</button>
       <button class="tab-btn" data-tab="config">⚙️ Configurações</button>
       <a class="tab-btn" href="/conversas" style="text-decoration:none">💬 Conversas</a>
@@ -593,11 +592,6 @@
       </div>
       <button class="refresh-btn" id="refreshBtn">↻ Atualizar</button>
     </header>
-
-<!-- ===================== ABA DASHBOARD ===================== -->
-<div class="tab-panel" id="tabDashboard">
-  <div id="dashboardContent"><p class="load-msg">Carregando dashboard...</p></div>
-</div>
 
 <!-- ===================== ABA LEADS ===================== -->
 <div class="tab-panel active" id="tabLeads">
@@ -992,9 +986,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
     if (btn.dataset.tab === 'leads') {
       document.getElementById('tabLeads').classList.add('active');
-    } else if (btn.dataset.tab === 'dashboard') {
-      document.getElementById('tabDashboard').classList.add('active');
-      renderDashboard();
     } else if (btn.dataset.tab === 'ranking') {
       document.getElementById('tabRanking').classList.add('active');
       renderRanking();
@@ -1073,7 +1064,6 @@ async function carregarLeads() {
     renderBoard();
     atualizarStats();
     renderStatLeads();
-    if (document.getElementById('tabDashboard').classList.contains('active')) renderDashboard();
   } catch (err) {
     loadMsg.textContent = 'Não foi possível carregar os leads. Verifique se o bot está rodando.';
   }
@@ -1120,65 +1110,6 @@ function atualizarStats() {
   if (elVendas) elVendas.textContent = fmtBRL(totalVendas);
 }
 
-// ===================== DASHBOARD DE CONVERSÃO =====================
-function leadComprou(l) {
-  const et = etapas.find(e => e.id === l.etapa);
-  return ehColunaComprou(et) || (l.valorCompra != null);
-}
-function leadRecebeuPresente(l) {
-  const premioIdx = etapas.findIndex(e => /pr[êe]mio|b[ôo]nus|presente/i.test(e.nome || '') || /premio|bonus|presente/i.test(e.id || ''));
-  const idx = etapas.findIndex(e => e.id === l.etapa);
-  return l.bonusPago === true || (premioIdx >= 0 && idx >= premioIdx) || leadComprou(l);
-}
-
-function renderDashboard() {
-  const cont = document.getElementById('dashboardContent');
-  if (!cont) return;
-  const total = leads.length;
-  const receb = leads.filter(leadRecebeuPresente).length;
-  const compr = leads.filter(leadComprou).length;
-  const valor = leads.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0);
-  const ticket = compr > 0 ? valor / compr : 0;
-  const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
-
-  const card = (label, valorTxt, sub) => `
-    <div style="background:var(--surface-sunken,#f1f3f5); border-radius:12px; padding:14px 16px;">
-      <div style="font-size:0.78rem; color:var(--text-dim,#6b7280); margin-bottom:4px;">${label}</div>
-      <div style="font-size:1.5rem; font-weight:700; color:var(--text,#1a1a1a);">${valorTxt}</div>
-      ${sub ? `<div style="font-size:0.76rem; color:var(--text-dim,#6b7280); margin-top:2px;">${sub}</div>` : ''}
-    </div>`;
-
-  const barra = (label, n, p, cor) => `
-    <div style="margin-bottom:14px;">
-      <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-        <span style="font-weight:600;">${label}</span>
-        <span style="color:var(--text-dim,#6b7280);"><b style="color:var(--text,#1a1a1a);">${n}</b> · ${p}%</span>
-      </div>
-      <div style="background:var(--surface-sunken,#eceff1); border-radius:8px; height:22px; overflow:hidden;">
-        <div style="width:${Math.max(p, 2)}%; height:100%; background:${cor}; border-radius:8px; transition:width .4s;"></div>
-      </div>
-    </div>`;
-
-  cont.innerHTML = `
-    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px;">
-      ${card('Leads recebidos', total, 'Total de recomendados')}
-      ${card('Receberam o presente', receb, `${pct(receb, total)}% dos leads`)}
-      ${card('Compraram', compr, `${pct(compr, total)}% dos leads · ${pct(compr, receb)}% de quem recebeu`)}
-      ${card('Valor em vendas', fmtBRL(valor), 'Gerado pelos recomendados')}
-      ${card('Ticket médio', fmtBRL(ticket), 'Por compra')}
-    </div>
-
-    <div class="config-card">
-      <h2 style="margin-top:0;">📊 Funil de conversão</h2>
-      <p style="font-size:0.82rem; color:var(--text-dim,#6b7280); margin:0 0 16px;">Do total de recomendados, quantos aceitaram o presente e quantos voltaram para comprar.</p>
-      ${barra('Leads recebidos', total, 100, 'var(--gold, #c9a227)')}
-      ${barra('Receberam o presente', receb, pct(receb, total), '#378add')}
-      ${barra('Compraram', compr, pct(compr, total), 'var(--success, #1d9e75)')}
-      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border,#e3e6ea); font-size:0.88rem; color:var(--text-dim,#6b7280);">
-        🎯 Taxa de conversão final: <b style="color:var(--text,#1a1a1a);">${pct(compr, total)}%</b> dos recomendados compraram &nbsp;·&nbsp; 💰 <b style="color:var(--success,#1d9e75);">${fmtBRL(valor)}</b> em vendas
-      </div>
-    </div>`;
-}
 
 function esc(s) {
   return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
