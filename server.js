@@ -338,11 +338,11 @@ const EMPRESA_PADRAO = {
   textoRecomendado: null,
   // Presente Recomendado com venda — enviado ao RECOMENDADOR quando o amigo
   // que ele indicou COMPRA (card arrastado para a coluna "Comprou" no CRM).
-  premioVenda: 'Um presente especial por indicar alguém que comprou com a gente',
+  premioVenda: 'Um presente especial por recomendar alguém que comprou com a gente',
   arquivoVenda: null,
   linkVenda: null,
   textoVenda: null,
-  mensagemVenda: 'Boa notícia, {recomendador}! 🎉 {recomendado}, que você indicou, fechou com a gente — e por isso preparamos um presente pra você: {premio}. Passa aqui pra retirar! 🎁',
+  mensagemVenda: 'Boa notícia, {recomendador}! 🎉 {recomendado}, que você recomendou, fechou com a gente — e por isso preparamos um presente pra você: {premio}. Passa aqui pra retirar! 🎁',
   // Agenda de Marketing — mensagem recorrente automática enviada ao
   // RECOMENDADOR (cliente que indicou) a cada N dias, contados da entrada dele.
   marketingAtivo: false,
