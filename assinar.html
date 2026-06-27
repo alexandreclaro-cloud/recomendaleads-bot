@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Assine o RecomendaLeads</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { background: var(--bg, #0f1115); color: var(--text, #f3f4f6); font-family: 'Inter', -apple-system, system-ui, sans-serif; margin: 0; min-height: 100vh; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 20px 80px; }
+  .top { text-align: center; margin-bottom: 36px; }
+  .top h1 { font-size: 2rem; margin: 0 0 8px; }
+  .top p { color: var(--text-dim, #9aa3af); margin: 0; font-size: 1.02rem; }
+  .planos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; }
+  .plano { background: var(--surface-2, #1a1d24); border: 1px solid var(--border, #2a2f3a); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
+  .plano.destaque { border-color: var(--gold, #c9a227); box-shadow: 0 0 0 1px var(--gold, #c9a227); }
+  .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--gold, #c9a227); color: #1a1d24; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
+  .plano h2 { font-size: 1.25rem; margin: 0 0 6px; }
+  .plano .preco { font-size: 2rem; font-weight: 800; margin: 6px 0; }
+  .plano .preco small { font-size: 0.95rem; font-weight: 500; color: var(--text-dim, #9aa3af); }
+  .plano .desc { color: var(--text-dim, #9aa3af); font-size: 0.86rem; margin: 4px 0 20px; flex: 1; }
+  .plano button { width: 100%; padding: 13px; border: none; border-radius: 10px; background: var(--gold, #c9a227); color: #1a1d24; font-weight: 700; font-size: 0.98rem; cursor: pointer; }
+  .plano button:hover { filter: brightness(1.06); }
+  .plano button:disabled { opacity: .6; cursor: default; }
+  .aviso { text-align: center; margin: 18px 0; padding: 12px; border-radius: 10px; background: rgba(217,138,43,.15); color: #e0a45a; font-size: 0.9rem; }
+  .rodape { text-align: center; margin-top: 30px; font-size: 0.8rem; color: var(--text-dim, #9aa3af); }
+  .rodape a { color: var(--gold, #c9a227); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>Assine o RecomendaLeads</h1>
+      <p>Escolha seu plano e comece a vender por recomendação hoje mesmo.</p>
+    </div>
+    <div id="avisoCancelado" class="aviso" style="display:none;">Pagamento não concluído. Você pode escolher um plano e tentar de novo. 😊</div>
+    <div class="planos" id="planos"><p style="text-align:center;color:var(--text-dim,#9aa3af)">Carregando planos...</p></div>
+    <div class="rodape">Ao assinar, você concorda com o <a href="/contrato" target="_blank">Contrato e a Política de Privacidade</a>.</div>
+  </div>
+
+<script>
+const API_BASE = window.location.origin;
+const params = new URLSearchParams(location.search);
+const planoUrl = (params.get('plano') || '').toLowerCase();
+if (params.get('cancelado')) document.getElementById('avisoCancelado').style.display = 'block';
+
+function moeda(c) { return (c/100).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
+
+async function carregar() {
+  try {
+    const resp = await fetch(`${API_BASE}/planos`);
+    const data = await resp.json();
+    const planos = (data && data.planos) || [];
+    const cont = document.getElementById('planos');
+    cont.innerHTML = planos.map(p => {
+      const destaque = p.id === 'anual' || p.id === planoUrl;
+      const sufixo = p.tipo === 'assinatura' ? '/mês' : '';
+      return `
+        <div class="plano ${destaque ? 'destaque' : ''}">
+          ${p.id === planoUrl ? '<span class="tag">Selecionado</span>' : (p.id === 'anual' ? '<span class="tag">Melhor valor</span>' : '')}
+          <h2>${p.nome}</h2>
+          <div class="preco">${moeda(p.valorCentavos)}<small>${sufixo}</small></div>
+          <div class="desc">${p.descricao || ''}</div>
+          <button data-plano="${p.id}">Assinar ${p.nome}</button>
+        </div>`;
+    }).join('');
+    cont.querySelectorAll('button[data-plano]').forEach(b => b.addEventListener('click', () => assinar(b)));
+  } catch (e) {
+    document.getElementById('planos').innerHTML = '<p style="text-align:center;color:#e57373">Não foi possível carregar os planos. Tente novamente.</p>';
+  }
+}
+
+async function assinar(btn) {
+  const plano = btn.dataset.plano;
+  document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = true);
+  btn.textContent = 'Abrindo pagamento...';
+  try {
+    const resp = await fetch(`${API_BASE}/assinar/checkout`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plano }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok && data.url) { window.location.href = data.url; }
+    else { alert(data.erro || 'Não foi possível iniciar o pagamento.'); document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = false); carregar(); }
+  } catch (e) { alert('Erro de conexão.'); document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = false); carregar(); }
+}
+
+carregar();
+</script>
+</body>
+</html>

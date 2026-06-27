@@ -1855,6 +1855,12 @@ app.post('/webhook-stripe', async (req, res) => {
   try {
     const obj = evento.data.object;
     if (evento.type === 'checkout.session.completed') {
+      // Cadastro self-service (sem empresa ainda): cria a conta como backup.
+      if (obj.metadata && obj.metadata.tipo === 'signup') {
+        try { await garantirContaSignup(obj); console.log('[STRIPE] conta de signup garantida via webhook'); }
+        catch (e) { console.error('[STRIPE] erro ao criar conta de signup:', e.message); }
+        return res.sendStatus(200);
+      }
       const empresaId = (obj.metadata && obj.metadata.empresaId) || obj.client_reference_id;
       const planoId = obj.metadata && obj.metadata.plano;
       const plano = PLANOS[planoId];
@@ -2150,6 +2156,142 @@ app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (
     res.json({ ok: true, url: session.url });
   } catch (err) {
     console.error('Erro no checkout Stripe:', err.message);
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// ONBOARDING SELF-SERVICE (público): /assinar → pagar → /completar
+// ============================================================
+
+// Lista pública de planos (para a página /assinar).
+app.get('/planos', (req, res) => {
+  const planos = Object.entries(PLANOS).map(([id, p]) => ({
+    id, nome: p.nome, tipo: p.tipo, meses: p.meses, valorCentavos: p.valorCentavos, descricao: p.descricao
+  }));
+  res.json({ ok: true, planos });
+});
+
+app.get('/assinar', (req, res) => res.sendFile(path.join(__dirname, 'assinar.html')));
+app.get('/completar', (req, res) => res.sendFile(path.join(__dirname, 'completar.html')));
+
+// Checkout público (sem login) — cria a sessão e manda pro Stripe.
+app.post('/assinar/checkout', async (req, res) => {
+  try {
+    if (!stripe) return res.status(503).json({ ok: false, erro: 'Pagamento ainda não configurado.' });
+    const planoId = String((req.body && req.body.plano) || '').toLowerCase();
+    const plano = PLANOS[planoId];
+    if (!plano) return res.status(400).json({ ok: false, erro: 'Plano inválido' });
+    const base = urlBase(req);
+    const ehAssinatura = plano.tipo === 'assinatura';
+    const session = await stripe.checkout.sessions.create({
+      mode: ehAssinatura ? 'subscription' : 'payment',
+      metadata: { tipo: 'signup', plano: planoId },
+      ...(ehAssinatura ? { subscription_data: { metadata: { tipo: 'signup', plano: planoId } } } : { customer_creation: 'always' }),
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: 'brl',
+          unit_amount: plano.valorCentavos,
+          product_data: { name: `RecomendaLeads — Plano ${plano.nome}` },
+          ...(ehAssinatura ? { recurring: { interval: plano.intervalo, interval_count: plano.intervaloQtd } } : {})
+        }
+      }],
+      success_url: `${base}/completar?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${base}/assinar?cancelado=1`
+    });
+    res.json({ ok: true, url: session.url });
+  } catch (err) {
+    console.error('Erro no checkout público:', err.message);
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Cria a conta (empresa) a partir de uma sessão de checkout paga (idempotente).
+async function garantirContaSignup(session) {
+  const plano = PLANOS[session.metadata && session.metadata.plano];
+  if (!plano) return null;
+  const existe = await EMPRESAS_COL().where('assinatura.stripeSessionId', '==', session.id).limit(1).get();
+  if (!existe.empty) { const d = existe.docs[0]; return { id: d.id, ...d.data() }; }
+  const email = ((session.customer_details && session.customer_details.email) || session.customer_email || '').toLowerCase();
+  const ref = await EMPRESAS_COL().add({
+    nome: 'Nova empresa',
+    email,
+    cadastroIncompleto: true,
+    assinatura: {
+      stripeSessionId: session.id,
+      stripeCustomerId: session.customer || null,
+      stripeSubId: session.subscription || null,
+      ciclo: session.metadata.plano,
+      status: 'ativa',
+      acessoAte: dataMaisMeses(plano.tipo === 'assinatura' ? 1 : plano.meses),
+      atualizadoEm: new Date().toISOString()
+    },
+    criadoEm: new Date().toISOString()
+  });
+  const snap = await ref.get();
+  return { id: ref.id, ...snap.data() };
+}
+
+// Status pós-pagamento: confirma o pagamento e garante a conta criada.
+app.get('/completar/status', async (req, res) => {
+  try {
+    if (!stripe) return res.status(503).json({ ok: false, erro: 'Pagamento não configurado.' });
+    const sid = String(req.query.session_id || '');
+    if (!sid) return res.status(400).json({ ok: false, erro: 'Sessão ausente' });
+    const session = await stripe.checkout.sessions.retrieve(sid);
+    if (session.payment_status !== 'paid') return res.json({ ok: true, pronto: false });
+    const empresa = await garantirContaSignup(session);
+    if (!empresa) return res.status(400).json({ ok: false, erro: 'Sessão inválida' });
+    res.json({ ok: true, pronto: true, email: empresa.email || '', jaCompleto: !empresa.cadastroIncompleto });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Finaliza o cadastro: salva dados, cria o usuário gestor, registra o aceite
+// do contrato e devolve um token (auto-login).
+app.post('/completar', async (req, res) => {
+  try {
+    if (!stripe) return res.status(503).json({ ok: false, erro: 'Pagamento não configurado.' });
+    const { session_id, dados, senha, aceiteContrato } = req.body || {};
+    if (!senha || String(senha).length < 6) return res.status(400).json({ ok: false, erro: 'A senha precisa ter ao menos 6 caracteres.' });
+    if (!aceiteContrato) return res.status(400).json({ ok: false, erro: 'É necessário aceitar o contrato.' });
+    const session = await stripe.checkout.sessions.retrieve(String(session_id || ''));
+    if (session.payment_status !== 'paid') return res.status(400).json({ ok: false, erro: 'Pagamento não confirmado.' });
+    const empresa = await garantirContaSignup(session);
+    if (!empresa) return res.status(400).json({ ok: false, erro: 'Sessão inválida' });
+
+    const emailNorm = (empresa.email || '').toLowerCase();
+    const jaExiste = await USUARIOS_COL().where('email', '==', emailNorm).limit(1).get();
+    if (!jaExiste.empty) return res.status(409).json({ ok: false, erro: 'Esse e-mail já tem conta. Faça login.' });
+
+    const cad = dados || {};
+    const nome = (cad.nomeFantasia || cad.razaoSocial || cad.nome || empresa.nome || 'Empresa').trim();
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
+    await EMPRESAS_COL().doc(empresa.id).set({
+      nome,
+      cadastro: cad,
+      cadastroIncompleto: false,
+      contratoAceite: { versao: CONTRATO_VERSAO, em: new Date().toISOString(), ip, porEmail: emailNorm }
+    }, { merge: true });
+
+    const senhaHash = await bcrypt.hash(String(senha), 10);
+    const uref = await USUARIOS_COL().add({
+      empresaId: empresa.id,
+      nome: (cad.nomeSocio || nome),
+      email: emailNorm,
+      senhaHash,
+      papel: 'gestor',
+      senhaProvisoria: false,
+      ativo: true,
+      criadoEm: new Date().toISOString()
+    });
+
+    const token = jwt.sign({ usuarioId: uref.id, empresaLoginId: empresa.id, papel: 'gestor' }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ ok: true, token, empresa: { id: empresa.id, nome, email: emailNorm, papel: 'gestor', senhaProvisoria: false } });
+  } catch (err) {
+    console.error('Erro ao completar cadastro:', err.message);
     res.status(500).json({ ok: false, erro: err.message });
   }
 });

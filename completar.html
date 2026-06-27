@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complete seu cadastro — RecomendaLeads</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { background: var(--bg, #0f1115); color: var(--text, #f3f4f6); font-family: 'Inter', -apple-system, system-ui, sans-serif; margin: 0; min-height: 100vh; }
+  .wrap { max-width: 540px; margin: 0 auto; padding: 44px 20px 80px; }
+  .card { background: var(--surface-2, #1a1d24); border: 1px solid var(--border, #2a2f3a); border-radius: 16px; padding: 28px 26px; }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; }
+  .sub { color: var(--text-dim, #9aa3af); margin: 0 0 22px; font-size: 0.95rem; }
+  label { display: block; font-size: 0.84rem; color: var(--text-dim, #9aa3af); margin: 14px 0 5px; font-weight: 500; }
+  .inp { width: 100%; box-sizing: border-box; padding: 11px 12px; border: 1px solid var(--border, #2a2f3a); border-radius: 9px; background: var(--surface-1, #12151b); color: var(--text, #f3f4f6); font-size: 0.95rem; }
+  .inp:focus { outline: none; border-color: var(--gold, #c9a227); }
+  .inp[readonly] { opacity: .7; }
+  .aceite { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; font-size: 0.88rem; }
+  .aceite a { color: var(--gold, #c9a227); }
+  .btn { width: 100%; margin-top: 8px; padding: 13px; border: none; border-radius: 10px; background: var(--gold, #c9a227); color: #1a1d24; font-weight: 700; font-size: 1rem; cursor: pointer; }
+  .btn:disabled { opacity: .6; cursor: default; }
+  .msg { margin-top: 12px; font-size: 0.88rem; text-align: center; }
+  .msg.err { color: #e57373; }
+  .center { text-align: center; padding: 40px 0; color: var(--text-dim, #9aa3af); }
+  .ok-emoji { font-size: 2.4rem; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="card">
+      <div class="center" id="loading">
+        <div class="ok-emoji">⏳</div>
+        <p>Confirmando seu pagamento...</p>
+      </div>
+
+      <div id="form" style="display:none;">
+        <h1>🎉 Pagamento confirmado!</h1>
+        <p class="sub">Falta pouco. Complete os dados da sua empresa e crie seu acesso.</p>
+
+        <label>E-mail (seu login)</label>
+        <input class="inp" id="email" readonly>
+
+        <label>Nome do seu negócio *</label>
+        <input class="inp" id="nomeFantasia" placeholder="Ex: Barbearia do João">
+        <label>Razão social</label>
+        <input class="inp" id="razaoSocial" placeholder="Razão social (opcional)">
+        <label>CNPJ</label>
+        <input class="inp" id="cnpj" placeholder="00.000.000/0000-00">
+        <label>WhatsApp / telefone</label>
+        <input class="inp" id="telefone" placeholder="(11) 99999-9999">
+        <label>Seu nome (responsável)</label>
+        <input class="inp" id="nomeSocio" placeholder="Nome de quem administra">
+
+        <label>Crie uma senha de acesso *</label>
+        <input class="inp" type="password" id="senha" placeholder="Mínimo 6 caracteres">
+        <label>Confirme a senha *</label>
+        <input class="inp" type="password" id="senha2" placeholder="Repita a senha">
+
+        <div class="aceite">
+          <input type="checkbox" id="aceite" style="margin-top:3px;">
+          <label for="aceite" style="margin:0;color:var(--text,#f3f4f6);font-weight:400;">Li e aceito o <a href="/contrato" target="_blank">Contrato de Assinatura, os Termos de Uso e a Política de Privacidade</a>.</label>
+        </div>
+
+        <button class="btn" id="finalizarBtn">Finalizar e acessar a plataforma</button>
+        <div class="msg" id="msg"></div>
+      </div>
+
+      <div class="center" id="erro" style="display:none;">
+        <div class="ok-emoji">😕</div>
+        <p id="erroTxt">Não foi possível confirmar o pagamento.</p>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API_BASE = window.location.origin;
+const sessionId = new URLSearchParams(location.search).get('session_id');
+
+async function verificar(tentativa) {
+  if (!sessionId) { mostrarErro('Link inválido. Sessão de pagamento ausente.'); return; }
+  try {
+    const resp = await fetch(`${API_BASE}/completar/status?session_id=${encodeURIComponent(sessionId)}`);
+    const data = await resp.json();
+    if (data.ok && data.pronto) {
+      if (data.jaCompleto) { mostrarErro('Este cadastro já foi concluído. Faça login para entrar.'); return; }
+      document.getElementById('email').value = data.email || '';
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('form').style.display = 'block';
+      return;
+    }
+    // Pagamento ainda processando — tenta de novo algumas vezes.
+    if ((tentativa || 0) < 12) setTimeout(() => verificar((tentativa || 0) + 1), 2500);
+    else mostrarErro('Pagamento ainda não confirmado. Se você pagou, aguarde alguns minutos e recarregue a página.');
+  } catch (e) {
+    if ((tentativa || 0) < 12) setTimeout(() => verificar((tentativa || 0) + 1), 2500);
+    else mostrarErro('Erro de conexão. Recarregue a página.');
+  }
+}
+
+function mostrarErro(txt) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('form').style.display = 'none';
+  document.getElementById('erro').style.display = 'block';
+  document.getElementById('erroTxt').textContent = txt;
+}
+
+document.getElementById('finalizarBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('finalizarBtn');
+  const msg = document.getElementById('msg');
+  const nomeFantasia = document.getElementById('nomeFantasia').value.trim();
+  const senha = document.getElementById('senha').value;
+  const senha2 = document.getElementById('senha2').value;
+  const aceite = document.getElementById('aceite').checked;
+  msg.textContent = ''; msg.className = 'msg';
+  if (!nomeFantasia) { msg.textContent = 'Informe o nome do seu negócio.'; msg.className = 'msg err'; return; }
+  if (senha.length < 6) { msg.textContent = 'A senha precisa ter ao menos 6 caracteres.'; msg.className = 'msg err'; return; }
+  if (senha !== senha2) { msg.textContent = 'As senhas não coincidem.'; msg.className = 'msg err'; return; }
+  if (!aceite) { msg.textContent = 'É necessário aceitar o contrato.'; msg.className = 'msg err'; return; }
+
+  const dados = {
+    nomeFantasia,
+    razaoSocial: document.getElementById('razaoSocial').value.trim(),
+    cnpj: document.getElementById('cnpj').value.trim(),
+    telefone: document.getElementById('telefone').value.trim(),
+    nomeSocio: document.getElementById('nomeSocio').value.trim()
+  };
+  btn.disabled = true; msg.textContent = 'Finalizando...';
+  try {
+    const resp = await fetch(`${API_BASE}/completar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, dados, senha, aceiteContrato: true })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      localStorage.setItem('recomendaleads_token', data.token);
+      localStorage.setItem('recomendaleads_empresa', JSON.stringify(data.empresa));
+      msg.className = 'msg'; msg.textContent = '✅ Tudo pronto! Entrando...';
+      setTimeout(() => { window.location.href = '/minha-empresa/configurar'; }, 800);
+    } else {
+      msg.textContent = '❌ ' + (data.erro || 'Erro ao finalizar'); msg.className = 'msg err'; btn.disabled = false;
+    }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'msg err'; btn.disabled = false; }
+});
+
+verificar(0);
+</script>
+</body>
+</html>
