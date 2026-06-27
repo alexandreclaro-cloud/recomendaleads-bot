@@ -284,6 +284,19 @@ function abrirEdicao(id) {
           ${inpL('e_obs','Observações', e.observacoes)}
         </div>
 
+        <div class="sec">Período gratuito (cortesia / mentorados)</div>
+        <div class="campo">
+          <label>${e.assinatura && e.assinatura.acessoAte ? `Acesso atual até <b>${fmtData(e.assinatura.acessoAte)}</b> · status: ${e.assinatura.status || '—'}` : 'Sem período/assinatura ativos'}</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;">
+            <button class="btn btn-secondary btn-mini" data-trial="30">+30 dias grátis</button>
+            <button class="btn btn-secondary btn-mini" data-trial="60">+60 dias</button>
+            <button class="btn btn-secondary btn-mini" data-trial="90">+90 dias</button>
+            <input class="input" id="e_trialCustom" type="number" min="1" max="3650" placeholder="dias" style="width:90px;">
+            <button class="btn btn-secondary btn-mini" id="trialCustomBtn">Conceder</button>
+            <span class="status-msg" id="trialMsg"></span>
+          </div>
+        </div>
+
         <div class="sec">WhatsApp (Z-API)</div>
         <div class="grid2">
           ${inpL('e_inst','Instance ID', e.zapiInstanceId)}
@@ -305,7 +318,21 @@ function abrirEdicao(id) {
   document.getElementById('salvarBtn').addEventListener('click', () => salvar(id));
   document.getElementById('entrarBtn2').addEventListener('click', () => entrarComo(id));
   document.getElementById('resetBtn').addEventListener('click', () => resetSenha(id));
+  document.querySelectorAll('[data-trial]').forEach(b => b.addEventListener('click', () => concederTrial(id, parseInt(b.dataset.trial, 10))));
+  document.getElementById('trialCustomBtn').addEventListener('click', () => concederTrial(id, parseInt(document.getElementById('e_trialCustom').value, 10)));
   icons();
+}
+
+async function concederTrial(id, dias) {
+  const msg = document.getElementById('trialMsg');
+  if (!dias || dias < 1) { msg.textContent = 'Informe os dias'; msg.className = 'status-msg err'; return; }
+  msg.textContent = 'Concedendo...'; msg.className = 'status-msg';
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}/trial`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dias }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { msg.textContent = `✅ ${dias} dias liberados (até ${fmtData(data.acessoAte)})`; msg.className = 'status-msg ok'; carregar(); }
+    else { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
 }
 
 function fecharModal() { document.getElementById('modalContainer').innerHTML = ''; }

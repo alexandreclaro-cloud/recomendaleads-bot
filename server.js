@@ -2793,7 +2793,9 @@ app.post('/admin/empresas', limiteAdmin, async (req, res) => {
       // instância Z-API provisionada para o cliente (opcional)
       zapiInstanceId, zapiToken, zapiClientToken,
       // acesso / compatibilidade com a versão antiga
-      nome, email, senha, migrarConfigPrincipal, empresaTeste
+      nome, email, senha, migrarConfigPrincipal, empresaTeste,
+      // período gratuito (trial) concedido no cadastro, em dias (0 = nenhum)
+      trialDias
     } = req.body;
 
     // Nome de exibição (usado nas mensagens): fantasia > razão social > compat
@@ -2836,6 +2838,14 @@ app.post('/admin/empresas', limiteAdmin, async (req, res) => {
       whatsappSocio: whatsappSocio || null
     };
 
+    // Período gratuito (trial) opcional concedido no cadastro.
+    const dias = Math.max(0, parseInt(trialDias, 10) || 0);
+    let assinatura = null;
+    if (dias > 0) {
+      const ate = new Date(); ate.setDate(ate.getDate() + dias);
+      assinatura = { status: 'trial', ciclo: 'trial', acessoAte: ate.toISOString(), atualizadoEm: new Date().toISOString() };
+    }
+
     const senhaHash = await bcrypt.hash(senha, 10);
     const ref = await EMPRESAS_COL().add({
       nome: nomeEmpresa,
@@ -2847,10 +2857,11 @@ app.post('/admin/empresas', limiteAdmin, async (req, res) => {
       zapiToken: zapiToken ? String(zapiToken).trim() : null,
       zapiClientToken: zapiClientToken ? String(zapiClientToken).trim() : null,
       criadoEm: new Date().toISOString(),
-      configuracao: configuracaoInicial
+      configuracao: configuracaoInicial,
+      ...(assinatura ? { assinatura } : {})
     });
 
-    res.json({ ok: true, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, empresaTeste: !!empresaTeste } });
+    res.json({ ok: true, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, empresaTeste: !!empresaTeste, trialDias: dias } });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -2925,6 +2936,7 @@ app.get('/admin/empresas', exigirAdmin, async (req, res) => {
         zapiToken: data.zapiToken || null,
         zapiClientToken: data.zapiClientToken || null,
         whatsappProvisionado: !!(data.zapiInstanceId && data.zapiToken),
+        assinatura: data.assinatura || null,
         leads: 0
       });
     });

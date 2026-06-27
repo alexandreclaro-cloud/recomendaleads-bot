@@ -154,6 +154,18 @@
     <input type="text" id="senhaInput" value="123mudar" placeholder="Senha provisória de primeiro acesso">
     <div class="hint">Padrão: <b>123mudar</b>. O cliente será obrigado a definir a própria senha no primeiro login.</div>
 
+    <div class="sec">Cobrança</div>
+    <label>Período gratuito (sem cobrar)</label>
+    <select id="trialSelect" style="width:100%;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:8px;font-size:0.95rem;">
+      <option value="0">Nenhum — vou enviar o link de pagamento</option>
+      <option value="30">30 dias grátis</option>
+      <option value="60">60 dias grátis</option>
+      <option value="90">90 dias grátis</option>
+      <option value="custom">Personalizado…</option>
+    </select>
+    <input type="number" id="trialCustom" min="1" max="3650" placeholder="Quantos dias?" style="display:none;margin-top:8px;">
+    <div class="hint">Use para mentorados ou cortesias. No período gratuito o cliente usa tudo sem pagar; depois, o acesso é bloqueado até assinar.</div>
+
     <div class="sec">WhatsApp (Z-API) — opcional</div>
     <div class="hint" style="margin-bottom:6px">O cliente compra a Z-API, conecta o número dele e te envia o Instance ID e o Token. Cole aqui para deixar tudo pronto. Pode deixar em branco e preencher depois.</div>
     <label>Instance ID</label>
@@ -188,6 +200,10 @@
 <script>
 const API_BASE = window.location.origin;
 
+document.getElementById('trialSelect').addEventListener('change', function () {
+  document.getElementById('trialCustom').style.display = this.value === 'custom' ? 'block' : 'none';
+});
+
 document.getElementById('criarBtn').addEventListener('click', async () => {
   const btn = document.getElementById('criarBtn');
   const statusEl = document.getElementById('statusMsg');
@@ -197,8 +213,11 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
   const adminKey = document.getElementById('adminKeyInput').value;
   const senha = document.getElementById('senhaInput').value;
   const migrarConfigPrincipal = document.getElementById('migrarConfigCheckbox').checked;
+  const trialSel = document.getElementById('trialSelect').value;
+  const trialDias = trialSel === 'custom' ? (parseInt(document.getElementById('trialCustom').value, 10) || 0) : (parseInt(trialSel, 10) || 0);
 
   const payload = {
+    trialDias,
     razaoSocial: val('razaoSocialInput'),
     nomeFantasia: val('nomeFantasiaInput'),
     cnpj: val('cnpjInput'),
