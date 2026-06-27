@@ -2568,11 +2568,15 @@ app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
       return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
     }
 
-    const { etapa, vendedor, bonusPago } = req.body;
+    const { etapa, vendedor, bonusPago, valorCompra } = req.body;
     const dados = {};
     if (etapa !== undefined) dados.etapa = etapa;
     if (vendedor !== undefined) dados.vendedor = vendedor;
     if (bonusPago !== undefined) dados.bonusPago = bonusPago;
+    if (valorCompra !== undefined) {
+      const v = (valorCompra === null || valorCompra === '') ? null : Number(valorCompra);
+      dados.valorCompra = (v === null || isNaN(v)) ? null : v;
+    }
 
     const lead = await atualizarLead(id, dados);
     if (!lead) {

@@ -588,6 +588,7 @@
       <div class="header-stats" id="headerStats">
         <span class="stat-pill">Total <b id="statTotal">—</b></span>
         <span class="stat-pill">Comprou <b id="statComprou">—</b></span>
+        <span class="stat-pill">Vendas <b id="statVendas">—</b></span>
       </div>
       <button class="refresh-btn" id="refreshBtn">↻ Atualizar</button>
     </header>
@@ -1081,6 +1082,7 @@ function montarColunas() {
         <h3>${etapa.nome}</h3>
         <span class="column-count" data-countfor="${etapa.id}">0</span>
       </div>
+      ${ehColunaComprou(etapa) ? `<div class="column-total" data-totalfor="${etapa.id}" style="font-size:0.82rem; font-weight:700; color:var(--success, #1d9e75); margin:-4px 0 6px;"></div>` : ''}
       <div class="column-body" data-coletapa="${etapa.id}"></div>
     `;
     board.appendChild(col);
@@ -1103,10 +1105,30 @@ function atualizarStats() {
   document.getElementById('statComprou').textContent = etapaSucesso
     ? leads.filter(l => l.etapa === etapaSucesso.id).length
     : 0;
+  const totalVendas = leads.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0);
+  const elVendas = document.getElementById('statVendas');
+  if (elVendas) elVendas.textContent = fmtBRL(totalVendas);
 }
 
 function esc(s) {
   return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function ehColunaComprou(etapa) {
+  if (!etapa) return false;
+  return /comprou|comprar|vendeu|venda|fechou/i.test(etapa.nome || '') || /comprou|comprar|vendeu|venda|fechou/i.test(etapa.id || '');
+}
+function fmtBRL(n) {
+  return (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function parseValor(str) {
+  if (str == null) return null;
+  let s = String(str).trim().replace(/[^\d.,-]/g, '');
+  if (!s) return null;
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
 }
 
 function leadsFiltrados() {
@@ -1151,6 +1173,12 @@ function renderBoard() {
     const countEl = document.querySelector(`[data-countfor="${etapa.id}"]`);
     if (countEl) countEl.textContent = leadsDaColuna.length;
 
+    const totalEl = document.querySelector(`[data-totalfor="${etapa.id}"]`);
+    if (totalEl) {
+      const soma = leadsDaColuna.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0);
+      totalEl.textContent = soma > 0 ? `💰 ${fmtBRL(soma)} em vendas` : '';
+    }
+
     col.innerHTML = '';
     if (leadsDaColuna.length === 0) {
       col.innerHTML = '<div class="empty-col">Nenhum lead aqui</div>';
@@ -1173,6 +1201,7 @@ function renderBoard() {
           <span class="vendedor-tag">${esc(lead.vendedor) || 'Sem vendedor'}</span>
           <span class="data-tag">📅 ${rotuloDataCard(lead.criadoEm)}</span>
         </div>
+        ${lead.valorCompra != null ? `<div class="valor-compra" style="margin-top:8px; font-weight:700; color:var(--success, #1d9e75);">💰 ${fmtBRL(lead.valorCompra)}</div>` : ''}
       `;
 
       let foiArrastado = false;
@@ -1349,14 +1378,24 @@ boardEl.addEventListener('drop', async (e) => {
   const lead = leads.find(l => l.id === id);
   if (!lead || lead.etapa === novaEtapa) return;
 
+  // Ao mover para a coluna "Comprou", pergunta o valor da compra (fluxo de caixa).
+  let valorCompra;
+  const etapaAlvo = etapas.find(e => e.id === novaEtapa);
+  if (ehColunaComprou(etapaAlvo)) {
+    const entrada = prompt(`Quanto ${lead.nomeRecomendado || 'este cliente'} gastou na compra? (R$)`, lead.valorCompra != null ? lead.valorCompra : '');
+    if (entrada === null) return; // cancelou — não move o card
+    valorCompra = parseValor(entrada);
+  }
+
   lead.etapa = novaEtapa;
+  if (valorCompra !== undefined) lead.valorCompra = valorCompra;
   renderBoard();
   atualizarStats();
 
   try {
     await fetchAutenticado(`${API_BASE}/minha-leads/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ etapa: novaEtapa })
+      body: JSON.stringify({ etapa: novaEtapa, ...(valorCompra !== undefined ? { valorCompra } : {}) })
     });
   } catch (err) {
     console.error('Erro ao mover lead:', err);
