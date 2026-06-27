@@ -916,6 +916,13 @@
             <button class="config-save-btn" id="salvarMarketingBtn">Salvar agenda de marketing</button>
             <span class="config-status-msg" id="statusMarketing"></span>
           </div>
+          <hr style="border:none; border-top:1px solid var(--border); margin:16px 0;">
+          <label>Testar agora (envia o conteúdo salvo para um número)</label>
+          <div class="upload-row">
+            <input type="text" id="marketingTesteTelInput" placeholder="Ex: 11999998888 (com DDD)">
+            <button class="config-save-btn" id="enviarTesteMarketingBtn" style="background:transparent; border:1px solid var(--gold); color:var(--gold-deep); white-space:nowrap;">📲 Enviar teste</button>
+          </div>
+          <span class="config-status-msg" id="statusTesteMarketing"></span>
         </div>
       </div>
     </div>
@@ -1564,6 +1571,25 @@ document.getElementById('salvarMarketingBtn').addEventListener('click', async ()
     else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
   finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000); }
+});
+
+document.getElementById('enviarTesteMarketingBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('enviarTesteMarketingBtn');
+  const statusEl = document.getElementById('statusTesteMarketing');
+  const telefone = document.getElementById('marketingTesteTelInput').value.trim();
+  statusEl.textContent = ''; statusEl.className = 'config-status-msg';
+  if (!telefone) { statusEl.textContent = '❌ Informe um número com DDD'; statusEl.className = 'config-status-msg err'; return; }
+  btn.disabled = true; statusEl.textContent = 'Enviando...';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-marketing/teste`, {
+      method: 'POST',
+      body: JSON.stringify({ telefone })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Teste enviado! Confira o WhatsApp.'; statusEl.className = 'config-status-msg ok'; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao enviar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 6000); }
 });
 
 document.getElementById('salvarRecomendadoBtn').addEventListener('click', async () => {

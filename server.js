@@ -2337,6 +2337,27 @@ app.post('/minha-config', exigirLoginEmpresa, exigirGestor, async (req, res) => 
   }
 });
 
+// Envio de teste da Agenda de Marketing — manda o conteúdo SALVO para um número
+// informado (ex.: o próprio gestor), sem afetar a recorrência dos clientes.
+app.post('/minha-marketing/teste', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    let tel = String((req.body && req.body.telefone) || '').replace(/\D/g, '');
+    if ((tel.length === 10 || tel.length === 11) && !tel.startsWith('55')) tel = '55' + tel;
+    if (tel.length < 12) return res.status(400).json({ ok: false, erro: 'Informe um telefone válido com DDD (ex.: 11999998888).' });
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (!empresa.marketingMensagem || !empresa.marketingMensagem.trim()) {
+      return res.status(400).json({ ok: false, erro: 'Salve a mensagem da agenda antes de enviar o teste.' });
+    }
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+    await tenantContext.run(contexto, async () => {
+      await enviarMarketingAoRecomendador(tel, (req.body && req.body.nome) || 'Cliente', empresa);
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // ============================================================
 // WHATSAPP DA EMPRESA — credenciais Z-API próprias do cliente
 // ============================================================
