@@ -2555,11 +2555,21 @@ app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
         const alvo = etapas.find(e => e.id === dados.etapa);
         const ehComprou = !!alvo && (/comprou|comprar|vendeu|venda|fechou/i.test(alvo.nome || '') || /comprou|comprar|vendeu|venda|fechou/i.test(alvo.id || ''));
         if (ehComprou) {
-          const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
-          await tenantContext.run(contexto, async () => {
-            const ok = await enviarPresenteVendaAoRecomendador(lead, empresa);
-            if (ok) await atualizarLead(id, { vendaNotificada: true, vendaNotificadaEm: new Date().toISOString() });
+          // Reivindica o envio de forma ATÔMICA (transação): se a PATCH chegar
+          // duas vezes quase juntas, só uma marca o flag e envia — sem duplicar.
+          const refLead = LEADS_COL().doc(id);
+          const reivindicou = await db.runTransaction(async (t) => {
+            const s = await t.get(refLead);
+            if (!s.exists || s.data().vendaNotificada) return false;
+            t.update(refLead, { vendaNotificada: true, vendaNotificadaEm: new Date().toISOString() });
+            return true;
           });
+          if (reivindicou) {
+            const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+            await tenantContext.run(contexto, async () => {
+              await enviarPresenteVendaAoRecomendador(lead, empresa);
+            });
+          }
         }
       } catch (e) {
         console.error('[VENDA] erro ao disparar presente ao recomendador:', e.message);
