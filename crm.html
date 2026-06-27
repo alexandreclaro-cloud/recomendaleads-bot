@@ -656,6 +656,7 @@
         <button class="subtab-btn" data-subtab="faixas">Presente Recomendado</button>
         <button class="subtab-btn" data-subtab="venda">Presente Cliente com venda</button>
         <button class="subtab-btn" data-subtab="cadencia">Cadência de Follow-up</button>
+        <button class="subtab-btn" data-subtab="marketing">📅 Agenda de Marketing</button>
         <button class="subtab-btn" data-subtab="etapas">Etapas do Pipeline</button>
       </div>
 
@@ -882,6 +883,41 @@
           </div>
         </div>
       </div>
+
+      <!-- Sub-aba: Agenda de Marketing (mensagem recorrente ao recomendador) -->
+      <div class="subtab-panel" id="subtabMarketing">
+        <div class="config-card">
+          <h2>📅 Agenda de Marketing</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">
+            Mensagem automática e <b>recorrente</b> enviada para <b>quem já indicou alguém (o recomendador)</b>, a cada X dias contados da entrada dele no sistema. Ótimo para reativar e manter contato.<br>
+            Variáveis (clique para copiar): <code class="var-chip">{recomendador}</code> <code class="var-chip">{empresa}</code> <code class="var-chip">{premio}</code>
+          </p>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="marketingAtivoInput" style="width:auto;"> Ativar a agenda de marketing
+          </label>
+          <label>Enviar a cada (dias)</label>
+          <input type="number" id="marketingIntervaloInput" min="1" max="365" placeholder="45" style="max-width:140px;">
+          <label>Mensagem</label>
+          <textarea id="marketingMensagemInput" rows="3" placeholder="Ex: Oi {recomendador}! Temos novidades na {empresa} 😊"></textarea>
+          <label>Prêmio (opcional — texto curto)</label>
+          <input type="text" id="marketingPremioInput" placeholder="Ex: Cupom de 10% (deixe vazio se não houver)">
+          <label>Arquivo (imagem JPEG/PNG ou PDF — opcional)</label>
+          <div class="upload-row">
+            <input type="text" id="marketingArquivoInput" placeholder="Cole um link ou use o botão ao lado →">
+            <label class="upload-btn" for="marketingArquivoFile">📎 Escolher arquivo</label>
+            <input type="file" id="marketingArquivoFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+            <span class="upload-status" id="uploadStatusMarketing"></span>
+          </div>
+          <label>Link (opcional)</label>
+          <input type="text" id="marketingLinkInput" placeholder="https://...">
+          <label>Texto de orientação (opcional)</label>
+          <textarea id="marketingTextoInput" rows="2" placeholder="Mensagem enviada logo após (opcional)"></textarea>
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarMarketingBtn">Salvar agenda de marketing</button>
+            <span class="config-status-msg" id="statusMarketing"></span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -963,6 +999,7 @@ const MAPA_SUBTABS = {
   recomendado: 'subtabRecomendado',
   faixas: 'subtabFaixas',
   venda: 'subtabVenda',
+  marketing: 'subtabMarketing',
   cadencia: 'subtabCadencia',
   etapas: 'subtabEtapas'
 };
@@ -1368,6 +1405,13 @@ async function carregarConfiguracao() {
     document.getElementById('arquivoVendaInput').value = configuracaoAtual.arquivoVenda || '';
     document.getElementById('linkVendaInput').value = configuracaoAtual.linkVenda || '';
     document.getElementById('textoVendaInput').value = configuracaoAtual.textoVenda || '';
+    document.getElementById('marketingAtivoInput').checked = !!configuracaoAtual.marketingAtivo;
+    document.getElementById('marketingIntervaloInput').value = configuracaoAtual.marketingIntervaloDias || 45;
+    document.getElementById('marketingMensagemInput').value = configuracaoAtual.marketingMensagem || '';
+    document.getElementById('marketingPremioInput').value = configuracaoAtual.marketingPremio || '';
+    document.getElementById('marketingArquivoInput').value = configuracaoAtual.marketingArquivo || '';
+    document.getElementById('marketingLinkInput').value = configuracaoAtual.marketingLink || '';
+    document.getElementById('marketingTextoInput').value = configuracaoAtual.marketingTexto || '';
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
@@ -1490,6 +1534,30 @@ document.getElementById('salvarPresenteVendaBtn').addEventListener('click', asyn
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({ mensagemVenda, premioVenda, arquivoVenda, linkVenda, textoVenda })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000); }
+});
+
+document.getElementById('salvarMarketingBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarMarketingBtn');
+  const statusEl = document.getElementById('statusMarketing');
+  const marketingAtivo = document.getElementById('marketingAtivoInput').checked;
+  const marketingIntervaloDias = Math.max(1, parseInt(document.getElementById('marketingIntervaloInput').value, 10) || 45);
+  const marketingMensagem = document.getElementById('marketingMensagemInput').value.trim();
+  const marketingPremio = document.getElementById('marketingPremioInput').value.trim();
+  const marketingArquivo = document.getElementById('marketingArquivoInput').value.trim() || null;
+  const marketingLink = document.getElementById('marketingLinkInput').value.trim() || null;
+  const marketingTexto = document.getElementById('marketingTextoInput').value.trim() || null;
+  if (marketingAtivo && !marketingMensagem) { statusEl.textContent = '❌ Escreva a mensagem'; statusEl.className = 'config-status-msg err'; return; }
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ marketingAtivo, marketingIntervaloDias, marketingMensagem, marketingPremio, marketingArquivo, marketingLink, marketingTexto })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
@@ -1814,6 +1882,14 @@ document.getElementById('arquivoVendaFile').addEventListener('change', function(
     this,
     document.getElementById('arquivoVendaInput'),
     document.getElementById('uploadStatusVenda')
+  );
+});
+
+document.getElementById('marketingArquivoFile').addEventListener('change', function() {
+  uploadArquivo(
+    this,
+    document.getElementById('marketingArquivoInput'),
+    document.getElementById('uploadStatusMarketing')
   );
 });
 

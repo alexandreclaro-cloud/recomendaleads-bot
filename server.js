@@ -273,6 +273,9 @@ const EMPRESAS_COL = () => db.collection('empresas_login');
 //   { empresaId, nome, email, senhaHash, papel: 'gestor'|'atendente',
 //     senhaProvisoria, ativo, criadoEm }
 const USUARIOS_COL = () => db.collection('usuarios');
+// Controle de envios da Agenda de Marketing (recorrência por recomendador).
+// Doc id: `${empresaId}__${telefone}` → { ultimoEnvioEm, proximoEm }
+const MARKETING_ENVIOS_COL = () => db.collection('marketing_envios');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'oi', 'olá', 'ola',
@@ -340,6 +343,15 @@ const EMPRESA_PADRAO = {
   linkVenda: null,
   textoVenda: null,
   mensagemVenda: 'Boa notícia, {recomendador}! 🎉 {recomendado}, que você indicou, fechou com a gente — e por isso preparamos um presente pra você: {premio}. Passa aqui pra retirar! 🎁',
+  // Agenda de Marketing — mensagem recorrente automática enviada ao
+  // RECOMENDADOR (cliente que indicou) a cada N dias, contados da entrada dele.
+  marketingAtivo: false,
+  marketingIntervaloDias: 45,
+  marketingMensagem: 'Oi {recomendador}! 😊 Aqui é da {empresa}. Passando pra matar a saudade e lembrar que temos novidades esperando por você. Bora conversar? 💬',
+  marketingPremio: '',
+  marketingArquivo: null,
+  marketingLink: null,
+  marketingTexto: null,
   ctaRecomendado: 'Que tal aproveitar e passar pra retirar o seu? 😊',
   mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
@@ -3073,6 +3085,82 @@ async function migrarUsuariosGestores() {
   }
 }
 
+// Envia a mensagem da Agenda de Marketing para um recomendador. Roda dentro
+// do contexto da empresa (zapi correto).
+async function enviarMarketingAoRecomendador(tel, nomeRecomendador, empresa) {
+  const vars = {
+    recomendador: (nomeRecomendador || '').split(' ')[0] || 'você',
+    nomeRecomendador: nomeRecomendador || '',
+    empresa: empresa.nome || '',
+    premio: empresa.marketingPremio || ''
+  };
+  const msg = substituirVariaveis(empresa.marketingMensagem ?? EMPRESA_PADRAO.marketingMensagem, vars);
+  if (msg && msg.trim()) await sendText(tel, msg);
+  if (empresa.marketingArquivo) {
+    await enviarVoucher(tel, empresa.marketingArquivo, empresa.marketingPremio || '', empresa.marketingPremio || 'presente');
+  }
+  if (empresa.marketingLink) await sendText(tel, empresa.marketingLink);
+  if (empresa.marketingTexto && empresa.marketingTexto.trim()) {
+    await sendText(tel, substituirVariaveis(empresa.marketingTexto, vars));
+  }
+  console.log(`[MARKETING] enviado para ${tel} (${empresa.nome})`);
+}
+
+// Agenda de Marketing: a cada rodada, para cada empresa com a agenda ativa,
+// envia a mensagem recorrente aos recomendadores cujo ciclo (a cada N dias,
+// contado da entrada) venceu. Idempotente via doc de controle + transação.
+async function processarAgendaMarketing() {
+  if (!db) return;
+  try {
+    const empresas = await EMPRESAS_COL().get();
+    for (const empDoc of empresas.docs) {
+      const cfg = { ...EMPRESA_PADRAO, ...(empDoc.data().configuracao || {}) };
+      if (!cfg.marketingAtivo) continue;
+      const intervaloMs = Math.max(1, parseInt(cfg.marketingIntervaloDias, 10) || 45) * 86400000;
+      const empresaId = empDoc.id;
+      const empresaFull = await getEmpresaById(empresaId);
+      if (!empresaFull) continue;
+
+      // Recomendadores únicos da empresa, com a data de ENTRADA (lead mais antigo).
+      const leads = await LEADS_COL().where('empresaId', '==', empresaId).get();
+      const recs = new Map();
+      leads.forEach(d => {
+        const x = d.data();
+        const tel = x.telefoneRecomendador;
+        if (!tel) return;
+        const entrada = new Date(x.criadoEm || 0).getTime();
+        const cur = recs.get(tel);
+        if (!cur || entrada < cur.entrada) recs.set(tel, { nome: x.nomeRecomendador || '', entrada });
+      });
+
+      const agora = Date.now();
+      for (const [tel, info] of recs) {
+        const ref = MARKETING_ENVIOS_COL().doc(`${empresaId}__${tel}`);
+        // Reivindica o envio de forma atômica (sem duplicar entre rodadas).
+        const reivindicou = await db.runTransaction(async (t) => {
+          const s = await t.get(ref);
+          const prox = s.exists ? new Date(s.data().proximoEm || 0).getTime() : (info.entrada + intervaloMs);
+          if (agora < prox) return false;
+          t.set(ref, {
+            empresaId, telefone: tel,
+            ultimoEnvioEm: new Date(agora).toISOString(),
+            proximoEm: new Date(agora + intervaloMs).toISOString()
+          }, { merge: true });
+          return true;
+        });
+        if (!reivindicou) continue;
+        const contexto = { empresa: empresaFull, empresaId, zapi: zapiDaEmpresa(empresaFull) };
+        await tenantContext.run(contexto, async () => {
+          try { await enviarMarketingAoRecomendador(tel, info.nome, empresaFull); }
+          catch (e) { console.error(`[MARKETING] falha ao enviar para ${tel}:`, e.message); }
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[MARKETING] erro no processamento:', e.message);
+  }
+}
+
 function iniciarExecutorAgendamentos() {
   const INTERVALO_EXECUTOR_MS = 1 * 60 * 1000;
   executarAgendamentosPendentes();
@@ -3090,5 +3178,8 @@ app.listen(PORT, () => {
   console.log(`Firestore inicializado: ${db ? 'SIM' : 'NÃO — verifique FIREBASE_SERVICE_ACCOUNT'}`);
   migrarUsuariosGestores();
   iniciarExecutorAgendamentos();
+  // Agenda de Marketing: checa de hora em hora quem está no ciclo de reenvio.
+  setInterval(processarAgendaMarketing, 60 * 60 * 1000).unref?.();
+  processarAgendaMarketing();
   console.log('Executor de agendamentos iniciado (checagem a cada 1 min)');
 });
