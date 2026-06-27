@@ -333,6 +333,13 @@ const EMPRESA_PADRAO = {
   arquivoRecomendado: null,
   linkRecomendado: null,
   textoRecomendado: null,
+  // Presente Recomendado com venda — enviado ao RECOMENDADOR quando o amigo
+  // que ele indicou COMPRA (card arrastado para a coluna "Comprou" no CRM).
+  premioVenda: 'Um presente especial por indicar alguém que comprou com a gente',
+  arquivoVenda: null,
+  linkVenda: null,
+  textoVenda: null,
+  mensagemVenda: 'Boa notícia, {recomendador}! 🎉 {recomendado}, que você indicou, fechou com a gente — e por isso preparamos um presente pra você: {premio}. Passa aqui pra retirar! 🎁',
   ctaRecomendado: 'Que tal aproveitar e passar pra retirar o seu? 😊',
   mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
@@ -1068,6 +1075,37 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
   const marcaTempo = new Date().toISOString();
   await enviarMenuPrincipalRec(telefone, sessao, marcaTempo);
   await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
+}
+
+// Presente Recomendado com venda: quando o amigo indicado COMPRA (card movido
+// para "Comprou"), envia o presente ao RECOMENDADOR (quem indicou). Deve rodar
+// dentro do contexto da empresa (zapi correto).
+async function enviarPresenteVendaAoRecomendador(lead, empresa) {
+  const tel = lead.telefoneRecomendador;
+  if (!tel) {
+    console.warn('[VENDA] lead sem telefone do recomendador — presente não enviado');
+    return false;
+  }
+  const vars = {
+    recomendador: (lead.nomeRecomendador || '').split(' ')[0] || 'você',
+    recomendado: (lead.nomeRecomendado || '').split(' ')[0] || 'seu amigo',
+    nomeRecomendado: lead.nomeRecomendado || '',
+    nomeRecomendador: lead.nomeRecomendador || '',
+    empresa: empresa.nome || '',
+    vendedor: lead.vendedor || empresa.nome || '',
+    premio: empresa.premioVenda || ''
+  };
+  const msg = substituirVariaveis(empresa.mensagemVenda ?? EMPRESA_PADRAO.mensagemVenda, vars);
+  if (msg && msg.trim()) await sendText(tel, msg);
+  if (empresa.arquivoVenda) {
+    await enviarVoucher(tel, empresa.arquivoVenda, empresa.premioVenda || '', empresa.premioVenda || 'presente');
+  }
+  if (empresa.linkVenda) await sendText(tel, empresa.linkVenda);
+  if (empresa.textoVenda && empresa.textoVenda.trim()) {
+    await sendText(tel, substituirVariaveis(empresa.textoVenda, vars));
+  }
+  console.log(`[VENDA] presente enviado ao recomendador ${tel} (indicou ${lead.nomeRecomendado})`);
+  return true;
 }
 
 async function enviarCtaRecomendado(telefone, sessao, empresa) {
@@ -2507,6 +2545,27 @@ app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
     if (!lead) {
       return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
     }
+
+    // Gatilho: card movido para a coluna "Comprou" → presente ao RECOMENDADOR
+    // (quem indicou). Dispara só uma vez por lead (flag vendaNotificada).
+    if (dados.etapa && !lead.vendaNotificada && lead.telefoneRecomendador) {
+      try {
+        const empresa = await getEmpresaById(req.empresaLogin.id);
+        const etapas = (empresa.etapasKanban && empresa.etapasKanban.length) ? empresa.etapasKanban : EMPRESA_PADRAO.etapasKanban;
+        const alvo = etapas.find(e => e.id === dados.etapa);
+        const ehComprou = !!alvo && (/comprou|comprar|vendeu|venda|fechou/i.test(alvo.nome || '') || /comprou|comprar|vendeu|venda|fechou/i.test(alvo.id || ''));
+        if (ehComprou) {
+          const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+          await tenantContext.run(contexto, async () => {
+            const ok = await enviarPresenteVendaAoRecomendador(lead, empresa);
+            if (ok) await atualizarLead(id, { vendaNotificada: true, vendaNotificadaEm: new Date().toISOString() });
+          });
+        }
+      } catch (e) {
+        console.error('[VENDA] erro ao disparar presente ao recomendador:', e.message);
+      }
+    }
+
     res.json({ ok: true, lead });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

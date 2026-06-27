@@ -654,6 +654,7 @@
         <button class="subtab-btn" data-subtab="premioCliente">Presente Cliente</button>
         <button class="subtab-btn" data-subtab="recomendado">Conversa do Recomendado</button>
         <button class="subtab-btn" data-subtab="faixas">Presente Recomendado</button>
+        <button class="subtab-btn" data-subtab="venda">Presente Recomendado com venda</button>
         <button class="subtab-btn" data-subtab="cadencia">Cadência de Follow-up</button>
         <button class="subtab-btn" data-subtab="etapas">Etapas do Pipeline</button>
       </div>
@@ -832,6 +833,36 @@
         </div>
       </div>
 
+      <!-- Sub-aba: Presente Recomendado com venda (presente p/ o RECOMENDADOR quando o amigo compra) -->
+      <div class="subtab-panel" id="subtabVenda">
+        <div class="config-card">
+          <h2>🛒 Presente Recomendado com venda</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">
+            Presente enviado para <b>quem indicou (o recomendador)</b> quando o amigo indicado <b>compra</b>. É disparado automaticamente quando você arrasta o card do recomendado para a coluna <b>"Comprou"</b> no quadro de Leads.<br>
+            Variáveis (clique para copiar): <code class="var-chip">{recomendador}</code> <code class="var-chip">{recomendado}</code> <code class="var-chip">{empresa}</code> <code class="var-chip">{premio}</code>
+          </p>
+          <label>Mensagem enviada ao recomendador (avisando que o amigo comprou)</label>
+          <textarea id="mensagemVendaInput" rows="3" placeholder="Ex: Boa notícia, {recomendador}! {recomendado} comprou e você ganhou: {premio} 🎁"></textarea>
+          <label>Prêmio (texto curto)</label>
+          <input type="text" id="premioVendaInput" placeholder="Ex: Vale-presente de R$ 50">
+          <label>Arquivo (imagem JPEG/PNG ou PDF)</label>
+          <div class="upload-row">
+            <input type="text" id="arquivoVendaInput" placeholder="Cole um link ou use o botão ao lado →">
+            <label class="upload-btn" for="arquivoVendaFile">📎 Escolher arquivo</label>
+            <input type="file" id="arquivoVendaFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+            <span class="upload-status" id="uploadStatusVenda"></span>
+          </div>
+          <label>Link (site, Instagram, etc.)</label>
+          <input type="text" id="linkVendaInput" placeholder="https://...">
+          <label>Texto de orientação</label>
+          <textarea id="textoVendaInput" rows="3" placeholder="Mensagem enviada logo após o presente (opcional)"></textarea>
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarPresenteVendaBtn">Salvar presente com venda</button>
+            <span class="config-status-msg" id="statusPresenteVenda"></span>
+          </div>
+        </div>
+      </div>
+
       <!-- Sub-aba: Cadência de Follow-up -->
       <div class="subtab-panel" id="subtabCadencia">
         <div class="config-card">
@@ -931,6 +962,7 @@ const MAPA_SUBTABS = {
   premioCliente: 'subtabPremioCliente',
   recomendado: 'subtabRecomendado',
   faixas: 'subtabFaixas',
+  venda: 'subtabVenda',
   cadencia: 'subtabCadencia',
   etapas: 'subtabEtapas'
 };
@@ -1331,6 +1363,11 @@ async function carregarConfiguracao() {
     document.getElementById('arquivoRecomendadoInput').value = configuracaoAtual.arquivoRecomendado || '';
     document.getElementById('linkRecomendadoInput').value = configuracaoAtual.linkRecomendado || '';
     document.getElementById('textoRecomendadoInput').value = configuracaoAtual.textoRecomendado || '';
+    document.getElementById('mensagemVendaInput').value = configuracaoAtual.mensagemVenda || '';
+    document.getElementById('premioVendaInput').value = configuracaoAtual.premioVenda || '';
+    document.getElementById('arquivoVendaInput').value = configuracaoAtual.arquivoVenda || '';
+    document.getElementById('linkVendaInput').value = configuracaoAtual.linkVenda || '';
+    document.getElementById('textoVendaInput').value = configuracaoAtual.textoVenda || '';
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
@@ -1432,6 +1469,27 @@ document.getElementById('salvarPresenteRecomendadoBtn').addEventListener('click'
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({ premioRecomendado, arquivoRecomendado, linkRecomendado, textoRecomendado })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000); }
+});
+
+document.getElementById('salvarPresenteVendaBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarPresenteVendaBtn');
+  const statusEl = document.getElementById('statusPresenteVenda');
+  const mensagemVenda = document.getElementById('mensagemVendaInput').value.trim();
+  const premioVenda = document.getElementById('premioVendaInput').value.trim();
+  const arquivoVenda = document.getElementById('arquivoVendaInput').value.trim() || null;
+  const linkVenda = document.getElementById('linkVendaInput').value.trim() || null;
+  const textoVenda = document.getElementById('textoVendaInput').value.trim() || null;
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ mensagemVenda, premioVenda, arquivoVenda, linkVenda, textoVenda })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
@@ -1748,6 +1806,14 @@ document.getElementById('arquivoRecomendadoFile').addEventListener('change', fun
     this,
     document.getElementById('arquivoRecomendadoInput'),
     document.getElementById('uploadStatusRecomendado')
+  );
+});
+
+document.getElementById('arquivoVendaFile').addEventListener('change', function() {
+  uploadArquivo(
+    this,
+    document.getElementById('arquivoVendaInput'),
+    document.getElementById('uploadStatusVenda')
   );
 });
 
