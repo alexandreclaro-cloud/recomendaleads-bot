@@ -95,7 +95,7 @@
       <input class="input" id="avisoTitulo" placeholder="Título (ex: Novidade na plataforma! 🎉)" style="margin-bottom:8px;">
       <textarea class="input" id="avisoMensagem" rows="3" placeholder="Mensagem para os clientes..."></textarea>
       <label style="display:flex; align-items:center; gap:8px; margin:10px 0; font-size:0.88rem;">
-        <input type="checkbox" id="avisoAtivo"> Exibir este aviso para todos
+        <input type="checkbox" id="avisoWpp"> Enviar também por WhatsApp (número do dono de cada cliente)
       </label>
       <div style="display:flex; align-items:center; gap:12px;">
         <button class="btn btn-brand" id="avisoEnviarBtn"><i data-lucide="send"></i> Enviar para todos</button>
@@ -155,34 +155,27 @@ async function entrar() {
   const data = await resp.json();
   render(data.empresas || []);
 }
-function mostrarApp() { document.getElementById('gate').style.display = 'none'; document.getElementById('app').style.display = 'flex'; icons(); carregarAviso(); }
+function mostrarApp() { document.getElementById('gate').style.display = 'none'; document.getElementById('app').style.display = 'flex'; icons(); }
 
-async function carregarAviso() {
-  try {
-    const resp = await adminFetch(`${API_BASE}/admin/aviso`);
-    const data = await resp.json();
-    if (data.ok && data.aviso) {
-      document.getElementById('avisoTitulo').value = data.aviso.titulo || '';
-      document.getElementById('avisoMensagem').value = data.aviso.mensagem || '';
-      document.getElementById('avisoAtivo').checked = !!data.aviso.ativo;
-    }
-  } catch (e) {}
-}
 document.getElementById('avisoEnviarBtn').addEventListener('click', async () => {
   const btn = document.getElementById('avisoEnviarBtn');
   const st = document.getElementById('avisoStatus');
   const titulo = document.getElementById('avisoTitulo').value.trim();
   const mensagem = document.getElementById('avisoMensagem').value.trim();
-  const ativo = document.getElementById('avisoAtivo').checked;
-  if (ativo && !mensagem) { st.textContent = '❌ Escreva a mensagem'; st.className = 'status-msg err'; return; }
+  const enviarWhatsapp = document.getElementById('avisoWpp').checked;
+  if (!mensagem) { st.textContent = '❌ Escreva a mensagem'; st.className = 'status-msg err'; return; }
   btn.disabled = true; st.textContent = 'Enviando...'; st.className = 'status-msg';
   try {
-    const resp = await adminFetch(`${API_BASE}/admin/aviso`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo, mensagem, ativo }) });
+    const resp = await adminFetch(`${API_BASE}/admin/aviso`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo, mensagem, enviarWhatsapp }) });
     const data = await resp.json();
-    if (resp.ok && data.ok) { st.textContent = ativo ? '✅ Aviso enviado para todos!' : '✅ Aviso salvo (desativado).'; st.className = 'status-msg ok'; }
-    else { st.textContent = '❌ ' + (data.erro || 'Erro ao enviar'); st.className = 'status-msg err'; }
+    if (resp.ok && data.ok) {
+      const w = data.whatsapp || {};
+      st.textContent = '✅ Aviso enviado!' + (enviarWhatsapp ? ` WhatsApp: ${w.enviados || 0} enviados${w.semNumero ? `, ${w.semNumero} sem número` : ''}.` : '');
+      st.className = 'status-msg ok';
+      document.getElementById('avisoTitulo').value = ''; document.getElementById('avisoMensagem').value = ''; document.getElementById('avisoWpp').checked = false;
+    } else { st.textContent = '❌ ' + (data.erro || 'Erro ao enviar'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
-  finally { btn.disabled = false; setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 5000); }
+  finally { btn.disabled = false; setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 7000); }
 });
 
 document.getElementById('sairBtn').addEventListener('click', () => { localStorage.removeItem('recomendaleads_admin_key'); location.reload(); });

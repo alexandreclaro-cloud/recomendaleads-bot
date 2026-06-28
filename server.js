@@ -276,8 +276,8 @@ const USUARIOS_COL = () => db.collection('usuarios');
 // Controle de envios da Agenda de Marketing (recorrência por recomendador).
 // Doc id: `${empresaId}__${telefone}` → { ultimoEnvioEm, proximoEm }
 const MARKETING_ENVIOS_COL = () => db.collection('marketing_envios');
-// Aviso global do dono para todos os clientes (popup na tela). Doc único.
-const AVISO_DOC = () => db.collection('config').doc('aviso');
+// Avisos do dono para todos os clientes (histórico — "Mensagens do sistema").
+const AVISOS_COL = () => db.collection('avisos');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'oi', 'olá', 'ola',
@@ -2099,11 +2099,25 @@ app.get('/minha-assinatura', exigirLoginEmpresa, async (req, res) => {
 });
 
 // Aviso global ativo (popup) — visto pelo cliente logado.
+// Lista de avisos ativos (Mensagens do sistema), mais recentes primeiro.
+app.get('/avisos', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const snap = await AVISOS_COL().where('ativo', '==', true).get();
+    const avisos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, avisos });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Aviso mais recente (compatível com o popup atual).
 app.get('/aviso', exigirLoginEmpresa, async (req, res) => {
   try {
-    const snap = await AVISO_DOC().get();
-    const aviso = snap.exists ? snap.data() : null;
-    res.json({ ok: true, aviso: (aviso && aviso.ativo) ? aviso : null });
+    const snap = await AVISOS_COL().where('ativo', '==', true).get();
+    const avisos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, aviso: avisos[0] || null });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -2885,10 +2899,13 @@ app.get('/admin', (req, res) => {
 });
 
 // Aviso global — consultar (admin) e publicar para todos os clientes.
-app.get('/admin/aviso', exigirAdmin, async (req, res) => {
+// Histórico de avisos enviados (admin).
+app.get('/admin/avisos', exigirAdmin, async (req, res) => {
   try {
-    const snap = await AVISO_DOC().get();
-    res.json({ ok: true, aviso: snap.exists ? snap.data() : null });
+    const snap = await AVISOS_COL().get();
+    const avisos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, avisos });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -2896,23 +2913,44 @@ app.get('/admin/aviso', exigirAdmin, async (req, res) => {
 
 app.post('/admin/aviso', exigirAdmin, async (req, res) => {
   try {
-    const { titulo, mensagem, ativo } = req.body || {};
-    if (ativo && !String(mensagem || '').trim()) {
+    const { titulo, mensagem, enviarWhatsapp } = req.body || {};
+    if (!String(mensagem || '').trim()) {
       return res.status(400).json({ ok: false, erro: 'Escreva a mensagem do aviso.' });
     }
-    const aviso = {
-      id: Date.now().toString(),
+    const ref = await AVISOS_COL().add({
       titulo: String(titulo || '').trim(),
       mensagem: String(mensagem || '').trim(),
-      ativo: !!ativo,
+      ativo: true,
       criadoEm: new Date().toISOString()
-    };
-    await AVISO_DOC().set(aviso);
-    res.json({ ok: true, aviso });
+    });
+    let zap = { enviados: 0, semNumero: 0 };
+    if (enviarWhatsapp) zap = await broadcastAvisoWhatsapp(String(titulo || ''), String(mensagem || ''));
+    res.json({ ok: true, id: ref.id, whatsapp: zap });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
+
+// Envia o aviso por WhatsApp para o número do dono de cada empresa, usando a
+// Z-API global (número da plataforma). Best-effort.
+async function broadcastAvisoWhatsapp(titulo, mensagem) {
+  const texto = (titulo ? `*${titulo}*\n\n` : '') + mensagem;
+  let enviados = 0, semNumero = 0;
+  if (!ZAPI_GLOBAL.instanceId || !ZAPI_GLOBAL.token) return { enviados, semNumero, erro: 'Z-API global não configurada' };
+  const snap = await EMPRESAS_COL().get();
+  for (const d of snap.docs) {
+    const c = d.data().cadastro || {};
+    let tel = String(c.whatsappSocio || c.telefoneEmpresa || c.telefone || '').replace(/\D/g, '');
+    if (!tel) { semNumero++; continue; }
+    if ((tel.length === 10 || tel.length === 11) && !tel.startsWith('55')) tel = '55' + tel;
+    try {
+      await tenantContext.run({ empresaId: EMPRESA_ID_PDN, zapi: ZAPI_GLOBAL }, async () => { await sendText(tel, texto); });
+      enviados++;
+    } catch (e) { console.error('[AVISO-WPP] falha para', tel, e.message); }
+  }
+  console.log(`[AVISO-WPP] enviados ${enviados}, sem número ${semNumero}`);
+  return { enviados, semNumero };
+}
 
 // Lista todos os clientes com um resumo para o painel do dono.
 app.get('/admin/empresas', exigirAdmin, async (req, res) => {

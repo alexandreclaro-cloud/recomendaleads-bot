@@ -59,6 +59,7 @@
       <button class="nav-item" data-section="equipe" data-gestor><i data-lucide="users"></i><span class="txt">Equipe</span></button>
       <button class="nav-item" data-section="assinatura" data-gestor><i data-lucide="credit-card"></i><span class="txt">Assinatura</span></button>
       <a class="nav-item" href="/crm#config" data-gestor><i data-lucide="settings"></i><span class="txt">Configurações</span></a>
+      <button class="nav-item" data-section="avisos"><i data-lucide="bell"></i><span class="txt">Mensagens do sistema</span><span id="avisosBadge" style="display:none; margin-left:auto; background:#e24b4a; color:#fff; font-size:0.7rem; font-weight:700; min-width:18px; height:18px; border-radius:9px; padding:0 5px; display:none; align-items:center; justify-content:center;">0</span></button>
     </nav>
     <div class="user-box">
       <div class="avatar" id="avatarLetra">A</div>
@@ -68,9 +69,15 @@
   </aside>
 
   <main class="main">
-    <div class="page-head">
-      <h1 id="pageTitle">Olá!</h1>
-      <p id="pageSub">Resumo do que está acontecendo no seu programa de recomendações.</p>
+    <div class="page-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+      <div>
+        <h1 id="pageTitle">Olá!</h1>
+        <p id="pageSub">Resumo do que está acontecendo no seu programa de recomendações.</p>
+      </div>
+      <button id="bellBtn" title="Mensagens do sistema" style="position:relative; background:var(--surface-2,#fff); border:1px solid var(--border,#e3e6ea); border-radius:10px; width:42px; height:42px; cursor:pointer; flex-shrink:0;">
+        <i data-lucide="bell"></i>
+        <span id="bellBadge" style="display:none; position:absolute; top:-6px; right:-6px; background:#e24b4a; color:#fff; font-size:0.7rem; font-weight:700; min-width:18px; height:18px; border-radius:9px; padding:0 4px; align-items:center; justify-content:center;">0</span>
+      </button>
     </div>
 
     <div id="loadMsg" class="empty">Carregando...</div>
@@ -267,6 +274,14 @@
         </div>
       </section>
 
+      <section class="view fade-in" id="view-avisos">
+        <div class="card">
+          <div class="block-title"><i data-lucide="bell"></i> Mensagens do sistema</div>
+          <p class="sub">Novidades, melhorias e avisos da plataforma.</p>
+          <div id="avisosLista"><div class="empty">Sem mensagens ainda.</div></div>
+        </div>
+      </section>
+
     </div>
   </main>
 </div>
@@ -331,7 +346,8 @@ const TITULOS = {
   premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
   whatsapp: ['WhatsApp', 'Conecte o número que o robô vai usar.'],
   equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
-  assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.']
+  assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.'],
+  avisos: ['Mensagens do sistema', 'Novidades, melhorias e avisos da plataforma.']
 };
 
 function trocarSecao(secao) {
@@ -351,6 +367,7 @@ function trocarSecao(secao) {
   else if (typeof pararPollQr === 'function') pararPollQr();
   if (secao === 'equipe' && typeof carregarEquipe === 'function') carregarEquipe();
   if (secao === 'assinatura' && typeof carregarAssinatura === 'function') carregarAssinatura();
+  if (secao === 'avisos' && typeof renderAvisosLista === 'function') { renderAvisosLista(); marcarTodosLidos(); }
 }
 
 document.querySelectorAll('#nav .nav-item[data-section]').forEach(a => a.addEventListener('click', () => trocarSecao(a.dataset.section)));
@@ -979,33 +996,68 @@ if (EH_GESTOR) carregarWhatsapp();
 carregarVisaoGeral();
 verificarContrato();
 verificarAcesso();
-verificarAviso();
+carregarAvisos();
 
-// ===================== AVISO GLOBAL (popup do dono) =====================
-async function verificarAviso() {
+// ===================== MENSAGENS DO SISTEMA (inbox + sininho) =====================
+let avisosCache = [];
+function avisosLidos() { try { return JSON.parse(localStorage.getItem('recomendaleads_avisos_lidos') || '[]'); } catch (e) { return []; } }
+function atualizarBadgeAvisos() {
+  const lidos = avisosLidos();
+  const n = avisosCache.filter(a => !lidos.includes(a.id)).length;
+  ['avisosBadge', 'bellBadge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (n > 0) { el.textContent = n; el.style.display = 'inline-flex'; } else { el.style.display = 'none'; }
+  });
+}
+function renderAvisosLista() {
+  const cont = document.getElementById('avisosLista');
+  if (!cont) return;
+  if (!avisosCache.length) { cont.innerHTML = '<div class="empty">Sem mensagens ainda.</div>'; return; }
+  cont.innerHTML = avisosCache.map(a => `
+    <div style="border:1px solid var(--border,#e3e6ea); border-radius:12px; padding:14px 16px; margin-bottom:10px;">
+      <div style="font-weight:600;">${escapeHtml(a.titulo || 'Mensagem')}</div>
+      <div style="font-size:0.75rem; color:var(--text-dim,#6b7280); margin:2px 0 8px;">${a.criadoEm ? new Date(a.criadoEm).toLocaleString('pt-BR') : ''}</div>
+      <div style="white-space:pre-wrap; font-size:0.92rem; color:var(--text,#222);">${escapeHtml(a.mensagem || '')}</div>
+    </div>`).join('');
+}
+function marcarTodosLidos() {
+  localStorage.setItem('recomendaleads_avisos_lidos', JSON.stringify(avisosCache.map(a => a.id)));
+  atualizarBadgeAvisos();
+}
+async function carregarAvisos() {
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/aviso`);
+    const resp = await fetchAutenticado(`${API_BASE}/avisos`);
     const data = await resp.json();
-    const a = data && data.aviso;
-    if (!a || !a.ativo) return;
-    if (localStorage.getItem('recomendaleads_aviso_visto') === a.id) return;
-    const ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:18px;';
-    ov.innerHTML = `
-      <div style="background:#fff;border-radius:16px;max-width:440px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center;">
-        <div style="font-size:2rem;margin-bottom:8px;">📢</div>
-        <h2 style="margin:0 0 10px;font-size:1.2rem;">${escapeHtml(a.titulo || 'Aviso')}</h2>
-        <p style="margin:0 0 20px;font-size:0.95rem;color:var(--text-dim,#444);white-space:pre-wrap;">${escapeHtml(a.mensagem || '')}</p>
-        <div style="display:flex;gap:10px;justify-content:center;">
-          <button id="avisoReload" class="btn btn-action">Atualizar tela</button>
-          <button id="avisoOk" class="btn btn-secondary">Entendi</button>
-        </div>
-      </div>`;
-    document.body.appendChild(ov);
-    ov.querySelector('#avisoOk').addEventListener('click', () => { localStorage.setItem('recomendaleads_aviso_visto', a.id); ov.remove(); });
-    ov.querySelector('#avisoReload').addEventListener('click', () => { localStorage.setItem('recomendaleads_aviso_visto', a.id); location.reload(); });
+    avisosCache = (data && data.avisos) || [];
+    atualizarBadgeAvisos();
+    renderAvisosLista();
+    // Popup do mais recente ainda não lido (mantém o alerta).
+    const lidos = avisosLidos();
+    const novo = avisosCache.find(a => !lidos.includes(a.id));
+    if (novo) mostrarPopupAviso(novo);
   } catch (e) {}
 }
+function mostrarPopupAviso(a) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:18px;';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:16px;max-width:440px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center;">
+      <div style="font-size:2rem;margin-bottom:8px;">📢</div>
+      <h2 style="margin:0 0 10px;font-size:1.2rem;">${escapeHtml(a.titulo || 'Aviso')}</h2>
+      <p style="margin:0 0 20px;font-size:0.95rem;color:var(--text-dim,#444);white-space:pre-wrap;">${escapeHtml(a.mensagem || '')}</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+        <button id="avisoReload" class="btn btn-action">Atualizar tela</button>
+        <button id="avisoOk" class="btn btn-secondary">Entendi</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const marcar = () => { const l = avisosLidos(); if (!l.includes(a.id)) l.push(a.id); localStorage.setItem('recomendaleads_avisos_lidos', JSON.stringify(l)); atualizarBadgeAvisos(); };
+  ov.querySelector('#avisoOk').addEventListener('click', () => { marcar(); ov.remove(); });
+  ov.querySelector('#avisoReload').addEventListener('click', () => { marcar(); location.reload(); });
+}
+const bellBtn = document.getElementById('bellBtn');
+if (bellBtn) bellBtn.addEventListener('click', () => trocarSecao('avisos'));
 </script>
 </body>
 </html>
