@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recomendômetro — Quanto você deixa na mesa sem um programa de recomendação?</title>
+<meta name="description" content="Descubra em 1 minuto quanto a sua empresa deixa de faturar por não ter um programa estruturado de recomendação.">
+<style>
+  :root{--brand:#2563EB;--brand-deep:#1D4ED8;--wpp:#22C55E;--wpp-deep:#16A34A;--ink:#0F172A;--dim:#475569;--faint:#64748B;--line:#E2E8F0;--bg:#F8FAFC;--loss:#DC2626}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{text-decoration:none;color:inherit}
+  .wrap{max-width:640px;margin:0 auto;padding:0 18px}
+  nav{background:#fff;border-bottom:1px solid var(--line)}
+  nav .row{max-width:1000px;margin:0 auto;padding:0 18px;height:62px;display:flex;align-items:center;justify-content:space-between}
+  .logo{display:flex;align-items:center;gap:9px;font-weight:800}
+  .logo .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--brand),var(--wpp));display:grid;place-items:center;color:#fff}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:.95rem;padding:14px 22px;border-radius:12px;cursor:pointer;border:none;width:100%;transition:transform .12s,background .12s}
+  .btn:hover{transform:translateY(-1px)}
+  .btn-brand{background:var(--brand);color:#fff}.btn-brand:hover{background:var(--brand-deep)}
+  .btn-wpp{background:var(--wpp);color:#fff}.btn-wpp:hover{background:var(--wpp-deep)}
+  .btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+
+  .hero{text-align:center;padding:44px 0 10px}
+  .tag{display:inline-block;background:#EFF6FF;color:var(--brand);font-weight:700;font-size:.78rem;padding:6px 13px;border-radius:999px;margin-bottom:14px}
+  h1{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;line-height:1.12}
+  h1 .hl{background:linear-gradient(120deg,var(--brand),var(--wpp));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:var(--dim);margin-top:10px;font-size:1.02rem}
+
+  .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px;margin:22px 0 40px;box-shadow:0 12px 30px rgba(15,23,42,.06)}
+  .prog{height:7px;background:#EFF2F7;border-radius:999px;overflow:hidden;margin-bottom:22px}
+  .prog i{display:block;height:100%;width:16%;background:linear-gradient(90deg,var(--brand),var(--wpp));border-radius:999px;transition:width .3s}
+  .step{display:none}.step.active{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .qn{font-size:.78rem;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.05em}
+  .q{font-size:1.3rem;font-weight:800;margin:6px 0 4px;letter-spacing:-.01em}
+  .hint{color:var(--faint);font-size:.9rem;margin-bottom:18px}
+  label.fl{display:block;font-size:.82rem;color:var(--dim);margin-bottom:6px;font-weight:600}
+  .field{position:relative}
+  .field .pre{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--faint);font-weight:700}
+  input,select{width:100%;font-family:inherit;font-size:1.05rem;padding:14px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+  input.pad{padding-left:38px}
+  input:focus,select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px #EFF4FF}
+  .opts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .opt{border:1.5px solid var(--line);border-radius:14px;padding:18px;text-align:center;font-weight:700;cursor:pointer;background:#fff;font-size:1rem;transition:.12s}
+  .opt:hover{border-color:var(--brand);background:#F8FAFF}
+  .nav-btns{display:flex;gap:10px;margin-top:20px}
+  .nav-btns .back{flex:0 0 auto;width:auto;padding:14px 18px}
+  .nav-btns .btn-brand{flex:1}
+
+  .result{display:none}
+  .result.show{display:block;animation:fade .3s ease}
+  .rtop{text-align:center;background:linear-gradient(135deg,#1A1F2E,#0F172A);color:#fff;border-radius:18px;padding:34px 24px}
+  .rtop .lab{color:#FCA5A5;font-weight:700;font-size:.85rem}
+  .rtop .big{font-size:2.9rem;font-weight:800;letter-spacing:-.02em;color:#FCA5A5;margin:6px 0;line-height:1}
+  @media(max-width:480px){.rtop .big{font-size:2.2rem}}
+  .rtop .sub{color:#CBD5E1;font-size:.92rem}
+  .rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}
+  .rg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 12px;text-align:center}
+  .rg .l{font-size:.74rem;color:var(--faint)}
+  .rg .v{font-size:1.15rem;font-weight:800;color:var(--loss);margin-top:3px}
+  @media(max-width:480px){.rg .v{font-size:.98rem}}
+  .gain{background:#ECFDF5;border:1px solid #BBF7D0;border-radius:14px;padding:18px 20px;text-align:center;margin-bottom:16px}
+  .gain .l{color:var(--wpp-deep);font-weight:700;font-size:.9rem}
+  .gain .v{font-size:1.7rem;font-weight:800;color:var(--wpp-deep);margin-top:2px}
+  .mathline{background:var(--bg);border-radius:12px;padding:14px 16px;font-size:.84rem;color:var(--dim);text-align:center;margin-bottom:18px}
+  .mathline b{color:var(--ink)}
+  .ctas{display:flex;flex-direction:column;gap:10px}
+  .rnote{color:var(--faint);font-size:.76rem;text-align:center;margin-top:16px}
+  .restart{text-align:center;margin-top:14px}
+  .restart a{color:var(--brand);font-weight:600;font-size:.85rem;cursor:pointer}
+</style>
+</head>
+<body>
+
+<nav><div class="row">
+  <div class="logo"><span class="mark">R</span>RecomendaLeads</div>
+  <a class="logo" href="/" style="font-weight:600;font-size:.85rem;color:var(--dim)">← Voltar ao site</a>
+</div></nav>
+
+<div class="wrap">
+  <div class="hero">
+    <span class="tag">📊 Recomendômetro</span>
+    <h1>Quanto você <span class="hl">deixa na mesa</span> sem um programa de recomendação?</h1>
+    <p>Responda 6 perguntas rápidas e descubra quanto deixou de faturar nos últimos meses.</p>
+  </div>
+
+  <div class="card">
+    <div class="prog"><i id="bar"></i></div>
+
+    <div id="quiz">
+      <div class="step active" data-step="0">
+        <div class="qn">Pergunta 1 de 6</div>
+        <div class="q">Qual o seu ramo de atividade?</div>
+        <div class="hint">Só pra personalizar o seu resultado.</div>
+        <select id="ramo">
+          <option value="">Selecione…</option>
+          <option>Varejo / Loja</option>
+          <option>Serviços</option>
+          <option>Saúde, Clínica e Estética</option>
+          <option>Beleza e Salão</option>
+          <option>Educação e Cursos</option>
+          <option>Alimentação e Restaurante</option>
+          <option>Academia e Fitness</option>
+          <option>Imobiliária</option>
+          <option>Automotivo</option>
+          <option>Digital e Infoprodutos</option>
+          <option>Advocacia e Contabilidade</option>
+          <option>Outro</option>
+        </select>
+        <div class="nav-btns"><button class="btn btn-brand" onclick="next(0)">Continuar</button></div>
+      </div>
+
+      <div class="step" data-step="1">
+        <div class="qn">Pergunta 2 de 6</div>
+        <div class="q">Quantos clientes compram de você por dia?</div>
+        <div class="hint">Em média, quantas pessoas fecham uma compra por dia.</div>
+        <label class="fl">Clientes por dia</label>
+        <input type="number" id="vendas" min="1" inputmode="numeric" placeholder="Ex: 10">
+        <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(1)">←</button><button class="btn btn-brand" onclick="next(1)">Continuar</button></div>
+      </div>
+
+      <div class="step" data-step="2">
+        <div class="qn">Pergunta 3 de 6</div>
+        <div class="q">Qual o seu ticket médio?</div>
+        <div class="hint">Valor médio que cada cliente gasta numa compra.</div>
+        <label class="fl">Ticket médio</label>
+        <div class="field"><span class="pre">R$</span><input class="pad" type="number" id="ticket" min="1" inputmode="decimal" placeholder="Ex: 300"></div>
+        <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(2)">←</button><button class="btn btn-brand" onclick="next(2)">Continuar</button></div>
+      </div>
+
+      <div class="step" data-step="3">
+        <div class="qn">Pergunta 4 de 6</div>
+        <div class="q">Quantos dias você trabalha por mês?</div>
+        <div class="hint">Dias em que a empresa atende e vende.</div>
+        <label class="fl">Dias por mês</label>
+        <input type="number" id="dias" min="1" max="31" value="26" inputmode="numeric">
+        <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(3)">←</button><button class="btn btn-brand" onclick="next(3)">Continuar</button></div>
+      </div>
+
+      <div class="step" data-step="4">
+        <div class="qn">Pergunta 5 de 6</div>
+        <div class="q">Você tem um programa completo de recomendação?</div>
+        <div class="hint">Um processo estruturado que pede e gerencia recomendações automaticamente.</div>
+        <div class="opts">
+          <div class="opt" onclick="pick('programa','sim')">Sim, tenho</div>
+          <div class="opt" onclick="pick('programa','nao')">Não tenho</div>
+        </div>
+        <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(4)">←</button></div>
+      </div>
+
+      <div class="step" data-step="5">
+        <div class="qn">Pergunta 6 de 6</div>
+        <div class="q">Você já vende por indicação?</div>
+        <div class="hint">Mesmo que de forma informal, no boca a boca.</div>
+        <div class="opts">
+          <div class="opt" onclick="pick('indicacao','sim')">Sim, no boca a boca</div>
+          <div class="opt" onclick="pick('indicacao','nao')">Não / quase nada</div>
+        </div>
+        <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(5)">←</button></div>
+      </div>
+    </div>
+
+    <div class="result" id="result">
+      <div class="rtop">
+        <div class="lab">💸 Nos últimos 12 meses, você deixou de faturar cerca de</div>
+        <div class="big" id="bigLoss">R$ 0</div>
+        <div class="sub" id="bigSub">Dinheiro que foi embora por falta de um processo de recomendação.</div>
+      </div>
+      <div class="rgrid">
+        <div class="rg"><div class="l">Últimos 3 meses</div><div class="v" id="l3">R$ 0</div></div>
+        <div class="rg"><div class="l">Últimos 6 meses</div><div class="v" id="l6">R$ 0</div></div>
+        <div class="rg"><div class="l">Últimos 12 meses</div><div class="v" id="l12">R$ 0</div></div>
+      </div>
+      <div class="gain">
+        <div class="l">Aplicando o programa agora, você pode adicionar até</div>
+        <div class="v" id="gainM">R$ 0 / mês</div>
+      </div>
+      <div class="mathline" id="mathline"></div>
+      <div class="ctas">
+        <a class="btn btn-wpp" id="cta1">⚡ Quero aplicar um programa agora</a>
+        <a class="btn btn-brand" id="cta2">🎯 Quero uma sessão estratégica agora</a>
+        <a class="btn btn-ghost" id="cta3">💬 Quero falar com o comercial agora</a>
+      </div>
+      <div class="restart"><a onclick="restart()">↻ Refazer o cálculo</a></div>
+      <div class="rnote">Estimativa baseada em médias de mercado: cada cliente pode gerar 5 recomendações e ~5% dos recomendados compram. O resultado real depende da execução.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var WPP = '5511913269690';
+  var ans = { dias: 26 };
+  var cur = 0;
+  var TOTAL = 6;
+
+  function setBar(){ document.getElementById('bar').style.width = Math.round(((cur)/(TOTAL))*100 + 16) + '%'; }
+  function show(i){
+    document.querySelectorAll('.step').forEach(function(s){ s.classList.remove('active'); });
+    var el = document.querySelector('.step[data-step="'+i+'"]');
+    if(el) el.classList.add('active');
+    cur = i; setBar();
+  }
+  function prev(i){ if(i>0) show(i-1); }
+
+  function next(i){
+    if(i===0){ var r=document.getElementById('ramo').value; if(!r){alert('Selecione o seu ramo.');return;} ans.ramo=r; }
+    if(i===1){ var v=parseFloat(document.getElementById('vendas').value); if(!v||v<=0){alert('Informe quantos clientes compram por dia.');return;} ans.vendas=v; }
+    if(i===2){ var t=parseFloat(document.getElementById('ticket').value); if(!t||t<=0){alert('Informe o seu ticket médio.');return;} ans.ticket=t; }
+    if(i===3){ var d=parseInt(document.getElementById('dias').value,10); if(!d||d<=0){alert('Informe os dias trabalhados no mês.');return;} ans.dias=d; }
+    show(i+1);
+  }
+  function pick(key,val){
+    ans[key]=val;
+    document.querySelectorAll('.step[data-step="'+cur+'"] .opt').forEach(function(o){o.style.borderColor='';o.style.background='';});
+    if(key==='programa'){ show(5); }
+    if(key==='indicacao'){ calcular(); }
+  }
+
+  function brl(n){ return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}); }
+
+  function calcular(){
+    var clientesMes = ans.vendas * ans.dias;
+    var potencialMes = clientesMes * 5 * ans.ticket * 0.05; // 5 recomendações, 5% compram
+
+    var fator, sub;
+    if(ans.programa==='sim'){ fator=0.15; sub='Você já está à frente — mas ainda há margem para extrair mais do seu processo.'; }
+    else if(ans.indicacao==='sim'){ fator=0.70; sub='Você vende no boca a boca, mas sem processo a maior parte das recomendações nunca acontece.'; }
+    else { fator=1.0; sub='Sem um processo de recomendação, você está deixando praticamente tudo na mesa.'; }
+
+    var perdaMes = potencialMes * fator;
+    var p3 = perdaMes*3, p6 = perdaMes*6, p12 = perdaMes*12;
+
+    document.getElementById('l3').textContent = brl(p3);
+    document.getElementById('l6').textContent = brl(p6);
+    document.getElementById('l12').textContent = brl(p12);
+    document.getElementById('gainM').textContent = brl(perdaMes) + ' / mês';
+    document.getElementById('bigSub').textContent = sub;
+    document.getElementById('mathline').innerHTML = '<b>'+clientesMes.toLocaleString('pt-BR')+'</b> clientes/mês × <b>5</b> recomendações × <b>'+brl(ans.ticket)+'</b> × <b>5%</b> que compram';
+
+    var msgBase = 'Olá! Fiz o Recomendômetro (ramo: '+ans.ramo+') e descobri que posso estar deixando cerca de '+brl(p12)+' por ano na mesa. ';
+    document.getElementById('cta1').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero aplicar um programa de recomendação agora.');
+    document.getElementById('cta2').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero uma sessão estratégica agora.');
+    document.getElementById('cta3').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero falar com o comercial agora.');
+
+    document.getElementById('quiz').style.display='none';
+    document.getElementById('result').classList.add('show');
+    document.getElementById('bar').style.width='100%';
+    animar(document.getElementById('bigLoss'), p12);
+    try{ document.querySelector('.rtop').scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+  }
+
+  function animar(el, alvo){
+    var ini=0, t0=null, dur=1100;
+    function passo(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1); var val=Math.floor(ini+(alvo-ini)*(0.5-Math.cos(p*Math.PI)/2)); el.textContent=brl(val); if(p<1)requestAnimationFrame(passo); }
+    requestAnimationFrame(passo);
+  }
+
+  function restart(){
+    ans={dias:26};
+    document.getElementById('result').classList.remove('show');
+    document.getElementById('quiz').style.display='block';
+    document.getElementById('ramo').value='';document.getElementById('vendas').value='';document.getElementById('ticket').value='';document.getElementById('dias').value='26';
+    show(0);
+  }
+  setBar();
+</script>
+</body>
+</html>

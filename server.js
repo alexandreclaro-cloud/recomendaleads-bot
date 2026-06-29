@@ -2039,6 +2039,10 @@ app.get('/logos', (req, res) => {
   res.sendFile(path.join(__dirname, 'logos.html'));
 });
 
+app.get('/recomendometro', (req, res) => {
+  res.sendFile(path.join(__dirname, 'recomendometro.html'));
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'landing.html'));
 });
