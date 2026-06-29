@@ -112,6 +112,12 @@
   .authority h2{font-size:1.9rem;font-weight:800;letter-spacing:-.02em}
   .authority .name{color:#FCD34D}
   .authority p{color:#CBD5E1;margin:14px 0 20px;font-size:1.04rem;max-width:760px}
+  .authority-grid{display:grid;grid-template-columns:230px 1fr;gap:32px;align-items:center}
+  @media(max-width:720px){.authority-grid{grid-template-columns:1fr}}
+  .aphoto{position:relative;border-radius:16px;overflow:hidden;min-height:280px;background:#0B1220;border:1px solid rgba(255,255,255,.1)}
+  .aphoto img{width:100%;height:100%;object-fit:cover;display:block}
+  .aphoto .fb{position:absolute;inset:0;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;text-align:center;color:#64748B;font-size:.82rem;font-weight:600;padding:16px}
+  .aphoto .fb b{color:#94A3B8;font-size:.95rem}
   .astats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   @media(max-width:760px){.astats{grid-template-columns:repeat(2,1fr)}}
   .astat{background:rgba(255,255,255,.06);border-radius:12px;padding:14px}
@@ -271,14 +277,22 @@
 <section class="block alt">
   <div class="wrap">
     <div class="authority">
-      <span class="badge">⭐ Quem está por trás do método</span>
-      <h2>Criado por <span class="name">Alexandre Claro</span></h2>
-      <p>Há mais de 10 anos ajuda empresários a transformar recomendação em canal estruturado de vendas. Como executivo de uma instituição de ensino, 40% das vendas vinham da recomendação ativa. Morou 2 anos nos EUA estudando o mercado americano de recomendação e criou o Método Funil Infinito e o conceito de Retrovenda.</p>
-      <div class="astats">
-        <div class="astat"><div class="v">R$45M</div><div class="l">gerados em vendas por recomendação</div></div>
-        <div class="astat"><div class="v">40%</div><div class="l">das vendas vinham da recomendação ativa</div></div>
-        <div class="astat"><div class="v">+10 anos</div><div class="l">de método validado em campo</div></div>
-        <div class="astat"><div class="v">2 anos</div><div class="l">estudando o mercado dos EUA</div></div>
+      <div class="authority-grid">
+        <div class="aphoto">
+          <div class="fb"><b>Alexandre Claro</b><span>Sua foto entra aqui</span></div>
+          <img id="fotoAlexandre" src="" alt="Alexandre Claro" style="display:none" onerror="this.style.display='none'" onload="this.style.display='block'">
+        </div>
+        <div>
+          <span class="badge">⭐ Quem está por trás do método</span>
+          <h2>Criado por <span class="name">Alexandre Claro</span></h2>
+          <p>Há mais de 10 anos ajuda empresários a transformar recomendação em canal estruturado de vendas. Como executivo de uma instituição de ensino, 40% das vendas vinham da recomendação ativa. Morou <b style="color:#fff">2 anos nos Estados Unidos</b>, estudou de perto o mercado americano de vendas e trouxe para o Brasil o que lá chamam de <b style="color:#FCD34D">Terceira Onda das Vendas</b> — criando o Método Funil Infinito e o conceito de Retrovenda.</p>
+          <div class="astats">
+            <div class="astat"><div class="v">R$45M</div><div class="l">gerados em vendas por recomendação</div></div>
+            <div class="astat"><div class="v">40%</div><div class="l">das vendas vinham da recomendação ativa</div></div>
+            <div class="astat"><div class="v">+10 anos</div><div class="l">de método validado em campo</div></div>
+            <div class="astat"><div class="v">2 anos</div><div class="l">estudando o mercado dos EUA</div></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
