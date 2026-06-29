@@ -281,6 +281,8 @@ const AVISOS_COL = () => db.collection('avisos');
 // Comissões de vendedores (20% de cada pagamento de assinatura).
 const COMISSOES_COL = () => db.collection('comissoes');
 const COMISSAO_PCT = 20;
+// Contas de vendedor (login próprio no /admin, com acesso limitado).
+const VENDEDORES_COL = () => db.collection('vendedores');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'oi', 'olá', 'ola',
@@ -1841,15 +1843,24 @@ async function gravarAssinatura(empresaId, dados) {
 }
 
 // Registra a comissão (20%) do vendedor que fechou a empresa, a cada pagamento.
+// empresa.vendedorComissao guarda o ID do vendedor (ou um nome livre, legado).
 async function registrarComissao(empresa, valorCentavos, origem) {
   try {
-    if (!empresa || !empresa.vendedorComissao) return;
+    const ref = empresa && empresa.vendedorComissao;
+    if (!ref) return;
     const v = Number(valorCentavos) || 0;
     if (v <= 0) return;
+    // Resolve o nome do vendedor a partir do ID (se for uma conta cadastrada).
+    let vendedorId = null, vendedorNome = String(ref);
+    try {
+      const vd = await VENDEDORES_COL().doc(String(ref)).get();
+      if (vd.exists) { vendedorId = vd.id; vendedorNome = vd.data().nome || String(ref); }
+    } catch (e) {}
     await COMISSOES_COL().add({
       empresaId: empresa.id,
       empresaNome: empresa.nome || '',
-      vendedor: empresa.vendedorComissao,
+      vendedorId,
+      vendedor: vendedorNome,
       valorPagoCentavos: v,
       percentual: COMISSAO_PCT,
       comissaoCentavos: Math.round(v * COMISSAO_PCT / 100),
@@ -1857,7 +1868,7 @@ async function registrarComissao(empresa, valorCentavos, origem) {
       pago: false,
       data: new Date().toISOString()
     });
-    console.log(`[COMISSAO] ${empresa.vendedorComissao}: R$${(v * COMISSAO_PCT / 100 / 100).toFixed(2)} (empresa ${empresa.id})`);
+    console.log(`[COMISSAO] ${vendedorNome}: R$${(v * COMISSAO_PCT / 100 / 100).toFixed(2)} (empresa ${empresa.id})`);
   } catch (e) { console.error('[COMISSAO] erro:', e.message); }
 }
 function dataMaisMeses(meses) {
@@ -2830,12 +2841,9 @@ app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
 // ROTA DE CRIAÇÃO DE EMPRESA (admin)
 // ============================================================
 
-app.post('/admin/empresas', limiteAdmin, async (req, res) => {
+app.post('/admin/empresas', exigirAcessoAdmin, async (req, res) => {
   try {
-    const chaveAdmin = req.headers['x-admin-key'];
-    if (!chaveAdmin || chaveAdmin !== ADMIN_SECRET) {
-      return res.status(401).json({ ok: false, erro: 'Chave administrativa inválida' });
-    }
+    const ehVendedor = !req.acesso.ehDono;
 
     const {
       // dados da empresa
@@ -2847,8 +2855,15 @@ app.post('/admin/empresas', limiteAdmin, async (req, res) => {
       // acesso / compatibilidade com a versão antiga
       nome, email, senha, migrarConfigPrincipal, empresaTeste,
       // período gratuito (trial) concedido no cadastro, em dias (0 = nenhum)
-      trialDias
+      trialDias,
+      // vendedor da comissão (informado pelo dono; vendedor é forçado abaixo)
+      vendedorComissao
     } = req.body;
+
+    // Vendedor logado: cliente sempre vinculado a ele; sem trial/migração.
+    const vendedorVinc = ehVendedor ? req.acesso.vendedorId : (vendedorComissao || null);
+    const _migrarConfig = ehVendedor ? false : migrarConfigPrincipal;
+    const _empresaTeste = ehVendedor ? false : empresaTeste;
 
     // Nome de exibição (usado nas mensagens): fantasia > razão social > compat
     const nomeEmpresa = (nomeFantasia || razaoSocial || nome || '').trim();
@@ -2866,11 +2881,11 @@ app.post('/admin/empresas', limiteAdmin, async (req, res) => {
 
     let configuracaoInicial = { ...EMPRESA_PADRAO, nome: nomeEmpresa };
 
-    if (empresaTeste) {
+    if (_empresaTeste) {
       // Empresa de teste: faixa 1 com quantidade = 1 e tempo de espera = 1 min
       // para validar todo o fluxo rapidamente sem precisar mandar 5 contatos
       configuracaoInicial = { ...EMPRESA_TESTE_CONFIG, nome: nomeEmpresa };
-    } else if (migrarConfigPrincipal) {
+    } else if (_migrarConfig) {
       const empresaReal = await getEmpresa();
       configuracaoInicial = { ...empresaReal };
     }
@@ -2890,8 +2905,8 @@ app.post('/admin/empresas', limiteAdmin, async (req, res) => {
       whatsappSocio: whatsappSocio || null
     };
 
-    // Período gratuito (trial) opcional concedido no cadastro.
-    const dias = Math.max(0, parseInt(trialDias, 10) || 0);
+    // Período gratuito (trial) opcional — só o dono concede.
+    const dias = ehVendedor ? 0 : Math.max(0, parseInt(trialDias, 10) || 0);
     let assinatura = null;
     if (dias > 0) {
       const ate = new Date(); ate.setDate(ate.getDate() + dias);
@@ -2910,10 +2925,11 @@ app.post('/admin/empresas', limiteAdmin, async (req, res) => {
       zapiClientToken: zapiClientToken ? String(zapiClientToken).trim() : null,
       criadoEm: new Date().toISOString(),
       configuracao: configuracaoInicial,
+      ...(vendedorVinc ? { vendedorComissao: vendedorVinc } : {}),
       ...(assinatura ? { assinatura } : {})
     });
 
-    res.json({ ok: true, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, empresaTeste: !!empresaTeste, trialDias: dias } });
+    res.json({ ok: true, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, empresaTeste: !!_empresaTeste, trialDias: dias } });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -2932,17 +2948,128 @@ function exigirAdmin(req, res, next) {
   });
 }
 
+// Resolve o acesso ao painel: dono (chave mestra) OU vendedor (token JWT).
+async function resolverAcessoAdmin(req) {
+  const chave = req.headers['x-admin-key'];
+  if (chave && chave === ADMIN_SECRET) return { ehDono: true };
+  const auth = req.headers['authorization'] || '';
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (m) {
+    try {
+      const p = jwt.verify(m[1], JWT_SECRET);
+      if (p && p.tipo === 'vendedor-admin' && p.vendedorId) {
+        const vd = await VENDEDORES_COL().doc(p.vendedorId).get();
+        if (vd.exists && vd.data().ativo !== false) {
+          return { ehDono: false, vendedorId: vd.id, vendedorNome: vd.data().nome || p.nome || '' };
+        }
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+// Middleware: aceita dono OU vendedor logado. Preenche req.acesso.
+function exigirAcessoAdmin(req, res, next) {
+  return limiteAdmin(req, res, async () => {
+    const ctx = await resolverAcessoAdmin(req);
+    if (!ctx) return res.status(401).json({ ok: false, erro: 'Acesso negado' });
+    req.acesso = ctx;
+    next();
+  });
+}
+
+// Login do vendedor (e-mail + senha) → token de acesso limitado ao /admin.
+app.post('/admin/vendedor-login', limiteLogin, async (req, res) => {
+  try {
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+    const senha = String((req.body && req.body.senha) || '');
+    if (!email || !senha) return res.status(400).json({ ok: false, erro: 'Informe e-mail e senha' });
+    const snap = await VENDEDORES_COL().where('email', '==', email).limit(1).get();
+    if (snap.empty) return res.status(401).json({ ok: false, erro: 'E-mail ou senha inválidos' });
+    const doc = snap.docs[0];
+    const v = doc.data();
+    if (v.ativo === false) return res.status(403).json({ ok: false, erro: 'Conta de vendedor desativada' });
+    const ok = await bcrypt.compare(senha, v.senhaHash || '');
+    if (!ok) return res.status(401).json({ ok: false, erro: 'E-mail ou senha inválidos' });
+    const token = jwt.sign({ tipo: 'vendedor-admin', vendedorId: doc.id, nome: v.nome || '' }, JWT_SECRET, { expiresIn: '12h' });
+    res.json({ ok: true, token, nome: v.nome || '', vendedorId: doc.id });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// CRUD de vendedores (somente o dono).
+app.get('/admin/vendedores', exigirAdmin, async (req, res) => {
+  try {
+    const snap = await VENDEDORES_COL().get();
+    const vendedores = snap.docs.map(d => {
+      const x = d.data();
+      return { id: d.id, nome: x.nome || '', email: x.email || '', cnpj: x.cnpj || '', endereco: x.endereco || '', whatsapp: x.whatsapp || '', banco: x.banco || {}, ativo: x.ativo !== false, criadoEm: x.criadoEm || null };
+    }).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    res.json({ ok: true, vendedores });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const nome = String(b.nome || '').trim();
+    const email = String(b.email || '').trim().toLowerCase();
+    const senha = String(b.senha || '');
+    if (!nome || !email || !senha) return res.status(400).json({ ok: false, erro: 'Informe nome, e-mail e senha' });
+    const dup = await VENDEDORES_COL().where('email', '==', email).limit(1).get();
+    if (!dup.empty) return res.status(409).json({ ok: false, erro: 'Já existe um vendedor com este e-mail' });
+    const banco = b.banco && typeof b.banco === 'object' ? b.banco : {};
+    const senhaHash = await bcrypt.hash(senha, 10);
+    const ref = await VENDEDORES_COL().add({
+      nome, email, senhaHash, ativo: true,
+      cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
+      banco: {
+        banco: banco.banco || null, agencia: banco.agencia || null, conta: banco.conta || null,
+        tipo: banco.tipo || null, pix: banco.pix || null, titular: banco.titular || null
+      },
+      criadoEm: new Date().toISOString()
+    });
+    res.json({ ok: true, vendedor: { id: ref.id, nome, email } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.patch('/admin/vendedores/:id', exigirAdmin, async (req, res) => {
+  try {
+    const ref = VENDEDORES_COL().doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Vendedor não encontrado' });
+    const b = req.body || {};
+    const upd = {};
+    ['nome', 'cnpj', 'endereco', 'whatsapp'].forEach(k => { if (b[k] !== undefined) upd[k] = (b[k] === '' ? null : b[k]); });
+    if (b.email !== undefined && String(b.email).trim()) upd.email = String(b.email).trim().toLowerCase();
+    if (b.banco && typeof b.banco === 'object') upd.banco = { ...(doc.data().banco || {}), ...b.banco };
+    if (b.ativo !== undefined) upd.ativo = !!b.ativo;
+    if (b.novaSenha) upd.senhaHash = await bcrypt.hash(String(b.novaSenha), 10);
+    if (!Object.keys(upd).length) return res.json({ ok: true });
+    await ref.set(upd, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
 // Aviso global — consultar (admin) e publicar para todos os clientes.
-// Relatório de comissões dos vendedores (admin).
-app.get('/admin/comissoes', exigirAdmin, async (req, res) => {
+// Relatório de comissões dos vendedores (dono vê tudo; vendedor só as dele).
+app.get('/admin/comissoes', exigirAcessoAdmin, async (req, res) => {
   try {
     const snap = await COMISSOES_COL().get();
-    const itens = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    let itens = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0));
+    if (!req.acesso.ehDono) itens = itens.filter(i => i.vendedorId === req.acesso.vendedorId);
     const map = {};
     itens.forEach(i => {
       const v = i.vendedor || '—';

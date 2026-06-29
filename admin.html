@@ -47,13 +47,23 @@
 </head>
 <body>
 
-<!-- Gate da chave administrativa -->
+<!-- Gate de acesso (dono ou vendedor) -->
 <div id="gate" class="card">
   <div class="logo"><i data-lucide="shield"></i></div>
-  <h1 style="font-size:1.2rem;margin:0 0 6px;">Painel do Dono</h1>
-  <p class="muted" style="margin:0 0 18px;">Informe a chave administrativa para entrar.</p>
-  <input class="input" type="password" id="adminKeyInput" placeholder="Chave administrativa (ADMIN_SECRET)">
-  <button class="btn btn-brand" id="entrarBtn" style="width:100%;margin-top:10px;">Entrar</button>
+  <h1 style="font-size:1.2rem;margin:0 0 12px;">Acesso ao Painel</h1>
+  <div style="display:flex;gap:6px;margin:0 0 16px;">
+    <button class="btn btn-secondary" id="tabDono" style="flex:1;">Sou o dono</button>
+    <button class="btn btn-secondary" id="tabVend" style="flex:1;">Sou vendedor</button>
+  </div>
+  <div id="formDono">
+    <input class="input" type="password" id="adminKeyInput" placeholder="Chave administrativa (ADMIN_SECRET)">
+    <button class="btn btn-brand" id="entrarBtn" style="width:100%;margin-top:10px;">Entrar</button>
+  </div>
+  <div id="formVend" style="display:none;">
+    <input class="input" type="email" id="vendEmail" placeholder="Seu e-mail" style="margin-bottom:8px;">
+    <input class="input" type="password" id="vendSenha" placeholder="Sua senha">
+    <button class="btn btn-brand" id="entrarVendBtn" style="width:100%;margin-top:10px;">Entrar</button>
+  </div>
   <div class="status-msg err" id="gateMsg" style="margin-top:10px;"></div>
 </div>
 
@@ -82,14 +92,20 @@
       <p>Gerencie cadastros, planos, financeiro e WhatsApp de todos os seus clientes.</p>
     </div>
 
-    <div class="grid grid-metrics" style="margin-bottom:18px">
+    <div class="grid grid-metrics dono-only" style="margin-bottom:18px">
       <div class="metric-card"><div class="m-label"><i data-lucide="building-2"></i> Clientes</div><div class="m-value" id="mClientes">0</div></div>
       <div class="metric-card"><div class="m-label"><i data-lucide="smartphone"></i> WhatsApp ativo</div><div class="m-value" id="mWhats">0</div></div>
       <div class="metric-card"><div class="m-label"><i data-lucide="users"></i> Leads no total</div><div class="m-value" id="mLeads">0</div></div>
       <div class="metric-card"><div class="m-label"><i data-lucide="dollar-sign"></i> Pagamentos em dia</div><div class="m-value" id="mPagos">0</div></div>
     </div>
 
-    <div class="card" style="margin-bottom:18px; padding:16px 18px;">
+    <div class="card vendedor-only" style="display:none; margin-bottom:18px; padding:18px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">➕ Cadastrar novo cliente</h2>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">O cliente fica vinculado a você automaticamente. Sua comissão de 20% por pagamento aparece abaixo.</p>
+      <a class="btn btn-brand" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
+    </div>
+
+    <div class="card dono-only" style="margin-bottom:18px; padding:16px 18px;">
       <h2 style="font-size:1rem; margin:0 0 4px;">📢 Aviso para todos os clientes</h2>
       <p class="muted" style="font-size:0.82rem; margin:0 0 12px;">Aparece como popup na tela de todos os clientes. Use para anunciar melhorias, novidades ou pedir que atualizem a tela.</p>
       <input class="input" id="avisoTitulo" placeholder="Título (ex: Novidade na plataforma! 🎉)" style="margin-bottom:8px;">
@@ -105,13 +121,22 @@
 
     <div class="card" style="margin-bottom:18px; padding:16px 18px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-        <h2 style="font-size:1rem; margin:0;">💸 Comissões dos vendedores (20% por pagamento)</h2>
+        <h2 style="font-size:1rem; margin:0;" id="comissoesTitulo">💸 Comissões dos vendedores (20% por pagamento)</h2>
         <button class="btn btn-secondary btn-mini" id="atualizarComissoesBtn">↻ Atualizar</button>
       </div>
       <div id="comissoesResumo" style="margin-top:12px;"><span class="muted">Carregando...</span></div>
     </div>
 
-    <div class="toolbar">
+    <div class="card dono-only" style="margin-bottom:18px; padding:16px 18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <h2 style="font-size:1rem; margin:0;">🧑‍💼 Vendedores</h2>
+        <button class="btn btn-brand btn-mini" id="novoVendedorBtn"><i data-lucide="plus"></i> Novo vendedor</button>
+      </div>
+      <p class="muted" style="font-size:0.82rem; margin:8px 0 0;">Cada vendedor entra no painel com o e-mail e a senha dele, cadastra clientes (vinculados a ele) e vê só as próprias comissões.</p>
+      <div id="vendedoresLista" style="margin-top:12px;"><span class="muted">Carregando...</span></div>
+    </div>
+
+    <div class="toolbar dono-only">
       <div class="search-box">
         <i data-lucide="search" style="width:16px;height:16px;color:var(--text-dim)"></i>
         <input type="text" id="busca" placeholder="Buscar por nome ou e-mail...">
@@ -120,7 +145,7 @@
       <a class="btn btn-brand" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
     </div>
 
-    <div class="card" style="padding:0;overflow:auto;">
+    <div class="card dono-only" style="padding:0;overflow:auto;">
       <table>
         <thead>
           <tr><th>Cliente</th><th>E-mail (login)</th><th>WhatsApp</th><th>Leads</th><th>Plano</th><th>Pagamento</th><th>Cadastro</th><th></th></tr>
@@ -137,33 +162,91 @@
 <script>
 const API_BASE = window.location.origin;
 let ADMIN_KEY = localStorage.getItem('recomendaleads_admin_key') || '';
+let VEND_TOKEN = localStorage.getItem('recomendaleads_vend_token') || '';
+let VEND_NOME = localStorage.getItem('recomendaleads_vend_nome') || '';
 let empresas = [];
+const modoVendedor = () => !ADMIN_KEY && !!VEND_TOKEN;
 
 function icons() { try { lucide.createIcons(); } catch (e) {} }
 icons();
 
 async function adminFetch(url, options = {}) {
-  return fetch(url, { ...options, headers: { ...(options.headers || {}), 'X-Admin-Key': ADMIN_KEY } });
+  const h = { ...(options.headers || {}) };
+  if (ADMIN_KEY) h['X-Admin-Key'] = ADMIN_KEY;
+  else if (VEND_TOKEN) h['Authorization'] = 'Bearer ' + VEND_TOKEN;
+  return fetch(url, { ...options, headers: h });
 }
 function esc(s) { return (s || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function fmtData(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleDateString('pt-BR'); } catch (e) { return '—'; } }
 
 // ---- Gate ----
+function trocarAba(qual) {
+  const dono = qual === 'dono';
+  document.getElementById('formDono').style.display = dono ? '' : 'none';
+  document.getElementById('formVend').style.display = dono ? 'none' : '';
+  document.getElementById('tabDono').classList.toggle('btn-brand', dono);
+  document.getElementById('tabVend').classList.toggle('btn-brand', !dono);
+  document.getElementById('gateMsg').textContent = '';
+}
+document.getElementById('tabDono').addEventListener('click', () => trocarAba('dono'));
+document.getElementById('tabVend').addEventListener('click', () => trocarAba('vend'));
+trocarAba('dono');
+
 document.getElementById('entrarBtn').addEventListener('click', entrar);
 document.getElementById('adminKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
 async function entrar() {
   const key = document.getElementById('adminKeyInput').value.trim();
   const msg = document.getElementById('gateMsg'); msg.textContent = '';
   if (!key) { msg.textContent = 'Informe a chave.'; return; }
-  ADMIN_KEY = key;
+  ADMIN_KEY = key; VEND_TOKEN = ''; VEND_NOME = '';
   const resp = await adminFetch(`${API_BASE}/admin/empresas`);
-  if (resp.status === 401) { msg.textContent = 'Chave inválida.'; return; }
+  if (resp.status === 401) { ADMIN_KEY = ''; msg.textContent = 'Chave inválida.'; return; }
   localStorage.setItem('recomendaleads_admin_key', key);
+  localStorage.removeItem('recomendaleads_vend_token');
+  localStorage.removeItem('recomendaleads_vend_nome');
   mostrarApp();
   const data = await resp.json();
   render(data.empresas || []);
 }
-function mostrarApp() { document.getElementById('gate').style.display = 'none'; document.getElementById('app').style.display = 'flex'; icons(); carregarComissoes(); }
+
+document.getElementById('entrarVendBtn').addEventListener('click', entrarVendedor);
+document.getElementById('vendSenha').addEventListener('keydown', e => { if (e.key === 'Enter') entrarVendedor(); });
+async function entrarVendedor() {
+  const email = document.getElementById('vendEmail').value.trim();
+  const senha = document.getElementById('vendSenha').value;
+  const msg = document.getElementById('gateMsg'); msg.textContent = '';
+  if (!email || !senha) { msg.textContent = 'Informe e-mail e senha.'; return; }
+  try {
+    const resp = await fetch(`${API_BASE}/admin/vendedor-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, senha }) });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) { msg.textContent = data.erro || 'E-mail ou senha inválidos.'; return; }
+    VEND_TOKEN = data.token; VEND_NOME = data.nome || ''; ADMIN_KEY = '';
+    localStorage.setItem('recomendaleads_vend_token', VEND_TOKEN);
+    localStorage.setItem('recomendaleads_vend_nome', VEND_NOME);
+    localStorage.removeItem('recomendaleads_admin_key');
+    mostrarApp();
+  } catch (e) { msg.textContent = 'Erro de conexão.'; }
+}
+
+function mostrarApp() {
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  const vend = modoVendedor();
+  document.querySelectorAll('.dono-only').forEach(el => el.style.display = vend ? 'none' : '');
+  document.querySelectorAll('.vendedor-only').forEach(el => el.style.display = vend ? '' : 'none');
+  if (vend) {
+    document.querySelector('.page-head h1').textContent = 'Olá, ' + (VEND_NOME || 'vendedor');
+    document.querySelector('.page-head p').textContent = 'Cadastre clientes e acompanhe suas comissões.';
+    document.querySelector('.brand span').textContent = 'Área do Vendedor';
+    document.querySelector('.user-box .avatar').textContent = (VEND_NOME || 'V').charAt(0).toUpperCase();
+    document.querySelector('.user-box .meta b').textContent = VEND_NOME || 'Vendedor';
+    document.querySelector('.user-box .meta small').textContent = 'Vendedor';
+    document.getElementById('comissoesTitulo').textContent = '💸 Minhas comissões (20% por pagamento)';
+  }
+  icons();
+  carregarComissoes();
+  if (!vend) carregarVendedores();
+}
 
 function comBRL(c) { return ((Number(c) || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 async function carregarComissoes() {
@@ -175,16 +258,17 @@ async function carregarComissoes() {
     if (!data.ok) throw new Error();
     const r = data.resumo || [];
     if (!r.length) { cont.innerHTML = '<span class="muted">Nenhuma comissão registrada ainda.</span>'; return; }
+    const vend = modoVendedor();
     cont.innerHTML = `<table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
-      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Vendedor</th><th>A receber</th><th>Já pago</th><th>Pagtos</th><th></th></tr></thead>
+      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Vendedor</th><th>A receber</th><th>Já pago</th><th>Pagtos</th>${vend ? '' : '<th></th>'}</tr></thead>
       <tbody>${r.map(x => `<tr style="border-top:1px solid var(--line,#eee);">
         <td style="padding:8px 4px;font-weight:600;">${esc(x.vendedor)}</td>
         <td style="color:#1d9e75;font-weight:700;">${comBRL(x.aReceberCentavos)}</td>
         <td class="muted">${comBRL(x.pagoCentavos)}</td>
         <td class="muted">${x.qtd}</td>
-        <td>${x.aReceberCentavos > 0 ? `<button class="btn btn-secondary btn-mini" data-pagar="${esc(x.vendedor)}">Marcar pago</button>` : ''}</td>
+        ${vend ? '' : `<td>${x.aReceberCentavos > 0 ? `<button class="btn btn-secondary btn-mini" data-pagar="${esc(x.vendedor)}">Marcar pago</button>` : ''}</td>`}
       </tr>`).join('')}</tbody></table>`;
-    cont.querySelectorAll('[data-pagar]').forEach(b => b.addEventListener('click', () => marcarComissaoPaga(b.dataset.pagar)));
+    if (!vend) cont.querySelectorAll('[data-pagar]').forEach(b => b.addEventListener('click', () => marcarComissaoPaga(b.dataset.pagar)));
   } catch (e) { cont.innerHTML = '<span class="muted">Não foi possível carregar as comissões.</span>'; }
 }
 async function marcarComissaoPaga(vendedor) {
@@ -218,7 +302,7 @@ document.getElementById('avisoEnviarBtn').addEventListener('click', async () => 
   finally { btn.disabled = false; setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 7000); }
 });
 
-document.getElementById('sairBtn').addEventListener('click', () => { localStorage.removeItem('recomendaleads_admin_key'); location.reload(); });
+document.getElementById('sairBtn').addEventListener('click', () => { localStorage.removeItem('recomendaleads_admin_key'); localStorage.removeItem('recomendaleads_vend_token'); localStorage.removeItem('recomendaleads_vend_nome'); location.reload(); });
 document.getElementById('atualizarBtn').addEventListener('click', carregar);
 document.getElementById('busca').addEventListener('input', () => renderTabela());
 
@@ -270,6 +354,13 @@ function renderTabela() {
 
 function inp(id, val, ph) { return `<div class="campo"><input class="input" id="${id}" value="${esc(val)}" placeholder="${ph || ''}"></div>`; }
 function inpL(id, label, val, ph) { return `<div class="campo"><label>${label}</label><input class="input" id="${id}" value="${esc(val)}" placeholder="${ph || ''}"></div>`; }
+function selectVendedorComissao(atual) {
+  atual = atual || '';
+  let opts = '<option value="">— Nenhum —</option>';
+  opts += vendedoresCache.map(v => `<option value="${esc(v.id)}" ${v.id === atual ? 'selected' : ''}>${esc(v.nome)}</option>`).join('');
+  if (atual && !vendedoresCache.some(v => v.id === atual)) opts += `<option value="${esc(atual)}" selected>${esc(atual)} (manual)</option>`;
+  return `<div class="campo"><label>Vendedor (comissão 20%)</label><select class="input" id="e_vendedorComissao">${opts}</select></div>`;
+}
 
 function abrirEdicao(id) {
   const e = empresas.find(x => x.id === id); if (!e) return;
@@ -314,7 +405,7 @@ function abrirEdicao(id) {
               ${['','Teste','Em dia','Pendente','Atrasado','Cancelado'].map(s => `<option value="${s}" ${s === (e.statusPagamento || '') ? 'selected' : ''}>${s || '—'}</option>`).join('')}
             </select>
           </div>
-          ${inpL('e_vendedorComissao','Vendedor (comissão 20%)', e.vendedorComissao, 'Nome ou código do vendedor')}
+          ${selectVendedorComissao(e.vendedorComissao)}
           ${inpL('e_obs','Observações', e.observacoes)}
         </div>
 
@@ -416,11 +507,113 @@ async function resetSenha(id) {
   } catch (e) { if (msg) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; } }
 }
 
-// Auto-entra se já tem a chave salva
+// Auto-entra se já tem a chave (dono) ou o token (vendedor) salvo
 if (ADMIN_KEY) {
   adminFetch(`${API_BASE}/admin/empresas`).then(async resp => {
     if (resp.ok) { mostrarApp(); const data = await resp.json(); render(data.empresas || []); }
+    else { ADMIN_KEY = ''; localStorage.removeItem('recomendaleads_admin_key'); }
   }).catch(() => {});
+} else if (VEND_TOKEN) {
+  adminFetch(`${API_BASE}/admin/comissoes`).then(resp => {
+    if (resp.ok) { mostrarApp(); }
+    else { VEND_TOKEN = ''; localStorage.removeItem('recomendaleads_vend_token'); localStorage.removeItem('recomendaleads_vend_nome'); }
+  }).catch(() => {});
+}
+
+// ====== Gestão de vendedores (somente o dono) ======
+let vendedoresCache = [];
+async function carregarVendedores() {
+  const cont = document.getElementById('vendedoresLista');
+  if (!cont) return;
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/vendedores`);
+    const data = await resp.json();
+    if (!data.ok) throw new Error();
+    vendedoresCache = data.vendedores || [];
+    if (!vendedoresCache.length) { cont.innerHTML = '<span class="muted">Nenhum vendedor cadastrado ainda.</span>'; return; }
+    cont.innerHTML = `<table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
+      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Nome</th><th>E-mail (login)</th><th>WhatsApp</th><th>Status</th><th></th></tr></thead>
+      <tbody>${vendedoresCache.map(v => `<tr style="border-top:1px solid var(--line,#eee);">
+        <td style="padding:8px 4px;font-weight:600;">${esc(v.nome)}</td>
+        <td class="muted">${esc(v.email)}</td>
+        <td class="muted">${esc(v.whatsapp) || '—'}</td>
+        <td>${v.ativo ? '<span style="color:#1d9e75;font-weight:600;">Ativo</span>' : '<span style="color:#c0392b;">Inativo</span>'}</td>
+        <td><button class="btn btn-secondary btn-mini" data-edv="${esc(v.id)}">Editar</button></td>
+      </tr>`).join('')}</tbody></table>`;
+    cont.querySelectorAll('[data-edv]').forEach(b => b.addEventListener('click', () => abrirModalVendedor(b.dataset.edv)));
+  } catch (e) { cont.innerHTML = '<span class="muted">Não foi possível carregar os vendedores.</span>'; }
+}
+
+document.getElementById('novoVendedorBtn').addEventListener('click', () => abrirModalVendedor(null));
+
+function abrirModalVendedor(id) {
+  const v = id ? (vendedoresCache.find(x => x.id === id) || {}) : {};
+  const b = v.banco || {};
+  const novo = !id;
+  const campo = (cid, label, val, ph, type) => `<div class="campo"><label>${label}</label><input class="input" id="${cid}" type="${type || 'text'}" value="${esc(val)}" placeholder="${ph || ''}"></div>`;
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" id="ovVend">
+      <div class="modal-box">
+        <div class="modal-head"><h2>${novo ? 'Novo vendedor' : 'Editar vendedor'}</h2><button class="modal-close" id="fecharVendedorBtn">✕</button></div>
+        <p class="muted" style="margin:0 0 14px;">Dados do vendedor e conta de acesso ao painel.</p>
+        <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:6px 0;">Dados pessoais</div>
+        <div class="grid2">
+          ${campo('v_nome', 'Nome completo', v.nome, 'Nome do vendedor')}
+          ${campo('v_email', 'E-mail (login)', v.email, 'email@exemplo.com', 'email')}
+          ${campo('v_cnpj', 'CNPJ / CPF', v.cnpj, '00.000.000/0000-00')}
+          ${campo('v_whats', 'WhatsApp', v.whatsapp, '(11) 90000-0000')}
+        </div>
+        ${campo('v_end', 'Endereço completo', v.endereco, 'Rua, nº, cidade/UF, CEP')}
+        <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:14px 0 6px;">Dados bancários (para receber comissão)</div>
+        <div class="grid2">
+          ${campo('v_banco', 'Banco', b.banco, 'Ex: Nubank, Itaú')}
+          ${campo('v_pix', 'Chave Pix', b.pix, 'CPF, e-mail, telefone...')}
+          ${campo('v_ag', 'Agência', b.agencia, '0000')}
+          ${campo('v_conta', 'Conta', b.conta, '00000-0')}
+          ${campo('v_tipoconta', 'Tipo de conta', b.tipo, 'Corrente / Poupança')}
+          ${campo('v_titular', 'Titular', b.titular, 'Nome do titular')}
+        </div>
+        <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:14px 0 6px;">Acesso</div>
+        ${campo('v_senha', novo ? 'Senha de acesso' : 'Nova senha (deixe em branco para manter)', '', novo ? 'Defina uma senha' : '••••••')}
+        ${novo ? '' : `<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.88rem;"><input type="checkbox" id="v_ativo" ${v.ativo ? 'checked' : ''}> Conta ativa</label>`}
+        <div class="modal-actions">
+          <button class="btn btn-brand" id="salvarVendedorBtn">Salvar</button>
+          <button class="btn btn-secondary" id="cancelarVendedorBtn">Cancelar</button>
+          <span class="status-msg" id="vMsg"></span>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('fecharVendedorBtn').addEventListener('click', fecharModal);
+  document.getElementById('cancelarVendedorBtn').addEventListener('click', fecharModal);
+  document.getElementById('ovVend').addEventListener('click', ev => { if (ev.target.id === 'ovVend') fecharModal(); });
+  document.getElementById('salvarVendedorBtn').addEventListener('click', () => salvarVendedor(id));
+}
+
+async function salvarVendedor(id) {
+  const v = (cid) => { const el = document.getElementById(cid); return el ? el.value.trim() : ''; };
+  const msg = document.getElementById('vMsg'); msg.textContent = '';
+  const body = {
+    nome: v('v_nome'), email: v('v_email'), cnpj: v('v_cnpj'), whatsapp: v('v_whats'), endereco: v('v_end'),
+    banco: { banco: v('v_banco'), pix: v('v_pix'), agencia: v('v_ag'), conta: v('v_conta'), tipo: v('v_tipoconta'), titular: v('v_titular') }
+  };
+  const senha = v('v_senha');
+  if (!body.nome || !body.email) { msg.textContent = 'Informe nome e e-mail.'; msg.className = 'status-msg err'; return; }
+  try {
+    let resp;
+    if (id) {
+      const ativoEl = document.getElementById('v_ativo');
+      if (ativoEl) body.ativo = ativoEl.checked;
+      if (senha) body.novaSenha = senha;
+      resp = await adminFetch(`${API_BASE}/admin/vendedores/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    } else {
+      if (!senha) { msg.textContent = 'Defina uma senha de acesso.'; msg.className = 'status-msg err'; return; }
+      body.senha = senha;
+      resp = await adminFetch(`${API_BASE}/admin/vendedores`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    }
+    const data = await resp.json();
+    if (resp.ok && data.ok) { msg.textContent = '✅ Salvo!'; msg.className = 'status-msg ok'; await carregarVendedores(); setTimeout(fecharModal, 700); }
+    else { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
 }
 </script>
 </body>

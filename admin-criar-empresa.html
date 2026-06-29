@@ -118,9 +118,15 @@
   <p class="sub">Painel administrativo de cadastro de empresas com login.</p>
 
   <div class="card">
-    <label>Chave administrativa</label>
-    <input type="password" id="adminKeyInput" placeholder="Chave de acesso administrativo">
-    <div class="hint">Configurada na variável de ambiente ADMIN_SECRET do Render.</div>
+    <div id="vendBanner" style="display:none; background:#EFF4FF; border:1px solid #DBEAFE; border-radius:10px; padding:12px 14px; margin-bottom:16px; font-size:0.88rem;">
+      Você está cadastrando como vendedor: <b id="vendBannerNome"></b>.<br>
+      <span style="color:var(--text-dim);font-size:0.82rem;">O cliente fica vinculado a você e a comissão de 20% aparece no seu painel.</span>
+    </div>
+    <div id="keyBlock">
+      <label>Chave administrativa</label>
+      <input type="password" id="adminKeyInput" placeholder="Chave de acesso administrativo">
+      <div class="hint">Configurada na variável de ambiente ADMIN_SECRET do Render.</div>
+    </div>
 
     <div class="sec">Dados da empresa</div>
     <label>Nome da empresa (razão social)</label>
@@ -154,17 +160,19 @@
     <input type="text" id="senhaInput" value="123mudar" placeholder="Senha provisória de primeiro acesso">
     <div class="hint">Padrão: <b>123mudar</b>. O cliente será obrigado a definir a própria senha no primeiro login.</div>
 
-    <div class="sec">Cobrança</div>
-    <label>Período gratuito (sem cobrar)</label>
-    <select id="trialSelect" style="width:100%;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:8px;font-size:0.95rem;">
-      <option value="0">Nenhum — vou enviar o link de pagamento</option>
-      <option value="30">30 dias grátis</option>
-      <option value="60">60 dias grátis</option>
-      <option value="90">90 dias grátis</option>
-      <option value="custom">Personalizado…</option>
-    </select>
-    <input type="number" id="trialCustom" min="1" max="3650" placeholder="Quantos dias?" style="display:none;margin-top:8px;">
-    <div class="hint">Use para mentorados ou cortesias. No período gratuito o cliente usa tudo sem pagar; depois, o acesso é bloqueado até assinar.</div>
+    <div id="trialBlock">
+      <div class="sec">Cobrança</div>
+      <label>Período gratuito (sem cobrar)</label>
+      <select id="trialSelect" style="width:100%;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:8px;font-size:0.95rem;">
+        <option value="0">Nenhum — vou enviar o link de pagamento</option>
+        <option value="30">30 dias grátis</option>
+        <option value="60">60 dias grátis</option>
+        <option value="90">90 dias grátis</option>
+        <option value="custom">Personalizado…</option>
+      </select>
+      <input type="number" id="trialCustom" min="1" max="3650" placeholder="Quantos dias?" style="display:none;margin-top:8px;">
+      <div class="hint">Use para mentorados ou cortesias. No período gratuito o cliente usa tudo sem pagar; depois, o acesso é bloqueado até assinar.</div>
+    </div>
 
     <div class="sec">WhatsApp (Z-API) — opcional</div>
     <div class="hint" style="margin-bottom:6px">O cliente compra a Z-API, conecta o número dele e te envia o Instance ID e o Token. Cole aqui para deixar tudo pronto. Pode deixar em branco e preencher depois.</div>
@@ -175,7 +183,7 @@
     <label>Client-Token (segurança da conta)</label>
     <input type="text" id="zapiClientTokenInput" placeholder="Client-Token da sua conta Z-API">
 
-    <div class="checkbox-row">
+    <div class="checkbox-row" id="migrarBlock">
       <input type="checkbox" id="migrarConfigCheckbox">
       <div>
         <label for="migrarConfigCheckbox">Migrar configuração da empresa principal</label>
@@ -199,6 +207,24 @@
 
 <script>
 const API_BASE = window.location.origin;
+
+// Detecta quem está logado: dono (chave) ou vendedor (token).
+const STORED_KEY = localStorage.getItem('recomendaleads_admin_key') || '';
+const VEND_TOKEN = localStorage.getItem('recomendaleads_vend_token') || '';
+const VEND_NOME = localStorage.getItem('recomendaleads_vend_nome') || '';
+const ehVendedor = !STORED_KEY && !!VEND_TOKEN;
+
+(function ajustarPorAcesso() {
+  if (ehVendedor) {
+    document.getElementById('keyBlock').style.display = 'none';
+    document.getElementById('trialBlock').style.display = 'none';
+    document.getElementById('migrarBlock').style.display = 'none';
+    document.getElementById('vendBanner').style.display = 'block';
+    document.getElementById('vendBannerNome').textContent = VEND_NOME || 'você';
+  } else if (STORED_KEY) {
+    document.getElementById('adminKeyInput').value = STORED_KEY;
+  }
+})();
 
 document.getElementById('trialSelect').addEventListener('change', function () {
   document.getElementById('trialCustom').style.display = this.value === 'custom' ? 'block' : 'none';
@@ -236,8 +262,10 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     migrarConfigPrincipal
   };
 
-  if (!adminKey || !(payload.razaoSocial || payload.nomeFantasia) || !payload.emailEmpresa || !senha) {
-    statusEl.textContent = 'Informe ao menos: nome da empresa, e-mail da empresa (login) e senha.';
+  if ((!ehVendedor && !adminKey) || !(payload.razaoSocial || payload.nomeFantasia) || !payload.emailEmpresa || !senha) {
+    statusEl.textContent = ehVendedor
+      ? 'Informe ao menos: nome da empresa, e-mail da empresa (login) e senha.'
+      : 'Informe a chave, nome da empresa, e-mail da empresa (login) e senha.';
     statusEl.className = 'status err';
     return;
   }
@@ -248,12 +276,12 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
   resultadoBox.classList.remove('show');
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (ehVendedor) headers['Authorization'] = 'Bearer ' + VEND_TOKEN;
+    else headers['X-Admin-Key'] = adminKey;
     const resp = await fetch(`${API_BASE}/admin/empresas`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Admin-Key': adminKey
-      },
+      headers,
       body: JSON.stringify(payload)
     });
     const data = await resp.json();
