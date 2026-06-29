@@ -574,8 +574,8 @@ function abrirModalVendedor(id) {
           ${campo('v_titular', 'Titular', b.titular, 'Nome do titular')}
         </div>
         <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:14px 0 6px;">Acesso</div>
-        ${campo('v_senha', novo ? 'Senha de acesso' : 'Nova senha (deixe em branco para manter)', novo ? '123muda' : '', novo ? 'Senha de acesso' : '••••••')}
-        ${novo ? '<div class="muted" style="font-size:0.74rem;margin-top:-6px;">Senha padrão: <b>123muda</b>. Passe ao vendedor para o primeiro acesso.</div>' : ''}
+        ${campo('v_senha', novo ? 'Senha de acesso' : 'Nova senha (deixe em branco para manter)', novo ? '123mudar' : '', novo ? 'Senha de acesso' : '••••••')}
+        ${novo ? '<div class="muted" style="font-size:0.74rem;margin-top:-6px;">Senha padrão: <b>123mudar</b>. Passe ao vendedor para o primeiro acesso.</div>' : ''}
         ${novo ? '' : `<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.88rem;"><input type="checkbox" id="v_ativo" ${v.ativo ? 'checked' : ''}> Conta ativa</label>`}
         <div class="modal-actions">
           <button class="btn btn-brand" id="salvarVendedorBtn">Salvar</button>
