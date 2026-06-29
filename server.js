@@ -2043,6 +2043,46 @@ app.get('/recomendometro', (req, res) => {
   res.sendFile(path.join(__dirname, 'recomendometro.html'));
 });
 
+// Captura de lead qualificado do Recomendômetro (público).
+app.post('/recomendometro/lead', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const nome = String(b.nome || '').trim();
+    const email = String(b.email || '').trim().toLowerCase();
+    const telefone = String(b.telefone || '').trim();
+    if (!nome || (!email && !telefone)) return res.status(400).json({ ok: false, erro: 'Dados incompletos' });
+    await db.collection('recomendometro_leads').add({
+      nome, email, telefone,
+      ramo: b.ramo || '',
+      clientesDia: Number(b.vendas) || null,
+      ticket: Number(b.ticket) || null,
+      diasMes: Number(b.dias) || null,
+      temPrograma: b.programa || '',
+      vendeIndicacao: b.indicacao || '',
+      faturamentoMes: Number(b.receitaMes) || null,
+      ganhoMes: Number(b.ganhoMes) || null,
+      perda12: Number(b.perda12) || null,
+      origem: 'recomendometro',
+      criadoEm: new Date().toISOString()
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Lista os leads do Recomendômetro (somente o dono).
+app.get('/admin/recomendometro-leads', exigirAdmin, async (req, res) => {
+  try {
+    const snap = await db.collection('recomendometro_leads').get();
+    const leads = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, leads });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'landing.html'));
 });

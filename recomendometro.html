@@ -99,7 +99,7 @@
         <div class="qn">Pergunta 1 de 6</div>
         <div class="q">Qual o seu ramo de atividade?</div>
         <div class="hint">Só pra personalizar o seu resultado.</div>
-        <select id="ramo">
+        <select id="ramo" onkeydown="if(event.key==='Enter'){event.preventDefault();next(0)}">
           <option value="">Selecione…</option>
           <option>Varejo / Loja</option>
           <option>Serviços</option>
@@ -122,7 +122,7 @@
         <div class="q">Quantos clientes compram de você por dia?</div>
         <div class="hint">Em média, quantas pessoas fecham uma compra por dia.</div>
         <label class="fl">Clientes por dia</label>
-        <input type="number" id="vendas" min="1" inputmode="numeric" placeholder="Ex: 10">
+        <input type="number" id="vendas" min="1" inputmode="numeric" placeholder="Ex: 10" onkeydown="if(event.key==='Enter'){event.preventDefault();next(1)}">
         <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(1)">←</button><button class="btn btn-brand" onclick="next(1)">Continuar</button></div>
       </div>
 
@@ -131,7 +131,7 @@
         <div class="q">Qual o seu ticket médio?</div>
         <div class="hint">Valor médio que cada cliente gasta numa compra.</div>
         <label class="fl">Ticket médio</label>
-        <div class="field"><span class="pre">R$</span><input class="pad" type="number" id="ticket" min="1" inputmode="decimal" placeholder="Ex: 300"></div>
+        <div class="field"><span class="pre">R$</span><input class="pad" type="number" id="ticket" min="1" inputmode="decimal" placeholder="Ex: 300" onkeydown="if(event.key==='Enter'){event.preventDefault();next(2)}"></div>
         <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(2)">←</button><button class="btn btn-brand" onclick="next(2)">Continuar</button></div>
       </div>
 
@@ -140,7 +140,7 @@
         <div class="q">Quantos dias você trabalha por mês?</div>
         <div class="hint">Dias em que a empresa atende e vende.</div>
         <label class="fl">Dias por mês</label>
-        <input type="number" id="dias" min="1" max="31" value="26" inputmode="numeric">
+        <input type="number" id="dias" min="1" max="31" value="26" inputmode="numeric" onkeydown="if(event.key==='Enter'){event.preventDefault();next(3)}">
         <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(3)">←</button><button class="btn btn-brand" onclick="next(3)">Continuar</button></div>
       </div>
 
@@ -164,6 +164,19 @@
           <div class="opt" onclick="pick('indicacao','nao')">Não / quase nada</div>
         </div>
         <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(5)">←</button></div>
+      </div>
+
+      <div class="step" data-step="6">
+        <div class="qn">Quase lá! 🔓</div>
+        <div class="q">Para onde enviamos o seu diagnóstico?</div>
+        <div class="hint">Preencha para liberar o resultado completo.</div>
+        <label class="fl">Seu nome</label>
+        <input type="text" id="leadNome" placeholder="Como podemos te chamar?" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('leadTel').focus()}">
+        <label class="fl" style="margin-top:12px">WhatsApp</label>
+        <input type="tel" id="leadTel" placeholder="(11) 90000-0000" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('leadEmail').focus()}">
+        <label class="fl" style="margin-top:12px">E-mail</label>
+        <input type="email" id="leadEmail" placeholder="seu@email.com" onkeydown="if(event.key==='Enter'){event.preventDefault();enviarLead()}">
+        <div class="nav-btns"><button class="back btn btn-ghost" onclick="prev(6)">←</button><button class="btn btn-brand" onclick="enviarLead()">Ver meu diagnóstico →</button></div>
       </div>
     </div>
 
@@ -200,7 +213,7 @@
   var WPP = '5511913269690';
   var ans = { dias: 26 };
   var cur = 0;
-  var TOTAL = 6;
+  var TOTAL = 7;
 
   function setBar(){ document.getElementById('bar').style.width = Math.round(((cur)/(TOTAL))*100 + 16) + '%'; }
   function show(i){
@@ -222,7 +235,18 @@
     ans[key]=val;
     document.querySelectorAll('.step[data-step="'+cur+'"] .opt').forEach(function(o){o.style.borderColor='';o.style.background='';});
     if(key==='programa'){ show(5); }
-    if(key==='indicacao'){ calcular(); }
+    if(key==='indicacao'){ show(6); }
+  }
+
+  function enviarLead(){
+    var nome=document.getElementById('leadNome').value.trim();
+    var tel=document.getElementById('leadTel').value.trim();
+    var email=document.getElementById('leadEmail').value.trim();
+    if(!nome){alert('Informe o seu nome.');document.getElementById('leadNome').focus();return;}
+    if(tel.replace(/\D/g,'').length<8){alert('Informe um telefone válido.');document.getElementById('leadTel').focus();return;}
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){alert('Informe um e-mail válido.');document.getElementById('leadEmail').focus();return;}
+    ans.nome=nome; ans.telefone=tel; ans.email=email;
+    calcular();
   }
 
   function brl(n){ return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}); }
@@ -253,6 +277,14 @@
     document.getElementById('cta2').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero uma sessão estratégica agora.');
     document.getElementById('cta3').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero falar com o comercial agora.');
 
+    try {
+      fetch('/recomendometro/lead', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        nome:ans.nome, telefone:ans.telefone, email:ans.email, ramo:ans.ramo,
+        vendas:ans.vendas, ticket:ans.ticket, dias:ans.dias, programa:ans.programa, indicacao:ans.indicacao,
+        receitaMes:Math.round(receitaMes), ganhoMes:Math.round(ganho25), perda12:Math.round(p12)
+      }) }).catch(function(){});
+    } catch(e){}
+
     document.getElementById('quiz').style.display='none';
     document.getElementById('result').classList.add('show');
     document.getElementById('bar').style.width='100%';
@@ -271,6 +303,7 @@
     document.getElementById('result').classList.remove('show');
     document.getElementById('quiz').style.display='block';
     document.getElementById('ramo').value='';document.getElementById('vendas').value='';document.getElementById('ticket').value='';document.getElementById('dias').value='26';
+    document.getElementById('leadNome').value='';document.getElementById('leadTel').value='';document.getElementById('leadEmail').value='';
     show(0);
   }
   setBar();
