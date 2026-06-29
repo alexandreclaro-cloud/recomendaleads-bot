@@ -52,9 +52,13 @@
   .result.show{display:block;animation:fade .3s ease}
   .rtop{text-align:center;background:linear-gradient(135deg,#1A1F2E,#0F172A);color:#fff;border-radius:18px;padding:34px 24px}
   .rtop .lab{color:#FCA5A5;font-weight:700;font-size:.85rem}
-  .rtop .big{font-size:2.9rem;font-weight:800;letter-spacing:-.02em;color:#FCA5A5;margin:6px 0;line-height:1}
-  @media(max-width:480px){.rtop .big{font-size:2.2rem}}
+  .rtop .big{font-size:3.1rem;font-weight:800;letter-spacing:-.02em;color:#F87171;margin:6px 0;line-height:1;animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{transform:scale(1);text-shadow:0 0 0 rgba(248,113,113,0)}50%{transform:scale(1.035);text-shadow:0 8px 30px rgba(248,113,113,.35)}}
+  @media(max-width:480px){.rtop .big{font-size:2.3rem}}
   .rtop .sub{color:#CBD5E1;font-size:.92rem}
+  .urg{background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:12px;padding:13px 16px;text-align:center;font-size:.93rem;font-weight:600;margin-bottom:16px}
+  .urg b{color:#DC2626}
+  .fire{text-align:center;font-weight:700;color:#DC2626;font-size:.92rem;margin:2px 0 12px}
   .rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}
   .rg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 12px;text-align:center}
   .rg .l{font-size:.74rem;color:var(--faint)}
@@ -163,7 +167,7 @@
 
     <div class="result" id="result">
       <div class="rtop">
-        <div class="lab">💸 Nos últimos 12 meses, você deixou de faturar cerca de</div>
+        <div class="lab">💸 O dinheiro que ESCAPOU da sua empresa nos últimos 12 meses:</div>
         <div class="big" id="bigLoss">R$ 0</div>
         <div class="sub" id="bigSub">Dinheiro que foi embora por falta de um processo de recomendação.</div>
       </div>
@@ -172,11 +176,13 @@
         <div class="rg"><div class="l">Últimos 6 meses</div><div class="v" id="l6">R$ 0</div></div>
         <div class="rg"><div class="l">Últimos 12 meses</div><div class="v" id="l12">R$ 0</div></div>
       </div>
+      <div class="urg">⚠️ São cerca de <b id="perDia">R$ 0</b> escapando pela porta <b>a cada dia de trabalho</b> — e esse dinheiro não volta.</div>
       <div class="gain">
-        <div class="l">Aplicando o programa corretamente, você fatura +25% — cerca de</div>
+        <div class="l">A virada: aplicando o programa corretamente, você fatura <b>+25%</b> — cerca de</div>
         <div class="v" id="gainM">R$ 0 / mês</div>
       </div>
       <div class="mathline" id="mathline"></div>
+      <div class="fire">🔥 Cada mês sem processo é mais dinheiro queimado. Pare a sangria agora:</div>
       <div class="ctas">
         <a class="btn btn-wpp" id="cta1">⚡ Quero aplicar um programa agora</a>
         <a class="btn btn-brand" id="cta2">🎯 Quero uma sessão estratégica agora</a>
@@ -236,6 +242,7 @@
     document.getElementById('l6').textContent = brl(p6);
     document.getElementById('l12').textContent = brl(p12);
     document.getElementById('gainM').textContent = '+25% ≈ ' + brl(ganho25) + ' / mês';
+    document.getElementById('perDia').textContent = brl(perdaMes / ans.dias);
     document.getElementById('bigSub').textContent = sub;
     document.getElementById('mathline').innerHTML = 'Seu faturamento hoje: <b>'+brl(receitaMes)+'/mês</b>. Com <b>10%</b> das recomendações virando vendas, aplicar o método corretamente rende <b>+25%</b> — cerca de <b>'+brl(ganho25)+'/mês</b>.';
 
