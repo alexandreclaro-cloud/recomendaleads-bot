@@ -2033,6 +2033,10 @@ app.get('/previa', (req, res) => {
   res.sendFile(path.join(__dirname, 'landing-nova.html'));
 });
 
+app.get('/logos', (req, res) => {
+  res.sendFile(path.join(__dirname, 'logos.html'));
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'landing.html'));
 });
