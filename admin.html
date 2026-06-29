@@ -103,6 +103,14 @@
       </div>
     </div>
 
+    <div class="card" style="margin-bottom:18px; padding:16px 18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <h2 style="font-size:1rem; margin:0;">💸 Comissões dos vendedores (20% por pagamento)</h2>
+        <button class="btn btn-secondary btn-mini" id="atualizarComissoesBtn">↻ Atualizar</button>
+      </div>
+      <div id="comissoesResumo" style="margin-top:12px;"><span class="muted">Carregando...</span></div>
+    </div>
+
     <div class="toolbar">
       <div class="search-box">
         <i data-lucide="search" style="width:16px;height:16px;color:var(--text-dim)"></i>
@@ -155,7 +163,39 @@ async function entrar() {
   const data = await resp.json();
   render(data.empresas || []);
 }
-function mostrarApp() { document.getElementById('gate').style.display = 'none'; document.getElementById('app').style.display = 'flex'; icons(); }
+function mostrarApp() { document.getElementById('gate').style.display = 'none'; document.getElementById('app').style.display = 'flex'; icons(); carregarComissoes(); }
+
+function comBRL(c) { return ((Number(c) || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+async function carregarComissoes() {
+  const cont = document.getElementById('comissoesResumo');
+  if (!cont) return;
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/comissoes`);
+    const data = await resp.json();
+    if (!data.ok) throw new Error();
+    const r = data.resumo || [];
+    if (!r.length) { cont.innerHTML = '<span class="muted">Nenhuma comissão registrada ainda.</span>'; return; }
+    cont.innerHTML = `<table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
+      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Vendedor</th><th>A receber</th><th>Já pago</th><th>Pagtos</th><th></th></tr></thead>
+      <tbody>${r.map(x => `<tr style="border-top:1px solid var(--line,#eee);">
+        <td style="padding:8px 4px;font-weight:600;">${esc(x.vendedor)}</td>
+        <td style="color:#1d9e75;font-weight:700;">${comBRL(x.aReceberCentavos)}</td>
+        <td class="muted">${comBRL(x.pagoCentavos)}</td>
+        <td class="muted">${x.qtd}</td>
+        <td>${x.aReceberCentavos > 0 ? `<button class="btn btn-secondary btn-mini" data-pagar="${esc(x.vendedor)}">Marcar pago</button>` : ''}</td>
+      </tr>`).join('')}</tbody></table>`;
+    cont.querySelectorAll('[data-pagar]').forEach(b => b.addEventListener('click', () => marcarComissaoPaga(b.dataset.pagar)));
+  } catch (e) { cont.innerHTML = '<span class="muted">Não foi possível carregar as comissões.</span>'; }
+}
+async function marcarComissaoPaga(vendedor) {
+  if (!confirm(`Marcar todas as comissões pendentes de "${vendedor}" como PAGAS?`)) return;
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/comissoes/marcar-pago`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vendedor }) });
+    const data = await resp.json();
+    if (data.ok) carregarComissoes();
+  } catch (e) {}
+}
+document.getElementById('atualizarComissoesBtn').addEventListener('click', carregarComissoes);
 
 document.getElementById('avisoEnviarBtn').addEventListener('click', async () => {
   const btn = document.getElementById('avisoEnviarBtn');
@@ -274,6 +314,7 @@ function abrirEdicao(id) {
               ${['','Teste','Em dia','Pendente','Atrasado','Cancelado'].map(s => `<option value="${s}" ${s === (e.statusPagamento || '') ? 'selected' : ''}>${s || '—'}</option>`).join('')}
             </select>
           </div>
+          ${inpL('e_vendedorComissao','Vendedor (comissão 20%)', e.vendedorComissao, 'Nome ou código do vendedor')}
           ${inpL('e_obs','Observações', e.observacoes)}
         </div>
 
@@ -341,7 +382,7 @@ async function salvar(id) {
       nomeSocio: v('e_nomeSocio'), cpfSocio: v('e_cpf'), emailSocio: v('e_emailSocio'),
       enderecoSocio: v('e_endSocio'), whatsappSocio: v('e_wpp')
     },
-    plano: v('e_plano'), valorMensal: v('e_valor'), statusPagamento: document.getElementById('e_status').value, observacoes: v('e_obs'),
+    plano: v('e_plano'), valorMensal: v('e_valor'), statusPagamento: document.getElementById('e_status').value, observacoes: v('e_obs'), vendedorComissao: v('e_vendedorComissao'),
     zapiInstanceId: v('e_inst'), zapiToken: v('e_tok'), zapiClientToken: v('e_ctok')
   };
   try {

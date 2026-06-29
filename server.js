@@ -278,6 +278,9 @@ const USUARIOS_COL = () => db.collection('usuarios');
 const MARKETING_ENVIOS_COL = () => db.collection('marketing_envios');
 // Avisos do dono para todos os clientes (histórico — "Mensagens do sistema").
 const AVISOS_COL = () => db.collection('avisos');
+// Comissões de vendedores (20% de cada pagamento de assinatura).
+const COMISSOES_COL = () => db.collection('comissoes');
+const COMISSAO_PCT = 20;
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'oi', 'olá', 'ola',
@@ -1836,6 +1839,27 @@ app.post('/webhook/:empresaId', (req, res) => comWebhook(req, res, req.params.em
 async function gravarAssinatura(empresaId, dados) {
   await EMPRESAS_COL().doc(empresaId).set({ assinatura: dados }, { merge: true });
 }
+
+// Registra a comissão (20%) do vendedor que fechou a empresa, a cada pagamento.
+async function registrarComissao(empresa, valorCentavos, origem) {
+  try {
+    if (!empresa || !empresa.vendedorComissao) return;
+    const v = Number(valorCentavos) || 0;
+    if (v <= 0) return;
+    await COMISSOES_COL().add({
+      empresaId: empresa.id,
+      empresaNome: empresa.nome || '',
+      vendedor: empresa.vendedorComissao,
+      valorPagoCentavos: v,
+      percentual: COMISSAO_PCT,
+      comissaoCentavos: Math.round(v * COMISSAO_PCT / 100),
+      origem: origem || '',
+      pago: false,
+      data: new Date().toISOString()
+    });
+    console.log(`[COMISSAO] ${empresa.vendedorComissao}: R$${(v * COMISSAO_PCT / 100 / 100).toFixed(2)} (empresa ${empresa.id})`);
+  } catch (e) { console.error('[COMISSAO] erro:', e.message); }
+}
 function dataMaisMeses(meses) {
   const d = new Date();
   d.setMonth(d.getMonth() + meses);
@@ -1857,8 +1881,12 @@ app.post('/webhook-stripe', async (req, res) => {
     if (evento.type === 'checkout.session.completed') {
       // Cadastro self-service (sem empresa ainda): cria a conta como backup.
       if (obj.metadata && obj.metadata.tipo === 'signup') {
-        try { await garantirContaSignup(obj); console.log('[STRIPE] conta de signup garantida via webhook'); }
-        catch (e) { console.error('[STRIPE] erro ao criar conta de signup:', e.message); }
+        try {
+          const emp = await garantirContaSignup(obj);
+          // Pagamento único (semestral/anual): comissão aqui. Mensal: no invoice.paid.
+          if (emp && obj.mode === 'payment') await registrarComissao(emp, obj.amount_total, 'venda-avista');
+          console.log('[STRIPE] conta de signup garantida via webhook');
+        } catch (e) { console.error('[STRIPE] erro ao criar conta de signup:', e.message); }
         return res.sendStatus(200);
       }
       const empresaId = (obj.metadata && obj.metadata.empresaId) || obj.client_reference_id;
@@ -1879,6 +1907,11 @@ app.post('/webhook-stripe', async (req, res) => {
           base.acessoAte = dataMaisMeses(1); // corrigido no invoice.paid
         }
         await gravarAssinatura(empresaId, base);
+        // Pagamento único de empresa existente: comissão aqui (assinatura → invoice.paid).
+        if (obj.mode === 'payment') {
+          const ed = await EMPRESAS_COL().doc(empresaId).get();
+          if (ed.exists) await registrarComissao({ id: ed.id, ...ed.data() }, obj.amount_total, 'venda-avista');
+        }
         console.log(`[STRIPE] checkout concluído — empresa ${empresaId}, plano ${planoId}`);
       }
     } else if (evento.type === 'invoice.paid') {
@@ -1890,6 +1923,8 @@ app.post('/webhook-stripe', async (req, res) => {
         await gravarAssinatura(empresa.id, {
           ...(empresa.assinatura || {}), status: 'ativa', acessoAte, atualizadoEm: new Date().toISOString()
         });
+        // Comissão a cada mensalidade paga (inclui a 1ª da assinatura mensal).
+        await registrarComissao(empresa, obj.amount_paid, 'mensalidade');
         console.log(`[STRIPE] fatura paga — empresa ${empresa.id}`);
       }
     } else if (evento.type === 'invoice.payment_failed') {
@@ -2196,12 +2231,14 @@ app.post('/assinar/checkout', async (req, res) => {
     const planoId = String((req.body && req.body.plano) || '').toLowerCase();
     const plano = PLANOS[planoId];
     if (!plano) return res.status(400).json({ ok: false, erro: 'Plano inválido' });
+    const vendedor = String((req.body && req.body.vendedor) || '').trim().slice(0, 60);
     const base = urlBase(req);
     const ehAssinatura = plano.tipo === 'assinatura';
+    const meta = { tipo: 'signup', plano: planoId, ...(vendedor ? { vendedor } : {}) };
     const session = await stripe.checkout.sessions.create({
       mode: ehAssinatura ? 'subscription' : 'payment',
-      metadata: { tipo: 'signup', plano: planoId },
-      ...(ehAssinatura ? { subscription_data: { metadata: { tipo: 'signup', plano: planoId } } } : { customer_creation: 'always' }),
+      metadata: meta,
+      ...(ehAssinatura ? { subscription_data: { metadata: meta } } : { customer_creation: 'always' }),
       line_items: [{
         quantity: 1,
         price_data: {
@@ -2232,6 +2269,7 @@ async function garantirContaSignup(session) {
     nome: 'Nova empresa',
     email,
     cadastroIncompleto: true,
+    ...(session.metadata && session.metadata.vendedor ? { vendedorComissao: session.metadata.vendedor } : {}),
     assinatura: {
       stripeSessionId: session.id,
       stripeCustomerId: session.customer || null,
@@ -2899,6 +2937,47 @@ app.get('/admin', (req, res) => {
 });
 
 // Aviso global — consultar (admin) e publicar para todos os clientes.
+// Relatório de comissões dos vendedores (admin).
+app.get('/admin/comissoes', exigirAdmin, async (req, res) => {
+  try {
+    const snap = await COMISSOES_COL().get();
+    const itens = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0));
+    const map = {};
+    itens.forEach(i => {
+      const v = i.vendedor || '—';
+      if (!map[v]) map[v] = { vendedor: v, aReceberCentavos: 0, pagoCentavos: 0, qtd: 0 };
+      map[v].qtd++;
+      if (i.pago) map[v].pagoCentavos += i.comissaoCentavos || 0;
+      else map[v].aReceberCentavos += i.comissaoCentavos || 0;
+    });
+    res.json({ ok: true, itens, resumo: Object.values(map).sort((a, b) => b.aReceberCentavos - a.aReceberCentavos) });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Marca comissões como pagas (por vendedor — todas as pendentes, ou por id).
+app.post('/admin/comissoes/marcar-pago', exigirAdmin, async (req, res) => {
+  try {
+    const { vendedor, id } = req.body || {};
+    let marcados = 0;
+    if (id) {
+      await COMISSOES_COL().doc(id).set({ pago: true, pagoEm: new Date().toISOString() }, { merge: true });
+      marcados = 1;
+    } else if (vendedor) {
+      const snap = await COMISSOES_COL().where('vendedor', '==', vendedor).get();
+      const pend = snap.docs.filter(d => !d.data().pago);
+      const batch = db.batch();
+      pend.forEach(d => { batch.set(d.ref, { pago: true, pagoEm: new Date().toISOString() }, { merge: true }); marcados++; });
+      if (marcados) await batch.commit();
+    }
+    res.json({ ok: true, marcados });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Histórico de avisos enviados (admin).
 app.get('/admin/avisos', exigirAdmin, async (req, res) => {
   try {
@@ -3048,7 +3127,7 @@ app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
     const atual = doc.data();
     const b = req.body || {};
     const upd = {};
-    ['plano', 'statusPagamento', 'valorMensal', 'observacoes', 'zapiInstanceId', 'zapiToken', 'zapiClientToken'].forEach(k => {
+    ['plano', 'statusPagamento', 'valorMensal', 'observacoes', 'zapiInstanceId', 'zapiToken', 'zapiClientToken', 'vendedorComissao'].forEach(k => {
       if (b[k] !== undefined) upd[k] = (b[k] === '' ? null : b[k]);
     });
     if (b.nome !== undefined && String(b.nome).trim()) {
