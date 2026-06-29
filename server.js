@@ -2658,6 +2658,7 @@ app.get('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
     res.json({
       ok: true,
       conectado,
+      whatsappTipo: e.whatsappTipo || 'zapi',
       // Nunca devolvemos o token cheio — só uma confirmação de que existe.
       zapiInstanceId: e.zapiInstanceId || '',
       temToken: !!e.zapiToken,
@@ -2764,12 +2765,11 @@ app.get('/minha-whatsapp/baileys/status', exigirLoginEmpresa, async (req, res) =
   }
 });
 
-// Desconecta/desvincula o número (logout) e volta o modo para Z-API.
+// Desconecta/desvincula o número (logout). O modo (definido pelo admin) é mantido,
+// então o painel volta a oferecer o QR para reconectar.
 app.post('/minha-whatsapp/baileys/desconectar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
-    const id = req.empresaLogin.id;
-    await baileys.desconectar(id);
-    await EMPRESAS_COL().doc(id).set({ whatsappTipo: 'zapi' }, { merge: true });
+    await baileys.desconectar(req.empresaLogin.id);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -2964,7 +2964,9 @@ app.post('/admin/empresas', exigirAcessoAdmin, async (req, res) => {
       // período gratuito (trial) concedido no cadastro, em dias (0 = nenhum)
       trialDias,
       // vendedor da comissão (informado pelo dono; vendedor é forçado abaixo)
-      vendedorComissao
+      vendedorComissao,
+      // modo de WhatsApp: 'baileys' (QR grátis) ou 'zapi' (padrão)
+      whatsappTipo
     } = req.body;
 
     // Vendedor logado: cliente sempre vinculado a ele; sem trial/migração.
@@ -3033,6 +3035,7 @@ app.post('/admin/empresas', exigirAcessoAdmin, async (req, res) => {
       criadoEm: new Date().toISOString(),
       configuracao: configuracaoInicial,
       ...(vendedorVinc ? { vendedorComissao: vendedorVinc } : {}),
+      ...(whatsappTipo === 'baileys' ? { whatsappTipo: 'baileys' } : {}),
       ...(assinatura ? { assinatura } : {})
     });
 
@@ -3417,7 +3420,7 @@ app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
     const atual = doc.data();
     const b = req.body || {};
     const upd = {};
-    ['plano', 'statusPagamento', 'valorMensal', 'observacoes', 'zapiInstanceId', 'zapiToken', 'zapiClientToken', 'vendedorComissao'].forEach(k => {
+    ['plano', 'statusPagamento', 'valorMensal', 'observacoes', 'zapiInstanceId', 'zapiToken', 'zapiClientToken', 'vendedorComissao', 'whatsappTipo'].forEach(k => {
       if (b[k] !== undefined) upd[k] = (b[k] === '' ? null : b[k]);
     });
     if (b.nome !== undefined && String(b.nome).trim()) {

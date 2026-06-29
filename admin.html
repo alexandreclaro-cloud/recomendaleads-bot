@@ -507,11 +507,19 @@ function abrirEdicao(id) {
           </div>
         </div>
 
-        <div class="sec">WhatsApp (Z-API)</div>
-        <div class="grid2">
-          ${inpL('e_inst','Instance ID', e.zapiInstanceId)}
-          ${inpL('e_tok','Token', e.zapiToken)}
-          ${inpL('e_ctok','Client-Token', e.zapiClientToken)}
+        <div class="sec">WhatsApp</div>
+        <div class="campo">
+          <label>Modo de conexão</label>
+          <select class="input" id="e_whatsappTipo">
+            <option value="zapi" ${(e.whatsappTipo || 'zapi') !== 'baileys' ? 'selected' : ''}>Z-API (cliente contrata)</option>
+            <option value="baileys" ${e.whatsappTipo === 'baileys' ? 'selected' : ''}>QR grátis — sem Z-API (demo / sem verba)</option>
+          </select>
+          <div class="muted" style="font-size:0.76rem;margin-top:4px;">No modo "QR grátis", o painel do cliente mostra só o QR Code (ideal para demonstração dos vendedores e clientes sem verba).</div>
+        </div>
+        <div class="grid2" style="margin-top:8px;">
+          ${inpL('e_inst','Instance ID (Z-API)', e.zapiInstanceId)}
+          ${inpL('e_tok','Token (Z-API)', e.zapiToken)}
+          ${inpL('e_ctok','Client-Token (Z-API)', e.zapiClientToken)}
           <div class="campo"><label>Webhook (cole na Z-API)</label><input class="input" readonly value="${API_BASE}/webhook/${e.id}"></div>
         </div>
 
@@ -559,7 +567,7 @@ async function salvar(id) {
       enderecoSocio: v('e_endSocio'), whatsappSocio: v('e_wpp')
     },
     plano: v('e_plano'), valorMensal: v('e_valor'), statusPagamento: document.getElementById('e_status').value, observacoes: v('e_obs'), vendedorComissao: v('e_vendedorComissao'),
-    zapiInstanceId: v('e_inst'), zapiToken: v('e_tok'), zapiClientToken: v('e_ctok')
+    zapiInstanceId: v('e_inst'), zapiToken: v('e_tok'), zapiClientToken: v('e_ctok'), whatsappTipo: document.getElementById('e_whatsappTipo').value
   };
   try {
     const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

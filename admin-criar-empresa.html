@@ -174,6 +174,15 @@
       <div class="hint">Use para mentorados ou cortesias. No período gratuito o cliente usa tudo sem pagar; depois, o acesso é bloqueado até assinar.</div>
     </div>
 
+    <div class="sec">WhatsApp</div>
+    <label>Modo de conexão</label>
+    <select id="whatsappTipoSelect" style="width:100%;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:8px;font-size:0.95rem;">
+      <option value="zapi">Z-API (cliente contrata)</option>
+      <option value="baileys">QR grátis — sem Z-API (demo / sem verba)</option>
+    </select>
+    <div class="hint">No modo "QR grátis", o cliente conecta lendo um QR Code no painel, sem precisar pagar a Z-API. Ótimo para demonstração e clientes sem verba.</div>
+
+    <div id="zapiBloco">
     <div class="sec">WhatsApp (Z-API) — opcional</div>
     <div class="hint" style="margin-bottom:6px">O cliente compra a Z-API, conecta o número dele e te envia o Instance ID e o Token. Cole aqui para deixar tudo pronto. Pode deixar em branco e preencher depois.</div>
     <label>Instance ID</label>
@@ -182,6 +191,7 @@
     <input type="text" id="zapiTokenInput" placeholder="Token da instância">
     <label>Client-Token (segurança da conta)</label>
     <input type="text" id="zapiClientTokenInput" placeholder="Client-Token da sua conta Z-API">
+    </div>
 
     <div class="checkbox-row" id="migrarBlock">
       <input type="checkbox" id="migrarConfigCheckbox">
@@ -235,6 +245,10 @@ document.getElementById('trialSelect').addEventListener('change', function () {
   document.getElementById('trialCustom').style.display = this.value === 'custom' ? 'block' : 'none';
 });
 
+document.getElementById('whatsappTipoSelect').addEventListener('change', function () {
+  document.getElementById('zapiBloco').style.display = this.value === 'baileys' ? 'none' : 'block';
+});
+
 document.getElementById('criarBtn').addEventListener('click', async () => {
   const btn = document.getElementById('criarBtn');
   const statusEl = document.getElementById('statusMsg');
@@ -249,6 +263,7 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
 
   const payload = {
     trialDias,
+    whatsappTipo: document.getElementById('whatsappTipoSelect').value,
     razaoSocial: val('razaoSocialInput'),
     nomeFantasia: val('nomeFantasiaInput'),
     cnpj: val('cnpjInput'),

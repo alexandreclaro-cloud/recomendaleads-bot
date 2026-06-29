@@ -739,14 +739,24 @@ async function carregarWhatsapp() {
     // Provisionamento + webhook (config avançada)
     const respCfg = await fetchAutenticado(`${API_BASE}/minha-whatsapp`);
     const cfg = await respCfg.json();
+    const ehBaileys = cfg.ok && cfg.whatsappTipo === 'baileys';
     if (cfg.ok) {
       document.getElementById('zapiInstanceInput').value = cfg.zapiInstanceId || '';
       document.getElementById('zapiTokenInput').placeholder = cfg.temToken ? '•••••• (já salvo — preencha para trocar)' : 'Token da sua instância Z-API';
       document.getElementById('zapiClientTokenInput').placeholder = cfg.temClientToken ? '•••••• (já salvo — preencha para trocar)' : 'Client-Token da sua conta Z-API';
       document.getElementById('webhookUrlText').textContent = cfg.webhookUrl || '—';
     }
-    await atualizarEstadoWhats();
-    await atualizarBaileys();
+    // Modo QR grátis (Baileys): mostra só o QR; esconde a parte de Z-API.
+    document.getElementById('baileysBox').style.display = ehBaileys ? 'block' : 'none';
+    const detalhesZapi = document.querySelector('#view-whatsapp details');
+    if (detalhesZapi) detalhesZapi.style.display = ehBaileys ? 'none' : '';
+    if (ehBaileys) {
+      mostrarAreaWhats('');
+      await atualizarBaileys();
+    } else {
+      baileysOn = false; pararPollBaileys();
+      await atualizarEstadoWhats();
+    }
   } catch (err) {}
 }
 
