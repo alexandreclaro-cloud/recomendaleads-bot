@@ -2029,6 +2029,10 @@ app.post('/webhook-stripe', async (req, res) => {
 // ROTAS DE ADMINISTRAÇÃO
 // ============================================================
 
+app.get('/previa', (req, res) => {
+  res.sendFile(path.join(__dirname, 'landing-nova.html'));
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'landing.html'));
 });
