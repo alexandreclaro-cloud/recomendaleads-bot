@@ -210,9 +210,11 @@ const API_BASE = window.location.origin;
 
 // Detecta quem está logado: dono (chave) ou vendedor (token).
 const STORED_KEY = localStorage.getItem('recomendaleads_admin_key') || '';
+const DONO_TOKEN = localStorage.getItem('recomendaleads_dono_token') || '';
 const VEND_TOKEN = localStorage.getItem('recomendaleads_vend_token') || '';
 const VEND_NOME = localStorage.getItem('recomendaleads_vend_nome') || '';
-const ehVendedor = !STORED_KEY && !!VEND_TOKEN;
+const ehVendedor = !STORED_KEY && !DONO_TOKEN && !!VEND_TOKEN;
+const ehDonoToken = !STORED_KEY && !!DONO_TOKEN;
 
 (function ajustarPorAcesso() {
   if (ehVendedor) {
@@ -221,6 +223,9 @@ const ehVendedor = !STORED_KEY && !!VEND_TOKEN;
     document.getElementById('migrarBlock').style.display = 'none';
     document.getElementById('vendBanner').style.display = 'block';
     document.getElementById('vendBannerNome').textContent = VEND_NOME || 'você';
+  } else if (ehDonoToken) {
+    // Dono logado pelo login fácil: não precisa digitar a chave (mantém trial/migração).
+    document.getElementById('keyBlock').style.display = 'none';
   } else if (STORED_KEY) {
     document.getElementById('adminKeyInput').value = STORED_KEY;
   }
@@ -262,8 +267,8 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     migrarConfigPrincipal
   };
 
-  if ((!ehVendedor && !adminKey) || !(payload.razaoSocial || payload.nomeFantasia) || !payload.emailEmpresa || !senha) {
-    statusEl.textContent = ehVendedor
+  if ((!ehVendedor && !ehDonoToken && !adminKey) || !(payload.razaoSocial || payload.nomeFantasia) || !payload.emailEmpresa || !senha) {
+    statusEl.textContent = (ehVendedor || ehDonoToken)
       ? 'Informe ao menos: nome da empresa, e-mail da empresa (login) e senha.'
       : 'Informe a chave, nome da empresa, e-mail da empresa (login) e senha.';
     statusEl.className = 'status err';
@@ -278,6 +283,7 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
   try {
     const headers = { 'Content-Type': 'application/json' };
     if (ehVendedor) headers['Authorization'] = 'Bearer ' + VEND_TOKEN;
+    else if (ehDonoToken) headers['Authorization'] = 'Bearer ' + DONO_TOKEN;
     else headers['X-Admin-Key'] = adminKey;
     const resp = await fetch(`${API_BASE}/admin/empresas`, {
       method: 'POST',

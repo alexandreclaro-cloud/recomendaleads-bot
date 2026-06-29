@@ -283,6 +283,8 @@ const COMISSOES_COL = () => db.collection('comissoes');
 const COMISSAO_PCT = 20;
 // Contas de vendedor (login próprio no /admin, com acesso limitado).
 const VENDEDORES_COL = () => db.collection('vendedores');
+// Contas de administrador (login fácil e-mail+senha; acesso total, igual à chave mestra).
+const ADMINS_COL = () => db.collection('admins');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'oi', 'olá', 'ola',
@@ -2938,17 +2940,20 @@ app.post('/admin/empresas', exigirAcessoAdmin, async (req, res) => {
 // ============================================================
 // PAINEL DO DONO — área administrativa (protegida por X-Admin-Key)
 // ============================================================
+// Exige acesso de DONO (chave mestra OU login de administrador). Usado em todos
+// os endpoints administrativos sensíveis — sem mudança por endpoint.
 function exigirAdmin(req, res, next) {
-  return limiteAdmin(req, res, () => {
-    const chave = req.headers['x-admin-key'];
-    if (!chave || chave !== ADMIN_SECRET) {
+  return limiteAdmin(req, res, async () => {
+    const ctx = await resolverAcessoAdmin(req);
+    if (!ctx || !ctx.ehDono) {
       return res.status(401).json({ ok: false, erro: 'Chave administrativa inválida' });
     }
+    req.acesso = ctx;
     next();
   });
 }
 
-// Resolve o acesso ao painel: dono (chave mestra) OU vendedor (token JWT).
+// Resolve o acesso ao painel: dono (chave mestra OU login admin) OU vendedor.
 async function resolverAcessoAdmin(req) {
   const chave = req.headers['x-admin-key'];
   if (chave && chave === ADMIN_SECRET) return { ehDono: true };
@@ -2957,6 +2962,10 @@ async function resolverAcessoAdmin(req) {
   if (m) {
     try {
       const p = jwt.verify(m[1], JWT_SECRET);
+      if (p && p.tipo === 'admin-dono' && p.adminId) {
+        const ad = await ADMINS_COL().doc(p.adminId).get();
+        if (ad.exists) return { ehDono: true, adminId: ad.id, adminEmail: ad.data().email || '' };
+      }
       if (p && p.tipo === 'vendedor-admin' && p.vendedorId) {
         const vd = await VENDEDORES_COL().doc(p.vendedorId).get();
         if (vd.exists && vd.data().ativo !== false) {
@@ -2967,6 +2976,55 @@ async function resolverAcessoAdmin(req) {
   }
   return null;
 }
+
+// Login fácil do administrador (e-mail + senha) → token de acesso total (7 dias).
+app.post('/admin/admin-login', limiteLogin, async (req, res) => {
+  try {
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+    const senha = String((req.body && req.body.senha) || '');
+    if (!email || !senha) return res.status(400).json({ ok: false, erro: 'Informe e-mail e senha' });
+    const snap = await ADMINS_COL().where('email', '==', email).limit(1).get();
+    if (snap.empty) return res.status(401).json({ ok: false, erro: 'E-mail ou senha inválidos' });
+    const doc = snap.docs[0];
+    const ok = await bcrypt.compare(senha, doc.data().senhaHash || '');
+    if (!ok) return res.status(401).json({ ok: false, erro: 'E-mail ou senha inválidos' });
+    const token = jwt.sign({ tipo: 'admin-dono', adminId: doc.id }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ ok: true, token, email });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Cria/atualiza o login fácil do administrador (precisa estar autenticado como dono).
+app.post('/admin/definir-acesso', exigirAdmin, async (req, res) => {
+  try {
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+    const senha = String((req.body && req.body.senha) || '');
+    if (!email || !senha) return res.status(400).json({ ok: false, erro: 'Informe e-mail e senha' });
+    if (senha.length < 4) return res.status(400).json({ ok: false, erro: 'A senha precisa ter ao menos 4 caracteres' });
+    const senhaHash = await bcrypt.hash(senha, 10);
+    const snap = await ADMINS_COL().where('email', '==', email).limit(1).get();
+    if (snap.empty) {
+      await ADMINS_COL().add({ email, senhaHash, criadoEm: new Date().toISOString() });
+    } else {
+      await snap.docs[0].ref.set({ senhaHash, atualizadoEm: new Date().toISOString() }, { merge: true });
+    }
+    res.json({ ok: true, email });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Lista os e-mails de administrador já cadastrados (para exibição no painel).
+app.get('/admin/meu-acesso', exigirAdmin, async (req, res) => {
+  try {
+    const snap = await ADMINS_COL().get();
+    const emails = snap.docs.map(d => d.data().email).filter(Boolean);
+    res.json({ ok: true, emails });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
 
 // Middleware: aceita dono OU vendedor logado. Preenche req.acesso.
 function exigirAcessoAdmin(req, res, next) {

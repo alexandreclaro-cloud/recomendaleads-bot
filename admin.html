@@ -56,8 +56,17 @@
     <button class="btn btn-secondary" id="tabVend" style="flex:1;">Vendedor</button>
   </div>
   <div id="formDono">
-    <input class="input" type="password" id="adminKeyInput" placeholder="Chave administrativa (ADMIN_SECRET)">
-    <button class="btn btn-brand" id="entrarBtn" style="width:100%;margin-top:10px;">Entrar</button>
+    <div id="donoSenhaForm">
+      <input class="input" type="email" id="donoEmail" placeholder="Seu e-mail" style="margin-bottom:8px;">
+      <input class="input" type="password" id="donoSenha" placeholder="Sua senha">
+      <button class="btn btn-brand" id="entrarDonoBtn" style="width:100%;margin-top:10px;">Entrar</button>
+      <p id="usarChaveLink" style="margin:12px 0 0;text-align:center;font-size:0.8rem;color:var(--text-dim);cursor:pointer;text-decoration:underline;">Primeira vez? Entrar com a chave mestra</p>
+    </div>
+    <div id="donoChaveForm" style="display:none;">
+      <input class="input" type="password" id="adminKeyInput" placeholder="Chave administrativa (ADMIN_SECRET)">
+      <button class="btn btn-brand" id="entrarBtn" style="width:100%;margin-top:10px;">Entrar</button>
+      <p id="usarSenhaLink" style="margin:12px 0 0;text-align:center;font-size:0.8rem;color:var(--text-dim);cursor:pointer;text-decoration:underline;">Voltar para e-mail e senha</p>
+    </div>
   </div>
   <div id="formVend" style="display:none;">
     <input class="input" type="email" id="vendEmail" placeholder="Seu e-mail" style="margin-bottom:8px;">
@@ -103,6 +112,19 @@
       <h2 style="font-size:1rem; margin:0 0 4px;">➕ Cadastrar novo cliente</h2>
       <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">O cliente fica vinculado a você automaticamente. Sua comissão de 20% por pagamento aparece abaixo.</p>
       <a class="btn btn-brand" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
+    </div>
+
+    <div class="card dono-only" style="margin-bottom:18px; padding:16px 18px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">🔑 Meu acesso (login fácil)</h2>
+      <p class="muted" style="font-size:0.82rem; margin:0 0 12px;">Crie um e-mail e senha pra entrar sem digitar a chave longa. <span id="acessoAtual"></span></p>
+      <div class="grid2">
+        <div class="campo"><label>E-mail</label><input class="input" id="acessoEmail" type="email" placeholder="seu@email.com"></div>
+        <div class="campo"><label>Senha</label><input class="input" id="acessoSenha" type="password" placeholder="Defina uma senha"></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; margin-top:10px;">
+        <button class="btn btn-brand" id="salvarAcessoBtn">Salvar login</button>
+        <span class="status-msg" id="acessoMsg"></span>
+      </div>
     </div>
 
     <div class="card dono-only" style="margin-bottom:18px; padding:16px 18px;">
@@ -162,10 +184,11 @@
 <script>
 const API_BASE = window.location.origin;
 let ADMIN_KEY = localStorage.getItem('recomendaleads_admin_key') || '';
+let DONO_TOKEN = localStorage.getItem('recomendaleads_dono_token') || '';
 let VEND_TOKEN = localStorage.getItem('recomendaleads_vend_token') || '';
 let VEND_NOME = localStorage.getItem('recomendaleads_vend_nome') || '';
 let empresas = [];
-const modoVendedor = () => !ADMIN_KEY && !!VEND_TOKEN;
+const modoVendedor = () => !ADMIN_KEY && !DONO_TOKEN && !!VEND_TOKEN;
 
 function icons() { try { lucide.createIcons(); } catch (e) {} }
 icons();
@@ -173,6 +196,7 @@ icons();
 async function adminFetch(url, options = {}) {
   const h = { ...(options.headers || {}) };
   if (ADMIN_KEY) h['X-Admin-Key'] = ADMIN_KEY;
+  else if (DONO_TOKEN) h['Authorization'] = 'Bearer ' + DONO_TOKEN;
   else if (VEND_TOKEN) h['Authorization'] = 'Bearer ' + VEND_TOKEN;
   return fetch(url, { ...options, headers: h });
 }
@@ -192,16 +216,51 @@ document.getElementById('tabDono').addEventListener('click', () => trocarAba('do
 document.getElementById('tabVend').addEventListener('click', () => trocarAba('vend'));
 trocarAba('dono');
 
+// Alterna entre login por senha (fácil) e chave mestra (reserva)
+document.getElementById('usarChaveLink').addEventListener('click', () => {
+  document.getElementById('donoSenhaForm').style.display = 'none';
+  document.getElementById('donoChaveForm').style.display = '';
+  document.getElementById('gateMsg').textContent = '';
+});
+document.getElementById('usarSenhaLink').addEventListener('click', () => {
+  document.getElementById('donoChaveForm').style.display = 'none';
+  document.getElementById('donoSenhaForm').style.display = '';
+  document.getElementById('gateMsg').textContent = '';
+});
+
+// Login fácil do dono (e-mail + senha)
+document.getElementById('entrarDonoBtn').addEventListener('click', entrarDono);
+document.getElementById('donoSenha').addEventListener('keydown', e => { if (e.key === 'Enter') entrarDono(); });
+async function entrarDono() {
+  const email = document.getElementById('donoEmail').value.trim();
+  const senha = document.getElementById('donoSenha').value;
+  const msg = document.getElementById('gateMsg'); msg.textContent = '';
+  if (!email || !senha) { msg.textContent = 'Informe e-mail e senha.'; return; }
+  try {
+    const resp = await fetch(`${API_BASE}/admin/admin-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, senha }) });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) { msg.textContent = data.erro || 'E-mail ou senha inválidos.'; return; }
+    DONO_TOKEN = data.token; ADMIN_KEY = ''; VEND_TOKEN = ''; VEND_NOME = '';
+    localStorage.setItem('recomendaleads_dono_token', DONO_TOKEN);
+    localStorage.removeItem('recomendaleads_admin_key');
+    localStorage.removeItem('recomendaleads_vend_token');
+    localStorage.removeItem('recomendaleads_vend_nome');
+    mostrarApp();
+    const r = await adminFetch(`${API_BASE}/admin/empresas`); const d = await r.json(); render(d.empresas || []);
+  } catch (e) { msg.textContent = 'Erro de conexão.'; }
+}
+
 document.getElementById('entrarBtn').addEventListener('click', entrar);
 document.getElementById('adminKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
 async function entrar() {
   const key = document.getElementById('adminKeyInput').value.trim();
   const msg = document.getElementById('gateMsg'); msg.textContent = '';
   if (!key) { msg.textContent = 'Informe a chave.'; return; }
-  ADMIN_KEY = key; VEND_TOKEN = ''; VEND_NOME = '';
+  ADMIN_KEY = key; DONO_TOKEN = ''; VEND_TOKEN = ''; VEND_NOME = '';
   const resp = await adminFetch(`${API_BASE}/admin/empresas`);
   if (resp.status === 401) { ADMIN_KEY = ''; msg.textContent = 'Chave inválida.'; return; }
   localStorage.setItem('recomendaleads_admin_key', key);
+  localStorage.removeItem('recomendaleads_dono_token');
   localStorage.removeItem('recomendaleads_vend_token');
   localStorage.removeItem('recomendaleads_vend_nome');
   mostrarApp();
@@ -245,8 +304,34 @@ function mostrarApp() {
   }
   icons();
   carregarComissoes();
-  if (!vend) carregarVendedores();
+  if (!vend) { carregarVendedores(); carregarMeuAcesso(); }
 }
+
+async function carregarMeuAcesso() {
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/meu-acesso`);
+    const data = await resp.json();
+    const span = document.getElementById('acessoAtual');
+    if (data.ok && data.emails && data.emails.length) {
+      span.textContent = 'Logins já criados: ' + data.emails.join(', ') + '.';
+      if (!document.getElementById('acessoEmail').value) document.getElementById('acessoEmail').value = data.emails[0];
+    } else { span.textContent = 'Nenhum login criado ainda — use a chave mestra desta vez e crie aqui.'; }
+  } catch (e) {}
+}
+document.getElementById('salvarAcessoBtn').addEventListener('click', async () => {
+  const email = document.getElementById('acessoEmail').value.trim();
+  const senha = document.getElementById('acessoSenha').value;
+  const msg = document.getElementById('acessoMsg'); msg.textContent = '';
+  if (!email || !senha) { msg.textContent = 'Informe e-mail e senha.'; msg.className = 'status-msg err'; return; }
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/definir-acesso`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, senha }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      msg.textContent = '✅ Pronto! Da próxima vez entre com esse e-mail e senha.'; msg.className = 'status-msg ok';
+      document.getElementById('acessoSenha').value = ''; carregarMeuAcesso();
+    } else { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
+});
 
 function comBRL(c) { return ((Number(c) || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 async function carregarComissoes() {
@@ -302,7 +387,7 @@ document.getElementById('avisoEnviarBtn').addEventListener('click', async () => 
   finally { btn.disabled = false; setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 7000); }
 });
 
-document.getElementById('sairBtn').addEventListener('click', () => { localStorage.removeItem('recomendaleads_admin_key'); localStorage.removeItem('recomendaleads_vend_token'); localStorage.removeItem('recomendaleads_vend_nome'); location.reload(); });
+document.getElementById('sairBtn').addEventListener('click', () => { ['recomendaleads_admin_key', 'recomendaleads_dono_token', 'recomendaleads_vend_token', 'recomendaleads_vend_nome'].forEach(k => localStorage.removeItem(k)); location.reload(); });
 document.getElementById('atualizarBtn').addEventListener('click', carregar);
 document.getElementById('busca').addEventListener('input', () => renderTabela());
 
@@ -507,11 +592,11 @@ async function resetSenha(id) {
   } catch (e) { if (msg) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; } }
 }
 
-// Auto-entra se já tem a chave (dono) ou o token (vendedor) salvo
-if (ADMIN_KEY) {
+// Auto-entra se já tem chave/token salvo (dono por chave, dono por login, ou vendedor)
+if (ADMIN_KEY || DONO_TOKEN) {
   adminFetch(`${API_BASE}/admin/empresas`).then(async resp => {
     if (resp.ok) { mostrarApp(); const data = await resp.json(); render(data.empresas || []); }
-    else { ADMIN_KEY = ''; localStorage.removeItem('recomendaleads_admin_key'); }
+    else { ADMIN_KEY = ''; DONO_TOKEN = ''; localStorage.removeItem('recomendaleads_admin_key'); localStorage.removeItem('recomendaleads_dono_token'); }
   }).catch(() => {});
 } else if (VEND_TOKEN) {
   adminFetch(`${API_BASE}/admin/comissoes`).then(resp => {
