@@ -67,6 +67,8 @@
   .gain{background:#ECFDF5;border:1px solid #BBF7D0;border-radius:14px;padding:18px 20px;text-align:center;margin-bottom:16px}
   .gain .l{color:var(--wpp-deep);font-weight:700;font-size:.9rem}
   .gain .v{font-size:1.7rem;font-weight:800;color:var(--wpp-deep);margin-top:2px}
+  .curr{text-align:center;color:var(--dim);font-size:.95rem;margin-bottom:16px}
+  .curr b{color:var(--ink);font-weight:700}
   .mathline{background:var(--bg);border-radius:12px;padding:14px 16px;font-size:.84rem;color:var(--dim);text-align:center;margin-bottom:18px}
   .mathline b{color:var(--ink)}
   .ctas{display:flex;flex-direction:column;gap:10px}
@@ -178,10 +180,10 @@
       </div>
       <div class="urg">⚠️ São cerca de <b id="perDia">R$ 0</b> escapando pela porta <b>a cada dia de trabalho</b> — e esse dinheiro não volta.</div>
       <div class="gain">
-        <div class="l">A virada: aplicando o programa corretamente, você fatura <b>+25%</b> — cerca de</div>
+        <div class="l">Aplicando o <b>PROGRAMA COMPLETO DE RECOMENDAÇÃO</b>, seu faturamento aumenta aproximadamente</div>
         <div class="v" id="gainM">R$ 0 / mês</div>
       </div>
-      <div class="mathline" id="mathline"></div>
+      <div class="curr">Seu faturamento médio hoje, de acordo com as suas informações: <b id="faturAtual">R$ 0 / mês</b></div>
       <div class="fire">🔥 Cada mês sem processo é mais dinheiro queimado. Pare a sangria agora:</div>
       <div class="ctas">
         <a class="btn btn-wpp" id="cta1">⚡ Quero aplicar um programa agora</a>
@@ -189,7 +191,7 @@
         <a class="btn btn-ghost" id="cta3">💬 Quero falar com o comercial agora</a>
       </div>
       <div class="restart"><a onclick="restart()">↻ Refazer o cálculo</a></div>
-      <div class="rnote">Estimativa baseada em médias de mercado: aplicando um programa estruturado, cerca de 10% das recomendações viram vendas — somando, em média, 25% a mais no seu faturamento. O resultado real depende da execução.</div>
+      <div class="rnote">Estimativa baseada em médias de mercado, aplicando um programa estruturado com processos, um método validado e muita tecnologia de Inteligência Artificial.</div>
     </div>
   </div>
 </div>
@@ -241,10 +243,10 @@
     document.getElementById('l3').textContent = brl(p3);
     document.getElementById('l6').textContent = brl(p6);
     document.getElementById('l12').textContent = brl(p12);
-    document.getElementById('gainM').textContent = '+25% ≈ ' + brl(ganho25) + ' / mês';
+    document.getElementById('gainM').textContent = brl(ganho25) + ' / mês';
+    document.getElementById('faturAtual').textContent = brl(receitaMes) + ' / mês';
     document.getElementById('perDia').textContent = brl(perdaMes / ans.dias);
     document.getElementById('bigSub').textContent = sub;
-    document.getElementById('mathline').innerHTML = 'Seu faturamento hoje: <b>'+brl(receitaMes)+'/mês</b>. Com <b>10%</b> das recomendações virando vendas, aplicar o método corretamente rende <b>+25%</b> — cerca de <b>'+brl(ganho25)+'/mês</b>.';
 
     var msgBase = 'Olá! Fiz o Recomendômetro (ramo: '+ans.ramo+') e descobri que posso estar deixando cerca de '+brl(p12)+' por ano na mesa. ';
     document.getElementById('cta1').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero aplicar um programa de recomendação agora.');
