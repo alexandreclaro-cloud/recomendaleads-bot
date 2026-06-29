@@ -173,7 +173,7 @@
         <div class="rg"><div class="l">Últimos 12 meses</div><div class="v" id="l12">R$ 0</div></div>
       </div>
       <div class="gain">
-        <div class="l">Aplicando o programa agora, você pode adicionar até</div>
+        <div class="l">Aplicando o programa corretamente, você fatura +25% — cerca de</div>
         <div class="v" id="gainM">R$ 0 / mês</div>
       </div>
       <div class="mathline" id="mathline"></div>
@@ -183,7 +183,7 @@
         <a class="btn btn-ghost" id="cta3">💬 Quero falar com o comercial agora</a>
       </div>
       <div class="restart"><a onclick="restart()">↻ Refazer o cálculo</a></div>
-      <div class="rnote">Estimativa baseada em médias de mercado: cada cliente pode gerar 5 recomendações e ~5% dos recomendados compram. O resultado real depende da execução.</div>
+      <div class="rnote">Estimativa baseada em médias de mercado: aplicando um programa estruturado, cerca de 10% das recomendações viram vendas — somando, em média, 25% a mais no seu faturamento. O resultado real depende da execução.</div>
     </div>
   </div>
 </div>
@@ -221,22 +221,23 @@
 
   function calcular(){
     var clientesMes = ans.vendas * ans.dias;
-    var potencialMes = clientesMes * 5 * ans.ticket * 0.05; // 5 recomendações, 5% compram
+    var receitaMes = clientesMes * ans.ticket;
+    var ganho25 = receitaMes * 0.25; // aplicando o método: +25% (10% das recomendações convertem)
 
     var fator, sub;
     if(ans.programa==='sim'){ fator=0.15; sub='Você já está à frente — mas ainda há margem para extrair mais do seu processo.'; }
     else if(ans.indicacao==='sim'){ fator=0.70; sub='Você vende no boca a boca, mas sem processo a maior parte das recomendações nunca acontece.'; }
     else { fator=1.0; sub='Sem um processo de recomendação, você está deixando praticamente tudo na mesa.'; }
 
-    var perdaMes = potencialMes * fator;
+    var perdaMes = ganho25 * fator;
     var p3 = perdaMes*3, p6 = perdaMes*6, p12 = perdaMes*12;
 
     document.getElementById('l3').textContent = brl(p3);
     document.getElementById('l6').textContent = brl(p6);
     document.getElementById('l12').textContent = brl(p12);
-    document.getElementById('gainM').textContent = brl(perdaMes) + ' / mês';
+    document.getElementById('gainM').textContent = '+25% ≈ ' + brl(ganho25) + ' / mês';
     document.getElementById('bigSub').textContent = sub;
-    document.getElementById('mathline').innerHTML = '<b>'+clientesMes.toLocaleString('pt-BR')+'</b> clientes/mês × <b>5</b> recomendações × <b>'+brl(ans.ticket)+'</b> × <b>5%</b> que compram';
+    document.getElementById('mathline').innerHTML = 'Seu faturamento hoje: <b>'+brl(receitaMes)+'/mês</b>. Com <b>10%</b> das recomendações virando vendas, aplicar o método corretamente rende <b>+25%</b> — cerca de <b>'+brl(ganho25)+'/mês</b>.';
 
     var msgBase = 'Olá! Fiz o Recomendômetro (ramo: '+ans.ramo+') e descobri que posso estar deixando cerca de '+brl(p12)+' por ano na mesa. ';
     document.getElementById('cta1').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero aplicar um programa de recomendação agora.');
