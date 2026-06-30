@@ -202,16 +202,29 @@ function jidDe(phone) {
   return String(phone).replace(/\D/g, '') + '@s.whatsapp.net';
 }
 
+// Resolve o JID REAL no WhatsApp (corrige o "9" dos números do Brasil e @lid).
+// Sem isso, o WhatsApp pode aceitar o envio mas NÃO entregar (número no formato errado).
+async function resolverJid(sock, phone) {
+  const num = String(phone).replace(/\D/g, '');
+  try {
+    const res = await sock.onWhatsApp(num);
+    if (res && res[0] && res[0].exists && res[0].jid) return res[0].jid;
+  } catch (e) { console.error('[BAILEYS] onWhatsApp falhou:', e.message); }
+  return num + '@s.whatsapp.net';
+}
+
 async function enviarTexto(empresaId, phone, message) {
   const s = sessoes[empresaId];
   if (!s || !s.sock || s.status !== 'conectado') throw new Error('WhatsApp (Baileys) não conectado');
-  await s.sock.sendMessage(jidDe(phone), { text: message });
+  const jid = await resolverJid(s.sock, phone);
+  await s.sock.sendMessage(jid, { text: message });
+  console.log(`[BAILEYS] texto enviado p/ ${jid} (origem ${phone})`);
 }
 
 async function enviarMidia(empresaId, phone, buffer, mimetype, caption, asDocument, fileName) {
   const s = sessoes[empresaId];
   if (!s || !s.sock || s.status !== 'conectado') throw new Error('WhatsApp (Baileys) não conectado');
-  const jid = jidDe(phone);
+  const jid = await resolverJid(s.sock, phone);
   if (asDocument) {
     await s.sock.sendMessage(jid, { document: buffer, mimetype: mimetype || 'application/octet-stream', fileName: fileName || 'arquivo', caption: caption || '' });
   } else {
