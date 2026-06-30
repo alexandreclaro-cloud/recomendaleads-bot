@@ -2319,6 +2319,7 @@ app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (
     const ehAssinatura = plano.tipo === 'assinatura';
     const session = await stripe.checkout.sessions.create({
       mode: ehAssinatura ? 'subscription' : 'payment',
+      payment_method_types: plano.metodos,
       customer: customerId,
       client_reference_id: empresa.id,
       metadata: { empresaId: empresa.id, plano: planoId },
@@ -2370,6 +2371,7 @@ app.post('/assinar/checkout', async (req, res) => {
     const meta = { tipo: 'signup', plano: planoId, ...(vendedor ? { vendedor } : {}) };
     const session = await stripe.checkout.sessions.create({
       mode: ehAssinatura ? 'subscription' : 'payment',
+      payment_method_types: plano.metodos,
       metadata: meta,
       ...(ehAssinatura ? { subscription_data: { metadata: meta } } : { customer_creation: 'always' }),
       line_items: [{
