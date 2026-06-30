@@ -2094,7 +2094,7 @@ app.get('/admin/recomendometro-leads', exigirAdmin, async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'landing.html'));
+  res.sendFile(path.join(__dirname, 'landing-nova.html'));
 });
 
 // Design system compartilhado por todas as telas
