@@ -28,7 +28,10 @@
   /* NAV */
   nav { position: sticky; top: 0; z-index: 30; background: rgba(255,255,255,.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
   nav .row { display: flex; align-items: center; justify-content: space-between; height: 84px; }
-  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.1rem; }
+  .logo { display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 1.1rem; }
+  .logo .lsym { height: 50px; width: auto; display: block; }
+  .logo .lw { height: 38px; width: auto; display: block; }
+  @media (max-width: 640px) { .logo .lsym { height: 40px; } .logo .lw { height: 28px; } nav .row { height: 70px; } }
   .logo .mark { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, var(--brand), var(--wpp)); display: grid; place-items: center; color: #fff; font-size: 1.1rem; }
   nav .links { display: flex; align-items: center; gap: 22px; }
   nav .links a.nlink { color: var(--dim); font-weight: 600; font-size: 0.92rem; }
@@ -120,7 +123,7 @@
 
 <nav>
   <div class="wrap row">
-    <div class="logo"><img src="/assets/logo-symbol.png" alt="" style="height:48px;width:auto;display:block"><img src="/assets/logo-wordmark.png" alt="RecomendaLeads" style="height:28px;width:auto;display:block"></div>
+    <div class="logo"><img class="lsym" src="/assets/logo-symbol.png" alt=""><img class="lw" src="/assets/logo-wordmark.png" alt="RecomendaLeads"></div>
     <div class="links">
       <a class="nlink" href="#como">Como funciona</a>
       <a class="nlink" href="#programa">O programa</a>
