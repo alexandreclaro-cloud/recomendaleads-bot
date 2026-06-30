@@ -1914,11 +1914,15 @@ async function registrarComissao(empresa, valorCentavos, origem) {
     if (!ref) return;
     const v = Number(valorCentavos) || 0;
     if (v <= 0) return;
-    // Resolve o nome do vendedor a partir do ID (se for uma conta cadastrada).
-    let vendedorId = null, vendedorNome = String(ref);
+    // Resolve nome e % de comissão do vendedor a partir do ID (se for conta cadastrada).
+    let vendedorId = null, vendedorNome = String(ref), pct = COMISSAO_PCT;
     try {
       const vd = await VENDEDORES_COL().doc(String(ref)).get();
-      if (vd.exists) { vendedorId = vd.id; vendedorNome = vd.data().nome || String(ref); }
+      if (vd.exists) {
+        vendedorId = vd.id;
+        vendedorNome = vd.data().nome || String(ref);
+        if (vd.data().comissaoPct != null && Number(vd.data().comissaoPct) >= 0) pct = Number(vd.data().comissaoPct);
+      }
     } catch (e) {}
     await COMISSOES_COL().add({
       empresaId: empresa.id,
@@ -1926,13 +1930,13 @@ async function registrarComissao(empresa, valorCentavos, origem) {
       vendedorId,
       vendedor: vendedorNome,
       valorPagoCentavos: v,
-      percentual: COMISSAO_PCT,
-      comissaoCentavos: Math.round(v * COMISSAO_PCT / 100),
+      percentual: pct,
+      comissaoCentavos: Math.round(v * pct / 100),
       origem: origem || '',
       pago: false,
       data: new Date().toISOString()
     });
-    console.log(`[COMISSAO] ${vendedorNome}: R$${(v * COMISSAO_PCT / 100 / 100).toFixed(2)} (empresa ${empresa.id})`);
+    console.log(`[COMISSAO] ${vendedorNome} (${pct}%): R$${(v * pct / 100 / 100).toFixed(2)} (empresa ${empresa.id})`);
   } catch (e) { console.error('[COMISSAO] erro:', e.message); }
 }
 function dataMaisMeses(meses) {
@@ -3224,7 +3228,7 @@ app.get('/admin/vendedores', exigirAdmin, async (req, res) => {
     const snap = await VENDEDORES_COL().get();
     const vendedores = snap.docs.map(d => {
       const x = d.data();
-      return { id: d.id, nome: x.nome || '', email: x.email || '', cnpj: x.cnpj || '', endereco: x.endereco || '', whatsapp: x.whatsapp || '', banco: x.banco || {}, ativo: x.ativo !== false, criadoEm: x.criadoEm || null };
+      return { id: d.id, nome: x.nome || '', email: x.email || '', cnpj: x.cnpj || '', endereco: x.endereco || '', whatsapp: x.whatsapp || '', banco: x.banco || {}, comissaoPct: (x.comissaoPct != null ? x.comissaoPct : COMISSAO_PCT), ativo: x.ativo !== false, autocadastro: !!x.autocadastro, contratoAceito: !!(x.contrato && x.contrato.aceito), criadoEm: x.criadoEm || null };
     }).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
     res.json({ ok: true, vendedores });
   } catch (err) {
@@ -3243,9 +3247,11 @@ app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
     if (!dup.empty) return res.status(409).json({ ok: false, erro: 'Já existe um vendedor com este e-mail' });
     const banco = b.banco && typeof b.banco === 'object' ? b.banco : {};
     const senhaHash = await bcrypt.hash(senha, 10);
+    const pct = (b.comissaoPct != null && Number(b.comissaoPct) >= 0) ? Number(b.comissaoPct) : COMISSAO_PCT;
     const ref = await VENDEDORES_COL().add({
       nome, email, senhaHash, ativo: true,
       cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
+      comissaoPct: pct,
       banco: {
         banco: banco.banco || null, agencia: banco.agencia || null, conta: banco.conta || null,
         tipo: banco.tipo || null, pix: banco.pix || null, titular: banco.titular || null
@@ -3268,10 +3274,48 @@ app.patch('/admin/vendedores/:id', exigirAdmin, async (req, res) => {
     ['nome', 'cnpj', 'endereco', 'whatsapp'].forEach(k => { if (b[k] !== undefined) upd[k] = (b[k] === '' ? null : b[k]); });
     if (b.email !== undefined && String(b.email).trim()) upd.email = String(b.email).trim().toLowerCase();
     if (b.banco && typeof b.banco === 'object') upd.banco = { ...(doc.data().banco || {}), ...b.banco };
+    if (b.comissaoPct !== undefined && Number(b.comissaoPct) >= 0) upd.comissaoPct = Number(b.comissaoPct);
     if (b.ativo !== undefined) upd.ativo = !!b.ativo;
     if (b.novaSenha) upd.senhaHash = await bcrypt.hash(String(b.novaSenha), 10);
     if (!Object.keys(upd).length) return res.json({ ok: true });
     await ref.set(upd, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Página pública de autocadastro do vendedor (link compartilhado pelo dono).
+app.get('/vendedor/cadastro', (req, res) => {
+  res.sendFile(path.join(__dirname, 'vendedor-cadastro.html'));
+});
+
+// Autocadastro do vendedor: ele mesmo preenche os dados + banco e aceita o contrato.
+app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const nome = String(b.nome || '').trim();
+    const email = String(b.email || '').trim().toLowerCase();
+    const senha = String(b.senha || '');
+    if (!nome || !email || !senha) return res.status(400).json({ ok: false, erro: 'Informe nome, e-mail e senha' });
+    if (senha.length < 4) return res.status(400).json({ ok: false, erro: 'A senha precisa ter ao menos 4 caracteres' });
+    if (!b.aceiteContrato) return res.status(400).json({ ok: false, erro: 'É preciso ler e aceitar o contrato' });
+    const dup = await VENDEDORES_COL().where('email', '==', email).limit(1).get();
+    if (!dup.empty) return res.status(409).json({ ok: false, erro: 'Já existe um cadastro com este e-mail' });
+    const banco = b.banco && typeof b.banco === 'object' ? b.banco : {};
+    const senhaHash = await bcrypt.hash(senha, 10);
+    const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim();
+    await VENDEDORES_COL().add({
+      nome, email, senhaHash, ativo: true, autocadastro: true,
+      cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
+      comissaoPct: COMISSAO_PCT,
+      banco: {
+        banco: banco.banco || null, agencia: banco.agencia || null, conta: banco.conta || null,
+        tipo: banco.tipo || null, pix: banco.pix || null, titular: banco.titular || null
+      },
+      contrato: { aceito: true, em: new Date().toISOString(), ip },
+      criadoEm: new Date().toISOString()
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

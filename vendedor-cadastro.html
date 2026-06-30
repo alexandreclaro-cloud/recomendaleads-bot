@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cadastro de Vendedor — RecomendaLeads</title>
+<link rel="icon" type="image/png" href="/assets/logo-symbol.png">
+<style>
+  :root{--brand:#2563EB;--brand-deep:#1D4ED8;--wpp:#22C55E;--ink:#0F172A;--dim:#475569;--faint:#64748B;--line:#E2E8F0;--bg:#F8FAFC;--ok:#16A34A;--err:#DC2626}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5;padding:34px 16px 70px}
+  .wrap{max-width:560px;margin:0 auto}
+  .top{text-align:center;margin-bottom:24px}
+  .top img{height:64px;width:auto;margin:0 auto 14px;display:block}
+  h1{font-size:1.5rem;font-weight:800;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:.95rem;margin-top:6px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 10px 26px rgba(15,23,42,.05)}
+  .sec{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--brand);margin:22px 0 8px;padding-top:18px;border-top:1px solid var(--line)}
+  .sec:first-of-type{border-top:none;padding-top:0;margin-top:0}
+  label{display:block;font-size:.82rem;color:var(--dim);margin:12px 0 5px;font-weight:600}
+  input,select{width:100%;font-family:inherit;font-size:.98rem;padding:12px 13px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+  input:focus,select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px #EFF4FF}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:520px){.grid2{grid-template-columns:1fr}}
+  .hint{font-size:.76rem;color:var(--faint);margin-top:4px}
+  details{margin-top:18px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg)}
+  details summary{cursor:pointer;font-weight:700;font-size:.9rem}
+  .contrato-txt{font-size:.84rem;color:var(--dim);margin-top:10px;max-height:240px;overflow:auto;line-height:1.6}
+  .aceite{display:flex;align-items:flex-start;gap:10px;margin-top:16px;padding:14px;background:#EFF4FF;border:1px solid #DBEAFE;border-radius:10px}
+  .aceite input{width:18px;height:18px;margin-top:2px;flex-shrink:0;accent-color:var(--brand)}
+  .aceite label{margin:0;font-size:.88rem;color:var(--ink);font-weight:500;cursor:pointer}
+  button{width:100%;background:var(--brand);color:#fff;border:none;font-weight:700;font-size:1rem;padding:14px;border-radius:11px;cursor:pointer;margin-top:22px}
+  button:hover{background:var(--brand-deep)}
+  button:disabled{opacity:.6;cursor:default}
+  .status{text-align:center;font-size:.9rem;margin-top:14px;font-weight:600}
+  .status.err{color:var(--err)}
+  .ok-box{display:none;text-align:center;padding:20px}
+  .ok-box .big{font-size:2.4rem}
+  .ok-box h2{font-size:1.3rem;margin:10px 0 6px}
+  .ok-box p{color:var(--dim)}
+  .ok-box a{display:inline-block;margin-top:16px;background:var(--brand);color:#fff;font-weight:700;padding:12px 22px;border-radius:11px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <img src="/assets/logo.png" alt="RecomendaLeads">
+    <h1>Cadastro de Vendedor</h1>
+    <p class="sub">Preencha seus dados para começar. Leva 2 minutos.</p>
+  </div>
+
+  <div class="card" id="card">
+    <div class="sec">Seus dados</div>
+    <label>Nome completo</label>
+    <input type="text" id="nome" placeholder="Seu nome completo">
+    <div class="grid2">
+      <div><label>CPF / CNPJ</label><input type="text" id="cnpj" placeholder="000.000.000-00"></div>
+      <div><label>WhatsApp</label><input type="tel" id="whatsapp" placeholder="(11) 90000-0000"></div>
+    </div>
+    <label>E-mail (será seu login)</label>
+    <input type="email" id="email" placeholder="seu@email.com">
+    <label>Endereço completo</label>
+    <input type="text" id="endereco" placeholder="Rua, nº, bairro, cidade/UF, CEP">
+
+    <div class="sec">Dados bancários (para receber sua comissão)</div>
+    <div class="grid2">
+      <div><label>Banco</label><input type="text" id="b_banco" placeholder="Ex: Nubank, Itaú"></div>
+      <div><label>Chave Pix</label><input type="text" id="b_pix" placeholder="CPF, e-mail, telefone..."></div>
+      <div><label>Agência</label><input type="text" id="b_ag" placeholder="0000"></div>
+      <div><label>Conta</label><input type="text" id="b_conta" placeholder="00000-0"></div>
+      <div><label>Tipo de conta</label><input type="text" id="b_tipo" placeholder="Corrente / Poupança"></div>
+      <div><label>Titular da conta</label><input type="text" id="b_titular" placeholder="Nome do titular"></div>
+    </div>
+
+    <div class="sec">Acesso</div>
+    <label>Crie uma senha</label>
+    <input type="password" id="senha" placeholder="Senha para acessar o painel">
+    <div class="hint">Você vai usar seu e-mail e essa senha para entrar no painel e cadastrar clientes.</div>
+
+    <div class="sec">Contrato</div>
+    <details>
+      <summary>Ler o contrato</summary>
+      <div class="contrato-txt" id="contratoTxt">
+        O texto do contrato será inserido aqui. (Em definição.)
+      </div>
+    </details>
+    <div class="aceite">
+      <input type="checkbox" id="aceite">
+      <label for="aceite">Li e aceito o contrato e autorizo o uso dos meus dados para fins de cadastro e pagamento de comissão.</label>
+    </div>
+
+    <button id="enviar">Concluir meu cadastro</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="ok-box card" id="okBox">
+    <div class="big">✓</div>
+    <h2>Cadastro concluído!</h2>
+    <p>Seus dados foram enviados. Agora é só entrar no painel com seu e-mail e senha.</p>
+    <a href="/admin">Acessar o painel</a>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin;
+const v = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
+
+document.getElementById('enviar').addEventListener('click', async () => {
+  const st = document.getElementById('status'); st.textContent = ''; st.className = 'status';
+  const nome = v('nome'), email = v('email'), senha = v('senha');
+  if (!nome) { return fail('Informe o seu nome.'); }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { return fail('Informe um e-mail válido.'); }
+  if (senha.length < 4) { return fail('Crie uma senha com ao menos 4 caracteres.'); }
+  if (!document.getElementById('aceite').checked) { return fail('É preciso ler e aceitar o contrato.'); }
+
+  const payload = {
+    nome, email, senha,
+    cnpj: v('cnpj'), whatsapp: v('whatsapp'), endereco: v('endereco'),
+    banco: { banco: v('b_banco'), pix: v('b_pix'), agencia: v('b_ag'), conta: v('b_conta'), tipo: v('b_tipo'), titular: v('b_titular') },
+    aceiteContrato: true
+  };
+  const btn = document.getElementById('enviar'); btn.disabled = true; st.textContent = 'Enviando...';
+  try {
+    const resp = await fetch(`${API_BASE}/vendedor/cadastro`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      document.getElementById('card').style.display = 'none';
+      document.getElementById('okBox').style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else { fail(data.erro || 'Não foi possível concluir o cadastro.'); btn.disabled = false; }
+  } catch (e) { fail('Erro de conexão. Tente novamente.'); btn.disabled = false; }
+});
+
+function fail(msg) { const st = document.getElementById('status'); st.textContent = msg; st.className = 'status err'; }
+</script>
+</body>
+</html>

@@ -155,6 +155,14 @@
         <button class="btn btn-brand btn-mini" id="novoVendedorBtn"><i data-lucide="plus"></i> Novo vendedor</button>
       </div>
       <p class="muted" style="font-size:0.82rem; margin:8px 0 0;">Cada vendedor entra no painel com o e-mail e a senha dele, cadastra clientes (vinculados a ele) e vê só as próprias comissões.</p>
+      <div style="margin-top:12px; padding:12px 14px; background:#EFF6FF; border:1px solid #DBEAFE; border-radius:10px;">
+        <div style="font-size:0.82rem; font-weight:700; color:#1E3A8A; margin-bottom:6px;">🔗 Link de autocadastro do vendedor</div>
+        <div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:8px;">Envie este link para o vendedor preencher os próprios dados (inclusive bancários) e aceitar o contrato. A conta dele é criada sozinha.</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="linkAutocad" readonly value="" style="flex:1; min-width:220px; font-size:0.82rem; padding:8px 10px; border:1px solid var(--line,#ccc); border-radius:8px; background:#fff;">
+          <button class="btn btn-secondary btn-mini" id="copiarLinkAutocad">Copiar</button>
+        </div>
+      </div>
       <div id="vendedoresLista" style="margin-top:12px;"><span class="muted">Carregando...</span></div>
     </div>
 
@@ -618,6 +626,8 @@ let vendedoresCache = [];
 async function carregarVendedores() {
   const cont = document.getElementById('vendedoresLista');
   if (!cont) return;
+  const linkInput = document.getElementById('linkAutocad');
+  if (linkInput) linkInput.value = `${API_BASE}/vendedor/cadastro`;
   try {
     const resp = await adminFetch(`${API_BASE}/admin/vendedores`);
     const data = await resp.json();
@@ -625,11 +635,11 @@ async function carregarVendedores() {
     vendedoresCache = data.vendedores || [];
     if (!vendedoresCache.length) { cont.innerHTML = '<span class="muted">Nenhum vendedor cadastrado ainda.</span>'; return; }
     cont.innerHTML = `<table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
-      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Nome</th><th>E-mail (login)</th><th>WhatsApp</th><th>Status</th><th></th></tr></thead>
+      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Nome</th><th>E-mail (login)</th><th>Comissão</th><th>Status</th><th></th></tr></thead>
       <tbody>${vendedoresCache.map(v => `<tr style="border-top:1px solid var(--line,#eee);">
-        <td style="padding:8px 4px;font-weight:600;">${esc(v.nome)}</td>
+        <td style="padding:8px 4px;font-weight:600;">${esc(v.nome)}${v.autocadastro ? ' <span style="font-size:0.7rem;background:#EFF6FF;color:#2563EB;padding:1px 6px;border-radius:6px;">autocadastro</span>' : ''}</td>
         <td class="muted">${esc(v.email)}</td>
-        <td class="muted">${esc(v.whatsapp) || '—'}</td>
+        <td style="font-weight:700;">${v.comissaoPct != null ? v.comissaoPct : 20}%</td>
         <td>${v.ativo ? '<span style="color:#1d9e75;font-weight:600;">Ativo</span>' : '<span style="color:#c0392b;">Inativo</span>'}</td>
         <td><button class="btn btn-secondary btn-mini" data-edv="${esc(v.id)}">Editar</button></td>
       </tr>`).join('')}</tbody></table>`;
@@ -638,6 +648,10 @@ async function carregarVendedores() {
 }
 
 document.getElementById('novoVendedorBtn').addEventListener('click', () => abrirModalVendedor(null));
+document.getElementById('copiarLinkAutocad').addEventListener('click', () => {
+  const inp = document.getElementById('linkAutocad'); if (!inp.value) inp.value = `${API_BASE}/vendedor/cadastro`;
+  navigator.clipboard.writeText(inp.value).then(() => { const b = document.getElementById('copiarLinkAutocad'); const t = b.textContent; b.textContent = 'Copiado!'; setTimeout(() => b.textContent = t, 1500); });
+});
 
 function abrirModalVendedor(id) {
   const v = id ? (vendedoresCache.find(x => x.id === id) || {}) : {};
@@ -657,6 +671,11 @@ function abrirModalVendedor(id) {
           ${campo('v_whats', 'WhatsApp', v.whatsapp, '(11) 90000-0000')}
         </div>
         ${campo('v_end', 'Endereço completo', v.endereco, 'Rua, nº, cidade/UF, CEP')}
+        <div class="grid2">
+          ${campo('v_comissao', 'Comissão (%)', (v.comissaoPct != null ? v.comissaoPct : 20), 'Ex: 20', 'number')}
+          <div></div>
+        </div>
+        <div class="muted" style="font-size:0.74rem;margin-top:-6px;">Padrão 20%. Você pode definir um valor diferente por vendedor (ex: metas individuais).</div>
         <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:14px 0 6px;">Dados bancários (para receber comissão)</div>
         <div class="grid2">
           ${campo('v_banco', 'Banco', b.banco, 'Ex: Nubank, Itaú')}
@@ -688,6 +707,7 @@ async function salvarVendedor(id) {
   const msg = document.getElementById('vMsg'); msg.textContent = '';
   const body = {
     nome: v('v_nome'), email: v('v_email'), cnpj: v('v_cnpj'), whatsapp: v('v_whats'), endereco: v('v_end'),
+    comissaoPct: (v('v_comissao') === '' ? 20 : parseFloat(v('v_comissao'))),
     banco: { banco: v('v_banco'), pix: v('v_pix'), agencia: v('v_ag'), conta: v('v_conta'), tipo: v('v_tipoconta'), titular: v('v_titular') }
   };
   const senha = v('v_senha');
