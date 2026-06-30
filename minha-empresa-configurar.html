@@ -172,14 +172,14 @@
       <section class="view fade-in" id="view-whatsapp">
         <div class="card">
           <div class="block-title"><i data-lucide="smartphone"></i> Meu WhatsApp</div>
-          <p class="sub">Conecte o número que o robô vai usar para falar com seus clientes.</p>
+          <p class="sub">Conecte o número que o Agente I.A. vai usar para falar com seus clientes.</p>
 
           <span id="whatsappStatus" class="badge badge-danger">Verificando conexão...</span>
 
           <!-- Conexão grátis (QR, sem Z-API) -->
           <div id="baileysBox" style="margin-top:16px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:14px;">
             <b style="font-size:0.92rem;">📲 Conectar grátis pelo QR Code <span style="font-weight:600;color:#15803d;">(sem Z-API)</span></b>
-            <p class="sub" style="margin:6px 0 10px;">Conecte seu WhatsApp lendo um QR Code, igual ao WhatsApp Web. Use um número dedicado ao robô.</p>
+            <p class="sub" style="margin:6px 0 10px;">Conecte seu WhatsApp lendo um QR Code, igual ao WhatsApp Web. Use um número dedicado ao Agente I.A..</p>
             <div id="baileysDesconectado">
               <button class="btn btn-action" id="baileysConectarBtn">Conectar por QR Code</button>
             </div>
@@ -371,7 +371,7 @@ const TITULOS = {
   overview: ['Olá, {nome}', 'Resumo do que está acontecendo no seu programa de recomendações.'],
   empresa: ['Minha empresa', 'Ajuste os dados que aparecem nas mensagens.'],
   premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
-  whatsapp: ['WhatsApp', 'Conecte o número que o robô vai usar.'],
+  whatsapp: ['WhatsApp', 'Conecte o número que o Agente I.A. vai usar.'],
   equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
   assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.'],
   avisos: ['Mensagens do sistema', 'Novidades, melhorias e avisos da plataforma.']
@@ -827,7 +827,7 @@ document.getElementById('baileysTesteBtn').addEventListener('click', async () =>
 });
 
 document.getElementById('baileysDesconectarBtn').addEventListener('click', async () => {
-  if (!confirm('Desconectar este número do robô? Você precisará ler o QR de novo para reconectar.')) return;
+  if (!confirm('Desconectar este número do Agente I.A.? Você precisará ler o QR de novo para reconectar.')) return;
   try {
     await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/desconectar`, { method: 'POST' });
     baileysOn = false; pararPollBaileys();

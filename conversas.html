@@ -77,8 +77,8 @@
         <button class="btn btn-ghost" id="voltarMobile" style="display:none;padding:6px"><i data-lucide="arrow-left"></i></button>
         <div class="conv-av" id="chatAv">?</div>
         <div class="info"><b id="chatNome">—</b><small id="chatTel">—</small></div>
-        <span class="bot-flag on" id="botFlag">Robô ativo</span>
-        <button class="btn btn-secondary" id="devolverBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Devolver ao robô</button>
+        <span class="bot-flag on" id="botFlag">Agente I.A. ativo</span>
+        <button class="btn btn-secondary" id="devolverBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Devolver ao Agente I.A.</button>
       </div>
       <div class="msgs" id="msgs"></div>
       <div class="composer" id="composer">
@@ -173,7 +173,7 @@ async function carregarMensagens(scroll) {
       flag.textContent = 'Você assumiu'; flag.className = 'bot-flag off';
       devolver.style.display = 'inline-flex';
     } else {
-      flag.textContent = 'Robô ativo'; flag.className = 'bot-flag on';
+      flag.textContent = 'Agente I.A. ativo'; flag.className = 'bot-flag on';
       devolver.style.display = 'none';
     }
     const msgs = document.getElementById('msgs');
