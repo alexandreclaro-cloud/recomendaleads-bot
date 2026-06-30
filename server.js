@@ -2825,6 +2825,19 @@ app.get('/minha-whatsapp/baileys/status', exigirLoginEmpresa, async (req, res) =
   }
 });
 
+// Teste de envio (diagnóstico): manda uma mensagem e devolve o que aconteceu.
+app.post('/minha-whatsapp/baileys/teste', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const id = req.empresaLogin.id;
+    const tel = String((req.body && req.body.telefone) || '').replace(/\D/g, '');
+    if (tel.length < 8) return res.status(400).json({ ok: false, erro: 'Informe um telefone válido (com DDD).' });
+    const r = await baileys.diagnosticarEnvio(id, tel, 'Mensagem de teste do RecomendaLeads ✅');
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Desconecta/desvincula o número (logout). O modo (definido pelo admin) é mantido,
 // então o painel volta a oferecer o QR para reconectar.
 app.post('/minha-whatsapp/baileys/desconectar', exigirLoginEmpresa, exigirGestor, async (req, res) => {

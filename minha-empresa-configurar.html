@@ -190,6 +190,14 @@
             </div>
             <div id="baileysConectadoArea" style="display:none; margin-top:8px;">
               <p class="sub">✅ Conectado pelo número <b id="baileysNumero">—</b>.</p>
+              <div style="margin:10px 0; padding:12px; background:#fff; border:1px solid var(--border); border-radius:10px;">
+                <div style="font-size:0.85rem; font-weight:700; margin-bottom:6px;">🧪 Testar envio</div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                  <input id="baileysTesteTel" placeholder="Seu WhatsApp com DDD (ex: 11999998888)" style="flex:1; min-width:200px; padding:9px 11px; border:1px solid var(--border); border-radius:8px;">
+                  <button class="btn btn-secondary" id="baileysTesteBtn">Enviar teste</button>
+                </div>
+                <div id="baileysTesteRes" style="font-size:0.82rem; margin-top:8px;"></div>
+              </div>
               <button class="btn btn-secondary" id="baileysDesconectarBtn">Desconectar este número</button>
             </div>
             <span class="status-msg" id="baileysMsg"></span>
@@ -800,6 +808,22 @@ document.getElementById('baileysConectarBtn').addEventListener('click', async ()
     setTimeout(atualizarBaileys, 800);
   } catch (e) { msg.textContent = 'Erro ao iniciar.'; msg.className = 'status-msg err'; }
   finally { btn.disabled = false; }
+});
+
+document.getElementById('baileysTesteBtn').addEventListener('click', async () => {
+  const tel = document.getElementById('baileysTesteTel').value.replace(/\D/g, '');
+  const res = document.getElementById('baileysTesteRes');
+  if (tel.length < 8) { res.innerHTML = '<span style="color:#DC2626">Informe um número com DDD.</span>'; return; }
+  res.innerHTML = 'Enviando teste...';
+  try {
+    const r = await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/teste`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telefone: tel }) });
+    const d = await r.json();
+    if (d.ok) {
+      res.innerHTML = '<span style="color:#16A34A">✅ Enviado! Confira o WhatsApp ' + tel + '.</span><br><span style="color:#64748B;font-size:0.76rem">jid: ' + (d.jid || '?') + (d.existe === false ? ' · ⚠️ número não encontrado no WhatsApp' : '') + '</span>';
+    } else {
+      res.innerHTML = '<span style="color:#DC2626">❌ Falhou (' + (d.etapa || '?') + '): ' + (d.erro || 'erro') + '</span>' + (d.status ? '<br><span style="color:#64748B;font-size:0.76rem">status: ' + d.status + (d.jid ? ' · jid: ' + d.jid : '') + '</span>' : '');
+    }
+  } catch (e) { res.innerHTML = '<span style="color:#DC2626">Erro de conexão.</span>'; }
 });
 
 document.getElementById('baileysDesconectarBtn').addEventListener('click', async () => {

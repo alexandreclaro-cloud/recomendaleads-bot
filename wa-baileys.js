@@ -237,4 +237,22 @@ async function enviarMidia(empresaId, phone, buffer, mimetype, caption, asDocume
   }
 }
 
-module.exports = { init, iniciarSessao, getStatus, conectado, desconectar, enviarTexto, enviarMidia };
+// Diagnóstico: tenta enviar e devolve TUDO (achou o número? qual jid? deu erro?).
+async function diagnosticarEnvio(empresaId, phone, message) {
+  const s = sessoes[empresaId];
+  if (!s || !s.sock) return { ok: false, etapa: 'sessao', erro: 'Sessão não está na memória (servidor reiniciou?)', status: s ? s.status : 'desconectado' };
+  if (s.status !== 'conectado') return { ok: false, etapa: 'status', erro: 'WhatsApp não está conectado', status: s.status };
+  const num = String(phone).replace(/\D/g, '');
+  let onw = null;
+  try { const r = await s.sock.onWhatsApp(num); onw = (r && r[0]) || null; }
+  catch (e) { return { ok: false, etapa: 'onWhatsApp', erro: e.message, status: s.status }; }
+  const jid = (s.jids && s.jids[num]) || (onw && onw.jid) || (num + '@s.whatsapp.net');
+  try {
+    const sent = await s.sock.sendMessage(jid, { text: message });
+    return { ok: true, status: s.status, jid, existe: !!(onw && onw.exists), msgId: sent && sent.key && sent.key.id, numeroConectado: s.numero };
+  } catch (e) {
+    return { ok: false, etapa: 'send', erro: e.message, jid, existe: !!(onw && onw.exists), status: s.status };
+  }
+}
+
+module.exports = { init, iniciarSessao, getStatus, conectado, desconectar, enviarTexto, enviarMidia, diagnosticarEnvio };
