@@ -303,9 +303,14 @@ const VENDEDORES_COL = () => db.collection('vendedores');
 const ADMINS_COL = () => db.collection('admins');
 
 const PALAVRAS_POSITIVAS = [
-  'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'oi', 'olá', 'ola',
-  'com certeza', 'isso', 'aham', 'uhum', 'beleza', 'blz', 'vai', 'fala',
-  'diga', 'segue', 'continua', 'quero', 'demorou'
+  'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'okk', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'tabom',
+  'oi', 'olá', 'ola', 'opa', 'eai', 'e ai', 'e aí', 'iae', 'salve',
+  'com certeza', 'certeza', 'isso', 'isso ai', 'isso aí', 'aham', 'uhum', 'ahã', 'beleza', 'blz', 'vai', 'fala', 'fale',
+  'diga', 'diz', 'segue', 'continua', 'quero', 'quero sim', 'demorou',
+  'bora', 'simbora', 'vamos', 'aceito', 'boa', 'show', 'massa', 'perfeito',
+  'estou', 'estou bem', 'estou aqui', 'estou sim', 'estou ouvindo', 'tudo bem', 'tudo bom', 'td bem', 'td bom',
+  'bom dia', 'boa tarde', 'boa noite', 'pode mandar', 'pode vir', 'manda ver', 'conta', 'me conta',
+  'presente', 'sou eu', 'dale', 'obvio', 'óbvio', 'yes', 'sip'
 ];
 
 function respostaEhPositiva(texto) {
@@ -1497,27 +1502,28 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       empresa: empresa.nome
     };
 
-    if (respostaEhPositiva(texto)) {
-      // Resposta positiva — envia prêmio imediatamente
-      const marcaTempo = new Date().toISOString();
+    const marcaTempo = new Date().toISOString();
+    const respostaObjecao = verificarObjecao(texto, variaveis);
+    if (respostaObjecao) {
+      // Objeção conhecida ("quem é você?", "não conheço"): responde e entrega o presente.
+      await sendText(telefone, respostaObjecao);
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
+    } else if (respostaEhPositiva(texto)) {
+      // Resposta positiva — envia prêmio imediatamente.
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      await enviarPremioRecomendado(telefone, sessao, empresa);
+    } else if (respostaEhNegativa(texto)) {
+      // Recusa explícita ("não", "não quero", "para"): faz um convite gentil + follow-up,
+      // sem forçar o presente.
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      await sendText(telefone, substituirVariaveis(empresa.mensagemAguardandoConfirmacao || 'Sem problema 😊 É rapidinho e sem compromisso — posso te mostrar o presente que prepararam pra você? 🎁', variaveis));
+      await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
     } else {
-      // Verifica se é uma objeção conhecida
-      const respostaObjecao = verificarObjecao(texto, variaveis);
-      if (respostaObjecao) {
-        // Responde à objeção e envia o presente logo em seguida
-        await sendText(telefone, respostaObjecao);
-        const marcaTempo = new Date().toISOString();
-        await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-        await enviarPremioRecomendado(telefone, sessao, empresa);
-      } else {
-        // Qualquer outra coisa — repete a mensagem de confirmação do CRM
-        const marcaTempo = new Date().toISOString();
-        await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-        await sendText(telefone, substituirVariaveis(empresa.mensagemAguardandoConfirmacao || 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁', variaveis));
-        await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
-      }
+      // Qualquer outra resposta (a pessoa respondeu = está engajada): NÃO fica perguntando,
+      // entrega o presente direto. Isso evita o loop de "não entendi".
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      await enviarPremioRecomendado(telefone, sessao, empresa);
     }
     return true;
   }
