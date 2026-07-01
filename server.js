@@ -1731,36 +1731,30 @@ async function tratarWebhook(req, res) {
     if (matchStop) {
       const alvo = matchStop[1] || telefone;
 
-      await pausarNumero(alvo);
-      await resetSessao(alvo);
-
-      const sessaoRec = await getSessaoRecomendado(alvo);
-      if (sessaoRec) {
-        await saveSessaoRecomendado(alvo, { etapa: 'finalizado_negativo' });
-      }
+      // RESET TOTAL: apaga toda a memória do bot para esse número (como se nunca
+      // tivesse falado) — sessão de cliente, sessão de recomendado, agendamentos
+      // e a pausa. Ideal para testes (a mesma pessoa pode recomeçar do zero).
+      try { await SESSOES_COL().doc(chaveSessao(alvo)).delete(); } catch (e) {}
+      try { await SESSOES_RECOMENDADO_COL().doc(chaveSessao(alvo)).delete(); } catch (e) {}
+      await despausarNumero(alvo);
 
       try {
-        const snap = await AGENDAMENTOS_COL()
-          .where('status', '==', 'pendente')
-          .get();
+        const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
         const batch = db.batch();
         snap.forEach(doc => {
           const d = doc.data();
-          const telefoneAgendamento =
-            d.dados?.contato?.telefone ||
-            d.dados?.telefone ||
-            null;
+          const telefoneAgendamento = d.dados?.contato?.telefone || d.dados?.telefone || null;
           const mesmaEmpresa = (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual();
-          if (telefoneAgendamento === alvo && mesmaEmpresa) {
-            batch.update(doc.ref, { status: 'cancelado' });
-          }
+          if (telefoneAgendamento === alvo && mesmaEmpresa) batch.update(doc.ref, { status: 'cancelado' });
         });
         await batch.commit();
       } catch (err) {
         console.error('Erro ao cancelar agendamentos no stop1:', err.message);
       }
 
-      console.log(`[PAUSA MANUAL] Bot pausado para ${alvo} (comando enviado por ${telefone})`);
+      console.log(`[STOP1] Memória zerada para ${alvo} (comando de ${telefone})`);
+      // Confirmação rápida para quem enviou o comando.
+      try { await sendText(telefone, `🧹 Pronto! Bot parado e memória zerada${alvo !== telefone ? ` para ${alvo}` : ''}. Pode testar do zero.`); } catch (e) {}
       return res.sendStatus(200);
     }
 
