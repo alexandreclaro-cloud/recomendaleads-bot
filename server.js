@@ -2970,7 +2970,13 @@ app.get('/minha-whatsapp/baileys/status', exigirLoginEmpresa, async (req, res) =
 app.get('/minha-whatsapp/baileys/debug', exigirLoginEmpresa, async (req, res) => {
   try {
     const id = req.empresaLogin.id;
-    res.json({ ok: true, empresaId: id, status: baileys.getStatus(id), recebidas: baileys.getDebug(id) });
+    let st = baileys.getStatus(id);
+    // Auto-reparo: se caiu (ex.: após deploy) e a empresa usa baileys, tenta subir.
+    if (st.status === 'desconectado' && req.empresaLogin.whatsappTipo === 'baileys') {
+      baileys.iniciarSessao(id).catch(() => {});
+      st = baileys.getStatus(id);
+    }
+    res.json({ ok: true, empresaId: id, status: st, recebidas: baileys.getDebug(id) });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
