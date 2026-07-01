@@ -13,9 +13,17 @@ const {
   BufferJSON,
   proto,
   DisconnectReason,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore
 } = require('@whiskeysockets/baileys');
 const QRCode = require('qrcode');
+
+// Logger silencioso no formato que o Baileys espera (pino-like, com .child()).
+const _waLogger = {
+  level: 'silent',
+  trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {},
+  child() { return _waLogger; }
+};
 
 let _db = null;
 let _onMessage = null;
@@ -115,7 +123,13 @@ async function iniciarSessao(empresaId) {
 
   const sock = makeWASocket({
     version,
-    auth: state,
+    logger: _waLogger,
+    auth: {
+      creds: state.creds,
+      // Cache das chaves de sinal — recomendado no Baileys 7.x; melhora a
+      // resolução de sessões @lid e a descriptografia das mensagens.
+      keys: makeCacheableSignalKeyStore(state.keys, _waLogger)
+    },
     printQRInTerminal: false,
     browser: ['RecomendaLeads', 'Chrome', '1.0.0'],
     markOnlineOnConnect: false,
