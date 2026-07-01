@@ -13,6 +13,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const baileys = require('./wa-baileys.js');
+const nodemailer = require('nodemailer');
 
 const app = express();
 // Atrás do proxy do Render: faz req.protocol refletir https (X-Forwarded-Proto),
@@ -2745,6 +2746,101 @@ function urlBase(req) {
   return process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
 }
 
+// ============================================================
+// E-MAIL — envio via SMTP do Google Workspace (nodemailer)
+// Configurar no Render: EMAIL_USER (ex.: alexandreclaro@recomendaleads.com.br)
+// e EMAIL_APP_PASSWORD (senha de app gerada no Google, 16 letras).
+// Sem essas variáveis, o envio é ignorado silenciosamente (não quebra nada).
+// ============================================================
+const EMAIL_USER = process.env.EMAIL_USER || '';
+const EMAIL_APP_PASSWORD = process.env.EMAIL_APP_PASSWORD || '';
+const EMAIL_FROM_NOME = process.env.EMAIL_FROM_NOME || 'RecomendaLeads';
+let _emailTransporter = null;
+function getEmailTransporter() {
+  if (!EMAIL_USER || !EMAIL_APP_PASSWORD) return null;
+  if (!_emailTransporter) {
+    _emailTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: EMAIL_USER, pass: EMAIL_APP_PASSWORD }
+    });
+  }
+  return _emailTransporter;
+}
+
+async function enviarEmail({ para, assunto, html, texto }) {
+  const t = getEmailTransporter();
+  if (!t) {
+    console.log('[EMAIL] Envio ignorado (EMAIL_USER/EMAIL_APP_PASSWORD não configurados):', assunto, '->', para);
+    return { ok: false, motivo: 'nao_configurado' };
+  }
+  if (!para) return { ok: false, motivo: 'sem_destinatario' };
+  try {
+    const info = await t.sendMail({
+      from: `"${EMAIL_FROM_NOME}" <${EMAIL_USER}>`,
+      to: para,
+      subject: assunto,
+      text: texto || undefined,
+      html
+    });
+    console.log('[EMAIL] Enviado:', assunto, '->', para, '(', info.messageId, ')');
+    return { ok: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('[EMAIL] Falha ao enviar para', para, ':', err.message);
+    return { ok: false, motivo: err.message };
+  }
+}
+
+// Monta e envia o e-mail de boas-vindas para um cliente recém-cadastrado.
+function emailBoasVindasHtml({ nomeEmpresa, emailLogin, senha, linkLogin }) {
+  const AZUL = '#1E5BE0', VERDE = '#16A34A';
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f6fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);">
+        <tr><td style="background:${AZUL};padding:28px 32px;">
+          <span style="color:#fff;font-size:22px;font-weight:800;letter-spacing:.3px;">RecomendaLeads</span>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <h1 style="margin:0 0 12px;font-size:22px;color:#111827;">Bem-vindo(a), ${nomeEmpresa}! 🎉</h1>
+          <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#374151;">
+            Sua conta na <strong>RecomendaLeads</strong> já está criada. A partir de agora você vai transformar cada cliente satisfeito em novos clientes, de forma automática, pelo WhatsApp.
+          </p>
+          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;margin:0 0 22px;">
+            <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Seus dados de acesso</p>
+            <p style="margin:0 0 6px;font-size:15px;"><strong>Login (e-mail):</strong> ${emailLogin}</p>
+            <p style="margin:0;font-size:15px;"><strong>Senha provisória:</strong> ${senha}</p>
+          </div>
+          <div style="text-align:center;margin:0 0 24px;">
+            <a href="${linkLogin}" style="display:inline-block;background:${VERDE};color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 30px;border-radius:10px;">Acessar meu painel →</a>
+          </div>
+          <p style="margin:0 0 10px;font-size:15px;color:#374151;"><strong>Próximos passos:</strong></p>
+          <ol style="margin:0 0 20px;padding-left:20px;font-size:14px;line-height:1.7;color:#374151;">
+            <li>Entre no painel com o login acima e <strong>troque sua senha</strong>.</li>
+            <li>Conecte seu <strong>WhatsApp</strong> (leitura do QR Code).</li>
+            <li>Configure o prêmio/voucher que seu cliente vai ganhar por recomendar.</li>
+            <li>Pronto! É só começar a recomendar. 🚀</li>
+          </ol>
+          <p style="margin:0;font-size:14px;line-height:1.6;color:#6b7280;">
+            Qualquer dúvida, é só responder este e-mail. Estamos com você.<br>— Equipe RecomendaLeads
+          </p>
+        </td></tr>
+        <tr><td style="background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#9ca3af;">
+          RecomendaLeads · A terceira onda das vendas
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+  </body></html>`;
+}
+
+async function enviarBoasVindasCliente({ nomeEmpresa, emailLogin, senha, req }) {
+  const base = (req && urlBase(req)) || process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
+  const linkLogin = `${base}/login`;
+  const html = emailBoasVindasHtml({ nomeEmpresa, emailLogin, senha, linkLogin });
+  const texto = `Bem-vindo(a), ${nomeEmpresa}!\n\nSua conta na RecomendaLeads já está criada.\n\nLogin: ${emailLogin}\nSenha provisória: ${senha}\nAcesse: ${linkLogin}\n\nPróximos passos: troque a senha, conecte seu WhatsApp, configure o prêmio e comece a recomendar.\n\n— Equipe RecomendaLeads`;
+  return enviarEmail({ para: emailLogin, assunto: '🎉 Bem-vindo(a) à RecomendaLeads — seus dados de acesso', html, texto });
+}
+
 app.get('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
   try {
     const e = req.empresaLogin;
@@ -3147,6 +3243,12 @@ app.post('/admin/empresas', exigirAcessoAdmin, async (req, res) => {
     });
 
     res.json({ ok: true, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, empresaTeste: !!_empresaTeste, trialDias: dias } });
+
+    // E-mail de boas-vindas (não bloqueia a resposta; ignora se não configurado)
+    if (!_empresaTeste) {
+      enviarBoasVindasCliente({ nomeEmpresa, emailLogin, senha, req })
+        .catch(e => console.error('[EMAIL] boas-vindas falhou:', e.message));
+    }
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -3552,7 +3654,15 @@ app.post('/admin/empresas/:id/resetar-senha', exigirAdmin, async (req, res) => {
     const novaSenha = (req.body && req.body.senha) || '123mudar';
     const senhaHash = await bcrypt.hash(novaSenha, 10);
     await EMPRESAS_COL().doc(req.params.id).set({ senhaHash, senhaProvisoria: true }, { merge: true });
-    res.json({ ok: true, senha: novaSenha });
+    // Se pedido, reenvia o e-mail de boas-vindas com a nova senha provisória
+    let emailEnviado = null;
+    if (req.body && req.body.enviarEmail) {
+      const e = doc.data();
+      emailEnviado = await enviarBoasVindasCliente({
+        nomeEmpresa: e.nome || 'Cliente', emailLogin: e.email, senha: novaSenha, req
+      });
+    }
+    res.json({ ok: true, senha: novaSenha, emailEnviado });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
