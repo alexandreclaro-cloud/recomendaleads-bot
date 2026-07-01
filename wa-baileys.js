@@ -188,17 +188,21 @@ async function iniciarSessao(empresaId) {
         // Sem isso, extraíamos um número errado e a resposta não chegava.
         const isLid = rawJid.endsWith('@lid');
         const pnRaw = (msg.key && (msg.key.senderPn || msg.key.participantPn)) || '';
-        const fonteNumero = pnRaw || (isLid ? '' : rawJid);
-        const phone = fonteNumero.replace(/@.*/, '').replace(/\D/g, '');
+        // Identificador do contato. No Baileys 7 as mensagens @lid quase sempre
+        // vêm SEM senderPn — mas são válidas. Usamos o senderPn (número real) se
+        // vier; caso contrário, os dígitos do próprio @lid como chave estável.
+        const baseNumero = pnRaw ? pnRaw.replace(/@.*/, '') : rawJid.replace(/@.*/, '');
+        const phone = baseNumero.replace(/\D/g, '');
         if (!phone) {
-          console.warn(`[BAILEYS] mensagem @lid sem número real (senderPn ausente) — jid=${rawJid} — ignorada`);
-          _pushDebug({ empresaId, acao: 'ignorado_lid_sem_senderPn', rawJid, isLid, senderPn: k.senderPn || null, participantPn: k.participantPn || null, texto: textoDbg });
+          _pushDebug({ empresaId, acao: 'ignorado_sem_numero', rawJid, isLid, texto: textoDbg });
           continue;
         }
-        // JID para responder: número real quando conhecido; senão o jid de origem.
-        const jidResposta = pnRaw ? (phone + '@s.whatsapp.net') : rawJid;
+        // Para onde responder: em chat @lid respondemos no PRÓPRIO jid @lid
+        // (endereço canônico do WhatsApp novo, que o Baileys 7 entrega ok);
+        // senão, número@s.whatsapp.net.
+        const jidResposta = isLid ? rawJid : (phone + '@s.whatsapp.net');
         sessao.jids[phone] = jidResposta;
-        if (isLid) console.log(`[BAILEYS] @lid resolvido: ${rawJid} -> ${phone} (responde em ${jidResposta})`);
+        if (isLid) console.log(`[BAILEYS] @lid processado: ${rawJid} -> chave ${phone} (responde em ${jidResposta})`);
         _pushDebug({ empresaId, acao: 'processado', rawJid, isLid, senderPn: k.senderPn || null, phoneResolvido: phone, jidResposta, texto: textoDbg });
         const m = msg.message;
         const texto = m.conversation
