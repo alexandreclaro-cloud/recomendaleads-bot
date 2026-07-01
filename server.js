@@ -3672,6 +3672,50 @@ app.post('/admin/empresas/:id/resetar-senha', exigirAdmin, async (req, res) => {
   }
 });
 
+// Diagnóstico do e-mail: mostra se as variáveis estão no Render, testa a
+// conexão SMTP (login/senha de app) e, se ?para=... for passado, envia um
+// e-mail de teste e retorna o erro exato do Google, se houver.
+app.get('/admin/email/diagnostico', exigirAdmin, async (req, res) => {
+  const configurado = !!(EMAIL_USER && EMAIL_APP_PASSWORD);
+  const info = {
+    configurado,
+    EMAIL_USER: EMAIL_USER ? EMAIL_USER : '(vazio)',
+    EMAIL_APP_PASSWORD: EMAIL_APP_PASSWORD ? `definida (${EMAIL_APP_PASSWORD.length} caracteres)` : '(vazio)',
+    dica: null,
+    conexao: null,
+    envioTeste: null
+  };
+  if (!configurado) {
+    info.dica = 'Faltam as variáveis EMAIL_USER e/ou EMAIL_APP_PASSWORD no Render (Environment). Adicione e salve para reiniciar.';
+    return res.json({ ok: true, diagnostico: info });
+  }
+  if (/\s/.test(EMAIL_APP_PASSWORD)) {
+    info.dica = 'A EMAIL_APP_PASSWORD contém espaços. A senha de app do Google são 16 letras SEM espaços — remova os espaços no Render.';
+  }
+  // Testa a conexão/autenticação SMTP
+  try {
+    const t = getEmailTransporter();
+    await t.verify();
+    info.conexao = { ok: true, msg: 'Login SMTP OK (usuário e senha de app aceitos pelo Google).' };
+  } catch (err) {
+    info.conexao = { ok: false, erro: err.message, code: err.code || null, response: err.response || null };
+    if (/Username and Password not accepted|BadCredentials|535/i.test(err.message + (err.response || ''))) {
+      info.dica = 'Google recusou usuário/senha. Gere uma NOVA Senha de App (2 etapas precisa estar ATIVA na conta) e cole sem espaços. Não use a senha normal do e-mail.';
+    }
+  }
+  // Envio de teste opcional
+  const para = (req.query.para || '').trim();
+  if (para) {
+    info.envioTeste = await enviarEmail({
+      para,
+      assunto: '✅ Teste de e-mail — RecomendaLeads',
+      html: '<p>Este é um e-mail de teste do RecomendaLeads. Se você recebeu, o envio está funcionando! 🎉</p>',
+      texto: 'Teste de e-mail do RecomendaLeads. Se você recebeu, está funcionando!'
+    });
+  }
+  res.json({ ok: true, diagnostico: info });
+});
+
 // Atualiza dados administrativos do cliente: plano, financeiro, Z-API, notas.
 app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
   try {
