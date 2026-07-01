@@ -2959,6 +2959,18 @@ app.get('/minha-whatsapp/baileys/status', exigirLoginEmpresa, async (req, res) =
   }
 });
 
+// Diagnóstico: últimas mensagens RECEBIDAS por esta empresa via Baileys, com
+// detalhes (remoteJid, @lid, senderPn, número resolvido, ação). Ajuda a ver
+// por que o bot não respondeu.
+app.get('/minha-whatsapp/baileys/debug', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const id = req.empresaLogin.id;
+    res.json({ ok: true, empresaId: id, status: baileys.getStatus(id), recebidas: baileys.getDebug(id) });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Teste de envio (diagnóstico): manda uma mensagem e devolve o que aconteceu.
 app.post('/minha-whatsapp/baileys/teste', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {

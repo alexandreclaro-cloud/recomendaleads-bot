@@ -21,6 +21,18 @@ let _db = null;
 let _onMessage = null;
 const sessoes = {}; // empresaId -> { sock, status, qr, qrDataUrl, numero, iniciandoEm }
 
+// Buffer de diagnóstico: últimas mensagens recebidas (todas as empresas), pra
+// investigar por que o bot não respondeu (vê remoteJid, @lid, senderPn, etc).
+const _recebidasDebug = [];
+function _pushDebug(entry) {
+  _recebidasDebug.push({ ts: new Date().toISOString(), ...entry });
+  while (_recebidasDebug.length > 40) _recebidasDebug.shift();
+}
+function getDebug(empresaId) {
+  const lista = empresaId ? _recebidasDebug.filter(e => e.empresaId === empresaId) : _recebidasDebug;
+  return lista.slice(-20).reverse();
+}
+
 function init(db, onMessage) {
   _db = db;
   _onMessage = onMessage;
@@ -144,9 +156,18 @@ async function iniciarSessao(empresaId) {
     try {
       if (ev.type !== 'notify') return;
       for (const msg of ev.messages) {
-        if (!msg.message || (msg.key && msg.key.fromMe)) continue;
-        const rawJid = (msg.key && msg.key.remoteJid) || '';
-        if (rawJid.endsWith('@g.us') || rawJid.endsWith('@broadcast')) continue; // grupo/status
+        const k = (msg && msg.key) || {};
+        const rawJid = k.remoteJid || '';
+        const textoDbg = msg && msg.message && (msg.message.conversation
+          || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || '');
+        if (!msg.message || k.fromMe) {
+          _pushDebug({ empresaId, acao: 'ignorado_fromMe_ou_vazio', rawJid, fromMe: !!k.fromMe, temMessage: !!(msg && msg.message) });
+          continue;
+        }
+        if (rawJid.endsWith('@g.us') || rawJid.endsWith('@broadcast')) {
+          _pushDebug({ empresaId, acao: 'ignorado_grupo', rawJid });
+          continue; // grupo/status
+        }
         // WhatsApp novo entrega mensagens de alguns contatos com um endereço
         // interno "@lid" no remoteJid — que NÃO é o número de telefone. Nesses
         // casos o número real vem em msg.key.senderPn (ex.: 5511...@s.whatsapp.net).
@@ -157,12 +178,14 @@ async function iniciarSessao(empresaId) {
         const phone = fonteNumero.replace(/@.*/, '').replace(/\D/g, '');
         if (!phone) {
           console.warn(`[BAILEYS] mensagem @lid sem número real (senderPn ausente) — jid=${rawJid} — ignorada`);
+          _pushDebug({ empresaId, acao: 'ignorado_lid_sem_senderPn', rawJid, isLid, senderPn: k.senderPn || null, participantPn: k.participantPn || null, texto: textoDbg });
           continue;
         }
         // JID para responder: número real quando conhecido; senão o jid de origem.
         const jidResposta = pnRaw ? (phone + '@s.whatsapp.net') : rawJid;
         sessao.jids[phone] = jidResposta;
         if (isLid) console.log(`[BAILEYS] @lid resolvido: ${rawJid} -> ${phone} (responde em ${jidResposta})`);
+        _pushDebug({ empresaId, acao: 'processado', rawJid, isLid, senderPn: k.senderPn || null, phoneResolvido: phone, jidResposta, texto: textoDbg });
         const m = msg.message;
         const texto = m.conversation
           || (m.extendedTextMessage && m.extendedTextMessage.text)
@@ -267,4 +290,4 @@ async function diagnosticarEnvio(empresaId, phone, message) {
   }
 }
 
-module.exports = { init, iniciarSessao, getStatus, conectado, desconectar, enviarTexto, enviarMidia, diagnosticarEnvio };
+module.exports = { init, iniciarSessao, getStatus, conectado, desconectar, enviarTexto, enviarMidia, diagnosticarEnvio, getDebug };
