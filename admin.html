@@ -535,6 +535,7 @@ function abrirEdicao(id) {
           <button class="btn btn-action" id="salvarBtn">Salvar alterações</button>
           <button class="btn btn-brand" id="entrarBtn2"><i data-lucide="log-in"></i> Entrar como</button>
           <button class="btn btn-secondary" id="resetBtn">Resetar senha</button>
+          <button class="btn btn-secondary" id="reenviarBtn"><i data-lucide="mail"></i> Reenviar boas-vindas</button>
           <span class="status-msg" id="mMsg"></span>
         </div>
       </div>
@@ -544,6 +545,7 @@ function abrirEdicao(id) {
   document.getElementById('salvarBtn').addEventListener('click', () => salvar(id));
   document.getElementById('entrarBtn2').addEventListener('click', () => entrarComo(id));
   document.getElementById('resetBtn').addEventListener('click', () => resetSenha(id));
+  document.getElementById('reenviarBtn').addEventListener('click', () => reenviarBoasVindas(id));
   document.querySelectorAll('[data-trial]').forEach(b => b.addEventListener('click', () => concederTrial(id, parseInt(b.dataset.trial, 10))));
   document.getElementById('trialCustomBtn').addEventListener('click', () => concederTrial(id, parseInt(document.getElementById('e_trialCustom').value, 10)));
   icons();
@@ -605,6 +607,20 @@ async function resetSenha(id) {
     const data = await resp.json();
     if (resp.ok && data.ok && msg) { msg.textContent = `✅ Senha resetada para "${data.senha}"`; msg.className = 'status-msg ok'; }
     else if (msg) { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
+  } catch (e) { if (msg) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; } }
+}
+
+async function reenviarBoasVindas(id) {
+  if (!confirm('Reenviar o e-mail de boas-vindas? A senha será resetada para 123mudar e enviada por e-mail ao cliente.')) return;
+  const msg = document.getElementById('mMsg'); if (msg) { msg.textContent = 'Enviando e-mail...'; msg.className = 'status-msg'; }
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}/resetar-senha`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enviarEmail: true }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok && msg) {
+      if (data.emailEnviado && data.emailEnviado.ok) { msg.textContent = `✅ E-mail de boas-vindas enviado (senha "${data.senha}")`; msg.className = 'status-msg ok'; }
+      else if (data.emailEnviado && data.emailEnviado.motivo === 'nao_configurado') { msg.textContent = '⚠️ Falta configurar EMAIL_USER/EMAIL_APP_PASSWORD no Render'; msg.className = 'status-msg err'; }
+      else { msg.textContent = '⚠️ Senha resetada, mas o e-mail falhou: ' + (data.emailEnviado && data.emailEnviado.motivo || '?'); msg.className = 'status-msg err'; }
+    } else if (msg) { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
   } catch (e) { if (msg) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; } }
 }
 

@@ -2512,6 +2512,10 @@ app.post('/completar', async (req, res) => {
 
     const token = jwt.sign({ usuarioId: uref.id, empresaLoginId: empresa.id, papel: 'gestor' }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ ok: true, token, empresa: { id: empresa.id, nome, email: emailNorm, papel: 'gestor', senhaProvisoria: false } });
+
+    // E-mail de boas-vindas (auto-cadastro pago; senha definida pelo cliente)
+    enviarBoasVindasCliente({ nomeEmpresa: nome, emailLogin: emailNorm, senha: null, req })
+      .catch(e => console.error('[EMAIL] boas-vindas (completar) falhou:', e.message));
   } catch (err) {
     console.error('Erro ao completar cadastro:', err.message);
     res.status(500).json({ ok: false, erro: err.message });
@@ -2807,15 +2811,15 @@ function emailBoasVindasHtml({ nomeEmpresa, emailLogin, senha, linkLogin }) {
           </p>
           <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;margin:0 0 22px;">
             <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Seus dados de acesso</p>
-            <p style="margin:0 0 6px;font-size:15px;"><strong>Login (e-mail):</strong> ${emailLogin}</p>
-            <p style="margin:0;font-size:15px;"><strong>Senha provisória:</strong> ${senha}</p>
+            <p style="margin:${senha ? '0 0 6px' : '0'};font-size:15px;"><strong>Login (e-mail):</strong> ${emailLogin}</p>
+            ${senha ? `<p style="margin:0;font-size:15px;"><strong>Senha provisória:</strong> ${senha}</p>` : `<p style="margin:0;font-size:15px;color:#6b7280;">Use a senha que você definiu no cadastro.</p>`}
           </div>
           <div style="text-align:center;margin:0 0 24px;">
             <a href="${linkLogin}" style="display:inline-block;background:${VERDE};color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 30px;border-radius:10px;">Acessar meu painel →</a>
           </div>
           <p style="margin:0 0 10px;font-size:15px;color:#374151;"><strong>Próximos passos:</strong></p>
           <ol style="margin:0 0 20px;padding-left:20px;font-size:14px;line-height:1.7;color:#374151;">
-            <li>Entre no painel com o login acima e <strong>troque sua senha</strong>.</li>
+            ${senha ? '<li>Entre no painel com o login acima e <strong>troque sua senha</strong>.</li>' : '<li>Entre no painel com seu login e senha.</li>'}
             <li>Conecte seu <strong>WhatsApp</strong> (leitura do QR Code).</li>
             <li>Configure o prêmio/voucher que seu cliente vai ganhar por recomendar.</li>
             <li>Pronto! É só começar a recomendar. 🚀</li>
@@ -2837,7 +2841,7 @@ async function enviarBoasVindasCliente({ nomeEmpresa, emailLogin, senha, req }) 
   const base = (req && urlBase(req)) || process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
   const linkLogin = `${base}/login`;
   const html = emailBoasVindasHtml({ nomeEmpresa, emailLogin, senha, linkLogin });
-  const texto = `Bem-vindo(a), ${nomeEmpresa}!\n\nSua conta na RecomendaLeads já está criada.\n\nLogin: ${emailLogin}\nSenha provisória: ${senha}\nAcesse: ${linkLogin}\n\nPróximos passos: troque a senha, conecte seu WhatsApp, configure o prêmio e comece a recomendar.\n\n— Equipe RecomendaLeads`;
+  const texto = `Bem-vindo(a), ${nomeEmpresa}!\n\nSua conta na RecomendaLeads já está criada.\n\nLogin: ${emailLogin}\n${senha ? `Senha provisória: ${senha}\n` : 'Use a senha que você definiu no cadastro.\n'}Acesse: ${linkLogin}\n\nPróximos passos: ${senha ? 'troque a senha, ' : ''}conecte seu WhatsApp, configure o prêmio e comece a recomendar.\n\n— Equipe RecomendaLeads`;
   return enviarEmail({ para: emailLogin, assunto: '🎉 Bem-vindo(a) à RecomendaLeads — seus dados de acesso', html, texto });
 }
 
