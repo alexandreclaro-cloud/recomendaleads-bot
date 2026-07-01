@@ -259,6 +259,23 @@ async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, ti
   }
 }
 
+// Apaga TODAS as mensagens da conversa (caixa de entrada) de um número, mantendo
+// os demais dados (leads, etc.). Usado no reset de teste (stop1).
+async function apagarConversaChat(empresaId, telefone) {
+  const eid = empresaId || EMPRESA_ID_PDN;
+  const chave = `${eid}__${telefone}`;
+  try {
+    const snap = await MENSAGENS_CHAT_COL().where('chaveConversa', '==', chave).get();
+    let batch = db.batch(); let n = 0;
+    for (const d of snap.docs) {
+      batch.delete(d.ref);
+      if (++n % 450 === 0) { await batch.commit(); batch = db.batch(); }
+    }
+    if (n % 450 !== 0 || n === 0) await batch.commit();
+    await CONVERSAS_COL().doc(chave).delete();
+  } catch (e) { console.error('[STOP1] erro ao apagar conversa:', e.message); }
+}
+
 // Chave de documento isolada por empresa: "empresaId__telefone".
 // Garante que sessões e pausas de uma empresa não colidam com as de outra
 // quando o mesmo número fala com empresas diferentes.
@@ -1752,9 +1769,11 @@ async function tratarWebhook(req, res) {
         console.error('Erro ao cancelar agendamentos no stop1:', err.message);
       }
 
-      console.log(`[STOP1] Memória zerada para ${alvo} (comando de ${telefone})`);
-      // Confirmação rápida para quem enviou o comando.
-      try { await sendText(telefone, `🧹 Pronto! Bot parado e memória zerada${alvo !== telefone ? ` para ${alvo}` : ''}. Pode testar do zero.`); } catch (e) {}
+      // Apaga também as mensagens da conversa (mantém leads e demais dados).
+      await apagarConversaChat(empresaIdAtual(), alvo);
+
+      console.log(`[STOP1] Memória e conversa zeradas para ${alvo} (comando de ${telefone})`);
+      // Sem resposta de propósito: a conversa fica limpa para reiniciar do zero.
       return res.sendStatus(200);
     }
 
