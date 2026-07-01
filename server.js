@@ -385,7 +385,7 @@ const EMPRESA_PADRAO = {
   ctaRecomendado: 'Que tal aproveitar e passar pra retirar o seu? 😊',
   mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
-  mensagemAntesPresente: 'Como forma de agradecer essa recomendação, preparamos um presente especial para você.',
+  mensagemAntesPresente: '🎉 Boa notícia! Você ganhou {premio}. Aqui está o seu presente 👇',
 
   // ===== Conversa do CLIENTE (quem recomenda) — editável =====
   mensagemPedeNome: 'Pra começar, qual é o seu nome?',
@@ -1125,7 +1125,7 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
   await marcarLeadRecebeuPremio(telefone, empresa);
 
   // Mensagem-ponte: enviada logo após a pessoa responder, antes do presente.
-  const ponte = substituirVariaveis(empresa.mensagemAntesPresente ?? EMPRESA_PADRAO.mensagemAntesPresente, variaveisRec(sessao, empresa));
+  const ponte = substituirVariaveis(empresa.mensagemAntesPresente ?? EMPRESA_PADRAO.mensagemAntesPresente, { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' });
   if (ponte && ponte.trim()) await sendText(telefone, ponte);
 
   if (empresa.arquivoRecomendado) {
