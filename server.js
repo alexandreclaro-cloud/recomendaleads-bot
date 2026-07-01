@@ -2140,6 +2140,11 @@ app.get('/minha-empresa/configurar', (req, res) => {
   res.sendFile(path.join(__dirname, 'minha-empresa-configurar.html'));
 });
 
+// Página de diagnóstico do WhatsApp (usa o token do login guardado no navegador).
+app.get('/minha-whatsapp/debug', (req, res) => {
+  res.sendFile(path.join(__dirname, 'whatsapp-debug.html'));
+});
+
 app.get('/crm', (req, res) => {
   res.sendFile(path.join(__dirname, 'crm.html'));
 });

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Debug WhatsApp — RecomendaLeads</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #f4f6fb; color: #1f2937; margin: 0; padding: 24px; }
+  .card { max-width: 900px; margin: 0 auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.06); padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: #6b7280; margin: 0 0 18px; font-size: 14px; }
+  button { background: #1E5BE0; color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  button:hover { filter: brightness(1.05); }
+  .status { display: inline-block; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; margin: 10px 0; }
+  .ok { background: #dcfce7; color: #166534; }
+  .bad { background: #fee2e2; color: #991b1b; }
+  pre { background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 16px; overflow: auto; font-size: 13px; line-height: 1.5; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  th { color: #6b7280; font-weight: 600; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .tag-proc { background: #dcfce7; color: #166534; }
+  .tag-ign { background: #fef3c7; color: #92400e; }
+  code { font-family: ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🔎 Debug WhatsApp (Baileys)</h1>
+  <p class="sub">Últimas mensagens recebidas por este número. Mande "quero meu presente" de outro celular e clique em Atualizar.</p>
+  <button onclick="carregar()">🔄 Atualizar</button>
+  <div id="statusLine"></div>
+  <div id="tabela"></div>
+  <details style="margin-top:18px;">
+    <summary style="cursor:pointer;color:#6b7280;font-size:13px;">Ver dados completos (JSON)</summary>
+    <pre id="raw">carregando…</pre>
+  </details>
+</div>
+<script>
+  const token = localStorage.getItem('recomendaleads_token');
+  function acaoTag(a) {
+    const proc = a === 'processado';
+    const cls = proc ? 'tag-proc' : 'tag-ign';
+    return '<span class="tag ' + cls + '">' + a + '</span>';
+  }
+  async function carregar() {
+    const raw = document.getElementById('raw');
+    const sl = document.getElementById('statusLine');
+    const tb = document.getElementById('tabela');
+    if (!token) {
+      sl.innerHTML = '<div class="status bad">Você não está logado. Abra o painel, faça login como a empresa e volte a esta página na MESMA aba do navegador.</div>';
+      raw.textContent = '';
+      return;
+    }
+    sl.innerHTML = '<div class="status">Carregando…</div>';
+    try {
+      const r = await fetch('/minha-whatsapp/baileys/debug', { headers: { Authorization: 'Bearer ' + token } });
+      const data = await r.json();
+      raw.textContent = JSON.stringify(data, null, 2);
+      if (!data.ok) { sl.innerHTML = '<div class="status bad">Erro: ' + (data.erro || '?') + '</div>'; tb.innerHTML = ''; return; }
+      const st = data.status || {};
+      const con = st.status === 'conectado';
+      sl.innerHTML = '<div class="status ' + (con ? 'ok' : 'bad') + '">Status: ' + (st.status || '?') + (st.numero ? ' — número ' + st.numero : '') + '</div>';
+      const recs = data.recebidas || [];
+      if (!recs.length) {
+        tb.innerHTML = '<p style="color:#6b7280;font-size:14px;">Nenhuma mensagem recebida ainda. Mande "quero meu presente" de outro celular e clique em Atualizar.</p>';
+        return;
+      }
+      let html = '<table><tr><th>Hora</th><th>Ação</th><th>Texto</th><th>remoteJid</th><th>@lid?</th><th>senderPn</th><th>Nº resolvido</th></tr>';
+      for (const e of recs) {
+        const hora = (e.ts || '').replace('T', ' ').replace('Z', '').split('.')[0].slice(11);
+        html += '<tr>'
+          + '<td>' + hora + '</td>'
+          + '<td>' + acaoTag(e.acao || '') + '</td>'
+          + '<td>' + (e.texto ? ('"' + e.texto + '"') : '—') + '</td>'
+          + '<td><code>' + (e.rawJid || '—') + '</code></td>'
+          + '<td>' + (e.isLid ? 'SIM' : 'não') + '</td>'
+          + '<td><code>' + (e.senderPn || '—') + '</code></td>'
+          + '<td><code>' + (e.phoneResolvido || '—') + '</code></td>'
+          + '</tr>';
+      }
+      html += '</table>';
+      tb.innerHTML = html;
+    } catch (err) {
+      sl.innerHTML = '<div class="status bad">Falha de conexão: ' + err.message + '</div>';
+    }
+  }
+  carregar();
+</script>
+</body>
+</html>
