@@ -1924,13 +1924,17 @@ async function uploadArquivo(inputFile, inputTexto, statusEl) {
     const data = await resp.json();
     if (data.ok) {
       inputTexto.value = data.url;
-      statusEl.textContent = '✅ Enviado!';
-      setTimeout(() => { statusEl.textContent = ''; }, 3000);
+      statusEl.textContent = '✅ Arquivo enviado! Agora clique em "Salvar" para confirmar.';
+      statusEl.style.color = '#16A34A';
+      statusEl.style.fontWeight = '600';
+      setTimeout(() => { statusEl.textContent = ''; statusEl.style.color = ''; }, 8000);
     } else {
       statusEl.textContent = '❌ ' + (data.erro || 'Erro ao enviar');
+      statusEl.style.color = '#DC2626';
     }
   } catch (err) {
     statusEl.textContent = '❌ Erro de conexão';
+    statusEl.style.color = '#DC2626';
   }
   inputFile.value = '';
 }
