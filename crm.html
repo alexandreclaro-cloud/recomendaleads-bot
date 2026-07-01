@@ -705,6 +705,11 @@
             Variáveis (clique para copiar): <code class="var-chip">{nome}</code> <code class="var-chip">{premio}</code> <code class="var-chip">{quantidade}</code> <code class="var-chip">{empresa}</code>
           </p>
 
+          <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">🔓 Frase que ativa o presente</p>
+          <label>O que o cliente envia no WhatsApp para o bot começar</label>
+          <input type="text" id="gatilhoPresenteInput" placeholder="Ex: quero meu presente">
+          <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">Pode cadastrar mais de uma, separadas por vírgula (ex: <i>quero meu presente, quero meu voucher, ativar presente</i>). Basta a mensagem do cliente conter uma delas.</p>
+
           <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">1) Boas-vindas (1ª mensagem enviada ao cliente)</p>
           <label>Mensagem de agradecimento</label>
           <textarea id="empresaMsgInput" rows="2"></textarea>
@@ -1440,6 +1445,7 @@ async function carregarConfiguracao() {
     document.getElementById('configConteudo').style.display = 'block';
 
     document.getElementById('empresaNomeInput').value = configuracaoAtual.nome || '';
+    document.getElementById('gatilhoPresenteInput').value = configuracaoAtual.gatilhoPresente || 'quero meu presente';
     document.getElementById('empresaMsgInput').value = configuracaoAtual.mensagemAgradecimento || '';
     document.getElementById('empresaVendedoresInput').value = (configuracaoAtual.vendedores || []).join('\n');
 
@@ -1535,11 +1541,12 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   const mensagemPedeVendedor = document.getElementById('mensagemPedeVendedorInput').value.trim() || null;
   const mensagemPedeContatos = document.getElementById('mensagemPedeContatosInput').value.trim() || null;
   const mensagemColeta = document.getElementById('mensagemColetaInput').value.trim() || null;
+  const gatilhoPresente = document.getElementById('gatilhoPresenteInput').value.trim() || 'quero meu presente';
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta })
+      body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta, gatilhoPresente })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }

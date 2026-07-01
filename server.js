@@ -313,6 +313,18 @@ const PALAVRAS_POSITIVAS = [
   'presente', 'sou eu', 'dale', 'obvio', 'óbvio', 'yes', 'sip'
 ];
 
+// Frase(s) que o cliente envia para ATIVAR o presente. Configurável por empresa
+// (pode ter várias, separadas por vírgula, ponto-e-vírgula ou quebra de linha).
+function frasesGatilhoPresente(empresa) {
+  const raw = (empresa && empresa.gatilhoPresente) || EMPRESA_PADRAO.gatilhoPresente || 'quero meu presente';
+  return String(raw).split(/[\n,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+function ehGatilhoPresente(texto, empresa) {
+  if (!texto) return false;
+  const t = texto.toLowerCase().trim();
+  return frasesGatilhoPresente(empresa).some(f => t.includes(f));
+}
+
 function respostaEhPositiva(texto) {
   if (!texto) return false;
   const normalizado = texto.toLowerCase().trim();
@@ -386,6 +398,7 @@ const EMPRESA_PADRAO = {
   mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
   mensagemAntesPresente: '🎉 Boa notícia! Você ganhou {premio}. Aqui está o seu presente 👇',
+  gatilhoPresente: 'quero meu presente',
 
   // ===== Conversa do CLIENTE (quem recomenda) — editável =====
   mensagemPedeNome: 'Pra começar, qual é o seu nome?',
@@ -1781,8 +1794,10 @@ async function tratarWebhook(req, res) {
       return res.sendStatus(200);
     }
 
-    // Se o número está pausado, só reage ao gatilho "quero meu presente"
-    const ehGatilhoInicialParaPausa = texto && texto.toLowerCase().includes('quero meu presente');
+    // Empresa do contexto (pra ler a frase de ativação configurável).
+    const empGatilho = await getEmpresa();
+    // Se o número está pausado, só reage ao gatilho de ativação do presente
+    const ehGatilhoInicialParaPausa = ehGatilhoPresente(texto, empGatilho);
     if (!ehGatilhoInicialParaPausa && await numeroEstaPausado(telefone)) {
       console.log(`[PAUSA MANUAL] Mensagem ignorada — ${telefone} está pausado`);
       return res.sendStatus(200);
@@ -1811,7 +1826,7 @@ async function tratarWebhook(req, res) {
     // Cliente "ativo" = sessão em andamento (não finalizada). Uma sessão de
     // cliente finalizada não deve bloquear o fluxo de recomendado.
     const clienteAtivo = sessaoExiste && sessaoClienteEtapa !== 'finalizado';
-    const ehGatilhoInicial = texto && texto.toLowerCase().includes('quero meu presente');
+    const ehGatilhoInicial = ehGatilhoPresente(texto, empGatilho);
 
     // Um mesmo número pode ter sido cliente/recomendador antes e agora estar
     // recebendo o roteiro como RECOMENDADO. Se a sessão de cliente já está
