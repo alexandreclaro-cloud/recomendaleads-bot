@@ -145,12 +145,24 @@ async function iniciarSessao(empresaId) {
       if (ev.type !== 'notify') return;
       for (const msg of ev.messages) {
         if (!msg.message || (msg.key && msg.key.fromMe)) continue;
-        const jid = (msg.key && msg.key.remoteJid) || '';
-        if (jid.endsWith('@g.us') || jid.endsWith('@broadcast')) continue; // grupo/status
-        const phone = jid.replace(/@s\.whatsapp\.net$/, '').replace(/\D/g, '');
-        if (!phone) continue;
-        // Guarda o JID EXATO de origem (pode ser @lid) para responder no mesmo endereço.
-        sessao.jids[phone] = jid;
+        const rawJid = (msg.key && msg.key.remoteJid) || '';
+        if (rawJid.endsWith('@g.us') || rawJid.endsWith('@broadcast')) continue; // grupo/status
+        // WhatsApp novo entrega mensagens de alguns contatos com um endereço
+        // interno "@lid" no remoteJid — que NÃO é o número de telefone. Nesses
+        // casos o número real vem em msg.key.senderPn (ex.: 5511...@s.whatsapp.net).
+        // Sem isso, extraíamos um número errado e a resposta não chegava.
+        const isLid = rawJid.endsWith('@lid');
+        const pnRaw = (msg.key && (msg.key.senderPn || msg.key.participantPn)) || '';
+        const fonteNumero = pnRaw || (isLid ? '' : rawJid);
+        const phone = fonteNumero.replace(/@.*/, '').replace(/\D/g, '');
+        if (!phone) {
+          console.warn(`[BAILEYS] mensagem @lid sem número real (senderPn ausente) — jid=${rawJid} — ignorada`);
+          continue;
+        }
+        // JID para responder: número real quando conhecido; senão o jid de origem.
+        const jidResposta = pnRaw ? (phone + '@s.whatsapp.net') : rawJid;
+        sessao.jids[phone] = jidResposta;
+        if (isLid) console.log(`[BAILEYS] @lid resolvido: ${rawJid} -> ${phone} (responde em ${jidResposta})`);
         const m = msg.message;
         const texto = m.conversation
           || (m.extendedTextMessage && m.extendedTextMessage.text)
