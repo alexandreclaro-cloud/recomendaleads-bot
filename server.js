@@ -1233,7 +1233,10 @@ function variaveisRec(sessao, empresa) {
     recomendado: sessao && sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
     recomendador: sessao && sessao.nomeRecomendador ? sessao.nomeRecomendador.split(' ')[0] : 'seu amigo',
     vendedor: (sessao && sessao.vendedorNome) || (empresa && empresa.nome) || '',
-    empresa: (empresa && empresa.nome) || ''
+    empresa: (empresa && empresa.nome) || '',
+    // Prêmio do recomendado: disponível em TODA mensagem pós-presente (menu,
+    // "vou usar depois", dúvidas, lembrete...), pra que {premio} sempre puxe.
+    premio: (empresa && empresa.premioRecomendado) || 'seu presente'
   };
 }
 
