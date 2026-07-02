@@ -194,6 +194,50 @@ function zapiBaseUrl(cfg) {
   return `https://api.z-api.io/instances/${cfg.instanceId}/token/${cfg.token}`;
 }
 
+// ============================================================
+// CONFIGURAÇÃO — WhatsApp API Oficial (Meta Cloud API)
+// ============================================================
+// Modo 'oficial': a empresa cadastra as credenciais da própria conta na Meta
+// (Phone Number ID + token permanente + verify token do webhook). Fica tudo
+// atrás do whatsappTipo, sem afetar Z-API/Baileys.
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
+
+// Credenciais oficiais da empresa (null se não cadastradas).
+function oficialDaEmpresa(empresa) {
+  if (empresa && empresa.oficialPhoneId && empresa.oficialToken) {
+    return {
+      phoneId: empresa.oficialPhoneId,
+      token: empresa.oficialToken,
+      verifyToken: empresa.oficialVerifyToken || '',
+      wabaId: empresa.oficialWabaId || ''
+    };
+  }
+  return null;
+}
+
+// Credenciais oficiais do contexto atual (empresa ativa). Deriva do `empresa`
+// do contexto quando `oficial` não foi passado explicitamente — assim TODO
+// fluxo que roda com contexto de empresa (webhook, follow-up, agendamento,
+// envios manuais) resolve as credenciais oficiais sem precisar alterar cada
+// ponto que monta o contexto.
+function oficialAtual() {
+  const ctx = tenantContext.getStore();
+  if (ctx && ctx.oficial) return ctx.oficial;
+  if (ctx && ctx.empresa) return oficialDaEmpresa(ctx.empresa);
+  return null;
+}
+
+function metaMessagesUrl(cfg) {
+  return `https://graph.facebook.com/${META_GRAPH_VERSION}/${cfg.phoneId}/messages`;
+}
+function metaHeaders(cfg) {
+  return { 'Authorization': `Bearer ${cfg.token}`, 'Content-Type': 'application/json' };
+}
+// A Meta espera o número só com dígitos (ex.: 5511999998888), sem "+".
+function soDigitos(telefone) {
+  return String(telefone || '').replace(/\D/g, '');
+}
+
 // empresaId do contexto atual, ou a PDN como padrão (comportamento de hoje).
 function empresaIdAtual() {
   const ctx = tenantContext.getStore();
@@ -512,7 +556,12 @@ async function getEmpresaById(empresaId) {
     whatsappTipo: data.whatsappTipo || 'zapi',
     zapiInstanceId: data.zapiInstanceId || null,
     zapiToken: data.zapiToken || null,
-    zapiClientToken: data.zapiClientToken || null
+    zapiClientToken: data.zapiClientToken || null,
+    oficialPhoneId: data.oficialPhoneId || null,
+    oficialToken: data.oficialToken || null,
+    oficialVerifyToken: data.oficialVerifyToken || null,
+    oficialWabaId: data.oficialWabaId || null,
+    oficialTemplateRecomendado: data.oficialTemplateRecomendado || null
   };
 }
 
@@ -638,6 +687,19 @@ function zapiHeaders(cfg) {
   return headers;
 }
 
+// Upload de mídia (data URI) pra Meta Cloud API — devolve o media id.
+async function metaUploadMedia(cfg, buffer, mimetype, filename) {
+  const FormData = require('form-data');
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  form.append('file', buffer, { filename: filename || 'arquivo', contentType: mimetype });
+  const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${cfg.phoneId}/media`;
+  const resp = await axios.post(url, form, {
+    headers: { ...form.getHeaders(), 'Authorization': `Bearer ${cfg.token}` }
+  });
+  return resp.data && resp.data.id;
+}
+
 async function sendText(phone, message) {
   if (tipoWppAtual() === 'baileys') {
     try {
@@ -645,6 +707,18 @@ async function sendText(phone, message) {
       console.log(`[ENVIADO/baileys] para ${phone}: ${message.slice(0, 60)}...`);
       registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
     } catch (err) { console.error('Erro ao enviar texto (Baileys):', err.message); }
+    return;
+  }
+  if (tipoWppAtual() === 'oficial') {
+    try {
+      const cfg = oficialAtual();
+      await axios.post(metaMessagesUrl(cfg), {
+        messaging_product: 'whatsapp', to: soDigitos(phone), type: 'text',
+        text: { preview_url: true, body: message }
+      }, { headers: metaHeaders(cfg) });
+      console.log(`[ENVIADO/oficial] para ${phone}: ${message.slice(0, 60)}...`);
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
+    } catch (err) { console.error('Erro ao enviar texto (Oficial):', err.response?.data || err.message); }
     return;
   }
   try {
@@ -665,6 +739,21 @@ async function sendImage(phone, imageUrl, caption) {
       else { await baileys.enviarTexto(empresaIdAtual(), phone, (caption ? caption + '\n' : '') + imageUrl); }
       registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem' });
     } catch (err) { console.error('Erro ao enviar imagem (Baileys):', err.message); }
+    return;
+  }
+  if (tipoWppAtual() === 'oficial') {
+    try {
+      const cfg = oficialAtual();
+      const d = dataUriParaBuffer(imageUrl);
+      let image;
+      if (d) { const id = await metaUploadMedia(cfg, d.buffer, d.mimetype, 'imagem'); image = { id, caption: caption || '' }; }
+      else { image = { link: imageUrl, caption: caption || '' }; }
+      await axios.post(metaMessagesUrl(cfg), {
+        messaging_product: 'whatsapp', to: soDigitos(phone), type: 'image', image
+      }, { headers: metaHeaders(cfg) });
+      console.log(`[IMAGEM ENVIADA/oficial] para ${phone}`);
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem' });
+    } catch (err) { console.error('Erro ao enviar imagem (Oficial):', err.response?.data || err.message); }
     return;
   }
   try {
@@ -689,6 +778,22 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
     } catch (err) { console.error('Erro ao enviar documento (Baileys):', err.message); }
     return;
   }
+  if (tipoWppAtual() === 'oficial') {
+    try {
+      const cfg = oficialAtual();
+      const nomeArq = `${fileName || 'arquivo'}${extension ? '.' + extension : ''}`;
+      const d = dataUriParaBuffer(base64OrUrl);
+      let document;
+      if (d) { const id = await metaUploadMedia(cfg, d.buffer, d.mimetype, nomeArq); document = { id, filename: nomeArq }; }
+      else { document = { link: base64OrUrl, filename: nomeArq }; }
+      await axios.post(metaMessagesUrl(cfg), {
+        messaging_product: 'whatsapp', to: soDigitos(phone), type: 'document', document
+      }, { headers: metaHeaders(cfg) });
+      console.log(`[DOCUMENTO ENVIADO/oficial] para ${phone}: ${nomeArq}`);
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento' });
+    } catch (err) { console.error('Erro ao enviar documento (Oficial):', err.response?.data || err.message); }
+    return;
+  }
   try {
     const cfg = zapiAtual();
     await axios.post(`${zapiBaseUrl(cfg)}/send-document/${extension}`, {
@@ -698,6 +803,31 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
     registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento' });
   } catch (err) {
     console.error('Erro ao enviar documento:', err.response?.data || err.message);
+  }
+}
+
+// Envia um template APROVADO na Meta. Obrigatório pra INICIAR conversa com quem
+// não te falou nas últimas 24h (ex.: o recomendado). Só existe no modo oficial.
+// bodyParams: strings que preenchem {{1}}, {{2}}... do corpo do template.
+// Retorna true se enviou por template; false se não estava em modo oficial (o
+// chamador então segue com o envio de texto normal — Baileys/Z-API).
+async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR') {
+  if (tipoWppAtual() !== 'oficial') return false;
+  try {
+    const cfg = oficialAtual();
+    const components = bodyParams.length
+      ? [{ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) }]
+      : [];
+    await axios.post(metaMessagesUrl(cfg), {
+      messaging_product: 'whatsapp', to: soDigitos(phone), type: 'template',
+      template: { name: templateName, language: { code: lang }, components }
+    }, { headers: metaHeaders(cfg) });
+    console.log(`[TEMPLATE ENVIADO/oficial] ${templateName} → ${phone}`);
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `[template: ${templateName}]` });
+    return true;
+  } catch (err) {
+    console.error('Erro ao enviar template (Oficial):', err.response?.data || err.message);
+    return false;
   }
 }
 
@@ -1169,7 +1299,17 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
   };
 
   const mensagemInicial = substituirVariaveis(empresa.mensagemInicialRecomendado, variaveis);
-  await sendText(contato.telefone, mensagemInicial);
+  // No modo OFICIAL, a primeira mensagem ao recomendado (que nunca te chamou)
+  // precisa ser um TEMPLATE aprovado pela Meta. Params na ordem:
+  // {{1}}=nome do recomendado, {{2}}=quem recomendou, {{3}}=empresa.
+  // Fora do modo oficial (ou sem template configurado) segue como hoje.
+  if (tipoWppAtual() === 'oficial' && empresa.oficialTemplateRecomendado) {
+    const enviou = await sendTemplate(contato.telefone, empresa.oficialTemplateRecomendado,
+      [primeiroNomeRecomendado, nomeRecomendador.split(' ')[0], empresa.nome]);
+    if (!enviou) await sendText(contato.telefone, mensagemInicial);
+  } else {
+    await sendText(contato.telefone, mensagemInicial);
+  }
 
   const marcaTempo = new Date().toISOString();
   await saveSessaoRecomendado(contato.telefone, {
@@ -1920,7 +2060,8 @@ async function comWebhook(req, res, empresaId) {
   const contexto = {
     empresa,
     empresaId: (empresa && empresa.id) || empresaId || EMPRESA_ID_PDN,
-    zapi: zapiDaEmpresa(empresa)
+    zapi: zapiDaEmpresa(empresa),
+    oficial: oficialDaEmpresa(empresa)
   };
 
   return tenantContext.run(contexto, () => tratarWebhook(req, res));
@@ -1928,6 +2069,80 @@ async function comWebhook(req, res, empresaId) {
 
 app.post('/webhook', (req, res) => comWebhook(req, res, null));
 app.post('/webhook/:empresaId', (req, res) => comWebhook(req, res, req.params.empresaId));
+
+// ============================================================
+// WEBHOOK — WhatsApp API Oficial (Meta Cloud API)
+// ============================================================
+// A Meta usa formato próprio (entry/changes/messages) e exige verificação por
+// GET (hub.challenge). Traduzimos o payload pro MESMO formato interno do fluxo
+// Z-API e reaproveitamos toda a lógica (tratarWebhook).
+
+// GET: verificação do webhook na configuração do app na Meta.
+app.get('/webhook-oficial/:empresaId', async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.params.empresaId);
+    const esperado = empresa && empresa.oficialVerifyToken;
+    if (req.query['hub.mode'] === 'subscribe' && esperado && req.query['hub.verify_token'] === esperado) {
+      return res.status(200).send(req.query['hub.challenge']);
+    }
+    return res.sendStatus(403);
+  } catch (e) {
+    return res.sendStatus(403);
+  }
+});
+
+// Converte uma mensagem do payload da Meta pro formato interno (estilo Z-API).
+function metaMensagemParaInterno(value, msg) {
+  const contato = (value.contacts && value.contacts[0]) || {};
+  const nome = (contato.profile && contato.profile.name) || null;
+  const base = { phone: msg.from, senderName: nome, messageId: msg.id, fromMe: false, isGroup: false };
+  if (msg.type === 'text' && msg.text) {
+    base.text = { message: msg.text.body };
+  } else if (msg.type === 'interactive' && msg.interactive) {
+    const it = msg.interactive;
+    base.text = { message: (it.button_reply && (it.button_reply.title || it.button_reply.id))
+      || (it.list_reply && (it.list_reply.title || it.list_reply.id)) || '' };
+  } else if (msg.type === 'button' && msg.button) {
+    base.text = { message: msg.button.text || msg.button.payload || '' };
+  } else if (msg.type === 'contacts' && Array.isArray(msg.contacts)) {
+    base.contactArray = msg.contacts.map(c => {
+      const phones = (c.phones && c.phones.map(p => p.phone)) || [];
+      return { nome: (c.name && c.name.formatted_name) || '', telefone: (phones[0] || '').replace(/\D/g, '') };
+    });
+  } else {
+    return null; // tipos não tratados (áudio, mídia recebida, etc.)
+  }
+  return base;
+}
+
+async function comWebhookOficial(req, res, empresaId) {
+  res.sendStatus(200); // responde rápido; a Meta reentrega se demorar
+  try {
+    const empresa = await getEmpresaById(empresaId);
+    if (!empresa) { console.warn(`[WEBHOOK-OFICIAL] empresaId desconhecido: ${empresaId}`); return; }
+    for (const entry of ((req.body && req.body.entry) || [])) {
+      for (const change of (entry.changes || [])) {
+        const value = change.value || {};
+        const phoneIdRecebido = value.metadata && value.metadata.phone_number_id;
+        if (empresa.oficialPhoneId && phoneIdRecebido && String(phoneIdRecebido) !== String(empresa.oficialPhoneId)) {
+          console.warn(`[WEBHOOK-OFICIAL] phone_number_id não confere (${phoneIdRecebido}) — ignorando`);
+          continue;
+        }
+        for (const msg of (value.messages || [])) {
+          const interno = metaMensagemParaInterno(value, msg);
+          if (!interno) continue;
+          const contexto = { empresa, empresaId: empresa.id, zapi: zapiDaEmpresa(empresa), oficial: oficialDaEmpresa(empresa) };
+          const fakeRes = { sendStatus() {}, status() { return this; }, json() {}, send() {} };
+          await tenantContext.run(contexto, () => tratarWebhook({ body: interno }, fakeRes));
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[WEBHOOK-OFICIAL] erro:', e.message);
+  }
+}
+
+app.post('/webhook-oficial/:empresaId', (req, res) => comWebhookOficial(req, res, req.params.empresaId));
 
 // ---- WhatsApp via Baileys: ponte de mensagens recebidas + reconexão ----
 // Mensagens recebidas pelo Baileys entram no MESMO fluxo do webhook Z-API.
@@ -2876,7 +3091,15 @@ app.get('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
       zapiInstanceId: e.zapiInstanceId || '',
       temToken: !!e.zapiToken,
       temClientToken: !!e.zapiClientToken,
-      webhookUrl: `${urlBase(req)}/webhook/${e.id}`
+      webhookUrl: `${urlBase(req)}/webhook/${e.id}`,
+      // API Oficial (Meta Cloud API)
+      oficialPhoneId: e.oficialPhoneId || '',
+      oficialWabaId: e.oficialWabaId || '',
+      temOficialToken: !!e.oficialToken,
+      temOficialVerifyToken: !!e.oficialVerifyToken,
+      oficialTemplateRecomendado: e.oficialTemplateRecomendado || '',
+      oficialConectado: !!(e.oficialPhoneId && e.oficialToken),
+      oficialWebhookUrl: `${urlBase(req)}/webhook-oficial/${e.id}`
     });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -2908,6 +3131,42 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) =
       ok: true,
       conectado: true,
       webhookUrl: `${urlBase(req)}/webhook/${req.empresaLogin.id}`
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// WHATSAPP DA EMPRESA — API Oficial (Meta Cloud API)
+// ============================================================
+// O cliente cria o app/WABA na Meta, cola aqui o Phone Number ID + token
+// permanente + um verify token (que ele escolhe). A URL de webhook oficial
+// (única por empresa) é mostrada pra ele configurar no app da Meta.
+app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const { oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado } = req.body;
+    if (!oficialPhoneId || !oficialToken || !oficialVerifyToken) {
+      return res.status(400).json({ ok: false, erro: 'Informe Phone Number ID, Token e Verify Token' });
+    }
+
+    // Ao cadastrar credenciais oficiais, a empresa passa a operar em modo 'oficial'.
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({
+      whatsappTipo: 'oficial',
+      oficialPhoneId: String(oficialPhoneId).trim(),
+      oficialToken: String(oficialToken).trim(),
+      oficialVerifyToken: String(oficialVerifyToken).trim(),
+      oficialWabaId: oficialWabaId ? String(oficialWabaId).trim() : null,
+      oficialTemplateRecomendado: oficialTemplateRecomendado ? String(oficialTemplateRecomendado).trim() : null
+    }, { merge: true });
+
+    // Encerra o Baileys (se houver) pra não brigar pelo número.
+    try { await baileys.desconectar(req.empresaLogin.id); } catch (e) {}
+
+    res.json({
+      ok: true,
+      conectado: true,
+      webhookUrl: `${urlBase(req)}/webhook-oficial/${req.empresaLogin.id}`
     });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

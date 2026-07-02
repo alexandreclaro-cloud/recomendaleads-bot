@@ -246,6 +246,41 @@
               </div>
             </div>
           </details>
+
+          <details style="margin-top:14px">
+            <summary style="cursor:pointer; font-size:0.84rem; color:var(--text-dim)">API Oficial (Meta / número verificado)</summary>
+            <div style="margin-top:12px">
+              <div class="hint" style="margin-bottom:10px">
+                Modo oficial da Meta (selo verde, sem risco de bloqueio). Você cria o app + número na Meta,
+                cola as credenciais aqui e configura a URL de webhook abaixo no app da Meta.
+                <b>Salvar aqui ativa o modo oficial e desliga os outros.</b>
+              </div>
+              <label class="label">Phone Number ID (ID do número na Meta)</label>
+              <input class="input" type="text" id="oficialPhoneIdInput" placeholder="Ex: 123456789012345">
+              <label class="label">Token de acesso (permanente)</label>
+              <input class="input" type="text" id="oficialTokenInput" placeholder="Token permanente do app da Meta">
+              <label class="label">Verify Token (você escolhe — use o mesmo no app da Meta)</label>
+              <input class="input" type="text" id="oficialVerifyTokenInput" placeholder="Ex: recomendaleads-2026">
+              <label class="label">WABA ID (opcional)</label>
+              <input class="input" type="text" id="oficialWabaIdInput" placeholder="ID da WhatsApp Business Account (opcional)">
+
+              <label class="label">Nome do template do recomendado (aprovado na Meta)</label>
+              <input class="input" type="text" id="oficialTemplateInput" placeholder="Ex: recomendacao_presente">
+              <div class="hint">Obrigatório no modo oficial pra falar com quem foi recomendado. O template precisa ter 3 variáveis no corpo, nesta ordem: <b>{{1}}</b> nome do recomendado · <b>{{2}}</b> quem recomendou · <b>{{3}}</b> empresa.</div>
+
+              <label class="label">URL de Webhook (cole na configuração do app na Meta)</label>
+              <div class="webhook-box">
+                <code id="oficialWebhookUrlText">—</code>
+                <button type="button" class="btn btn-secondary" id="copyOficialWebhookBtn" style="padding:7px 14px;font-size:0.8rem">Copiar</button>
+              </div>
+              <div class="hint">Na Meta, em Configuração do webhook: cole esta URL em "Callback URL" e o mesmo Verify Token acima. Assine o campo <b>messages</b>.</div>
+
+              <div class="row-save">
+                <button class="btn btn-action" id="salvarOficialBtn">Salvar API Oficial</button>
+                <span class="status-msg" id="statusOficial"></span>
+              </div>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -753,11 +788,17 @@ async function carregarWhatsapp() {
       document.getElementById('zapiTokenInput').placeholder = cfg.temToken ? '•••••• (já salvo — preencha para trocar)' : 'Token da sua instância Z-API';
       document.getElementById('zapiClientTokenInput').placeholder = cfg.temClientToken ? '•••••• (já salvo — preencha para trocar)' : 'Client-Token da sua conta Z-API';
       document.getElementById('webhookUrlText').textContent = cfg.webhookUrl || '—';
+      // API Oficial (Meta)
+      document.getElementById('oficialPhoneIdInput').value = cfg.oficialPhoneId || '';
+      document.getElementById('oficialWabaIdInput').value = cfg.oficialWabaId || '';
+      document.getElementById('oficialTokenInput').placeholder = cfg.temOficialToken ? '•••••• (já salvo — preencha para trocar)' : 'Token permanente do app da Meta';
+      document.getElementById('oficialVerifyTokenInput').placeholder = cfg.temOficialVerifyToken ? '•••••• (já salvo — preencha para trocar)' : 'Ex: recomendaleads-2026';
+      document.getElementById('oficialTemplateInput').value = cfg.oficialTemplateRecomendado || '';
+      document.getElementById('oficialWebhookUrlText').textContent = cfg.oficialWebhookUrl || '—';
     }
-    // Modo QR grátis (Baileys): mostra só o QR; esconde a parte de Z-API.
+    // Modo QR grátis (Baileys): mostra só o QR; esconde as configs de API.
     document.getElementById('baileysBox').style.display = ehBaileys ? 'block' : 'none';
-    const detalhesZapi = document.querySelector('#view-whatsapp details');
-    if (detalhesZapi) detalhesZapi.style.display = ehBaileys ? 'none' : '';
+    document.querySelectorAll('#view-whatsapp details').forEach(d => { d.style.display = ehBaileys ? 'none' : ''; });
     if (ehBaileys) {
       mostrarAreaWhats('');
       await atualizarBaileys();
@@ -891,6 +932,36 @@ document.getElementById('salvarWhatsappBtn').addEventListener('click', async () 
     if (resp.ok && data.ok) {
       statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok';
       document.getElementById('zapiTokenInput').value = ''; document.getElementById('zapiClientTokenInput').value = '';
+      carregarWhatsapp();
+    } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
+});
+
+document.getElementById('copyOficialWebhookBtn').addEventListener('click', () => {
+  const url = document.getElementById('oficialWebhookUrlText').textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('copyOficialWebhookBtn'); const txt = btn.textContent;
+    btn.textContent = 'Copiado!'; setTimeout(() => { btn.textContent = txt; }, 2000);
+  });
+});
+
+document.getElementById('salvarOficialBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarOficialBtn');
+  const statusEl = document.getElementById('statusOficial');
+  const oficialPhoneId = document.getElementById('oficialPhoneIdInput').value.trim();
+  const oficialToken = document.getElementById('oficialTokenInput').value.trim();
+  const oficialVerifyToken = document.getElementById('oficialVerifyTokenInput').value.trim();
+  const oficialWabaId = document.getElementById('oficialWabaIdInput').value.trim();
+  const oficialTemplateRecomendado = document.getElementById('oficialTemplateInput').value.trim();
+  if (!oficialPhoneId || !oficialToken || !oficialVerifyToken) { statusEl.textContent = '❌ Preencha Phone Number ID, Token e Verify Token'; statusEl.className = 'status-msg err'; return; }
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/oficial`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo! Modo oficial ativado.'; statusEl.className = 'status-msg ok';
+      document.getElementById('oficialTokenInput').value = '';
       carregarWhatsapp();
     } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
