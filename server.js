@@ -2876,11 +2876,19 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) =
       return res.status(400).json({ ok: false, erro: 'Informe ao menos o Instance ID e o Token da Z-API' });
     }
 
+    // Ao cadastrar credenciais Z-API, a empresa passa a operar em modo 'zapi'.
+    // Sem isto, quem estava em Baileys continuaria ENVIANDO pelo Baileys (o
+    // whatsappTipo não mudava) e o bot ficaria mudo mesmo com Z-API salva.
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({
+      whatsappTipo: 'zapi',
       zapiInstanceId: String(zapiInstanceId).trim(),
       zapiToken: String(zapiToken).trim(),
       zapiClientToken: zapiClientToken ? String(zapiClientToken).trim() : null
     }, { merge: true });
+
+    // Encerra a sessão Baileys (se houver) pra os dois não brigarem pelo número.
+    // Best-effort: nunca deixa a falha aqui derrubar o salvamento das credenciais.
+    try { await baileys.desconectar(req.empresaLogin.id); } catch (e) {}
 
     res.json({
       ok: true,
