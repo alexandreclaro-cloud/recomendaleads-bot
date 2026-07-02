@@ -277,6 +277,31 @@ async function apagarConversaChat(empresaId, telefone) {
   } catch (e) { console.error('[STOP1] erro ao apagar conversa:', e.message); }
 }
 
+// Reset TOTAL de um contato: apaga sessões (cliente e recomendado), cancela
+// agendamentos pendentes e limpa a conversa — a pessoa fica como se nunca
+// tivesse falado (mantém os leads no CRM). Roda dentro do contexto da empresa
+// (usa empresaIdAtual). Usado pelo comando "stop1" e pelo botão Resetar da
+// aba Conversas.
+async function resetarContato(alvo) {
+  try { await SESSOES_COL().doc(chaveSessao(alvo)).delete(); } catch (e) {}
+  try { await SESSOES_RECOMENDADO_COL().doc(chaveSessao(alvo)).delete(); } catch (e) {}
+  await despausarNumero(alvo);
+  try {
+    const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
+    const batch = db.batch();
+    snap.forEach(doc => {
+      const d = doc.data();
+      const telefoneAgendamento = d.dados?.contato?.telefone || d.dados?.telefone || null;
+      const mesmaEmpresa = (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual();
+      if (telefoneAgendamento === alvo && mesmaEmpresa) batch.update(doc.ref, { status: 'cancelado' });
+    });
+    await batch.commit();
+  } catch (err) {
+    console.error('Erro ao cancelar agendamentos no reset:', err.message);
+  }
+  await apagarConversaChat(empresaIdAtual(), alvo);
+}
+
 // Chave de documento isolada por empresa: "empresaId__telefone".
 // Garante que sessões e pausas de uma empresa não colidam com as de outra
 // quando o mesmo número fala com empresas diferentes.
@@ -1761,31 +1786,7 @@ async function tratarWebhook(req, res) {
 
     if (matchStop) {
       const alvo = matchStop[1] || telefone;
-
-      // RESET TOTAL: apaga toda a memória do bot para esse número (como se nunca
-      // tivesse falado) — sessão de cliente, sessão de recomendado, agendamentos
-      // e a pausa. Ideal para testes (a mesma pessoa pode recomeçar do zero).
-      try { await SESSOES_COL().doc(chaveSessao(alvo)).delete(); } catch (e) {}
-      try { await SESSOES_RECOMENDADO_COL().doc(chaveSessao(alvo)).delete(); } catch (e) {}
-      await despausarNumero(alvo);
-
-      try {
-        const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
-        const batch = db.batch();
-        snap.forEach(doc => {
-          const d = doc.data();
-          const telefoneAgendamento = d.dados?.contato?.telefone || d.dados?.telefone || null;
-          const mesmaEmpresa = (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual();
-          if (telefoneAgendamento === alvo && mesmaEmpresa) batch.update(doc.ref, { status: 'cancelado' });
-        });
-        await batch.commit();
-      } catch (err) {
-        console.error('Erro ao cancelar agendamentos no stop1:', err.message);
-      }
-
-      // Apaga também as mensagens da conversa (mantém leads e demais dados).
-      await apagarConversaChat(empresaIdAtual(), alvo);
-
+      await resetarContato(alvo);
       console.log(`[STOP1] Memória e conversa zeradas para ${alvo} (comando de ${telefone})`);
       // Sem resposta de propósito: a conversa fica limpa para reiniciar do zero.
       return res.sendStatus(200);
@@ -3091,6 +3092,34 @@ app.post('/minha-conversas/:telefone/devolver', exigirLoginEmpresa, async (req, 
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
     await tenantContext.run(contexto, async () => { await despausarNumero(telefone); });
     await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: false }, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Pausa o bot para o contato SEM enviar mensagem (você assume o atendimento).
+app.post('/minha-conversas/:telefone/pausar', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+    await tenantContext.run(contexto, async () => { await pausarNumero(telefone); });
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true }, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Reset total do contato (zera sessões, agendamentos e conversa — igual "stop1",
+// mas pelo painel, sem digitar comando nem vazar nada pro cliente).
+app.post('/minha-conversas/:telefone/resetar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+    await tenantContext.run(contexto, async () => { await resetarContato(telefone); });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

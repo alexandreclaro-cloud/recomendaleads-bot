@@ -78,7 +78,9 @@
         <div class="conv-av" id="chatAv">?</div>
         <div class="info"><b id="chatNome">—</b><small id="chatTel">—</small></div>
         <span class="bot-flag on" id="botFlag">Agente I.A. ativo</span>
+        <button class="btn btn-secondary" id="pausarBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Pausar Agente I.A.</button>
         <button class="btn btn-secondary" id="devolverBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Devolver ao Agente I.A.</button>
+        <button class="btn btn-ghost" id="resetarBtn" title="Zerar este contato: apaga a conversa e reinicia a pessoa do zero (mantém os leads no CRM)" style="padding:8px 12px;font-size:0.8rem;color:#c0392b">Resetar</button>
       </div>
       <div class="msgs" id="msgs"></div>
       <div class="composer" id="composer">
@@ -169,12 +171,15 @@ async function carregarMensagens(scroll) {
     botPausadoAtual = data.botPausado;
     const flag = document.getElementById('botFlag');
     const devolver = document.getElementById('devolverBtn');
+    const pausar = document.getElementById('pausarBtn');
     if (botPausadoAtual) {
       flag.textContent = 'Você assumiu'; flag.className = 'bot-flag off';
       devolver.style.display = 'inline-flex';
+      pausar.style.display = 'none';
     } else {
       flag.textContent = 'Agente I.A. ativo'; flag.className = 'bot-flag on';
       devolver.style.display = 'none';
+      pausar.style.display = 'inline-flex';
     }
     const msgs = document.getElementById('msgs');
     const estavaNoFim = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
@@ -202,6 +207,26 @@ document.getElementById('msgInput').addEventListener('keydown', e => { if (e.key
 document.getElementById('devolverBtn').addEventListener('click', async () => {
   if (!atual) return;
   try { await fetchAut(`${API_BASE}/minha-conversas/${atual}/devolver`, { method: 'POST' }); await carregarMensagens(); } catch (e) {}
+});
+
+// Pausa o Agente I.A. neste contato SEM enviar mensagem (você assume o atendimento).
+document.getElementById('pausarBtn').addEventListener('click', async () => {
+  if (!atual) return;
+  try { await fetchAut(`${API_BASE}/minha-conversas/${atual}/pausar`, { method: 'POST' }); await carregarMensagens(); } catch (e) {}
+});
+
+// Reseta o contato: apaga a conversa e reinicia a pessoa do zero (mantém leads).
+document.getElementById('resetarBtn').addEventListener('click', async () => {
+  if (!atual) return;
+  if (!confirm('Resetar este contato?\n\nApaga a conversa e reinicia a pessoa do zero (como se nunca tivesse falado com o bot). Os leads no CRM são mantidos.\n\nEsta ação não pode ser desfeita.')) return;
+  try {
+    await fetchAut(`${API_BASE}/minha-conversas/${atual}/resetar`, { method: 'POST' });
+    // A conversa é apagada — volta ao estado vazio e recarrega a lista.
+    atual = null;
+    document.getElementById('chatConteudo').style.display = 'none';
+    document.getElementById('chatVazio').style.display = '';
+    await carregarConversas();
+  } catch (e) {}
 });
 
 document.getElementById('voltarMobile').addEventListener('click', () => {
