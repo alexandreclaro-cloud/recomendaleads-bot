@@ -728,6 +728,10 @@
           <label>Instrução de coleta (use {quantidade})</label>
           <textarea id="mensagemColetaInput" rows="4"></textarea>
 
+          <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">5) Validar com o amigo</p>
+          <label>Aviso enviado ao cliente logo após o presente, pedindo que ele avise os amigos recomendados (deixe vazio para não enviar)</label>
+          <textarea id="mensagemValidarAmigoInput" rows="3"></textarea>
+
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarClienteConversaBtn">Salvar conversa do cliente</button>
             <span class="config-status-msg" id="statusClienteConversa"></span>
@@ -1472,6 +1476,7 @@ async function carregarConfiguracao() {
     document.getElementById('mensagemPedeVendedorInput').value = configuracaoAtual.mensagemPedeVendedor || '';
     document.getElementById('mensagemPedeContatosInput').value = configuracaoAtual.mensagemPedeContatos || '';
     document.getElementById('mensagemColetaInput').value = configuracaoAtual.mensagemColeta || '';
+    document.getElementById('mensagemValidarAmigoInput').value = configuracaoAtual.mensagemValidarAmigo ?? '';
     document.getElementById('tempoEsperaConversaoMinInput').value = configuracaoAtual.tempoEsperaConversaoMin || 60;
     document.getElementById('posMenuPrincipalInput').value = configuracaoAtual.posMenuPrincipal || '';
     document.getElementById('linkAgendamentoInput').value = configuracaoAtual.linkAgendamento || '';
@@ -1541,12 +1546,14 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   const mensagemPedeVendedor = document.getElementById('mensagemPedeVendedorInput').value.trim() || null;
   const mensagemPedeContatos = document.getElementById('mensagemPedeContatosInput').value.trim() || null;
   const mensagemColeta = document.getElementById('mensagemColetaInput').value.trim() || null;
+  // Vazio salva '' (não null) de propósito: '' = não enviar; null cairia no padrão.
+  const mensagemValidarAmigo = document.getElementById('mensagemValidarAmigoInput').value.trim();
   const gatilhoPresente = document.getElementById('gatilhoPresenteInput').value.trim() || 'quero meu presente';
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta, gatilhoPresente })
+      body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta, mensagemValidarAmigo, gatilhoPresente })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }

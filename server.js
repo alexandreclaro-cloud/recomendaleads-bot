@@ -423,6 +423,10 @@ const EMPRESA_PADRAO = {
   mensagemPedeVendedor: 'Prazer, {nome}! E me diz, quem te atendeu hoje?',
   mensagemPedeContatos: 'Show! Agora me envie o contato dos seus amigos para você receber {premio}.',
   mensagemColeta: 'Me envie {quantidade} recomendações e já garanta seu presente.\n\nVocê pode mandar o contato direto da sua agenda. Então, qual é a primeira pessoa que vem na sua mente?\nLembrando que ela também vai ganhar um presente nosso 🎁',
+  // Aviso enviado ao recomendador logo após receber o presente, pedindo que
+  // ele avise os amigos recomendados. Editável no painel ("Validar com o amigo").
+  // Vazio = não envia.
+  mensagemValidarAmigo: 'Só uma coisa importante: avise seus amigos que vamos entrar em contato com eles em breve, combinado? Assim eles já esperam nossa mensagem 😉',
   cadenciaFollowupRecomendado: [
     { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' },
     { esperaMin: 4320, texto: 'Olá, tudo bem? O presente segue reservado no seu nome 🎁 Se tiver interesse, é só me avisar que te envio. Caso não, sem problema 😊' }
@@ -961,7 +965,13 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     await sendText(telefone, faixa.link);
   }
 
-  await sendText(telefone, `Só uma coisa importante: avise seus amigos que vamos entrar em contato com eles em breve, combinado? Assim eles já esperam nossa mensagem 😉`);
+  const msgValidarAmigo = empresa.mensagemValidarAmigo ?? EMPRESA_PADRAO.mensagemValidarAmigo;
+  if (msgValidarAmigo && msgValidarAmigo.trim()) {
+    await sendText(telefone, substituirVariaveis(msgValidarAmigo, {
+      nomeRecomendado: (sessao.clienteNome || '').split(' ')[0],
+      empresa: empresa.nome
+    }));
+  }
 
   for (const contato of contatosDestaFaixa) {
     try {
