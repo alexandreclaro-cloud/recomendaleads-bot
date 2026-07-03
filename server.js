@@ -564,7 +564,7 @@ const EMPRESA_PADRAO = {
   // Espera de cada lembrete (em minutos), contada do fim da recomendação.
   // Padrão: 1 dia, 3 dias, 7 dias.
   cadenciaFollowupRecomendador: [{ esperaMin: 1440 }, { esperaMin: 4320 }, { esperaMin: 10080 }],
-  followupRecomendadorMensagem: 'Oi {nomeRecomendado}! 😊 Passando pra lembrar: você já avisou seus amigos que a {empresa} vai entrar em contato com eles?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
+  followupRecomendadorMensagem: 'Oi {cliente}! 😊 Passando pra lembrar: você já avisou seus amigos que a {empresa} vai entrar em contato com eles?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
   followupJaAvisei: 'Perfeito, muito obrigado(a)! 🙌 Isso ajuda bastante — assim seus amigos já esperam a nossa mensagem.',
   followupAindaNao: 'Sem problema! 😉 Quando puder, dá um alô pra eles avisando. Assim eles recebem nosso contato numa boa. Obrigado(a)!',
   followupTextoPronto: 'Oi! 😊 Acabei de te recomendar pra {empresa} e você vai ganhar um presente 🎁 Eles vão te chamar aqui no WhatsApp, pode responder tranquilo!',
