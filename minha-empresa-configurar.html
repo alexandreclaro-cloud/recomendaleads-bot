@@ -220,6 +220,30 @@
             <input type="checkbox" id="followupAtivo" style="width:18px; height:18px;">
             <span style="font-weight:600;">Ativar os lembretes automáticos</span>
           </label>
+
+          <div style="background:var(--brand-soft,#eff4ff); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:18px;">
+            <label class="label" style="margin-top:0;">⏰ Quando enviar cada lembrete <span style="font-weight:400;color:var(--text-dim)">(contando de quando o cliente recebeu o prêmio)</span></label>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+              <span style="min-width:92px; font-weight:600;">1º lembrete</span>
+              <input class="input" type="number" step="1" min="0" id="followupVal1" style="max-width:110px;" placeholder="ex: 2">
+              <select class="input" id="followupUni1" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas" selected>horas</option><option value="dias">dias</option></select>
+              <span style="color:var(--text-dim);font-size:.85rem;">depois do prêmio</span>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+              <span style="min-width:92px; font-weight:600;">2º lembrete</span>
+              <input class="input" type="number" step="1" min="0" id="followupVal2" style="max-width:110px;" placeholder="ex: 24">
+              <select class="input" id="followupUni2" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas" selected>horas</option><option value="dias">dias</option></select>
+              <span style="color:var(--text-dim);font-size:.85rem;">depois do prêmio</span>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+              <span style="min-width:92px; font-weight:600;">3º lembrete</span>
+              <input class="input" type="number" step="1" min="0" id="followupVal3" style="max-width:110px;" placeholder="ex: 72">
+              <select class="input" id="followupUni3" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas" selected>horas</option><option value="dias">dias</option></select>
+              <span style="color:var(--text-dim);font-size:.85rem;">depois do prêmio</span>
+            </div>
+            <div class="hint">Escolha <b>minutos</b>, <b>horas</b> ou <b>dias</b> em cada um. Deixe o valor vazio pra ter menos lembretes. Pra testar rápido, use minutos.</div>
+          </div>
+
           <p class="sub" style="margin-bottom:10px;">Você pode usar as variáveis <b>{cliente}</b> (nome do cliente que indicou) e <b>{empresa}</b>.</p>
           <label class="label">1º lembrete (com o menu 1 / 2 / 3)</label>
           <textarea class="textarea" id="followupMensagem" rows="7"></textarea>
@@ -233,23 +257,6 @@
           <textarea class="textarea" id="followupAindaNao" rows="2"></textarea>
           <label class="label">Texto pronto no "3 — Me manda um texto" (ele copia e envia pro amigo)</label>
           <textarea class="textarea" id="followupTextoPronto" rows="3"></textarea>
-          <label class="label">Quando enviar cada lembrete (a partir do momento que o cliente recomenda)</label>
-          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-            <span style="min-width:92px; font-weight:600;">1º lembrete</span>
-            <input class="input" type="number" step="1" min="0" id="followupVal1" style="max-width:110px;" placeholder="ex: 1">
-            <select class="input" id="followupUni1" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias">dias</option></select>
-          </div>
-          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-            <span style="min-width:92px; font-weight:600;">2º lembrete</span>
-            <input class="input" type="number" step="1" min="0" id="followupVal2" style="max-width:110px;" placeholder="ex: 3">
-            <select class="input" id="followupUni2" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias">dias</option></select>
-          </div>
-          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-            <span style="min-width:92px; font-weight:600;">3º lembrete</span>
-            <input class="input" type="number" step="1" min="0" id="followupVal3" style="max-width:110px;" placeholder="ex: 7">
-            <select class="input" id="followupUni3" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias">dias</option></select>
-          </div>
-          <div class="hint">Deixe o valor vazio pra ter menos lembretes. Dica: pra testar, use minutos.</div>
           <div class="row-save">
             <button class="btn btn-action" id="salvarFollowupBtn">Salvar follow-up</button>
             <span class="status-msg" id="statusFollowup"></span>
@@ -1316,9 +1323,11 @@ async function verificarAcesso() {
 })();
 
 // ===================== FOLLOW-UP DO RECOMENDADOR =====================
-// Converte minutos → {valor, unidade} escolhendo a maior unidade "redonda".
+// Converte minutos → {valor, unidade}. Prefere HORAS (até 96h); só usa dias
+// pra prazos maiores e redondos. Campo vazio vem em horas.
 function minParaUnidade(min) {
-  if (min == null) return { valor: '', unidade: 'dias' };
+  if (min == null) return { valor: '', unidade: 'horas' };
+  if (min % 60 === 0 && (min / 60) <= 96) return { valor: min / 60, unidade: 'horas' };
   if (min % 1440 === 0) return { valor: min / 1440, unidade: 'dias' };
   if (min % 60 === 0) return { valor: min / 60, unidade: 'horas' };
   return { valor: min, unidade: 'minutos' };
