@@ -1390,7 +1390,7 @@ document.getElementById('followupTesteBtn').addEventListener('click', async () =
     const resp = await fetchAutenticado(`${API_BASE}/minha-followup/teste`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telefone: tel }) });
     const data = await resp.json();
     if (resp.ok && data.ok) { st.textContent = '✅ Enviado! Responda 1, 2 ou 3 no WhatsApp.'; st.className = 'status-msg ok'; }
-    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+    else { st.textContent = '❌ Não enviou (' + (data.via || '?') + '): ' + (data.erro || 'erro'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
   finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 6000); }
 });

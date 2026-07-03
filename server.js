@@ -782,8 +782,8 @@ async function sendText(phone, message) {
       await baileys.enviarTexto(empresaIdAtual(), phone, message);
       console.log(`[ENVIADO/baileys] para ${phone}: ${message.slice(0, 60)}...`);
       registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
-    } catch (err) { console.error('Erro ao enviar texto (Baileys):', err.message); }
-    return;
+      return { ok: true, via: 'baileys' };
+    } catch (err) { console.error('Erro ao enviar texto (Baileys):', err.message); return { ok: false, via: 'baileys', erro: err.message }; }
   }
   if (tipoWppAtual() === 'oficial') {
     try {
@@ -794,16 +794,19 @@ async function sendText(phone, message) {
       }, { headers: metaHeaders(cfg) });
       console.log(`[ENVIADO/oficial] para ${phone}: ${message.slice(0, 60)}...`);
       registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
-    } catch (err) { console.error('Erro ao enviar texto (Oficial):', err.response?.data || err.message); }
-    return;
+      return { ok: true, via: 'oficial' };
+    } catch (err) { const e = err.response?.data ? JSON.stringify(err.response.data) : err.message; console.error('Erro ao enviar texto (Oficial):', e); return { ok: false, via: 'oficial', erro: e }; }
   }
   try {
     const cfg = zapiAtual();
     await axios.post(`${zapiBaseUrl(cfg)}/send-text`, { phone, message }, { headers: zapiHeaders(cfg) });
     console.log(`[ENVIADO] para ${phone}: ${message.slice(0, 60)}...`);
     registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
+    return { ok: true, via: 'zapi' };
   } catch (err) {
-    console.error('Erro ao enviar texto:', err.response?.data || err.message);
+    const e = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error('Erro ao enviar texto:', e);
+    return { ok: false, via: 'zapi', erro: e };
   }
 }
 
@@ -3273,14 +3276,18 @@ app.post('/minha-followup/teste', exigirLoginEmpresa, exigirGestor, async (req, 
     if (tel.length < 12) return res.status(400).json({ ok: false, erro: 'Informe um telefone válido com DDD (ex.: 11999998888).' });
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa), oficial: oficialDaEmpresa(empresa) };
+    let resultado = { ok: false };
     await tenantContext.run(contexto, async () => {
       const nome = (req.body && req.body.nome) || 'Cliente';
       const primeiroNome = String(nome).split(' ')[0];
       const vars = { nomeRecomendado: primeiroNome, recomendador: primeiroNome, empresa: empresa.nome };
-      await sendText(tel, substituirVariaveis(empresa.followupRecomendadorMensagem || EMPRESA_PADRAO.followupRecomendadorMensagem, vars));
+      resultado = await sendText(tel, substituirVariaveis(empresa.followupRecomendadorMensagem || EMPRESA_PADRAO.followupRecomendadorMensagem, vars)) || { ok: true };
       await saveSessao(tel, { etapa: 'finalizado', clienteNome: nome, followupAguardando: true, followupConcluido: false });
     });
-    res.json({ ok: true });
+    if (resultado && resultado.ok === false) {
+      return res.json({ ok: false, via: resultado.via, erro: resultado.erro || 'O WhatsApp recusou o envio.' });
+    }
+    res.json({ ok: true, via: resultado && resultado.via });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
