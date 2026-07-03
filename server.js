@@ -412,6 +412,51 @@ function ehGatilhoPresente(texto, empresa) {
   return frasesGatilhoPresente(empresa).some(f => t.includes(f));
 }
 
+// ============================================================
+// DEMONSTRAÇÃO POR NICHO — mesma empresa (PDN), "peles" diferentes por área.
+// O cliente entra por um link com um código (#demo-barbearia etc). O robô veste
+// a config daquele nicho (textos/imagens próprios) por toda a conversa, no MESMO
+// número. Não muda a empresa/roteamento — é só uma sobreposição de apresentação.
+// ============================================================
+// Cada nicho tem um nome e um conjunto PADRÃO de textos (ponto de partida). Na
+// Etapa 2 esses textos ficam editáveis no painel e sobrescrevem estes defaults.
+const NICHOS_DEMO = {
+  barbearia: {
+    nome: 'Barbearia',
+    mensagemAgradecimento: 'Olá! 💈 Bem-vindo(a) à demonstração do RecomendaLeads para *Barbearias*. Obrigado por testar! Vou te mostrar como seus clientes recomendam amigos e todos ganham. 🙏'
+  },
+  cabeleireiro: {
+    nome: 'Cabeleireiro',
+    mensagemAgradecimento: 'Olá! 💇 Bem-vindo(a) à demonstração do RecomendaLeads para *Cabeleireiros e Salões*. Obrigado por testar! Vou te mostrar como seus clientes recomendam amigos e todos ganham. 🙏'
+  },
+  dentista: {
+    nome: 'Dentista',
+    mensagemAgradecimento: 'Olá! 🦷 Bem-vindo(a) à demonstração do RecomendaLeads para *Dentistas e Clínicas Odontológicas*. Obrigado por testar! Vou te mostrar como seus pacientes recomendam amigos e todos ganham. 🙏'
+  },
+  estetica: {
+    nome: 'Clínica de Estética',
+    mensagemAgradecimento: 'Olá! ✨ Bem-vindo(a) à demonstração do RecomendaLeads para *Clínicas de Estética*. Obrigado por testar! Vou te mostrar como suas clientes recomendam amigas e todas ganham. 🙏'
+  }
+};
+
+// Detecta o código do nicho no texto de entrada (ex: "...#demo-barbearia").
+function detectarNichoDemo(texto) {
+  if (!texto) return null;
+  const t = String(texto).toLowerCase();
+  const m = t.match(/#?demo[\s_-]?(barbearia|cabeleireiro|dentista|estetica)/);
+  return m && NICHOS_DEMO[m[1]] ? m[1] : null;
+}
+
+// Sobrepõe a config do nicho sobre a base da empresa: primeiro os defaults
+// embutidos (NICHOS_DEMO), depois o que o dono personalizou no painel
+// (empresa.nichos[nicho]). Assim já há diferença visível antes de personalizar.
+function aplicarNicho(empresa, nicho) {
+  if (!empresa || !nicho) return empresa;
+  const def = NICHOS_DEMO[nicho] || {};
+  const over = (empresa.nichos && empresa.nichos[nicho]) || {};
+  return { ...empresa, ...def, ...over, id: empresa.id, nichos: empresa.nichos };
+}
+
 function respostaEhPositiva(texto) {
   if (!texto) return false;
   const normalizado = texto.toLowerCase().trim();
@@ -1965,7 +2010,7 @@ async function tratarWebhook(req, res) {
     // Empresa do contexto (pra ler a frase de ativação configurável).
     const empGatilho = await getEmpresa();
     // Se o número está pausado, só reage ao gatilho de ativação do presente
-    const ehGatilhoInicialParaPausa = ehGatilhoPresente(texto, empGatilho);
+    const ehGatilhoInicialParaPausa = ehGatilhoPresente(texto, empGatilho) || !!detectarNichoDemo(texto);
     if (!ehGatilhoInicialParaPausa && await numeroEstaPausado(telefone)) {
       console.log(`[PAUSA MANUAL] Mensagem ignorada — ${telefone} está pausado`);
       return res.sendStatus(200);
@@ -2005,9 +2050,24 @@ async function tratarWebhook(req, res) {
       && sessaoRecomendado.etapa
       && !['finalizado', 'finalizado_negativo', 'finalizado_atendente'].includes(sessaoRecomendado.etapa);
 
-    if (ehGatilhoInicial) {
+    // ---- Demonstração por nicho ----
+    // O nicho vem no código do link (novo teste) ou fica guardado na sessão
+    // (para o resto da conversa). Se houver nicho, sobrepomos a config dele no
+    // contexto — daí todo o fluxo (getEmpresa) já usa os textos/imagens da área.
+    const nichoDetectado = detectarNichoDemo(texto);
+    const nichoSessaoCliente = sessaoExiste ? sessaoExistenteSnap.data().nicho : null;
+    const nichoSessaoRec = sessaoRecomendado ? sessaoRecomendado.nicho : null;
+    const nichoEfetivo = nichoDetectado || nichoSessaoCliente || nichoSessaoRec || null;
+    if (nichoEfetivo) {
+      const ctx = tenantContext.getStore();
+      if (ctx) ctx.empresa = aplicarNicho(ctx.empresa, nichoEfetivo);
+      console.log(`[NICHO] ${telefone} → ${nichoEfetivo}${nichoDetectado ? ' (novo pelo link)' : ' (sessão)'}`);
+    }
+
+    if (ehGatilhoInicial || nichoDetectado) {
       await resetSessao(telefone);
       await iniciarConversa(telefone);
+      if (nichoEfetivo) await saveSessao(telefone, { nicho: nichoEfetivo });
     } else if (clienteAtivo) {
       await processarMensagem(telefone, texto, vCard, contatosMultiplos);
     } else if (recomendadoAtivo) {
