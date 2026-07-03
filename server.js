@@ -556,6 +556,19 @@ const EMPRESA_PADRAO = {
   // ele avise os amigos recomendados. Editável no painel ("Validar com o amigo").
   // Vazio = não envia.
   mensagemValidarAmigo: 'Só uma coisa importante: avise seus amigos que vamos entrar em contato com eles em breve, combinado? Assim eles já esperam nossa mensagem 😉',
+
+  // ===== Follow-up do RECOMENDADOR (cliente que indicou) =====
+  // Lembretes automáticos pedindo que ele avise os amigos. Menu numerado
+  // (1 já avisei / 2 ainda não / 3 me manda um texto pronto). Editável no painel.
+  followupRecomendadorAtivo: false,
+  // Espera de cada lembrete (em minutos), contada do fim da recomendação.
+  // Padrão: 1 dia, 3 dias, 7 dias.
+  cadenciaFollowupRecomendador: [{ esperaMin: 1440 }, { esperaMin: 4320 }, { esperaMin: 10080 }],
+  followupRecomendadorMensagem: 'Oi {nomeRecomendado}! 😊 Passando pra lembrar: você já avisou seus amigos que a {empresa} vai entrar em contato com eles?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
+  followupJaAvisei: 'Perfeito, muito obrigado(a)! 🙌 Isso ajuda bastante — assim seus amigos já esperam a nossa mensagem.',
+  followupAindaNao: 'Sem problema! 😉 Quando puder, dá um alô pra eles avisando. Assim eles recebem nosso contato numa boa. Obrigado(a)!',
+  followupTextoPronto: 'Oi! 😊 Acabei de te recomendar pra {empresa} e você vai ganhar um presente 🎁 Eles vão te chamar aqui no WhatsApp, pode responder tranquilo!',
+
   cadenciaFollowupRecomendado: [
     { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' },
     { esperaMin: 4320, texto: 'Olá, tudo bem? O presente segue reservado no seu nome 🎁 Se tiver interesse, é só me avisar que te envio. Caso não, sem problema 😊' }
@@ -1203,6 +1216,14 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     }
   }
 
+  // Agenda o follow-up do recomendador (só uma vez, no 1º prêmio completado):
+  // ele já mandou recomendações, então começa a série de lembretes pra avisar
+  // os amigos. Só agenda se o recurso estiver ligado no painel.
+  if (empresa.followupRecomendadorAtivo && !sessao.followupRecomendadorAgendado) {
+    sessao.followupRecomendadorAgendado = true;
+    try { await agendarFollowupRecomendador(telefone, empresa, 0); } catch (e) { console.error('agendarFollowupRecomendador:', e.message); }
+  }
+
   const proximaFaixa = empresa.faixasBonus[sessao.indiceFaixaAtual + 1];
 
   if (!proximaFaixa) {
@@ -1339,6 +1360,69 @@ async function agendarProximoFollowup(telefone, empresa, marcaTempo, indiceFollo
     marcaTempoReferencia: marcaTempo,
     dados: { telefone, indiceFollowup }
   });
+}
+
+// ---- Follow-up do RECOMENDADOR (cliente que indicou) ----
+// Agenda o lembrete de índice `indice` (0,1,2...) pedindo que ele avise os amigos.
+async function agendarFollowupRecomendador(telefone, empresa, indice) {
+  const cadencia = empresa.cadenciaFollowupRecomendador || EMPRESA_PADRAO.cadenciaFollowupRecomendador || [];
+  const item = cadencia[indice];
+  if (!item) return;
+  const esperaMin = Math.max(1, parseInt(item.esperaMin, 10) || 1440);
+  const executarEm = new Date(Date.now() + esperaMin * 60 * 1000).toISOString();
+  await criarAgendamento({
+    tipo: 'followup_avisar_amigos',
+    executarEm,
+    dados: { telefone, indice }
+  });
+}
+
+// Cancela lembretes pendentes de "avisar amigos" para um número (quando ele
+// responde "já avisei", não faz sentido continuar lembrando).
+async function cancelarFollowupsRecomendador(telefone) {
+  try {
+    const snap = await AGENDAMENTOS_COL()
+      .where('status', '==', 'pendente')
+      .where('tipo', '==', 'followup_avisar_amigos')
+      .get();
+    const batch = db.batch();
+    let n = 0;
+    snap.forEach(doc => {
+      const d = doc.data();
+      const mesmoTel = (d.dados && d.dados.telefone) === telefone;
+      const mesmaEmpresa = (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual();
+      if (mesmoTel && mesmaEmpresa) { batch.update(doc.ref, { status: 'cancelado' }); n++; }
+    });
+    if (n) await batch.commit();
+  } catch (e) { console.error('cancelarFollowupsRecomendador:', e.message); }
+}
+
+// Trata a resposta do recomendador ao lembrete (1 já avisei / 2 ainda não /
+// 3 me manda um texto pronto). Devolve true se reconheceu e respondeu.
+async function tratarRespostaFollowupRecomendador(telefone, texto, sessao) {
+  const empresa = await getEmpresa();
+  const t = (texto || '').trim().toLowerCase();
+  const primeiro = t.charAt(0);
+  const primeiroNome = (sessao.clienteNome || '').split(' ')[0] || '';
+  const vars = { nomeRecomendado: primeiroNome, recomendador: primeiroNome, empresa: empresa.nome };
+
+  if (primeiro === '1' || t.includes('avisei')) {
+    await sendText(telefone, substituirVariaveis(empresa.followupJaAvisei || EMPRESA_PADRAO.followupJaAvisei, vars));
+    await saveSessao(telefone, { followupAguardando: false, followupConcluido: true });
+    await cancelarFollowupsRecomendador(telefone);
+    return true;
+  }
+  if (primeiro === '3' || t.includes('texto') || t.includes('pronto') || t.includes('modelo')) {
+    await sendText(telefone, substituirVariaveis(empresa.followupTextoPronto || EMPRESA_PADRAO.followupTextoPronto, vars));
+    await saveSessao(telefone, { followupAguardando: false });
+    return true;
+  }
+  if (primeiro === '2' || t.includes('ainda')) {
+    await sendText(telefone, substituirVariaveis(empresa.followupAindaNao || EMPRESA_PADRAO.followupAindaNao, vars));
+    await saveSessao(telefone, { followupAguardando: false });
+    return true;
+  }
+  return false;
 }
 
 async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa) {
@@ -2077,6 +2161,13 @@ async function tratarWebhook(req, res) {
       const ctx = tenantContext.getStore();
       if (ctx) ctx.empresa = aplicarNicho(ctx.empresa, nichoEfetivo);
       console.log(`[NICHO] ${telefone} → ${nichoEfetivo}${nichoDetectado ? ' (novo pelo link)' : ' (sessão)'}`);
+    }
+
+    // Follow-up do recomendador: se está aguardando resposta ao lembrete
+    // (1/2/3), trata aqui — antes do roteamento normal.
+    if (sessaoExiste && sessaoExistenteSnap.data().followupAguardando && !ehGatilhoInicial && !nichoDetectado) {
+      const tratou = await tratarRespostaFollowupRecomendador(telefone, texto, sessaoExistenteSnap.data());
+      if (tratou) return res.sendStatus(200);
     }
 
     if (ehGatilhoInicial || nichoDetectado) {
@@ -3154,6 +3245,28 @@ app.post('/minha-marketing/teste', exigirLoginEmpresa, exigirGestor, async (req,
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
     await tenantContext.run(contexto, async () => {
       await enviarMarketingAoRecomendador(tel, (req.body && req.body.nome) || 'Cliente', empresa);
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Teste do follow-up do recomendador — manda o lembrete AGORA para um número
+// e deixa a sessão pronta pra reconhecer a resposta 1/2/3 (sem esperar a cadência).
+app.post('/minha-followup/teste', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    let tel = String((req.body && req.body.telefone) || '').replace(/\D/g, '');
+    if ((tel.length === 10 || tel.length === 11) && !tel.startsWith('55')) tel = '55' + tel;
+    if (tel.length < 12) return res.status(400).json({ ok: false, erro: 'Informe um telefone válido com DDD (ex.: 11999998888).' });
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa), oficial: oficialDaEmpresa(empresa) };
+    await tenantContext.run(contexto, async () => {
+      const nome = (req.body && req.body.nome) || 'Cliente';
+      const primeiroNome = String(nome).split(' ')[0];
+      const vars = { nomeRecomendado: primeiroNome, recomendador: primeiroNome, empresa: empresa.nome };
+      await sendText(tel, substituirVariaveis(empresa.followupRecomendadorMensagem || EMPRESA_PADRAO.followupRecomendadorMensagem, vars));
+      await saveSessao(tel, { etapa: 'finalizado', clienteNome: nome, followupAguardando: true, followupConcluido: false });
     });
     res.json({ ok: true });
   } catch (err) {
@@ -4486,6 +4599,31 @@ async function processarAgendamentoInterno(agendamento) {
     const novaMarca = new Date().toISOString();
     await saveSessaoRecomendado(telefone, { ultimaMensagemEm: novaMarca });
     await agendarProximoFollowup(telefone, empresa, novaMarca, indiceFollowup + 1);
+    return;
+  }
+
+  // Lembrete ao RECOMENDADOR (cliente que indicou) pra avisar os amigos.
+  if (agendamento.tipo === 'followup_avisar_amigos') {
+    const { telefone, indice } = agendamento.dados;
+    if (!empresa.followupRecomendadorAtivo) return;
+    if (await numeroEstaPausado(telefone)) {
+      console.log(`[FOLLOWUP-AVISAR] ${telefone} pausado — não enviado`);
+      return;
+    }
+    const snap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
+    const sessao = snap.exists ? snap.data() : null;
+    // Se já respondeu "já avisei", encerra a série.
+    if (sessao && sessao.followupConcluido) return;
+    const primeiroNome = (sessao && sessao.clienteNome) ? sessao.clienteNome.split(' ')[0] : 'você';
+    const vars = {
+      nomeRecomendado: primeiroNome,
+      recomendador: primeiroNome,
+      vendedor: (sessao && sessao.vendedorNome) || empresa.nome,
+      empresa: empresa.nome
+    };
+    await sendText(telefone, substituirVariaveis(empresa.followupRecomendadorMensagem || EMPRESA_PADRAO.followupRecomendadorMensagem, vars));
+    await saveSessao(telefone, { followupAguardando: true });
+    await agendarFollowupRecomendador(telefone, empresa, indice + 1);
     return;
   }
 
