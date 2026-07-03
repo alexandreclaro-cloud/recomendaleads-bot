@@ -180,13 +180,16 @@
           <div id="baileysBox" style="margin-top:16px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:14px;">
             <b style="font-size:0.92rem;">📲 Conectar grátis pelo QR Code <span style="font-weight:600;color:#15803d;">(sem Z-API)</span></b>
             <p class="sub" style="margin:6px 0 10px;">Conecte seu WhatsApp lendo um QR Code, igual ao WhatsApp Web. Use um número dedicado ao Agente I.A..</p>
-            <div id="baileysDesconectado">
+            <div id="baileysDesconectado" style="display:none;">
               <button class="btn btn-action" id="baileysConectarBtn">Conectar por QR Code</button>
             </div>
             <div id="baileysQrArea" style="display:none; text-align:center; margin-top:10px;">
               <p class="sub" style="margin-bottom:10px;">No celular: <b>WhatsApp → Aparelhos conectados → Conectar aparelho</b> e aponte para o código.</p>
-              <img id="baileysQrImg" alt="QR Code do WhatsApp" style="width:240px; height:240px; border:1px solid var(--border); border-radius:14px; background:#fff; padding:10px; object-fit:contain;">
-              <div class="hint">O código atualiza sozinho. Assim que escanear, conecta.</div>
+              <img id="baileysQrImg" alt="QR Code do WhatsApp" style="width:240px; height:240px; border:1px solid var(--border); border-radius:14px; background:#fff; padding:10px; object-fit:contain; display:none;">
+              <div class="hint" id="baileysQrHint">Gerando o QR Code… aguarde alguns segundos.</div>
+              <div style="margin-top:10px;">
+                <button class="btn btn-secondary" id="baileysResetBtn" type="button">Gerar novo QR Code</button>
+              </div>
             </div>
             <div id="baileysConectadoArea" style="display:none; margin-top:8px;">
               <p class="sub">✅ Conectado pelo número <b id="baileysNumero">—</b>.</p>
@@ -783,6 +786,7 @@ async function carregarWhatsapp() {
     const respCfg = await fetchAutenticado(`${API_BASE}/minha-whatsapp`);
     const cfg = await respCfg.json();
     const ehBaileys = cfg.ok && cfg.whatsappTipo === 'baileys';
+    modoBaileys = ehBaileys;
     if (cfg.ok) {
       document.getElementById('zapiInstanceInput').value = cfg.zapiInstanceId || '';
       document.getElementById('zapiTokenInput').placeholder = cfg.temToken ? '•••••• (já salvo — preencha para trocar)' : 'Token da sua instância Z-API';
@@ -810,6 +814,7 @@ async function carregarWhatsapp() {
 }
 
 let baileysOn = false;
+let modoBaileys = false;
 let baileysPollTimer = null;
 function pararPollBaileys() { if (baileysPollTimer) { clearInterval(baileysPollTimer); baileysPollTimer = null; } }
 
@@ -821,18 +826,27 @@ async function atualizarBaileys() {
     const dDesc = document.getElementById('baileysDesconectado');
     const dQr = document.getElementById('baileysQrArea');
     const dCon = document.getElementById('baileysConectadoArea');
+    const qrImg = document.getElementById('baileysQrImg');
+    const qrHint = document.getElementById('baileysQrHint');
+    // Enquanto está em baileys e não conectou, o servidor já sobe a sessão
+    // sozinho (endpoint de status). Então mostramos SEMPRE a área do QR e
+    // ficamos aguardando o código aparecer — sem depender de clicar num botão.
     if (st === 'conectado') {
       baileysOn = true;
       dDesc.style.display = 'none'; dQr.style.display = 'none'; dCon.style.display = 'block';
       document.getElementById('baileysNumero').textContent = data.numero || '—';
       setBadgeWhats(true); mostrarAreaWhats(''); pararPollQr(); pararPollBaileys();
-    } else if (st === 'qr' || st === 'conectando') {
-      dDesc.style.display = 'none'; dCon.style.display = 'none'; dQr.style.display = 'block';
-      if (data.qrDataUrl) document.getElementById('baileysQrImg').src = data.qrDataUrl;
-      if (!baileysPollTimer) baileysPollTimer = setInterval(atualizarBaileys, 3000);
     } else {
       baileysOn = false;
-      dDesc.style.display = 'block'; dQr.style.display = 'none'; dCon.style.display = 'none';
+      dDesc.style.display = 'none'; dCon.style.display = 'none'; dQr.style.display = 'block';
+      if (data.qrDataUrl) {
+        qrImg.src = data.qrDataUrl; qrImg.style.display = '';
+        if (qrHint) qrHint.textContent = 'Aponte a câmera do WhatsApp. O código atualiza sozinho; assim que escanear, conecta.';
+      } else {
+        qrImg.removeAttribute('src'); qrImg.style.display = 'none';
+        if (qrHint) qrHint.textContent = 'Gerando o QR Code… aguarde alguns segundos.';
+      }
+      if (!baileysPollTimer) baileysPollTimer = setInterval(atualizarBaileys, 3000);
     }
   } catch (e) {}
 }
@@ -849,6 +863,20 @@ document.getElementById('baileysConectarBtn').addEventListener('click', async ()
     setTimeout(atualizarBaileys, 800);
   } catch (e) { msg.textContent = 'Erro ao iniciar.'; msg.className = 'status-msg err'; }
   finally { btn.disabled = false; }
+});
+
+// Gera um QR novo do zero: limpa a sessão salva e reinicia (resolve QR travado).
+document.getElementById('baileysResetBtn').addEventListener('click', async () => {
+  const qrImg = document.getElementById('baileysQrImg');
+  const qrHint = document.getElementById('baileysQrHint');
+  qrImg.removeAttribute('src'); qrImg.style.display = 'none';
+  if (qrHint) qrHint.textContent = 'Gerando novo QR Code…';
+  try {
+    await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/desconectar`, { method: 'POST' });
+    await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/conectar`, { method: 'POST' });
+    if (!baileysPollTimer) baileysPollTimer = setInterval(atualizarBaileys, 2500);
+    setTimeout(atualizarBaileys, 800);
+  } catch (e) { if (qrHint) qrHint.textContent = 'Não foi possível gerar agora. Tente novamente.'; }
 });
 
 document.getElementById('baileysTesteBtn').addEventListener('click', async () => {
@@ -879,6 +907,9 @@ document.getElementById('baileysDesconectarBtn').addEventListener('click', async
 });
 
 async function atualizarEstadoWhats() {
+  // No modo QR grátis (Baileys) o estado é gerido por atualizarBaileys();
+  // não rodamos o fluxo Z-API (senão aparece "número sendo preparado" por engano).
+  if (modoBaileys) { pararPollQr(); if (typeof atualizarBaileys === 'function') atualizarBaileys(); return; }
   if (baileysOn) { pararPollQr(); return; }
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/status`);
