@@ -229,13 +229,23 @@
           <textarea class="textarea" id="followupAindaNao" rows="2"></textarea>
           <label class="label">Texto pronto no "3 — Me manda um texto" (ele copia e envia pro amigo)</label>
           <textarea class="textarea" id="followupTextoPronto" rows="3"></textarea>
-          <label class="label">Quando enviar cada lembrete (em dias, a partir da recomendação)</label>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <input class="input" type="number" step="0.01" min="0" id="followupDia1" style="max-width:120px;" placeholder="1º (dias)">
-            <input class="input" type="number" step="0.01" min="0" id="followupDia2" style="max-width:120px;" placeholder="2º (dias)">
-            <input class="input" type="number" step="0.01" min="0" id="followupDia3" style="max-width:120px;" placeholder="3º (dias)">
+          <label class="label">Quando enviar cada lembrete (a partir do momento que o cliente recomenda)</label>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+            <span style="min-width:92px; font-weight:600;">1º lembrete</span>
+            <input class="input" type="number" step="1" min="0" id="followupVal1" style="max-width:110px;" placeholder="ex: 1">
+            <select class="input" id="followupUni1" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias">dias</option></select>
           </div>
-          <div class="hint">Ex: 1, 3 e 7 dias. Deixe um campo vazio pra ter menos lembretes.</div>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+            <span style="min-width:92px; font-weight:600;">2º lembrete</span>
+            <input class="input" type="number" step="1" min="0" id="followupVal2" style="max-width:110px;" placeholder="ex: 3">
+            <select class="input" id="followupUni2" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias">dias</option></select>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+            <span style="min-width:92px; font-weight:600;">3º lembrete</span>
+            <input class="input" type="number" step="1" min="0" id="followupVal3" style="max-width:110px;" placeholder="ex: 7">
+            <select class="input" id="followupUni3" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias">dias</option></select>
+          </div>
+          <div class="hint">Deixe o valor vazio pra ter menos lembretes. Dica: pra testar, use minutos.</div>
           <div class="row-save">
             <button class="btn btn-action" id="salvarFollowupBtn">Salvar follow-up</button>
             <span class="status-msg" id="statusFollowup"></span>
@@ -1292,6 +1302,20 @@ async function verificarAcesso() {
 })();
 
 // ===================== FOLLOW-UP DO RECOMENDADOR =====================
+// Converte minutos → {valor, unidade} escolhendo a maior unidade "redonda".
+function minParaUnidade(min) {
+  if (min == null) return { valor: '', unidade: 'dias' };
+  if (min % 1440 === 0) return { valor: min / 1440, unidade: 'dias' };
+  if (min % 60 === 0) return { valor: min / 60, unidade: 'horas' };
+  return { valor: min, unidade: 'minutos' };
+}
+function unidadeParaMin(valor, unidade) {
+  const n = parseFloat(valor);
+  if (isNaN(n) || n <= 0) return null;
+  const mult = unidade === 'dias' ? 1440 : unidade === 'horas' ? 60 : 1;
+  return Math.max(1, Math.round(n * mult));
+}
+
 function carregarFollowup() {
   const c = configuracaoAtual || {};
   document.getElementById('followupAtivo').checked = !!c.followupRecomendadorAtivo;
@@ -1300,16 +1324,17 @@ function carregarFollowup() {
   document.getElementById('followupAindaNao').value = c.followupAindaNao || '';
   document.getElementById('followupTextoPronto').value = c.followupTextoPronto || '';
   const cad = c.cadenciaFollowupRecomendador || [];
-  const dias = i => (cad[i] && cad[i].esperaMin != null) ? +(cad[i].esperaMin / 1440).toFixed(2) : '';
-  document.getElementById('followupDia1').value = dias(0);
-  document.getElementById('followupDia2').value = dias(1);
-  document.getElementById('followupDia3').value = dias(2);
+  [0, 1, 2].forEach(i => {
+    const u = minParaUnidade(cad[i] ? cad[i].esperaMin : null);
+    document.getElementById('followupVal' + (i + 1)).value = u.valor;
+    document.getElementById('followupUni' + (i + 1)).value = u.unidade;
+  });
 }
 
 document.getElementById('salvarFollowupBtn').addEventListener('click', async () => {
   const st = document.getElementById('statusFollowup');
-  const diasParaMin = id => { const n = parseFloat(document.getElementById(id).value); return isNaN(n) ? null : Math.max(1, Math.round(n * 1440)); };
-  const cad = [diasParaMin('followupDia1'), diasParaMin('followupDia2'), diasParaMin('followupDia3')]
+  const cad = [1, 2, 3]
+    .map(i => unidadeParaMin(document.getElementById('followupVal' + i).value, document.getElementById('followupUni' + i).value))
     .filter(x => x != null).map(esperaMin => ({ esperaMin }));
   const body = {
     followupRecomendadorAtivo: document.getElementById('followupAtivo').checked,
