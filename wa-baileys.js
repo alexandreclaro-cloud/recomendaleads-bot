@@ -28,6 +28,10 @@ const _waLogger = {
 let _db = null;
 let _onMessage = null;
 const sessoes = {}; // empresaId -> { sock, status, qr, qrDataUrl, numero, iniciandoEm }
+// Diagnóstico: último erro por empresa (sobrevive à queda da sessão) + contador
+// de tentativas de reconexão pra detectar loop (connect→close→connect sem QR).
+const _ultimoErro = {};   // empresaId -> string
+const _tentativas = {};   // empresaId -> number
 
 // Buffer de diagnóstico: últimas mensagens recebidas (todas as empresas), pra
 // investigar por que o bot não respondeu (vê remoteJid, @lid, senderPn, etc).
@@ -115,13 +119,26 @@ async function limparSessaoFirestore(empresaId) {
 async function iniciarSessao(empresaId) {
   if (sessoes[empresaId] && sessoes[empresaId].sock) return sessoes[empresaId];
 
-  const sessao = sessoes[empresaId] = { sock: null, status: 'conectando', qr: null, qrDataUrl: null, numero: null, iniciandoEm: Date.now(), jids: {} };
+  const sessao = sessoes[empresaId] = { sock: null, status: 'conectando', qr: null, qrDataUrl: null, numero: null, iniciandoEm: Date.now(), jids: {}, erro: null };
+  _ultimoErro[empresaId] = null;
 
-  const { state, saveCreds } = await useFirestoreAuthState(empresaId);
+  let state, saveCreds;
+  try {
+    ({ state, saveCreds } = await useFirestoreAuthState(empresaId));
+  } catch (e) {
+    const m = 'Falha ao ler a sessão no banco: ' + e.message;
+    console.error(`[BAILEYS] ${empresaId} ${m}`);
+    sessao.status = 'erro'; sessao.erro = m; _ultimoErro[empresaId] = m;
+    delete sessoes[empresaId];
+    throw e;
+  }
   let version;
-  try { ({ version } = await fetchLatestBaileysVersion()); } catch (e) {}
+  try { ({ version } = await fetchLatestBaileysVersion()); }
+  catch (e) { console.error(`[BAILEYS] ${empresaId} fetchLatestBaileysVersion falhou (usando versão padrão): ${e.message}`); }
 
-  const sock = makeWASocket({
+  let sock;
+  try {
+  sock = makeWASocket({
     version,
     logger: _waLogger,
     auth: {
@@ -136,6 +153,13 @@ async function iniciarSessao(empresaId) {
     syncFullHistory: false
   });
   sessao.sock = sock;
+  } catch (e) {
+    const m = 'Falha ao iniciar o WhatsApp: ' + e.message;
+    console.error(`[BAILEYS] ${empresaId} ${m}`);
+    sessao.status = 'erro'; sessao.erro = m; _ultimoErro[empresaId] = m;
+    delete sessoes[empresaId];
+    throw e;
+  }
 
   sock.ev.on('creds.update', saveCreds);
 
@@ -144,7 +168,10 @@ async function iniciarSessao(empresaId) {
     if (qr) {
       sessao.qr = qr;
       sessao.status = 'qr';
-      try { sessao.qrDataUrl = await QRCode.toDataURL(qr); } catch (e) {}
+      _tentativas[empresaId] = 0;
+      console.log(`[BAILEYS] ${empresaId} QR gerado`);
+      try { sessao.qrDataUrl = await QRCode.toDataURL(qr); }
+      catch (e) { console.error(`[BAILEYS] ${empresaId} QRCode.toDataURL falhou: ${e.message}`); sessao.erro = 'Falha ao desenhar o QR: ' + e.message; }
     }
     if (connection === 'open') {
       sessao.status = 'conectado';
@@ -154,12 +181,24 @@ async function iniciarSessao(empresaId) {
     }
     if (connection === 'close') {
       const code = lastDisconnect && lastDisconnect.error && lastDisconnect.error.output && lastDisconnect.error.output.statusCode;
-      console.log(`[BAILEYS] empresa ${empresaId} desconectou (code ${code})`);
+      const motivo = lastDisconnect && lastDisconnect.error && lastDisconnect.error.message;
+      console.log(`[BAILEYS] empresa ${empresaId} desconectou (code ${code}) ${motivo || ''}`);
+      _ultimoErro[empresaId] = `Conexão fechou (code ${code || '?'})${motivo ? ': ' + motivo : ''}`;
+      const teveQr = !!sessao.qr;
       delete sessoes[empresaId];
       if (code === DisconnectReason.loggedOut) {
         // Número desvinculou — limpa pra permitir novo QR.
         await limparSessaoFirestore(empresaId);
+        _tentativas[empresaId] = 0;
       } else {
+        // Se a conexão caiu ANTES de gerar QR, é sinal de problema persistente
+        // (sessão salva inválida, bloqueio de rede, etc). Limitamos as tentativas
+        // pra não entrar em loop infinito e deixamos o erro visível no painel.
+        _tentativas[empresaId] = (_tentativas[empresaId] || 0) + 1;
+        if (!teveQr && _tentativas[empresaId] >= 5) {
+          console.error(`[BAILEYS] ${empresaId} desistindo após ${_tentativas[empresaId]} tentativas sem QR`);
+          return;
+        }
         // Queda transitória — reconecta sozinho.
         setTimeout(() => { iniciarSessao(empresaId).catch(e => console.error('[BAILEYS] reconexão falhou:', e.message)); }, 4000);
       }
@@ -236,8 +275,8 @@ async function iniciarSessao(empresaId) {
 
 function getStatus(empresaId) {
   const s = sessoes[empresaId];
-  if (!s) return { status: 'desconectado', numero: null };
-  return { status: s.status, numero: s.numero, qrDataUrl: s.status === 'qr' ? s.qrDataUrl : null };
+  if (!s) return { status: 'desconectado', numero: null, erro: _ultimoErro[empresaId] || null, tentativas: _tentativas[empresaId] || 0 };
+  return { status: s.status, numero: s.numero, qrDataUrl: s.status === 'qr' ? s.qrDataUrl : null, erro: s.erro || _ultimoErro[empresaId] || null, tentativas: _tentativas[empresaId] || 0 };
 }
 
 function conectado(empresaId) {

@@ -844,7 +844,11 @@ async function atualizarBaileys() {
         if (qrHint) qrHint.textContent = 'Aponte a câmera do WhatsApp. O código atualiza sozinho; assim que escanear, conecta.';
       } else {
         qrImg.removeAttribute('src'); qrImg.style.display = 'none';
-        if (qrHint) qrHint.textContent = 'Gerando o QR Code… aguarde alguns segundos.';
+        if (data.erro) {
+          if (qrHint) qrHint.innerHTML = '<span style="color:#DC2626">⚠️ ' + data.erro + '</span><br><span style="color:#64748B;font-size:0.78rem">Clique em "Gerar novo QR Code" para tentar de novo.</span>';
+        } else if (qrHint) {
+          qrHint.textContent = 'Gerando o QR Code… aguarde alguns segundos.';
+        }
       }
       if (!baileysPollTimer) baileysPollTimer = setInterval(atualizarBaileys, 3000);
     }
