@@ -440,10 +440,13 @@ const NICHOS_DEMO = {
 };
 
 // Detecta o código do nicho no texto de entrada (ex: "...#demo-barbearia").
+// Exige o "#" literal: assim a mensagem REAL do link (com "#demo-x") é
+// reconhecida, mas o link cru colado no chat (que vem com "%23demo-x") é
+// ignorado — evitando iniciar a conversa duas vezes.
 function detectarNichoDemo(texto) {
   if (!texto) return null;
   const t = String(texto).toLowerCase();
-  const m = t.match(/#?demo[\s_-]?(barbearia|cabeleireiro|dentista|estetica)/);
+  const m = t.match(/#demo[\s_-]?(barbearia|cabeleireiro|dentista|estetica)/);
   return m && NICHOS_DEMO[m[1]] ? m[1] : null;
 }
 
