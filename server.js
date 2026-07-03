@@ -3095,12 +3095,21 @@ function exigirGestor(req, res, next) {
   next();
 }
 
+// Só a conta MATRIZ (PDN Vendas) — usada em recursos que não fazem sentido para
+// as contas de clientes, como a "Demonstração por nicho".
+function exigirMatriz(req, res, next) {
+  if (!req.empresaLogin || req.empresaLogin.id !== EMPRESA_ID_PDN) {
+    return res.status(403).json({ ok: false, erro: 'Recurso disponível apenas na conta matriz.' });
+  }
+  next();
+}
+
 app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
   try {
     // Mescla com os padrões pra o painel mostrar todos os textos preenchidos
     // (campos não personalizados vêm com o texto padrão, pronto pra editar).
     const configuracao = { ...EMPRESA_PADRAO, ...(req.empresaLogin.configuracao || { nome: req.empresaLogin.nome }) };
-    res.json({ ok: true, empresa: configuracao });
+    res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -3145,7 +3154,7 @@ function listaNichos(config) {
   }));
 }
 
-app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, exigirMatriz, async (req, res) => {
   try {
     const config = req.empresaLogin.configuracao || {};
     const base = { ...EMPRESA_PADRAO, ...config };
@@ -3164,7 +3173,7 @@ app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, async (req, res) => {
 });
 
 // Cria um novo mercado a partir do nome (gera o slug do link).
-app.post('/minha-mercados', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-mercados', exigirLoginEmpresa, exigirGestor, exigirMatriz, async (req, res) => {
   try {
     const nome = String((req.body && req.body.nome) || '').trim();
     if (!nome) return res.status(400).json({ ok: false, erro: 'Informe o nome do mercado.' });
@@ -3182,7 +3191,7 @@ app.post('/minha-mercados', exigirLoginEmpresa, exigirGestor, async (req, res) =
   }
 });
 
-app.post('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, exigirMatriz, async (req, res) => {
   try {
     const nicho = req.params.nicho;
     const config = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
@@ -3203,7 +3212,7 @@ app.post('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, async (req, r
 });
 
 // Remove um mercado criado pelo dono (os embutidos não podem ser excluídos).
-app.delete('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.delete('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, exigirMatriz, async (req, res) => {
   try {
     const nicho = req.params.nicho;
     if (NICHOS_DEMO[nicho]) {
@@ -3219,7 +3228,7 @@ app.delete('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, async (req,
 });
 
 // Salva o número usado nos links de demonstração (pra montar os wa.me).
-app.post('/minha-nichos-numero', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-nichos-numero', exigirLoginEmpresa, exigirGestor, exigirMatriz, async (req, res) => {
   try {
     const numeroDemo = String((req.body && req.body.numeroDemo) || '').replace(/\D/g, '');
     const config = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };

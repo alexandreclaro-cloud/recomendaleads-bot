@@ -477,6 +477,7 @@ if (!TOKEN) { window.location.href = '/login'; }
 const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') || '{}');
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
+let EH_MATRIZ = false;
 const SECOES_GESTOR = ['empresa', 'premios', 'nichos', 'followup', 'whatsapp', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
@@ -514,6 +515,8 @@ const TITULOS = {
 function trocarSecao(secao) {
   // Atendente não acessa seções de gestor — cai na visão geral.
   if (!EH_GESTOR && SECOES_GESTOR.includes(secao)) secao = 'overview';
+  // "Demonstração por nicho" é exclusiva da conta matriz (PDN Vendas).
+  if (secao === 'nichos' && !EH_MATRIZ) secao = 'overview';
   document.querySelectorAll('section.view').forEach(s => s.classList.remove('active'));
   const alvo = document.getElementById('view-' + secao);
   if (alvo) { alvo.classList.remove('fade-in'); void alvo.offsetWidth; alvo.classList.add('active', 'fade-in'); }
@@ -552,6 +555,13 @@ async function carregarConfiguracao() {
     const data = await resp.json();
     if (!resp.ok || !data.ok) throw new Error(data.erro || 'Falha ao carregar');
     configuracaoAtual = data.empresa;
+    // "Demonstração por nicho" é só da conta matriz (PDN Vendas). Nas demais,
+    // esconde o item do menu (o backend também bloqueia os endpoints).
+    EH_MATRIZ = !!data.ehMatriz;
+    if (!EH_MATRIZ) {
+      const nav = document.querySelector('#nav .nav-item[data-section="nichos"]');
+      if (nav) nav.style.display = 'none';
+    }
     loadMsg.style.display = 'none';
     document.getElementById('conteudo').style.display = 'block';
 
