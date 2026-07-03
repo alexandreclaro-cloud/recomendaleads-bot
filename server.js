@@ -998,7 +998,7 @@ function mensagemNaoEntendiPorEtapa(etapa, empresa) {
     return `Não entendi essa última mensagem. Pode me dizer quem te atendeu hoje?\n\n${listaVendedores}\n\nResponda com o número ou o nome.`;
   }
   if (etapa === 'coletando_contatos') {
-    return 'Acho que não entendi essa última mensagem 🙂 Pode mandar o contato direto da sua agenda (toque em 📎 → Contato), ou digitar no formato "Nome - telefone com DDD"?';
+    return 'Acho que não entendi essa última mensagem 🙂 Pode mandar o contato direto da sua agenda? É só tocar em 📎 → Contato e escolher a pessoa.';
   }
   if (etapa === 'aguardando_autorizacao_proxima_faixa') {
     return 'Não entendi essa última mensagem. Você quer liberar o próximo prêmio? Pode responder com sim ou não.';
@@ -1109,7 +1109,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
         await finalizarFaixa(telefone, sessao, faixaAtual, empresa, contatosDestaFaixa, excedente);
       }
     } else {
-      await sendText(telefone, 'Não consegui identificar um contato aí. Pode mandar o contato direto da sua agenda (toque em 📎 → Contato), ou digitar no formato "Nome - telefone com DDD"?');
+      await sendText(telefone, 'Não consegui identificar um contato aí. Pode mandar o contato direto da sua agenda? É só tocar em 📎 → Contato e escolher a pessoa. 🙂');
     }
     return;
   }
