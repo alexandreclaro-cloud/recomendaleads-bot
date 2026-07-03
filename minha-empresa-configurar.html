@@ -53,6 +53,7 @@
       <button class="nav-item active" data-section="overview"><i data-lucide="layout-dashboard"></i><span class="txt">Visão geral</span></button>
       <button class="nav-item" data-section="empresa" data-gestor><i data-lucide="building-2"></i><span class="txt">Minha empresa</span></button>
       <button class="nav-item" data-section="premios" data-gestor><i data-lucide="gift"></i><span class="txt">Prêmios</span></button>
+      <button class="nav-item" data-section="nichos" data-gestor><i data-lucide="sparkles"></i><span class="txt">Demonstração por nicho</span></button>
       <button class="nav-item" data-section="whatsapp" data-gestor><i data-lucide="smartphone"></i><span class="txt">WhatsApp</span></button>
       <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
       <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
@@ -167,6 +168,36 @@
 
       <section class="view fade-in" id="view-premios">
         <div id="faixasContainer"></div>
+      </section>
+
+      <section class="view fade-in" id="view-nichos">
+        <div class="card">
+          <div class="block-title"><i data-lucide="sparkles"></i> Demonstração por nicho</div>
+          <p class="sub">Personalize a apresentação para cada tipo de cliente. No mesmo número, cada link mostra os textos da área. Assim o cliente se vê dentro do sistema. 💡</p>
+          <div id="nichosTabs" style="display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 4px;"></div>
+        </div>
+
+        <div class="card" style="margin-top:16px" id="nichoEditorCard">
+          <div class="block-title" id="nichoEditorTitulo"><i data-lucide="pencil"></i> Textos da área</div>
+          <p class="sub">Deixe em branco pra usar o texto padrão. Você pode usar as variáveis <b>{nomeRecomendado}</b>, <b>{empresa}</b>, <b>{premio}</b>, <b>{vendedor}</b>.</p>
+          <div id="nichoCampos"></div>
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarNichoBtn">Salvar esta área</button>
+            <span class="status-msg" id="statusNicho"></span>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="block-title"><i data-lucide="link"></i> Links de demonstração</div>
+          <p class="sub">Envie o link da área do cliente. Ao tocar, o robô já entra no modo daquela área.</p>
+          <label class="label">Número do WhatsApp da demonstração (com DDD)</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input class="input" type="text" id="nichoNumeroInput" placeholder="Ex: 11913269690" style="max-width:240px;">
+            <button class="btn btn-secondary" id="salvarNumeroBtn">Salvar número</button>
+            <span class="status-msg" id="statusNumero"></span>
+          </div>
+          <div id="nichosLinks" style="margin-top:14px;"></div>
+        </div>
       </section>
 
       <section class="view fade-in" id="view-whatsapp">
@@ -383,7 +414,7 @@ if (!TOKEN) { window.location.href = '/login'; }
 const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') || '{}');
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
-const SECOES_GESTOR = ['empresa', 'premios', 'whatsapp', 'equipe', 'assinatura'];
+const SECOES_GESTOR = ['empresa', 'premios', 'nichos', 'whatsapp', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
@@ -409,6 +440,7 @@ const TITULOS = {
   overview: ['Olá, {nome}', 'Resumo do que está acontecendo no seu programa de recomendações.'],
   empresa: ['Minha empresa', 'Ajuste os dados que aparecem nas mensagens.'],
   premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
+  nichos: ['Demonstração por nicho', 'Personalize a apresentação para cada tipo de cliente.'],
   whatsapp: ['WhatsApp', 'Conecte o número que o Agente I.A. vai usar.'],
   equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
   assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.'],
@@ -431,6 +463,7 @@ function trocarSecao(secao) {
   if (secao === 'whatsapp') { if (typeof atualizarEstadoWhats === 'function') atualizarEstadoWhats(); }
   else if (typeof pararPollQr === 'function') pararPollQr();
   if (secao === 'equipe' && typeof carregarEquipe === 'function') carregarEquipe();
+  if (secao === 'nichos' && typeof carregarNichos === 'function') carregarNichos();
   if (secao === 'assinatura' && typeof carregarAssinatura === 'function') carregarAssinatura();
   if (secao === 'avisos' && typeof renderAvisosLista === 'function') { renderAvisosLista(); marcarTodosLidos(); }
 }
@@ -1202,6 +1235,126 @@ async function verificarAcesso() {
   const p = new URLSearchParams(location.search);
   if (p.get('assinatura') === 'ok') { setTimeout(() => { if (EH_GESTOR) trocarSecao('assinatura'); }, 300); }
 })();
+
+// ===================== DEMONSTRAÇÃO POR NICHO =====================
+const NICHOS_INFO = [
+  { id: 'barbearia', nome: 'Barbearia', emoji: '💈' },
+  { id: 'cabeleireiro', nome: 'Cabeleireiro', emoji: '💇' },
+  { id: 'dentista', nome: 'Dentista', emoji: '🦷' },
+  { id: 'estetica', nome: 'Clínica de Estética', emoji: '✨' }
+];
+const CAMPOS_NICHO_UI = [
+  { campo: 'nome', label: 'Nome do negócio-exemplo', rows: 1 },
+  { campo: 'mensagemAgradecimento', label: 'Saudação / boas-vindas (1ª mensagem)', rows: 3 },
+  { campo: 'mensagemPedeNome', label: 'Pedir o nome', rows: 2 },
+  { campo: 'mensagemPedeVendedor', label: 'Perguntar quem atendeu', rows: 2 },
+  { campo: 'mensagemPedeContatos', label: 'Pedir os contatos', rows: 2 },
+  { campo: 'mensagemColeta', label: 'Pedido de recomendações', rows: 3 },
+  { campo: 'mensagemValidarAmigo', label: 'Aviso pra avisar os amigos', rows: 2 },
+  { campo: 'premioRecomendado', label: 'Prêmio do amigo recomendado (texto)', rows: 2 },
+  { campo: 'mensagemInicialRecomendado', label: '1ª mensagem ao amigo recomendado', rows: 3 },
+  { campo: 'mensagemAntesPresente', label: 'Antes de entregar o presente', rows: 2 }
+];
+let nichosData = null;
+let nichoAtual = 'barbearia';
+
+async function carregarNichos() {
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos`);
+    const data = await resp.json();
+    if (!data.ok) return;
+    nichosData = data;
+    document.getElementById('nichoNumeroInput').value = data.numeroDemo || '';
+    renderNichoTabs();
+    renderNichoCampos();
+    renderNichosLinks();
+  } catch (e) {}
+}
+
+function renderNichoTabs() {
+  const cont = document.getElementById('nichosTabs');
+  cont.innerHTML = NICHOS_INFO.map(n =>
+    `<button class="btn ${n.id === nichoAtual ? 'btn-action' : 'btn-secondary'}" data-nicho="${n.id}">${n.emoji} ${n.nome}</button>`
+  ).join('');
+  cont.querySelectorAll('button[data-nicho]').forEach(b => b.addEventListener('click', () => {
+    nichoAtual = b.dataset.nicho;
+    renderNichoTabs();
+    renderNichoCampos();
+  }));
+}
+
+function valorEfetivoNicho(campo) {
+  if (!nichosData) return '';
+  const over = (nichosData.nichos && nichosData.nichos[nichoAtual]) || {};
+  if (over[campo] != null) return over[campo];
+  const def = (nichosData.defaults && nichosData.defaults[nichoAtual]) || {};
+  if (def[campo] != null) return def[campo];
+  return (nichosData.base && nichosData.base[campo] != null) ? nichosData.base[campo] : '';
+}
+
+function renderNichoCampos() {
+  const info = NICHOS_INFO.find(n => n.id === nichoAtual);
+  document.getElementById('nichoEditorTitulo').innerHTML = `<i data-lucide="pencil"></i> Textos — ${info.emoji} ${info.nome}`;
+  const cont = document.getElementById('nichoCampos');
+  cont.innerHTML = CAMPOS_NICHO_UI.map(c => {
+    const val = valorEfetivoNicho(c.campo);
+    const esc = String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (c.rows <= 1) {
+      return `<label class="label">${c.label}</label><input class="input" data-campo="${c.campo}" value="${esc.replace(/"/g, '&quot;')}">`;
+    }
+    return `<label class="label">${c.label}</label><textarea class="textarea" rows="${c.rows}" data-campo="${c.campo}">${esc}</textarea>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+document.getElementById('salvarNichoBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarNichoBtn');
+  const st = document.getElementById('statusNicho');
+  const body = {};
+  document.querySelectorAll('#nichoCampos [data-campo]').forEach(el => { body[el.dataset.campo] = el.value; });
+  btn.disabled = true; st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos/${nichoAtual}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      if (nichosData) { nichosData.nichos = nichosData.nichos || {}; nichosData.nichos[nichoAtual] = data.nicho; }
+      st.textContent = '✅ Salvo!'; st.className = 'status-msg ok';
+    } else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
+
+function renderNichosLinks() {
+  const cont = document.getElementById('nichosLinks');
+  const num = (document.getElementById('nichoNumeroInput').value || '').replace(/\D/g, '');
+  if (!num) { cont.innerHTML = '<p class="sub">Salve o número acima pra gerar os links.</p>'; return; }
+  const num55 = num.startsWith('55') ? num : '55' + num;
+  cont.innerHTML = NICHOS_INFO.map(n => {
+    const texto = `Quero testar o RecomendaLeads ${n.emoji} #demo-${n.id}`;
+    const link = `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
+    return `<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+      <span style="min-width:150px; font-weight:600;">${n.emoji} ${n.nome}</span>
+      <input class="input" readonly value="${link}" style="flex:1; min-width:220px; font-size:0.8rem;">
+      <button class="btn btn-secondary btn-copiar-link" data-link="${link}">Copiar</button>
+    </div>`;
+  }).join('');
+  cont.querySelectorAll('.btn-copiar-link').forEach(b => b.addEventListener('click', () => {
+    navigator.clipboard.writeText(b.dataset.link).then(() => { const t = b.textContent; b.textContent = 'Copiado!'; setTimeout(() => b.textContent = t, 1500); });
+  }));
+}
+
+document.getElementById('salvarNumeroBtn').addEventListener('click', async () => {
+  const st = document.getElementById('statusNumero');
+  const numeroDemo = (document.getElementById('nichoNumeroInput').value || '').replace(/\D/g, '');
+  st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos-numero`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numeroDemo }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; if (nichosData) nichosData.numeroDemo = data.numeroDemo; renderNichosLinks(); }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
 
 aplicarGating();
 icons();

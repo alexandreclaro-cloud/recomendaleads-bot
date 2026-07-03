@@ -3015,6 +3015,72 @@ app.post('/minha-config', exigirLoginEmpresa, exigirGestor, async (req, res) => 
   }
 });
 
+// ============================================================
+// DEMONSTRAÇÃO POR NICHO — edição (Etapa 2)
+// Cada nicho guarda seus próprios textos/imagens em configuracao.nichos[nicho].
+// O fluxo do bot sobrepõe isso quando o cliente entra pelo link #demo-<nicho>.
+// ============================================================
+const NICHOS_VALIDOS = ['barbearia', 'cabeleireiro', 'dentista', 'estetica'];
+// Campos que o dono pode personalizar por nicho.
+const CAMPOS_NICHO = new Set([
+  'nome', 'mensagemAgradecimento', 'mensagemPedeNome', 'mensagemPedeVendedor',
+  'mensagemPedeContatos', 'mensagemColeta', 'mensagemValidarAmigo',
+  'mensagemInicialRecomendado', 'mensagemAntesPresente', 'mensagemAguardandoConfirmacao',
+  'mensagemFechamentoRecomendado', 'premioRecomendado', 'arquivoRecomendado',
+  'linkRecomendado', 'textoRecomendado', 'faixasBonus'
+]);
+
+app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const config = req.empresaLogin.configuracao || {};
+    const base = { ...EMPRESA_PADRAO, ...config };
+    delete base.nichos; // não devolve os nichos dentro da base
+    res.json({
+      ok: true,
+      nichos: config.nichos || {},
+      defaults: NICHOS_DEMO,
+      base,
+      numeroDemo: config.numeroDemo || ''
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const nicho = req.params.nicho;
+    if (!NICHOS_VALIDOS.includes(nicho)) {
+      return res.status(400).json({ ok: false, erro: 'Nicho inválido.' });
+    }
+    const config = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+    config.nichos = config.nichos || {};
+    // Só aceita campos da whitelist (evita gravar lixo).
+    const limpo = {};
+    for (const k of Object.keys(req.body || {})) {
+      if (CAMPOS_NICHO.has(k)) limpo[k] = req.body[k];
+    }
+    config.nichos[nicho] = { ...(config.nichos[nicho] || {}), ...limpo };
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
+    res.json({ ok: true, nicho: config.nichos[nicho] });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Salva o número usado nos links de demonstração (pra montar os wa.me).
+app.post('/minha-nichos-numero', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const numeroDemo = String((req.body && req.body.numeroDemo) || '').replace(/\D/g, '');
+    const config = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+    config.numeroDemo = numeroDemo;
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
+    res.json({ ok: true, numeroDemo });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Envio de teste da Agenda de Marketing — manda o conteúdo SALVO para um número
 // informado (ex.: o próprio gestor), sem afetar a recorrência dos clientes.
 app.post('/minha-marketing/teste', exigirLoginEmpresa, exigirGestor, async (req, res) => {
