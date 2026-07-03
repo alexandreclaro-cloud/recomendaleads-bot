@@ -18,6 +18,22 @@ const {
 } = require('@whiskeysockets/baileys');
 const QRCode = require('qrcode');
 
+// Proxy (opcional): o WhatsApp bloqueia o IP de servidores de nuvem (Render etc)
+// e recusa a conexão com 401 antes de gerar o QR. Configurando WA_PROXY_URL com
+// um proxy residencial, o Baileys sai por um IP que o WhatsApp aceita.
+// Sem a variável, nada muda (segue direto — funciona em IP residencial/local).
+let _proxyAgent = null;
+if (process.env.WA_PROXY_URL) {
+  try {
+    const mod = require('https-proxy-agent');
+    const HttpsProxyAgent = mod.HttpsProxyAgent || mod;
+    _proxyAgent = new HttpsProxyAgent(process.env.WA_PROXY_URL);
+    console.log('[BAILEYS] proxy ativo para conexão do WhatsApp');
+  } catch (e) {
+    console.error('[BAILEYS] falha ao configurar WA_PROXY_URL:', e.message);
+  }
+}
+
 // Logger silencioso no formato que o Baileys espera (pino-like, com .child()).
 const _waLogger = {
   level: 'silent',
@@ -156,7 +172,9 @@ async function iniciarSessao(empresaId) {
     printQRInTerminal: false,
     browser: ['RecomendaLeads', 'Chrome', '1.0.0'],
     markOnlineOnConnect: false,
-    syncFullHistory: false
+    syncFullHistory: false,
+    // Se houver proxy configurado, o WhatsApp é acessado através dele.
+    ...(_proxyAgent ? { agent: _proxyAgent, fetchAgent: _proxyAgent } : {})
   });
   sessao.sock = sock;
   } catch (e) {
