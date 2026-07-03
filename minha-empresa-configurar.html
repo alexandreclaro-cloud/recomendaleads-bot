@@ -54,6 +54,7 @@
       <button class="nav-item" data-section="empresa" data-gestor><i data-lucide="building-2"></i><span class="txt">Minha empresa</span></button>
       <button class="nav-item" data-section="premios" data-gestor><i data-lucide="gift"></i><span class="txt">Prêmios</span></button>
       <button class="nav-item" data-section="nichos" data-gestor><i data-lucide="sparkles"></i><span class="txt">Demonstração por nicho</span></button>
+      <button class="nav-item" data-section="followup" data-gestor><i data-lucide="bell-ring"></i><span class="txt">Follow-up (avisar amigos)</span></button>
       <button class="nav-item" data-section="whatsapp" data-gestor><i data-lucide="smartphone"></i><span class="txt">WhatsApp</span></button>
       <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
       <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
@@ -208,6 +209,47 @@
           </div>
           <div class="hint" style="margin-top:6px;">⚠️ É o número que <b>tem o robô</b> (o mesmo que você usa pra testar). <b>Não</b> é o número do vendedor nem do cliente. O link sempre aponta pra esse número.</div>
           <div id="nichosLinks" style="margin-top:14px;"></div>
+        </div>
+      </section>
+
+      <section class="view fade-in" id="view-followup">
+        <div class="card">
+          <div class="block-title"><i data-lucide="bell-ring"></i> Follow-up — lembrar de avisar os amigos</div>
+          <p class="sub">Depois que o cliente recomenda, o robô manda até 3 lembretes pedindo que ele avise os amigos. Aumenta muito a taxa de resposta. 💡</p>
+          <label style="display:flex; align-items:center; gap:10px; margin:14px 0; cursor:pointer;">
+            <input type="checkbox" id="followupAtivo" style="width:18px; height:18px;">
+            <span style="font-weight:600;">Ativar os lembretes automáticos</span>
+          </label>
+          <p class="sub" style="margin-bottom:10px;">Você pode usar as variáveis <b>{nomeRecomendado}</b> (nome do cliente) e <b>{empresa}</b>.</p>
+          <label class="label">Mensagem do lembrete (com o menu 1 / 2 / 3)</label>
+          <textarea class="textarea" id="followupMensagem" rows="7"></textarea>
+          <label class="label">Resposta quando ele escolhe "1 — Já avisei"</label>
+          <textarea class="textarea" id="followupJaAvisei" rows="2"></textarea>
+          <label class="label">Resposta quando escolhe "2 — Ainda não"</label>
+          <textarea class="textarea" id="followupAindaNao" rows="2"></textarea>
+          <label class="label">Texto pronto no "3 — Me manda um texto" (ele copia e envia pro amigo)</label>
+          <textarea class="textarea" id="followupTextoPronto" rows="3"></textarea>
+          <label class="label">Quando enviar cada lembrete (em dias, a partir da recomendação)</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <input class="input" type="number" step="0.01" min="0" id="followupDia1" style="max-width:120px;" placeholder="1º (dias)">
+            <input class="input" type="number" step="0.01" min="0" id="followupDia2" style="max-width:120px;" placeholder="2º (dias)">
+            <input class="input" type="number" step="0.01" min="0" id="followupDia3" style="max-width:120px;" placeholder="3º (dias)">
+          </div>
+          <div class="hint">Ex: 1, 3 e 7 dias. Deixe um campo vazio pra ter menos lembretes.</div>
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarFollowupBtn">Salvar follow-up</button>
+            <span class="status-msg" id="statusFollowup"></span>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="block-title"><i data-lucide="send"></i> Testar agora</div>
+          <p class="sub">Manda o lembrete na hora pro número informado (sem esperar os dias). Responda 1, 2 ou 3 no WhatsApp pra ver as respostas. <b>Salve antes de testar.</b></p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input class="input" id="followupTesteTel" placeholder="WhatsApp com DDD (ex: 11999998888)" style="max-width:280px;">
+            <button class="btn btn-secondary" id="followupTesteBtn">Enviar teste</button>
+            <span class="status-msg" id="statusFollowupTeste"></span>
+          </div>
         </div>
       </section>
 
@@ -425,7 +467,7 @@ if (!TOKEN) { window.location.href = '/login'; }
 const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') || '{}');
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
-const SECOES_GESTOR = ['empresa', 'premios', 'nichos', 'whatsapp', 'equipe', 'assinatura'];
+const SECOES_GESTOR = ['empresa', 'premios', 'nichos', 'followup', 'whatsapp', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
@@ -452,6 +494,7 @@ const TITULOS = {
   empresa: ['Minha empresa', 'Ajuste os dados que aparecem nas mensagens.'],
   premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
   nichos: ['Demonstração por nicho', 'Personalize a apresentação para cada tipo de cliente.'],
+  followup: ['Follow-up', 'Lembretes automáticos pro cliente avisar os amigos.'],
   whatsapp: ['WhatsApp', 'Conecte o número que o Agente I.A. vai usar.'],
   equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
   assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.'],
@@ -475,6 +518,7 @@ function trocarSecao(secao) {
   else if (typeof pararPollQr === 'function') pararPollQr();
   if (secao === 'equipe' && typeof carregarEquipe === 'function') carregarEquipe();
   if (secao === 'nichos' && typeof carregarNichos === 'function') carregarNichos();
+  if (secao === 'followup' && typeof carregarFollowup === 'function') carregarFollowup();
   if (secao === 'assinatura' && typeof carregarAssinatura === 'function') carregarAssinatura();
   if (secao === 'avisos' && typeof renderAvisosLista === 'function') { renderAvisosLista(); marcarTodosLidos(); }
 }
@@ -1246,6 +1290,58 @@ async function verificarAcesso() {
   const p = new URLSearchParams(location.search);
   if (p.get('assinatura') === 'ok') { setTimeout(() => { if (EH_GESTOR) trocarSecao('assinatura'); }, 300); }
 })();
+
+// ===================== FOLLOW-UP DO RECOMENDADOR =====================
+function carregarFollowup() {
+  const c = configuracaoAtual || {};
+  document.getElementById('followupAtivo').checked = !!c.followupRecomendadorAtivo;
+  document.getElementById('followupMensagem').value = c.followupRecomendadorMensagem || '';
+  document.getElementById('followupJaAvisei').value = c.followupJaAvisei || '';
+  document.getElementById('followupAindaNao').value = c.followupAindaNao || '';
+  document.getElementById('followupTextoPronto').value = c.followupTextoPronto || '';
+  const cad = c.cadenciaFollowupRecomendador || [];
+  const dias = i => (cad[i] && cad[i].esperaMin != null) ? +(cad[i].esperaMin / 1440).toFixed(2) : '';
+  document.getElementById('followupDia1').value = dias(0);
+  document.getElementById('followupDia2').value = dias(1);
+  document.getElementById('followupDia3').value = dias(2);
+}
+
+document.getElementById('salvarFollowupBtn').addEventListener('click', async () => {
+  const st = document.getElementById('statusFollowup');
+  const diasParaMin = id => { const n = parseFloat(document.getElementById(id).value); return isNaN(n) ? null : Math.max(1, Math.round(n * 1440)); };
+  const cad = [diasParaMin('followupDia1'), diasParaMin('followupDia2'), diasParaMin('followupDia3')]
+    .filter(x => x != null).map(esperaMin => ({ esperaMin }));
+  const body = {
+    followupRecomendadorAtivo: document.getElementById('followupAtivo').checked,
+    followupRecomendadorMensagem: document.getElementById('followupMensagem').value,
+    followupJaAvisei: document.getElementById('followupJaAvisei').value,
+    followupAindaNao: document.getElementById('followupAindaNao').value,
+    followupTextoPronto: document.getElementById('followupTextoPronto').value,
+    cadenciaFollowupRecomendador: cad
+  };
+  st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
+
+document.getElementById('followupTesteBtn').addEventListener('click', async () => {
+  const st = document.getElementById('statusFollowupTeste');
+  const tel = document.getElementById('followupTesteTel').value.replace(/\D/g, '');
+  if (tel.length < 10) { st.textContent = '❌ Informe um número com DDD'; st.className = 'status-msg err'; return; }
+  st.textContent = 'Enviando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-followup/teste`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telefone: tel }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { st.textContent = '✅ Enviado! Responda 1, 2 ou 3 no WhatsApp.'; st.className = 'status-msg ok'; }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 6000); }
+});
 
 // ===================== DEMONSTRAÇÃO POR NICHO =====================
 const NICHOS_EMOJI = { barbearia: '💈', cabeleireiro: '💇', dentista: '🦷', estetica: '✨' };
