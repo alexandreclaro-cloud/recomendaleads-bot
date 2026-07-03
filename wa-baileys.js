@@ -56,9 +56,11 @@ async function useFirestoreAuthState(empresaId) {
   const keysCol = base.collection('keys');
 
   let creds;
+  let restaurada = false;
   const credsDoc = await base.get();
   if (credsDoc.exists && credsDoc.data().creds) {
     creds = JSON.parse(credsDoc.data().creds, BufferJSON.reviver);
+    restaurada = true;
   } else {
     creds = initAuthCreds();
   }
@@ -100,7 +102,7 @@ async function useFirestoreAuthState(empresaId) {
     await base.set({ creds: JSON.stringify(creds, BufferJSON.replacer), atualizadoEm: new Date().toISOString() }, { merge: true });
   };
 
-  return { state: { creds, keys }, saveCreds };
+  return { state: { creds, keys }, saveCreds, restaurada };
 }
 
 // Apaga toda a sessão salva (usado no logout/reset).
@@ -122,9 +124,9 @@ async function iniciarSessao(empresaId) {
   const sessao = sessoes[empresaId] = { sock: null, status: 'conectando', qr: null, qrDataUrl: null, numero: null, iniciandoEm: Date.now(), jids: {}, erro: null };
   _ultimoErro[empresaId] = null;
 
-  let state, saveCreds;
+  let state, saveCreds, credsRestauradas = false;
   try {
-    ({ state, saveCreds } = await useFirestoreAuthState(empresaId));
+    ({ state, saveCreds, restaurada: credsRestauradas } = await useFirestoreAuthState(empresaId));
   } catch (e) {
     const m = 'Falha ao ler a sessão no banco: ' + e.message;
     console.error(`[BAILEYS] ${empresaId} ${m}`);
@@ -132,9 +134,13 @@ async function iniciarSessao(empresaId) {
     delete sessoes[empresaId];
     throw e;
   }
-  let version;
-  try { ({ version } = await fetchLatestBaileysVersion()); }
-  catch (e) { console.error(`[BAILEYS] ${empresaId} fetchLatestBaileysVersion falhou (usando versão padrão): ${e.message}`); }
+  // Versão do WhatsApp Web: se o fetch falhar no Render, usamos uma recente
+  // fixa (senão o Baileys usa a embutida, que pode ser velha e o WhatsApp
+  // rejeita a conexão com 401 antes mesmo de gerar o QR).
+  let version = [2, 3000, 1035194821];
+  try { const r = await fetchLatestBaileysVersion(); if (r && r.version) version = r.version; }
+  catch (e) { console.error(`[BAILEYS] ${empresaId} fetchLatestBaileysVersion falhou (usando versão fixa): ${e.message}`); }
+  console.log(`[BAILEYS] ${empresaId} versão WA: ${version.join('.')} | creds: ${credsRestauradas ? 'restauradas' : 'novas'}`);
 
   let sock;
   try {
@@ -182,26 +188,31 @@ async function iniciarSessao(empresaId) {
     if (connection === 'close') {
       const code = lastDisconnect && lastDisconnect.error && lastDisconnect.error.output && lastDisconnect.error.output.statusCode;
       const motivo = lastDisconnect && lastDisconnect.error && lastDisconnect.error.message;
-      console.log(`[BAILEYS] empresa ${empresaId} desconectou (code ${code}) ${motivo || ''}`);
-      _ultimoErro[empresaId] = `Conexão fechou (code ${code || '?'})${motivo ? ': ' + motivo : ''}`;
+      const estavaConectado = sessao.status === 'conectado';
       const teveQr = !!sessao.qr;
+      console.log(`[BAILEYS] empresa ${empresaId} desconectou (code ${code}) ${motivo || ''} | conectado=${estavaConectado} teveQr=${teveQr}`);
+      _ultimoErro[empresaId] = `Conexão fechou (code ${code || '?'})${motivo ? ': ' + motivo : ''}`;
       delete sessoes[empresaId];
-      if (code === DisconnectReason.loggedOut) {
-        // Número desvinculou — limpa pra permitir novo QR.
-        await limparSessaoFirestore(empresaId);
-        _tentativas[empresaId] = 0;
-      } else {
-        // Se a conexão caiu ANTES de gerar QR, é sinal de problema persistente
-        // (sessão salva inválida, bloqueio de rede, etc). Limitamos as tentativas
-        // pra não entrar em loop infinito e deixamos o erro visível no painel.
-        _tentativas[empresaId] = (_tentativas[empresaId] || 0) + 1;
-        if (!teveQr && _tentativas[empresaId] >= 5) {
-          console.error(`[BAILEYS] ${empresaId} desistindo após ${_tentativas[empresaId]} tentativas sem QR`);
-          return;
-        }
-        // Queda transitória — reconecta sozinho.
+
+      // Já estava conectado e caiu: só reconecta (sessão válida), sem apagar nada.
+      if (estavaConectado && code !== DisconnectReason.loggedOut) {
         setTimeout(() => { iniciarSessao(empresaId).catch(e => console.error('[BAILEYS] reconexão falhou:', e.message)); }, 4000);
+        return;
       }
+
+      // Ainda NÃO conectou (fluxo de QR). Se o WhatsApp rejeitou (401/loggedOut),
+      // as credenciais salvas estão inválidas — apagamos e tentamos DO ZERO, que
+      // gera um QR novo. Limitamos as tentativas pra não martelar o WhatsApp.
+      _tentativas[empresaId] = (_tentativas[empresaId] || 0) + 1;
+      if (code === DisconnectReason.loggedOut || code === 401) {
+        await limparSessaoFirestore(empresaId);
+      }
+      if (_tentativas[empresaId] >= 6) {
+        console.error(`[BAILEYS] ${empresaId} desistindo após ${_tentativas[empresaId]} tentativas sem conectar (code ${code})`);
+        _ultimoErro[empresaId] = `Não consegui conectar ao WhatsApp após várias tentativas (code ${code || '?'}). Tente "Gerar novo QR Code" em alguns minutos.`;
+        return;
+      }
+      setTimeout(() => { iniciarSessao(empresaId).catch(e => console.error('[BAILEYS] reconexão falhou:', e.message)); }, 4000);
     }
   });
 
@@ -288,6 +299,8 @@ async function desconectar(empresaId) {
   const s = sessoes[empresaId];
   if (s && s.sock) { try { await s.sock.logout(); } catch (e) {} }
   delete sessoes[empresaId];
+  _tentativas[empresaId] = 0;
+  _ultimoErro[empresaId] = null;
   await limparSessaoFirestore(empresaId);
 }
 
