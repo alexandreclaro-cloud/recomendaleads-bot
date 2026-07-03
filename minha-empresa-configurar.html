@@ -1238,12 +1238,8 @@ async function verificarAcesso() {
 })();
 
 // ===================== DEMONSTRAÇÃO POR NICHO =====================
-const NICHOS_INFO = [
-  { id: 'barbearia', nome: 'Barbearia', emoji: '💈' },
-  { id: 'cabeleireiro', nome: 'Cabeleireiro', emoji: '💇' },
-  { id: 'dentista', nome: 'Dentista', emoji: '🦷' },
-  { id: 'estetica', nome: 'Clínica de Estética', emoji: '✨' }
-];
+const NICHOS_EMOJI = { barbearia: '💈', cabeleireiro: '💇', dentista: '🦷', estetica: '✨' };
+function emojiNicho(slug) { return NICHOS_EMOJI[slug] || '🎯'; }
 const CAMPOS_NICHO_UI = [
   { campo: 'nome', label: 'Nome do negócio-exemplo', rows: 1 },
   { campo: 'mensagemAgradecimento', label: 'Saudação / boas-vindas (1ª mensagem)', rows: 3 },
@@ -1257,7 +1253,8 @@ const CAMPOS_NICHO_UI = [
   { campo: 'mensagemAntesPresente', label: 'Antes de entregar o presente', rows: 2 }
 ];
 let nichosData = null;
-let nichoAtual = 'barbearia';
+let nichosLista = [];
+let nichoAtual = null;
 
 async function carregarNichos() {
   try {
@@ -1265,6 +1262,10 @@ async function carregarNichos() {
     const data = await resp.json();
     if (!data.ok) return;
     nichosData = data;
+    nichosLista = data.lista || [];
+    if (!nichoAtual || !nichosLista.some(n => n.slug === nichoAtual)) {
+      nichoAtual = nichosLista.length ? nichosLista[0].slug : null;
+    }
     document.getElementById('nichoNumeroInput').value = data.numeroDemo || '';
     renderNichoTabs();
     renderNichoCampos();
@@ -1272,20 +1273,58 @@ async function carregarNichos() {
   } catch (e) {}
 }
 
+function nichoInfo(slug) { return nichosLista.find(n => n.slug === slug) || { slug, nome: slug, builtin: false }; }
+
 function renderNichoTabs() {
   const cont = document.getElementById('nichosTabs');
-  cont.innerHTML = NICHOS_INFO.map(n =>
-    `<button class="btn ${n.id === nichoAtual ? 'btn-action' : 'btn-secondary'}" data-nicho="${n.id}">${n.emoji} ${n.nome}</button>`
+  let html = nichosLista.map(n =>
+    `<button class="btn ${n.slug === nichoAtual ? 'btn-action' : 'btn-secondary'}" data-nicho="${n.slug}">${emojiNicho(n.slug)} ${n.nome}</button>`
   ).join('');
+  html += `<button class="btn btn-secondary" id="addMercadoBtn" style="border-style:dashed;">➕ Novo mercado</button>`;
+  cont.innerHTML = html;
   cont.querySelectorAll('button[data-nicho]').forEach(b => b.addEventListener('click', () => {
     nichoAtual = b.dataset.nicho;
     renderNichoTabs();
     renderNichoCampos();
   }));
+  document.getElementById('addMercadoBtn').addEventListener('click', criarMercado);
+}
+
+async function criarMercado() {
+  const nome = (prompt('Nome do novo mercado (ex: Pet Shop, Academia, Restaurante):') || '').trim();
+  if (!nome) return;
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-mercados`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      nichosData.nichos = nichosData.nichos || {};
+      nichosData.nichos[data.slug] = { nome: data.nome };
+      nichosLista = data.lista || nichosLista;
+      nichoAtual = data.slug;
+      renderNichoTabs(); renderNichoCampos(); renderNichosLinks();
+    } else { alert(data.erro || 'Não foi possível criar o mercado.'); }
+  } catch (e) { alert('Erro de conexão.'); }
+}
+
+async function excluirMercado() {
+  if (!nichoAtual) return;
+  const info = nichoInfo(nichoAtual);
+  if (info.builtin) { alert('As áreas originais não podem ser excluídas — só editadas.'); return; }
+  if (!confirm(`Excluir o mercado "${info.nome}"? Isso apaga os textos dele.`)) return;
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos/${nichoAtual}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      if (nichosData.nichos) delete nichosData.nichos[nichoAtual];
+      nichosLista = nichosLista.filter(n => n.slug !== nichoAtual);
+      nichoAtual = nichosLista.length ? nichosLista[0].slug : null;
+      renderNichoTabs(); renderNichoCampos(); renderNichosLinks();
+    } else { alert(data.erro || 'Não foi possível excluir.'); }
+  } catch (e) { alert('Erro de conexão.'); }
 }
 
 function valorEfetivoNicho(campo) {
-  if (!nichosData) return '';
+  if (!nichosData || !nichoAtual) return '';
   const over = (nichosData.nichos && nichosData.nichos[nichoAtual]) || {};
   if (over[campo] != null) return over[campo];
   const def = (nichosData.defaults && nichosData.defaults[nichoAtual]) || {};
@@ -1294,10 +1333,16 @@ function valorEfetivoNicho(campo) {
 }
 
 function renderNichoCampos() {
-  const info = NICHOS_INFO.find(n => n.id === nichoAtual);
-  document.getElementById('nichoEditorTitulo').innerHTML = `<i data-lucide="pencil"></i> Textos — ${info.emoji} ${info.nome}`;
   const cont = document.getElementById('nichoCampos');
-  cont.innerHTML = CAMPOS_NICHO_UI.map(c => {
+  if (!nichoAtual) {
+    document.getElementById('nichoEditorTitulo').innerHTML = '<i data-lucide="pencil"></i> Textos da área';
+    cont.innerHTML = '<p class="sub">Clique em "➕ Novo mercado" pra começar.</p>';
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+  const info = nichoInfo(nichoAtual);
+  document.getElementById('nichoEditorTitulo').innerHTML = `<i data-lucide="pencil"></i> Textos — ${emojiNicho(info.slug)} ${info.nome}`;
+  let html = CAMPOS_NICHO_UI.map(c => {
     const val = valorEfetivoNicho(c.campo);
     const esc = String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     if (c.rows <= 1) {
@@ -1305,10 +1350,19 @@ function renderNichoCampos() {
     }
     return `<label class="label">${c.label}</label><textarea class="textarea" rows="${c.rows}" data-campo="${c.campo}">${esc}</textarea>`;
   }).join('');
+  if (!info.builtin) {
+    html += `<div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
+      <button class="btn btn-secondary" id="excluirMercadoBtn" style="color:var(--danger-dark);">🗑️ Excluir este mercado</button>
+    </div>`;
+  }
+  cont.innerHTML = html;
+  const exBtn = document.getElementById('excluirMercadoBtn');
+  if (exBtn) exBtn.addEventListener('click', excluirMercado);
   if (window.lucide) lucide.createIcons();
 }
 
 document.getElementById('salvarNichoBtn').addEventListener('click', async () => {
+  if (!nichoAtual) return;
   const btn = document.getElementById('salvarNichoBtn');
   const st = document.getElementById('statusNicho');
   const body = {};
@@ -1319,6 +1373,9 @@ document.getElementById('salvarNichoBtn').addEventListener('click', async () => 
     const data = await resp.json();
     if (resp.ok && data.ok) {
       if (nichosData) { nichosData.nichos = nichosData.nichos || {}; nichosData.nichos[nichoAtual] = data.nicho; }
+      // Atualiza o nome na lista (caso tenham editado o campo "nome").
+      const item = nichosLista.find(n => n.slug === nichoAtual);
+      if (item && body.nome) { item.nome = body.nome; renderNichoTabs(); renderNichosLinks(); }
       st.textContent = '✅ Salvo!'; st.className = 'status-msg ok';
     } else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
@@ -1329,12 +1386,13 @@ function renderNichosLinks() {
   const cont = document.getElementById('nichosLinks');
   const num = (document.getElementById('nichoNumeroInput').value || '').replace(/\D/g, '');
   if (!num) { cont.innerHTML = '<p class="sub">Salve o número acima pra gerar os links.</p>'; return; }
+  if (!nichosLista.length) { cont.innerHTML = '<p class="sub">Crie um mercado pra gerar os links.</p>'; return; }
   const num55 = num.startsWith('55') ? num : '55' + num;
-  cont.innerHTML = NICHOS_INFO.map(n => {
-    const texto = `Quero testar o RecomendaLeads ${n.emoji} #demo-${n.id}`;
+  cont.innerHTML = nichosLista.map(n => {
+    const texto = `Quero testar o RecomendaLeads ${emojiNicho(n.slug)} #demo-${n.slug}`;
     const link = `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
     return `<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-      <span style="min-width:150px; font-weight:600;">${n.emoji} ${n.nome}</span>
+      <span style="min-width:150px; font-weight:600;">${emojiNicho(n.slug)} ${n.nome}</span>
       <input class="input" readonly value="${link}" style="flex:1; min-width:220px; font-size:0.8rem;">
       <button class="btn btn-secondary btn-copiar-link" data-link="${link}">Copiar</button>
     </div>`;

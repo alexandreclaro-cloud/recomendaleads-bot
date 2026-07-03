@@ -439,15 +439,27 @@ const NICHOS_DEMO = {
   }
 };
 
+// Gera um "slug" (código do link) a partir do nome do mercado.
+// Ex: "Pet Shop" -> "pet-shop". Só letras/números/hífen, sem acento.
+function slugNicho(nome) {
+  return String(nome || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+
 // Detecta o código do nicho no texto de entrada (ex: "...#demo-barbearia").
 // Exige o "#" literal: assim a mensagem REAL do link (com "#demo-x") é
 // reconhecida, mas o link cru colado no chat (que vem com "%23demo-x") é
-// ignorado — evitando iniciar a conversa duas vezes.
-function detectarNichoDemo(texto) {
+// ignorado — evitando iniciar a conversa duas vezes. O nicho é válido se for
+// um dos embutidos OU um mercado criado pelo dono (empresa.nichos).
+function detectarNichoDemo(texto, empresa) {
   if (!texto) return null;
   const t = String(texto).toLowerCase();
-  const m = t.match(/#demo[\s_-]?(barbearia|cabeleireiro|dentista|estetica)/);
-  return m && NICHOS_DEMO[m[1]] ? m[1] : null;
+  const m = t.match(/#demo[-_\s]?([a-z0-9-]+)/);
+  if (!m) return null;
+  const slug = m[1].replace(/-+$/, '');
+  const existe = NICHOS_DEMO[slug] || (empresa && empresa.nichos && empresa.nichos[slug]);
+  return existe ? slug : null;
 }
 
 // Sobrepõe a config do nicho sobre a base da empresa: primeiro os defaults
@@ -2013,7 +2025,7 @@ async function tratarWebhook(req, res) {
     // Empresa do contexto (pra ler a frase de ativação configurável).
     const empGatilho = await getEmpresa();
     // Se o número está pausado, só reage ao gatilho de ativação do presente
-    const ehGatilhoInicialParaPausa = ehGatilhoPresente(texto, empGatilho) || !!detectarNichoDemo(texto);
+    const ehGatilhoInicialParaPausa = ehGatilhoPresente(texto, empGatilho) || !!detectarNichoDemo(texto, empGatilho);
     if (!ehGatilhoInicialParaPausa && await numeroEstaPausado(telefone)) {
       console.log(`[PAUSA MANUAL] Mensagem ignorada — ${telefone} está pausado`);
       return res.sendStatus(200);
@@ -2057,7 +2069,7 @@ async function tratarWebhook(req, res) {
     // O nicho vem no código do link (novo teste) ou fica guardado na sessão
     // (para o resto da conversa). Se houver nicho, sobrepomos a config dele no
     // contexto — daí todo o fluxo (getEmpresa) já usa os textos/imagens da área.
-    const nichoDetectado = detectarNichoDemo(texto);
+    const nichoDetectado = detectarNichoDemo(texto, empGatilho);
     const nichoSessaoCliente = sessaoExiste ? sessaoExistenteSnap.data().nicho : null;
     const nichoSessaoRec = sessaoRecomendado ? sessaoRecomendado.nicho : null;
     const nichoEfetivo = nichoDetectado || nichoSessaoCliente || nichoSessaoRec || null;
@@ -3030,6 +3042,18 @@ const CAMPOS_NICHO = new Set([
   'linkRecomendado', 'textoRecomendado', 'faixasBonus'
 ]);
 
+// Monta a lista de mercados: os embutidos (NICHOS_DEMO) + os criados pelo dono
+// (config.nichos que não são embutidos). Cada item tem slug, nome e se é fixo.
+function listaNichos(config) {
+  const nichos = (config && config.nichos) || {};
+  const slugs = [...new Set([...Object.keys(NICHOS_DEMO), ...Object.keys(nichos)])];
+  return slugs.map(slug => ({
+    slug,
+    nome: (nichos[slug] && nichos[slug].nome) || (NICHOS_DEMO[slug] && NICHOS_DEMO[slug].nome) || slug,
+    builtin: !!NICHOS_DEMO[slug]
+  }));
+}
+
 app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const config = req.empresaLogin.configuracao || {};
@@ -3037,6 +3061,7 @@ app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, async (req, res) => {
     delete base.nichos; // não devolve os nichos dentro da base
     res.json({
       ok: true,
+      lista: listaNichos(config),
       nichos: config.nichos || {},
       defaults: NICHOS_DEMO,
       base,
@@ -3047,14 +3072,32 @@ app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   }
 });
 
+// Cria um novo mercado a partir do nome (gera o slug do link).
+app.post('/minha-mercados', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const nome = String((req.body && req.body.nome) || '').trim();
+    if (!nome) return res.status(400).json({ ok: false, erro: 'Informe o nome do mercado.' });
+    let slug = slugNicho(nome);
+    if (!slug) return res.status(400).json({ ok: false, erro: 'Nome inválido — use letras ou números.' });
+    const config = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+    config.nichos = config.nichos || {};
+    const existe = s => !!(NICHOS_DEMO[s] || config.nichos[s]);
+    if (existe(slug)) { let i = 2; while (existe(`${slug}-${i}`)) i++; slug = `${slug}-${i}`; }
+    config.nichos[slug] = { nome };
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
+    res.json({ ok: true, slug, nome, lista: listaNichos(config) });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.post('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const nicho = req.params.nicho;
-    if (!NICHOS_VALIDOS.includes(nicho)) {
-      return res.status(400).json({ ok: false, erro: 'Nicho inválido.' });
-    }
     const config = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
     config.nichos = config.nichos || {};
+    const valido = NICHOS_DEMO[nicho] || config.nichos[nicho];
+    if (!valido) return res.status(400).json({ ok: false, erro: 'Mercado não encontrado.' });
     // Só aceita campos da whitelist (evita gravar lixo).
     const limpo = {};
     for (const k of Object.keys(req.body || {})) {
@@ -3063,6 +3106,22 @@ app.post('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, async (req, r
     config.nichos[nicho] = { ...(config.nichos[nicho] || {}), ...limpo };
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
     res.json({ ok: true, nicho: config.nichos[nicho] });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Remove um mercado criado pelo dono (os embutidos não podem ser excluídos).
+app.delete('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const nicho = req.params.nicho;
+    if (NICHOS_DEMO[nicho]) {
+      return res.status(400).json({ ok: false, erro: 'As áreas originais não podem ser excluídas — só editadas.' });
+    }
+    await EMPRESAS_COL().doc(req.empresaLogin.id).update({
+      [`configuracao.nichos.${nicho}`]: admin.firestore.FieldValue.delete()
+    });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
