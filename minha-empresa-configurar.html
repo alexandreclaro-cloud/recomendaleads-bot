@@ -187,6 +187,16 @@
           </div>
         </div>
 
+        <div class="card" style="margin-top:16px" id="nichoPremiosCard">
+          <div class="block-title"><i data-lucide="gift"></i> Prêmios e imagens da área</div>
+          <p class="sub">As artes que o cliente vê. Cada prêmio pode ter uma imagem ou PDF próprio da área. 💡</p>
+          <div id="nichoPremiosContainer"></div>
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarNichoPremiosBtn">Salvar prêmios desta área</button>
+            <span class="status-msg" id="statusNichoPremios"></span>
+          </div>
+        </div>
+
         <div class="card" style="margin-top:16px">
           <div class="block-title"><i data-lucide="link"></i> Links de demonstração</div>
           <p class="sub">Envie o link da área ao cliente. Ao tocar, ele abre uma conversa com o robô já no modo daquela área.</p>
@@ -1337,6 +1347,7 @@ function renderNichoCampos() {
   if (!nichoAtual) {
     document.getElementById('nichoEditorTitulo').innerHTML = '<i data-lucide="pencil"></i> Textos da área';
     cont.innerHTML = '<p class="sub">Clique em "➕ Novo mercado" pra começar.</p>';
+    renderNichoPremios();
     if (window.lucide) lucide.createIcons();
     return;
   }
@@ -1358,8 +1369,83 @@ function renderNichoCampos() {
   cont.innerHTML = html;
   const exBtn = document.getElementById('excluirMercadoBtn');
   if (exBtn) exBtn.addEventListener('click', excluirMercado);
+  renderNichoPremios();
   if (window.lucide) lucide.createIcons();
 }
+
+function renderNichoPremios() {
+  const cont = document.getElementById('nichoPremiosContainer');
+  if (!cont) return;
+  if (!nichoAtual) { cont.innerHTML = ''; return; }
+  const faixas = valorEfetivoNicho('faixasBonus') || [];
+  const arqRec = valorEfetivoNicho('arquivoRecomendado') || '';
+  const esc = v => String(v == null ? '' : v).replace(/"/g, '&quot;');
+  let html = faixas.map((f, i) => `
+    <div class="card nicho-faixa" data-i="${i}" style="margin-bottom:12px; box-shadow:none; border:1px solid var(--border);">
+      <div style="font-weight:700; margin-bottom:8px;">🎁 Prêmio de ${f.quantidade} recomendações</div>
+      <label class="label">Prêmio (texto curto mostrado ao cliente)</label>
+      <input class="input" data-f="premio" value="${esc(f.premio)}">
+      <label class="label">Imagem ou PDF do prêmio</label>
+      <div class="arquivo-row">
+        <input class="input" data-f="arquivo" value="${esc(f.arquivo)}" placeholder="Envie um arquivo ou cole um link">
+        <button type="button" class="btn btn-secondary nicho-upload-btn"><i data-lucide="upload"></i> Enviar</button>
+        <input type="file" class="nicho-arquivo-file" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+      </div>
+      <div class="hint nicho-upload-status"></div>
+      <input type="hidden" data-f="quantidade" value="${esc(f.quantidade)}">
+      <input type="hidden" data-f="link" value="${esc(f.link)}">
+      <input type="hidden" data-f="texto" value="${esc(f.texto)}">
+    </div>`).join('');
+  html += `
+    <div class="card" style="box-shadow:none; border:1px dashed var(--border);">
+      <div style="font-weight:700; margin-bottom:8px;">👥 Imagem do presente do amigo recomendado</div>
+      <div class="arquivo-row">
+        <input class="input" id="nichoArqRec" value="${esc(arqRec)}" placeholder="Envie um arquivo ou cole um link">
+        <button type="button" class="btn btn-secondary" id="nichoArqRecBtn"><i data-lucide="upload"></i> Enviar</button>
+        <input type="file" id="nichoArqRecFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+      </div>
+      <div class="hint" id="nichoArqRecStatus"></div>
+    </div>`;
+  cont.innerHTML = html;
+  cont.querySelectorAll('.nicho-faixa').forEach(card => {
+    const btn = card.querySelector('.nicho-upload-btn');
+    const file = card.querySelector('.nicho-arquivo-file');
+    const arq = card.querySelector('[data-f="arquivo"]');
+    const st = card.querySelector('.nicho-upload-status');
+    if (btn && file) { btn.addEventListener('click', () => file.click()); file.addEventListener('change', () => uploadArquivo(file, arq, st)); }
+  });
+  const recBtn = document.getElementById('nichoArqRecBtn');
+  const recFile = document.getElementById('nichoArqRecFile');
+  const recArq = document.getElementById('nichoArqRec');
+  const recSt = document.getElementById('nichoArqRecStatus');
+  if (recBtn && recFile) { recBtn.addEventListener('click', () => recFile.click()); recFile.addEventListener('change', () => uploadArquivo(recFile, recArq, recSt)); }
+  if (window.lucide) lucide.createIcons();
+}
+
+document.getElementById('salvarNichoPremiosBtn').addEventListener('click', async () => {
+  if (!nichoAtual) return;
+  const btn = document.getElementById('salvarNichoPremiosBtn');
+  const st = document.getElementById('statusNichoPremios');
+  const faixas = [...document.querySelectorAll('#nichoPremiosContainer .nicho-faixa')].map(card => ({
+    quantidade: parseInt(card.querySelector('[data-f="quantidade"]').value) || 0,
+    premio: card.querySelector('[data-f="premio"]').value.trim(),
+    arquivo: card.querySelector('[data-f="arquivo"]').value.trim() || null,
+    link: card.querySelector('[data-f="link"]').value.trim() || null,
+    texto: card.querySelector('[data-f="texto"]').value.trim() || null
+  }));
+  const recEl = document.getElementById('nichoArqRec');
+  const arquivoRecomendado = (recEl ? recEl.value : '').trim() || null;
+  btn.disabled = true; st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos/${nichoAtual}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ faixasBonus: faixas, arquivoRecomendado }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      if (nichosData) { nichosData.nichos = nichosData.nichos || {}; nichosData.nichos[nichoAtual] = data.nicho; }
+      st.textContent = '✅ Salvo!'; st.className = 'status-msg ok';
+    } else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
 
 document.getElementById('salvarNichoBtn').addEventListener('click', async () => {
   if (!nichoAtual) return;
