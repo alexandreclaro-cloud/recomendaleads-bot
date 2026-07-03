@@ -1370,7 +1370,7 @@ async function agendarProximoFollowup(telefone, empresa, marcaTempo, indiceFollo
 
 // ---- Follow-up do RECOMENDADOR (cliente que indicou) ----
 // Agenda o lembrete de índice `indice` (0,1,2...) pedindo que ele avise os amigos.
-async function agendarFollowupRecomendador(telefone, empresa, indice) {
+async function agendarFollowupRecomendador(telefone, empresa, indice, extra) {
   const cadencia = empresa.cadenciaFollowupRecomendador || EMPRESA_PADRAO.cadenciaFollowupRecomendador || [];
   const item = cadencia[indice];
   if (!item) return;
@@ -1379,7 +1379,7 @@ async function agendarFollowupRecomendador(telefone, empresa, indice) {
   await criarAgendamento({
     tipo: 'followup_avisar_amigos',
     executarEm,
-    dados: { telefone, indice }
+    dados: { telefone, indice, ...(extra || {}) }
   });
 }
 
@@ -3283,6 +3283,9 @@ app.post('/minha-followup/teste', exigirLoginEmpresa, exigirGestor, async (req, 
       const vars = { nomeRecomendado: primeiroNome, recomendador: primeiroNome, empresa: empresa.nome };
       resultado = await sendText(tel, substituirVariaveis(empresa.followupRecomendadorMensagem || EMPRESA_PADRAO.followupRecomendadorMensagem, vars)) || { ok: true };
       await saveSessao(tel, { etapa: 'finalizado', clienteNome: nome, followupAguardando: true, followupConcluido: false });
+      // Agenda o 2º (e, em cadeia, o 3º) respeitando a cadência configurada —
+      // assim o teste simula a régua completa. `teste` faz rodar mesmo desligado.
+      await agendarFollowupRecomendador(tel, empresa, 1, { teste: true });
     });
     if (resultado && resultado.ok === false) {
       return res.json({ ok: false, via: resultado.via, erro: resultado.erro || 'O WhatsApp recusou o envio.' });
@@ -4623,8 +4626,9 @@ async function processarAgendamentoInterno(agendamento) {
 
   // Lembrete ao RECOMENDADOR (cliente que indicou) pra avisar os amigos.
   if (agendamento.tipo === 'followup_avisar_amigos') {
-    const { telefone, indice } = agendamento.dados;
-    if (!empresa.followupRecomendadorAtivo) return;
+    const { telefone, indice, teste } = agendamento.dados;
+    // Em teste, roda mesmo com o recurso desligado (pra você conferir a cadência).
+    if (!empresa.followupRecomendadorAtivo && !teste) return;
     if (await numeroEstaPausado(telefone)) {
       console.log(`[FOLLOWUP-AVISAR] ${telefone} pausado — não enviado`);
       return;
@@ -4650,7 +4654,7 @@ async function processarAgendamentoInterno(agendamento) {
     const textoLembrete = textosLembrete[indice] || padrao1;
     await sendText(telefone, substituirVariaveis(textoLembrete, vars));
     await saveSessao(telefone, { followupAguardando: true });
-    await agendarFollowupRecomendador(telefone, empresa, indice + 1);
+    await agendarFollowupRecomendador(telefone, empresa, indice + 1, teste ? { teste: true } : undefined);
     return;
   }
 
