@@ -568,6 +568,9 @@ const EMPRESA_PADRAO = {
   followupJaAvisei: 'Perfeito, muito obrigado(a)! 🙌 Isso ajuda bastante — assim seus amigos já esperam a nossa mensagem.',
   followupAindaNao: 'Sem problema! 😉 Quando puder, dá um alô pra eles avisando. Assim eles recebem nosso contato numa boa. Obrigado(a)!',
   followupTextoPronto: 'Oi! 😊 Acabei de te recomendar pra {empresa} e você vai ganhar um presente 🎁 Eles vão te chamar aqui no WhatsApp, pode responder tranquilo!',
+  // Textos do 2º e 3º lembretes (opcionais). Vazio = repete o texto do 1º.
+  followupRecomendadorMensagem2: 'Oi {cliente}! 😊 Só passando de novo: conseguiu avisar seus amigos que a {empresa} vai chamar eles?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
+  followupRecomendadorMensagem3: 'Oi {cliente}! 😊 Última passadinha aqui 🙌 Já deu aquele alô pros amigos que você recomendou?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
 
   cadenciaFollowupRecomendado: [
     { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' },
@@ -4630,7 +4633,15 @@ async function processarAgendamentoInterno(agendamento) {
       vendedor: (sessao && sessao.vendedorNome) || empresa.nome,
       empresa: empresa.nome
     };
-    await sendText(telefone, substituirVariaveis(empresa.followupRecomendadorMensagem || EMPRESA_PADRAO.followupRecomendadorMensagem, vars));
+    // Cada lembrete pode ter seu próprio texto (2º e 3º). Vazio = repete o 1º.
+    const padrao1 = empresa.followupRecomendadorMensagem || EMPRESA_PADRAO.followupRecomendadorMensagem;
+    const textosLembrete = [
+      padrao1,
+      empresa.followupRecomendadorMensagem2 || padrao1,
+      empresa.followupRecomendadorMensagem3 || padrao1
+    ];
+    const textoLembrete = textosLembrete[indice] || padrao1;
+    await sendText(telefone, substituirVariaveis(textoLembrete, vars));
     await saveSessao(telefone, { followupAguardando: true });
     await agendarFollowupRecomendador(telefone, empresa, indice + 1);
     return;

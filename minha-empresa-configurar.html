@@ -221,8 +221,12 @@
             <span style="font-weight:600;">Ativar os lembretes automáticos</span>
           </label>
           <p class="sub" style="margin-bottom:10px;">Você pode usar as variáveis <b>{cliente}</b> (nome do cliente que indicou) e <b>{empresa}</b>.</p>
-          <label class="label">Mensagem do lembrete (com o menu 1 / 2 / 3)</label>
+          <label class="label">1º lembrete (com o menu 1 / 2 / 3)</label>
           <textarea class="textarea" id="followupMensagem" rows="7"></textarea>
+          <label class="label">2º lembrete <span style="font-weight:400;color:var(--text-dim)">(deixe vazio pra repetir o 1º)</span></label>
+          <textarea class="textarea" id="followupMensagem2" rows="6" placeholder="Vazio = usa o texto do 1º lembrete"></textarea>
+          <label class="label">3º lembrete <span style="font-weight:400;color:var(--text-dim)">(deixe vazio pra repetir o 1º)</span></label>
+          <textarea class="textarea" id="followupMensagem3" rows="6" placeholder="Vazio = usa o texto do 1º lembrete"></textarea>
           <label class="label">Resposta quando ele escolhe "1 — Já avisei"</label>
           <textarea class="textarea" id="followupJaAvisei" rows="2"></textarea>
           <label class="label">Resposta quando escolhe "2 — Ainda não"</label>
@@ -1330,6 +1334,8 @@ function carregarFollowup() {
   const c = configuracaoAtual || {};
   document.getElementById('followupAtivo').checked = !!c.followupRecomendadorAtivo;
   document.getElementById('followupMensagem').value = c.followupRecomendadorMensagem || '';
+  document.getElementById('followupMensagem2').value = c.followupRecomendadorMensagem2 || '';
+  document.getElementById('followupMensagem3').value = c.followupRecomendadorMensagem3 || '';
   document.getElementById('followupJaAvisei').value = c.followupJaAvisei || '';
   document.getElementById('followupAindaNao').value = c.followupAindaNao || '';
   document.getElementById('followupTextoPronto').value = c.followupTextoPronto || '';
@@ -1349,6 +1355,8 @@ document.getElementById('salvarFollowupBtn').addEventListener('click', async () 
   const body = {
     followupRecomendadorAtivo: document.getElementById('followupAtivo').checked,
     followupRecomendadorMensagem: document.getElementById('followupMensagem').value,
+    followupRecomendadorMensagem2: document.getElementById('followupMensagem2').value,
+    followupRecomendadorMensagem3: document.getElementById('followupMensagem3').value,
     followupJaAvisei: document.getElementById('followupJaAvisei').value,
     followupAindaNao: document.getElementById('followupAindaNao').value,
     followupTextoPronto: document.getElementById('followupTextoPronto').value,
