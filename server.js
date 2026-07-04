@@ -458,19 +458,31 @@ function slugNicho(nome) {
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 }
 
-// Detecta o código do nicho no texto de entrada (ex: "...#demo-barbearia").
-// Exige o "#" literal: assim a mensagem REAL do link (com "#demo-x") é
-// reconhecida, mas o link cru colado no chat (que vem com "%23demo-x") é
-// ignorado — evitando iniciar a conversa duas vezes. O nicho é válido se for
-// um dos embutidos OU um mercado criado pelo dono (empresa.nichos).
+// Código OPACO do nicho (não revela o mercado no texto do link). Determinístico
+// a partir do slug — o mesmo cálculo roda no painel (frontend) pra montar o link.
+function codigoNicho(slug) {
+  let h = 0;
+  const s = String(slug || '');
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+  return h.toString(36).slice(0, 4).padStart(4, '0');
+}
+
+// Detecta o nicho no texto de entrada. Aceita 2 formatos, sempre com "#" literal
+// (o link cru colado vem com "%23" e é ignorado, evitando iniciar 2x):
+//  - opaco (novo): "#a3f9" — NÃO revela o mercado;
+//  - explícito (antigo, compatível): "#demo-barbearia".
+// O nicho vale se for embutido (NICHOS_DEMO) ou criado pelo dono (empresa.nichos).
 function detectarNichoDemo(texto, empresa) {
   if (!texto) return null;
   const t = String(texto).toLowerCase();
-  const m = t.match(/#demo[-_\s]?([a-z0-9-]+)/);
-  if (!m) return null;
-  const slug = m[1].replace(/-+$/, '');
-  const existe = NICHOS_DEMO[slug] || (empresa && empresa.nichos && empresa.nichos[slug]);
-  return existe ? slug : null;
+  const slugs = [...new Set([...Object.keys(NICHOS_DEMO), ...Object.keys((empresa && empresa.nichos) || {})])];
+  // Formato explícito antigo: #demo-<slug>
+  const m1 = t.match(/#demo[-_\s]?([a-z0-9-]+)/);
+  if (m1) { const slug = m1[1].replace(/-+$/, ''); if (slugs.includes(slug)) return slug; }
+  // Formato opaco novo: #<código de 4 chars>
+  const m2 = t.match(/#([a-z0-9]{4})\b/);
+  if (m2) { const code = m2[1]; for (const s of slugs) { if (codigoNicho(s) === code) return s; } }
+  return null;
 }
 
 // Sobrepõe a config do nicho sobre a base da empresa: primeiro os defaults

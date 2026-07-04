@@ -1476,6 +1476,12 @@ document.getElementById('followupTesteBtn').addEventListener('click', async () =
 // ===================== DEMONSTRAÇÃO POR NICHO =====================
 const NICHOS_EMOJI = { barbearia: '💈', cabeleireiro: '💇', dentista: '🦷', estetica: '✨' };
 function emojiNicho(slug) { return NICHOS_EMOJI[slug] || '🎯'; }
+// Código opaco do nicho (mesmo cálculo do servidor) — vai no link sem revelar o mercado.
+function codigoNicho(slug) {
+  let h = 0; const s = String(slug || '');
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+  return h.toString(36).slice(0, 4).padStart(4, '0');
+}
 const CAMPOS_NICHO_UI = [
   { campo: 'nome', label: 'Nome do negócio-exemplo', rows: 1 },
   { campo: 'mensagemAgradecimento', label: 'Saudação / boas-vindas (1ª mensagem)', rows: 3 },
@@ -1701,7 +1707,7 @@ function renderNichosLinks() {
   if (!nichosLista.length) { cont.innerHTML = '<p class="sub">Crie um mercado pra gerar os links.</p>'; return; }
   const num55 = num.startsWith('55') ? num : '55' + num;
   cont.innerHTML = nichosLista.map(n => {
-    const texto = `Quero testar o RecomendaLeads ${emojiNicho(n.slug)} #demo-${n.slug}`;
+    const texto = `Quero testar o RecomendaLeads #${codigoNicho(n.slug)}`;
     const link = `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
     return `<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
       <span style="min-width:150px; font-weight:600;">${emojiNicho(n.slug)} ${n.nome}</span>
