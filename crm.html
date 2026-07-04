@@ -760,6 +760,12 @@
           <label>1️⃣ Mensagem inicial (pede confirmação antes de seguir)</label>
           <textarea id="mensagemInicialRecomendadoInput" rows="3"></textarea>
 
+          <label>🔄 Variação 2 da mensagem inicial <span style="font-weight:400;color:var(--text-dim)">(opcional — anti-spam)</span></label>
+          <textarea id="mensagemInicialRecomendado2Input" rows="3" placeholder="Deixe vazio se não quiser variar. Quando preenchida, o robô sorteia entre as versões — evita enviar o texto idêntico pra todo mundo (cara de disparo em massa)."></textarea>
+
+          <label>🔄 Variação 3 da mensagem inicial <span style="font-weight:400;color:var(--text-dim)">(opcional)</span></label>
+          <textarea id="mensagemInicialRecomendado3Input" rows="3" placeholder="Deixe vazio se não quiser."></textarea>
+
           <label>Mensagem repetida enquanto a pessoa não confirma</label>
           <input type="text" id="mensagemAguardandoConfirmacaoInput" placeholder="Ex: Posso te contar mais sobre isso?">
 
@@ -1474,6 +1480,8 @@ async function carregarConfiguracao() {
     document.getElementById('marketingLinkInput').value = configuracaoAtual.marketingLink || '';
     document.getElementById('marketingTextoInput').value = configuracaoAtual.marketingTexto || '';
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
+    document.getElementById('mensagemInicialRecomendado2Input').value = configuracaoAtual.mensagemInicialRecomendado2 || '';
+    document.getElementById('mensagemInicialRecomendado3Input').value = configuracaoAtual.mensagemInicialRecomendado3 || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
     document.getElementById('mensagemPedeNomeInput').value = configuracaoAtual.mensagemPedeNome || '';
@@ -1655,6 +1663,8 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const statusEl = document.getElementById('statusRecomendado');
 
   const mensagemInicialRecomendado = document.getElementById('mensagemInicialRecomendadoInput').value.trim();
+  const mensagemInicialRecomendado2 = document.getElementById('mensagemInicialRecomendado2Input').value.trim();
+  const mensagemInicialRecomendado3 = document.getElementById('mensagemInicialRecomendado3Input').value.trim();
   const mensagemAguardandoConfirmacao = document.getElementById('mensagemAguardandoConfirmacaoInput').value.trim();
   const mensagemAntesPresente = document.getElementById('mensagemAntesPresenteInput').value.trim();
   const tempoEsperaConversaoMin = parseInt(document.getElementById('tempoEsperaConversaoMinInput').value) || 60;
@@ -1682,7 +1692,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({
-        mensagemInicialRecomendado, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
+        mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
         posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         faqComoFunciona, faqValidade, enderecoEmpresa, horariosEmpresa, posAtendente

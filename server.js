@@ -554,6 +554,10 @@ const EMPRESA_PADRAO = {
   marketingTexto: null,
   ctaRecomendado: 'Que tal aproveitar e passar pra retirar o seu? 😊',
   mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
+  // Anti-ban: variações da 1ª mensagem ao recomendado. O robô SORTEIA entre as
+  // preenchidas (evita mensagem idêntica pra todo mundo = cara de spam). Vazias = ignoradas.
+  mensagemInicialRecomendado2: '',
+  mensagemInicialRecomendado3: '',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
   mensagemAntesPresente: '🎉 Boa notícia! Você ganhou {premio}. Aqui está o seu presente 👇',
   gatilhoPresente: 'quero meu presente',
@@ -1473,6 +1477,15 @@ async function tratarRespostaFollowupRecomendador(telefone, texto, sessao) {
   return false;
 }
 
+// Anti-ban: sorteia uma das versões preenchidas da 1ª mensagem ao recomendado,
+// pra não enviar texto idêntico a todo mundo (evita "impressão digital" de spam).
+function escolherSaudacaoRecomendado(empresa) {
+  const opcoes = [empresa.mensagemInicialRecomendado, empresa.mensagemInicialRecomendado2, empresa.mensagemInicialRecomendado3]
+    .map(s => (s || '').trim()).filter(Boolean);
+  if (!opcoes.length) return EMPRESA_PADRAO.mensagemInicialRecomendado;
+  return opcoes[Math.floor(Math.random() * opcoes.length)];
+}
+
 async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa) {
   if (!contato.telefone) {
     console.log(`[AVISO] Contato "${contato.nome}" sem telefone válido — não foi possível iniciar conversa.`);
@@ -1490,7 +1503,7 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
     empresa: empresa.nome
   };
 
-  const mensagemInicial = substituirVariaveis(empresa.mensagemInicialRecomendado, variaveis);
+  const mensagemInicial = substituirVariaveis(escolherSaudacaoRecomendado(empresa), variaveis);
   // No modo OFICIAL, a primeira mensagem ao recomendado (que nunca te chamou)
   // precisa ser um TEMPLATE aprovado pela Meta. Params na ordem:
   // {{1}}=nome do recomendado, {{2}}=quem recomendou, {{3}}=empresa.
