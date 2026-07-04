@@ -412,6 +412,17 @@ function ehGatilhoPresente(texto, empresa) {
   return frasesGatilhoPresente(empresa).some(f => t.includes(f));
 }
 
+// Detecta a intenção do cliente de RECOMENDAR mais pessoas depois que já
+// terminou (ex: "quero indicar mais", "quero recomendar meu amigo"). Por
+// palavras-chave (determinístico, sem IA). Exige mencionar indicar/recomendar
+// + uma palavra de intenção, pra não confundir com perguntas soltas.
+function querRecomendarMais(texto) {
+  if (!texto) return false;
+  const t = texto.toLowerCase();
+  if (!/indic|recomend/.test(t)) return false;
+  return /\b(quero|posso|gostaria|vou|tenho|preciso|mais|outr|amig|pessoa|algu[ée]m|de novo|novamente)\b/.test(t);
+}
+
 // ============================================================
 // DEMONSTRAÇÃO POR NICHO — mesma empresa (PDN), "peles" diferentes por área.
 // O cliente entra por um link com um código (#demo-barbearia etc). O robô veste
@@ -2259,7 +2270,12 @@ async function tratarWebhook(req, res) {
       if (tratou) return res.sendStatus(200);
     }
 
-    if (ehGatilhoInicial || nichoDetectado) {
+    // Cliente que já terminou (ou sem fluxo ativo) pede pra recomendar mais
+    // pessoas → reinicia o processo de recomendação nativo. Não interrompe quem
+    // está no meio do fluxo (cliente ou recomendado ativo).
+    const querRecomendar = querRecomendarMais(texto) && !clienteAtivo && !recomendadoAtivo;
+
+    if (ehGatilhoInicial || nichoDetectado || querRecomendar) {
       await resetSessao(telefone);
       await iniciarConversa(telefone);
       if (nichoEfetivo) await saveSessao(telefone, { nicho: nichoEfetivo });
