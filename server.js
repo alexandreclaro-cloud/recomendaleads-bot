@@ -1874,6 +1874,7 @@ Regras:
     const resp = await axios.post('https://api.anthropic.com/v1/messages', {
       model: ANTHROPIC_MODEL,
       max_tokens: 250,
+      temperature: 0, // determinístico: mesma pergunta → mesma resposta (sem aleatoriedade)
       system: systemPrompt,
       messages: [{ role: 'user', content: pergunta || '' }]
     }, {
