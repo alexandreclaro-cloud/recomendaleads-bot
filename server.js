@@ -600,6 +600,10 @@ const EMPRESA_PADRAO = {
   ],
   tempoEsperaConversaoMin: 60,
   tempoFollowupMin: 30,
+  // Anti-ban: intervalo ALEATÓRIO (minutos) entre um recomendado e o próximo,
+  // pra não disparar todos juntos (rajada). Cada envio sai espaçado e embaralhado.
+  recomendadoGapMinMin: 3,
+  recomendadoGapMaxMin: 8,
 
   // ===== Fluxo pós-presente (todos editáveis no painel, na sequência) =====
   posMenuPrincipal: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida\n\n👇 _Digite o número_`,
@@ -1279,9 +1283,17 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     }
   }
 
-  const executarEm = new Date(Date.now() + empresa.tempoEsperaConversaoMin * 60 * 1000).toISOString();
+  // Anti-rajada (anti-ban): em vez de disparar TODOS os recomendados no mesmo
+  // instante (padrão de "disparo em massa" que queima o número), escalonamos
+  // cada um com um intervalo ALEATÓRIO entre os envios. O 1º sai após
+  // tempoEsperaConversaoMin; os seguintes vão saindo espaçados, imitando envio humano.
+  const baseMs = Math.max(0, empresa.tempoEsperaConversaoMin || 0) * 60 * 1000;
+  const gapMinMs = Math.max(0, (empresa.recomendadoGapMinMin != null ? empresa.recomendadoGapMinMin : 3)) * 60 * 1000;
+  const gapMaxMs = Math.max(gapMinMs, (empresa.recomendadoGapMaxMin != null ? empresa.recomendadoGapMaxMin : 8) * 60 * 1000);
+  let offsetMs = 0;
   for (const contato of contatosDestaFaixa) {
     try {
+      const executarEm = new Date(Date.now() + baseMs + offsetMs).toISOString();
       // Cancela agendamentos pendentes anteriores para este mesmo telefone
       // evita que o recomendado receba o roteiro múltiplas vezes
       if (contato.telefone) {
@@ -1306,6 +1318,8 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
           vendedorNome: sessao.vendedorNome
         }
       });
+      // Próximo recomendado sai depois de um intervalo aleatório (embaralhado).
+      offsetMs += gapMinMs + Math.random() * (gapMaxMs - gapMinMs);
     } catch (err) {
       console.error('Erro ao criar agendamento para recomendado:', err.message);
     }
