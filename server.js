@@ -572,6 +572,17 @@ const EMPRESA_PADRAO = {
   followupRecomendadorMensagem2: 'Oi {cliente}! 😊 Só passando de novo: conseguiu avisar seus amigos que a {empresa} vai chamar eles?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
   followupRecomendadorMensagem3: 'Oi {cliente}! 😊 Última passadinha aqui 🙌 Já deu aquele alô pros amigos que você recomendou?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
 
+  // ===== Atendimento pós-fluxo: responde dúvidas do cliente com as infos do
+  // negócio (endereço, horário, site...). Usa IA (Claude) com as infos abaixo. =====
+  infoAtendimentoAtivo: false,
+  infoEndereco: '',
+  infoHorario: '',
+  infoSite: '',
+  infoInstagram: '',
+  infoTelefone: '',
+  infoEmail: '',
+  infoOutras: '',
+
   cadenciaFollowupRecomendado: [
     { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' },
     { esperaMin: 4320, texto: 'Olá, tudo bem? O presente segue reservado no seu nome 🎁 Se tiver interesse, é só me avisar que te envio. Caso não, sem problema 😊' }
@@ -1176,6 +1187,12 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   }
 
   if (sessao.etapa === 'finalizado') {
+    // Conversa já terminou. Se o atendimento pós-fluxo estiver ligado, tenta
+    // responder dúvidas do cliente (endereço, horário, etc.) com as infos do negócio.
+    if (empresa.infoAtendimentoAtivo && texto) {
+      const resposta = await responderPerguntaNegocio(texto, empresa);
+      if (resposta) await sendText(telefone, resposta);
+    }
     return;
   }
 }
@@ -1803,6 +1820,71 @@ Regras estritas:
       classificacao: respostaEhPositiva(texto) ? 'positiva' : 'negativa',
       respostaSugerida: null
     };
+  }
+}
+
+// ============================================================
+// ATENDIMENTO PÓS-FLUXO — responde dúvidas do cliente (endereço, horário, etc.)
+// usando SOMENTE as informações que a empresa cadastrou no painel.
+// ============================================================
+function infosNegocioDisponiveis(empresa) {
+  const linhas = [];
+  if (empresa.infoEndereco) linhas.push(`Endereço: ${empresa.infoEndereco}`);
+  if (empresa.infoHorario) linhas.push(`Horário de funcionamento: ${empresa.infoHorario}`);
+  if (empresa.infoSite) linhas.push(`Site: ${empresa.infoSite}`);
+  if (empresa.infoInstagram) linhas.push(`Instagram: ${empresa.infoInstagram}`);
+  if (empresa.infoTelefone) linhas.push(`Telefone/WhatsApp: ${empresa.infoTelefone}`);
+  if (empresa.infoEmail) linhas.push(`E-mail: ${empresa.infoEmail}`);
+  if (empresa.infoOutras) linhas.push(`Outras informações: ${empresa.infoOutras}`);
+  return linhas.join('\n');
+}
+
+// Fallback sem IA (ou se a IA falhar): responde por palavras-chave.
+function respostaInfoPorPalavraChave(pergunta, empresa) {
+  const t = (pergunta || '').toLowerCase();
+  const partes = [];
+  if (empresa.infoEndereco && /endere|onde fica|onde voc|onde e|localiza|\blocal\b|como chego|chegar/.test(t)) partes.push(`📍 ${empresa.infoEndereco}`);
+  if (empresa.infoHorario && /hor[áa]rio|funciona|aberto|atende|abre|fecha|que dia|que horas|amanh[ãa]|hoje/.test(t)) partes.push(`🕒 ${empresa.infoHorario}`);
+  if (empresa.infoSite && /site|website|p[áa]gina|link/.test(t)) partes.push(`🌐 ${empresa.infoSite}`);
+  if (empresa.infoInstagram && /insta|@/.test(t)) partes.push(`📸 ${empresa.infoInstagram}`);
+  if (empresa.infoTelefone && /telefone|whats|contato|ligar|n[úu]mero/.test(t)) partes.push(`📞 ${empresa.infoTelefone}`);
+  if (empresa.infoEmail && /e-?mail/.test(t)) partes.push(`✉️ ${empresa.infoEmail}`);
+  return partes.length ? partes.join('\n') : null;
+}
+
+// Gera a resposta pra uma pergunta do cliente usando as infos cadastradas.
+// Devolve o texto a enviar, ou null se não houver o que responder.
+async function responderPerguntaNegocio(pergunta, empresa) {
+  const infos = infosNegocioDisponiveis(empresa);
+  if (!infos) return null; // nada cadastrado — não responde
+  if (!ANTHROPIC_API_KEY) return respostaInfoPorPalavraChave(pergunta, empresa);
+
+  const systemPrompt = `Você é o atendente virtual da empresa "${empresa.nome}" no WhatsApp. O cliente já foi atendido e voltou a mandar mensagem. Responda de forma curta, simpática e natural (português do Brasil), usando SOMENTE as informações abaixo.
+
+Informações da empresa:
+${infos}
+
+Regras:
+- Use SOMENTE os dados acima. NUNCA invente endereço, horário, preço, ou qualquer dado que não esteja listado.
+- Se o cliente perguntar algo que NÃO está nas informações, responda breve e gentil dizendo que vai verificar e a equipe retorna em seguida. Nunca invente.
+- Se for só um "oi", agradecimento ou conversa fiada, responda cordialmente e se coloque à disposição.
+- No máximo 2-3 frases curtas. Sem markdown, sem títulos.`;
+
+  try {
+    const resp = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: ANTHROPIC_MODEL,
+      max_tokens: 250,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: pergunta || '' }]
+    }, {
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      timeout: 6000
+    });
+    const txt = (resp.data?.content?.[0]?.text || '').trim();
+    return txt || respostaInfoPorPalavraChave(pergunta, empresa);
+  } catch (err) {
+    console.error('Erro na IA de atendimento pós-fluxo, usando palavras-chave:', err.message);
+    return respostaInfoPorPalavraChave(pergunta, empresa);
   }
 }
 
@@ -3262,6 +3344,23 @@ app.post('/minha-marketing/teste', exigirLoginEmpresa, exigirGestor, async (req,
       await enviarMarketingAoRecomendador(tel, (req.body && req.body.nome) || 'Cliente', empresa);
     });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Prévia do atendimento pós-fluxo: mostra o que o robô responderia a uma
+// pergunta, usando as infos SALVAS (não envia WhatsApp).
+app.post('/minha-info/teste', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const pergunta = String((req.body && req.body.pergunta) || '').trim();
+    if (!pergunta) return res.status(400).json({ ok: false, erro: 'Digite uma pergunta.' });
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    let resposta = null;
+    await tenantContext.run({ empresa, empresaId: req.empresaLogin.id }, async () => {
+      resposta = await responderPerguntaNegocio(pergunta, empresa);
+    });
+    res.json({ ok: true, resposta: resposta || 'Ainda não tenho essa informação cadastrada — preencha os campos acima e salve.' });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

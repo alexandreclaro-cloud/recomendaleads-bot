@@ -55,6 +55,7 @@
       <button class="nav-item" data-section="premios" data-gestor><i data-lucide="gift"></i><span class="txt">Prêmios</span></button>
       <button class="nav-item" data-section="nichos" data-gestor><i data-lucide="sparkles"></i><span class="txt">Demonstração por nicho</span></button>
       <button class="nav-item" data-section="followup" data-gestor><i data-lucide="bell-ring"></i><span class="txt">Follow-up (avisar amigos)</span></button>
+      <button class="nav-item" data-section="info" data-gestor><i data-lucide="info"></i><span class="txt">Informações do negócio</span></button>
       <button class="nav-item" data-section="whatsapp" data-gestor><i data-lucide="smartphone"></i><span class="txt">WhatsApp</span></button>
       <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
       <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
@@ -274,6 +275,45 @@
         </div>
       </section>
 
+      <section class="view fade-in" id="view-info">
+        <div class="card">
+          <div class="block-title"><i data-lucide="info"></i> Informações do negócio (respostas automáticas)</div>
+          <p class="sub">Depois do fluxo, se o cliente perguntar algo (endereço, horário, site...), o robô responde na hora com o que você preencher aqui. Ele usa IA e só responde com o que está cadastrado — <b>não inventa</b>. 🤖</p>
+          <label style="display:flex; align-items:center; gap:10px; margin:14px 0; cursor:pointer;">
+            <input type="checkbox" id="infoAtivo" style="width:18px; height:18px;">
+            <span style="font-weight:600;">Ativar respostas automáticas</span>
+          </label>
+          <label class="label">📍 Endereço</label>
+          <textarea class="textarea" id="infoEndereco" rows="2" placeholder="Rua, número, bairro, cidade..."></textarea>
+          <label class="label">🕒 Horário de funcionamento</label>
+          <textarea class="textarea" id="infoHorario" rows="2" placeholder="Ex: Seg a Sex 9h às 19h, Sáb 9h às 13h"></textarea>
+          <label class="label">🌐 Site</label>
+          <input class="input" id="infoSite" placeholder="https://...">
+          <label class="label">📸 Instagram</label>
+          <input class="input" id="infoInstagram" placeholder="@seuinstagram">
+          <label class="label">📞 Telefone / WhatsApp</label>
+          <input class="input" id="infoTelefone" placeholder="(11) 99999-9999">
+          <label class="label">✉️ E-mail</label>
+          <input class="input" id="infoEmail" placeholder="contato@empresa.com">
+          <label class="label">➕ Outras informações (qualquer coisa que o cliente possa perguntar)</label>
+          <textarea class="textarea" id="infoOutras" rows="4" placeholder="Ex: formas de pagamento, estacionamento, serviços que oferece, política de agendamento, se atende por ordem de chegada..."></textarea>
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarInfoBtn">Salvar informações</button>
+            <span class="status-msg" id="statusInfo"></span>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="block-title"><i data-lucide="help-circle"></i> Testar uma pergunta</div>
+          <p class="sub">Digite uma pergunta como um cliente faria e veja o que o robô responderia. <b>Salve antes.</b></p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input class="input" id="infoTestePergunta" placeholder="Ex: qual o endereço de vocês?" style="flex:1; min-width:240px;">
+            <button class="btn btn-secondary" id="infoTesteBtn">Testar</button>
+          </div>
+          <div id="infoTesteResposta" style="margin-top:12px;"></div>
+        </div>
+      </section>
+
       <section class="view fade-in" id="view-whatsapp">
         <div class="card">
           <div class="block-title"><i data-lucide="smartphone"></i> Meu WhatsApp</div>
@@ -489,7 +529,7 @@ const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') 
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
 let EH_MATRIZ = false;
-const SECOES_GESTOR = ['empresa', 'premios', 'nichos', 'followup', 'whatsapp', 'equipe', 'assinatura'];
+const SECOES_GESTOR = ['empresa', 'premios', 'nichos', 'followup', 'info', 'whatsapp', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
@@ -517,6 +557,7 @@ const TITULOS = {
   premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
   nichos: ['Demonstração por nicho', 'Personalize a apresentação para cada tipo de cliente.'],
   followup: ['Follow-up', 'Lembretes automáticos pro cliente avisar os amigos.'],
+  info: ['Informações do negócio', 'O robô responde dúvidas do cliente com estes dados.'],
   whatsapp: ['WhatsApp', 'Conecte o número que o Agente I.A. vai usar.'],
   equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
   assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.'],
@@ -543,6 +584,7 @@ function trocarSecao(secao) {
   if (secao === 'equipe' && typeof carregarEquipe === 'function') carregarEquipe();
   if (secao === 'nichos' && typeof carregarNichos === 'function') carregarNichos();
   if (secao === 'followup' && typeof carregarFollowup === 'function') carregarFollowup();
+  if (secao === 'info' && typeof carregarInfo === 'function') carregarInfo();
   if (secao === 'assinatura' && typeof carregarAssinatura === 'function') carregarAssinatura();
   if (secao === 'avisos' && typeof renderAvisosLista === 'function') { renderAvisosLista(); marcarTodosLidos(); }
 }
@@ -1321,6 +1363,42 @@ async function verificarAcesso() {
   const p = new URLSearchParams(location.search);
   if (p.get('assinatura') === 'ok') { setTimeout(() => { if (EH_GESTOR) trocarSecao('assinatura'); }, 300); }
 })();
+
+// ===================== INFORMAÇÕES DO NEGÓCIO (atendimento pós-fluxo) =====================
+const CAMPOS_INFO = ['Endereco', 'Horario', 'Site', 'Instagram', 'Telefone', 'Email', 'Outras'];
+function carregarInfo() {
+  const c = configuracaoAtual || {};
+  document.getElementById('infoAtivo').checked = !!c.infoAtendimentoAtivo;
+  CAMPOS_INFO.forEach(k => { const el = document.getElementById('info' + k); if (el) el.value = c['info' + k] || ''; });
+}
+
+document.getElementById('salvarInfoBtn').addEventListener('click', async () => {
+  const st = document.getElementById('statusInfo');
+  const body = { infoAtendimentoAtivo: document.getElementById('infoAtivo').checked };
+  CAMPOS_INFO.forEach(k => { body['info' + k] = document.getElementById('info' + k).value; });
+  st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
+
+document.getElementById('infoTesteBtn').addEventListener('click', async () => {
+  const cont = document.getElementById('infoTesteResposta');
+  const pergunta = document.getElementById('infoTestePergunta').value.trim();
+  if (!pergunta) return;
+  cont.innerHTML = '<span class="sub">🤖 Pensando...</span>';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-info/teste`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pergunta }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      cont.innerHTML = '<div style="background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:12px;padding:12px 14px;white-space:pre-wrap;">🤖 ' + String(data.resposta || '').replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</div>';
+    } else { cont.innerHTML = '<span class="status-msg err">❌ ' + (data.erro || 'Erro') + '</span>'; }
+  } catch (e) { cont.innerHTML = '<span class="status-msg err">❌ Erro de conexão</span>'; }
+});
 
 // ===================== FOLLOW-UP DO RECOMENDADOR =====================
 // Converte minutos → {valor, unidade}. Prefere HORAS (até 96h); só usa dias
