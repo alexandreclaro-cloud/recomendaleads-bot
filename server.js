@@ -620,6 +620,11 @@ const EMPRESA_PADRAO = {
   // pra não disparar todos juntos (rajada). Cada envio sai espaçado e embaralhado.
   recomendadoGapMinMin: 3,
   recomendadoGapMaxMin: 8,
+  // Humanização: mostra "digitando..." antes de cada mensagem e dá um respiro
+  // entre mensagens seguidas (parece gente, ajuda anti-ban). NÃO muda o texto
+  // nem a cadência dos lembretes. false = desliga.
+  humanizarDigitacao: true,
+  humanizarMaxSeg: 4,
 
   // ===== Fluxo pós-presente (todos editáveis no painel, na sequência) =====
   posMenuPrincipal: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida\n\n👇 _Digite o número_`,
@@ -818,6 +823,33 @@ async function metaUploadMedia(cfg, buffer, mimetype, filename) {
   return resp.data && resp.data.id;
 }
 
+// Ritmo humano por telefone: guarda até quando a janela do último envio vai,
+// pra ESPAÇAR mensagens seguidas (não chegar tudo junto = cara de robô/rajada).
+const _ritmoEnvio = {};
+// Calcula os delays (em SEGUNDOS) que a Z-API usa pra mostrar "digitando..."
+// (delayTyping) e pra segurar a vez de mensagens seguidas (delayMessage).
+// NÃO altera o texto nem a cadência — é puro tempo. Tudo offloadado pra Z-API.
+function delaysHumanos(phone, message) {
+  const ctx = tenantContext.getStore();
+  const empresa = ctx && ctx.empresa;
+  if (empresa && empresa.humanizarDigitacao === false) return null; // desligado
+  const maxSeg = Math.max(1, (empresa && empresa.humanizarMaxSeg) || 4);
+  const len = (message || '').length;
+  // "digitando..." proporcional ao tamanho do texto, com teto + pequena variação
+  let typingSeg = Math.min(maxSeg, Math.max(1, Math.round(1 + len / 45)));
+  if (Math.random() < 0.5) typingSeg = Math.min(15, typingSeg + 1);
+  const agora = Date.now();
+  const inicio = Math.max(agora, _ritmoEnvio[phone] || 0);
+  const delayMessageSeg = Math.min(15, Math.max(0, Math.round((inicio - agora) / 1000)));
+  // reserva a janela deste envio, pro próximo sair depois (respiro entre mensagens)
+  _ritmoEnvio[phone] = inicio + typingSeg * 1000 + 700 + Math.floor(Math.random() * 800);
+  // limpeza leve pra não crescer pra sempre
+  if (Object.keys(_ritmoEnvio).length > 800) {
+    for (const k in _ritmoEnvio) { if (_ritmoEnvio[k] < agora) delete _ritmoEnvio[k]; }
+  }
+  return { delayTyping: typingSeg, delayMessage: delayMessageSeg };
+}
+
 async function sendText(phone, message) {
   if (tipoWppAtual() === 'baileys') {
     try {
@@ -841,7 +873,11 @@ async function sendText(phone, message) {
   }
   try {
     const cfg = zapiAtual();
-    await axios.post(`${zapiBaseUrl(cfg)}/send-text`, { phone, message }, { headers: zapiHeaders(cfg) });
+    const body = { phone, message };
+    // Humanização: "digitando..." + respiro entre mensagens (offloadado pra Z-API).
+    const d = delaysHumanos(phone, message);
+    if (d) { body.delayTyping = d.delayTyping; if (d.delayMessage > 0) body.delayMessage = d.delayMessage; }
+    await axios.post(`${zapiBaseUrl(cfg)}/send-text`, body, { headers: zapiHeaders(cfg) });
     console.log(`[ENVIADO] para ${phone}: ${message.slice(0, 60)}...`);
     registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
     return { ok: true, via: 'zapi' };
