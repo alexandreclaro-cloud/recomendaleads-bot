@@ -1319,6 +1319,30 @@ function linkResgateFull(empresa, telefoneRecomendador) {
   return `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
 }
 
+// Referências do modo Full: código opaco (#r<cod>) → quem indicou. Assim, quando
+// o amigo chega pelo link, a gente sabe atribuir a indicação ao cliente certo.
+const REFS_COL = () => db.collection('recomendacao_refs');
+function detectarResgateFull(texto) {
+  if (!texto) return null;
+  const m = String(texto).toLowerCase().match(/#r([a-z0-9]{4})\b/);
+  return m ? m[1] : null;
+}
+async function buscarRefFull(code) {
+  try {
+    const snap = await REFS_COL().doc(`${empresaIdAtual()}__${code}`).get();
+    return snap.exists ? snap.data() : null;
+  } catch (e) { console.error('buscarRefFull:', e.message); return null; }
+}
+async function salvarRefFull(code, telefoneRecomendador, sessao) {
+  try {
+    await REFS_COL().doc(`${empresaIdAtual()}__${code}`).set({
+      codigo: code, empresaId: empresaIdAtual(),
+      telefoneRecomendador, nomeRecomendador: sessao.clienteNome || '',
+      vendedorNome: sessao.vendedorNome || '', criadoEm: new Date().toISOString()
+    }, { merge: true });
+  } catch (e) { console.error('salvarRefFull:', e.message); }
+}
+
 // Conclusão no modo FULL: NÃO dispara pros amigos e NÃO entrega o presente ainda.
 // Manda o link pro cliente encaminhar e segura o presente até ele confirmar "enviei".
 async function finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDestaFaixa) {
@@ -1338,6 +1362,8 @@ async function finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDest
   const primeiroNome = (sessao.clienteNome || '').split(' ')[0];
   const vars = { nomeRecomendado: primeiroNome, recomendador: primeiroNome, empresa: empresa.nome };
   await sendText(telefone, substituirVariaveis(empresa.fullMensagemPasso2 || EMPRESA_PADRAO.fullMensagemPasso2, vars));
+  // Guarda a referência (código → quem indicou) pra atribuir quando o amigo chegar.
+  await salvarRefFull(codigoNicho('ref' + telefone), telefone, sessao);
   const link = linkResgateFull(empresa, telefone);
   const msgEncaminhar = substituirVariaveis(empresa.fullMensagemEncaminhar || EMPRESA_PADRAO.fullMensagemEncaminhar, vars);
   await sendText(telefone, msgEncaminhar + (link ? `\n\n${link}` : ''));
@@ -2431,6 +2457,21 @@ async function tratarWebhook(req, res) {
     if (sessaoExiste && sessaoExistenteSnap.data().followupAguardando && !ehGatilhoInicial && !nichoDetectado) {
       const tratou = await tratarRespostaFollowupRecomendador(telefone, texto, sessaoExistenteSnap.data());
       if (tratou) return res.sendStatus(200);
+    }
+
+    // MODO FULL — o amigo chegou pelo link ("#r<código>"). É INBOUND (ele chamou
+    // primeiro), então respondemos e iniciamos o fluxo do recomendado, atribuindo
+    // ao cliente que indicou. Só se não houver conversa ativa desse número.
+    const codResgate = detectarResgateFull(texto);
+    if (codResgate && !clienteAtivo && !recomendadoAtivo) {
+      const ref = await buscarRefFull(codResgate);
+      if (ref) {
+        const empresaFull = await getEmpresa();
+        const contato = { nome: nomeContato || 'você', telefone };
+        await iniciarConversaRecomendado(contato, ref.nomeRecomendador || 'seu amigo', ref.vendedorNome || empresaFull.nome, empresaFull);
+        console.log(`[FULL RESGATE] ${telefone} chegou pelo link de ${ref.telefoneRecomendador} (cod ${codResgate})`);
+        return res.sendStatus(200);
+      }
     }
 
     // Cliente que já terminou (ou sem fluxo ativo) pede pra recomendar mais
