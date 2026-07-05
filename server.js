@@ -573,6 +573,11 @@ const EMPRESA_PADRAO = {
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
   mensagemAntesPresente: '🎉 Boa notícia! Você ganhou {premio}. Aqui está o seu presente 👇',
   gatilhoPresente: 'quero meu presente',
+  // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
+  //  'basic'  = o robô dispara pros amigos (atual, padrão).
+  //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).
+  // No modo API Oficial (whatsappTipo='oficial') o fluxo roda sempre como 'full'.
+  modoRecomendacao: 'basic',
 
   // ===== Conversa do CLIENTE (quem recomenda) — editável =====
   mensagemPedeNome: 'Pra começar, qual é o seu nome?',
