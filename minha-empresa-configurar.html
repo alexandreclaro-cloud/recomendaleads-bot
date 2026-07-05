@@ -336,6 +336,12 @@
             <p class="sub" style="margin:8px 0 0 28px;">O cliente <b>compartilha um link</b> com os amigos, e o amigo é quem <b>chama o robô</b>. O número praticamente <b>não corre risco de ban</b> (só respondemos quem fala primeiro). Pede um passo a mais do cliente.</p>
           </label>
 
+          <div id="modoFullExtra" style="margin-top:14px; display:none;">
+            <label class="label">📱 Seu número de WhatsApp (com DDD) — usado no link que o cliente encaminha</label>
+            <input class="input" type="text" id="numeroWhatsappInput" placeholder="Ex: 11999998888" style="max-width:280px;">
+            <div class="hint" style="margin-top:6px;">É o número onde o robô está ligado. O amigo toca no link e cai numa conversa com <b>este</b> número.</div>
+          </div>
+
           <div class="hint" style="margin-top:12px;">ℹ️ Se você usar a <b>API Oficial da Meta</b>, o fluxo roda sempre no modo <b>Full</b> (seguro/compliant), automaticamente.</div>
 
           <div class="row-save">
@@ -1402,14 +1408,19 @@ function carregarModo() {
   const modo = (configuracaoAtual && configuracaoAtual.modoRecomendacao) || 'basic';
   const el = document.querySelector(`input[name="modoRec"][value="${modo}"]`);
   if (el) el.checked = true;
+  document.getElementById('numeroWhatsappInput').value = (configuracaoAtual && configuracaoAtual.numeroWhatsapp) || '';
   destacarModo();
 }
 function destacarModo() {
+  let full = false;
   document.querySelectorAll('.modo-opt').forEach(opt => {
-    const marcado = opt.querySelector('input[name="modoRec"]').checked;
+    const inp = opt.querySelector('input[name="modoRec"]');
+    const marcado = inp.checked;
     opt.style.borderColor = marcado ? 'var(--brand)' : 'var(--border)';
     opt.style.background = marcado ? 'var(--brand-soft,#eff4ff)' : 'transparent';
+    if (marcado && inp.value === 'full') full = true;
   });
+  document.getElementById('modoFullExtra').style.display = full ? 'block' : 'none';
 }
 document.querySelectorAll('input[name="modoRec"]').forEach(r => r.addEventListener('change', destacarModo));
 
@@ -1417,11 +1428,13 @@ document.getElementById('salvarModoBtn').addEventListener('click', async () => {
   const st = document.getElementById('statusModo');
   const sel = document.querySelector('input[name="modoRec"]:checked');
   if (!sel) { st.textContent = '❌ Escolha um modo'; st.className = 'status-msg err'; return; }
+  const numeroWhatsapp = document.getElementById('numeroWhatsappInput').value.replace(/\D/g, '');
+  if (sel.value === 'full' && numeroWhatsapp.length < 10) { st.textContent = '❌ Informe seu número de WhatsApp (com DDD) pro link'; st.className = 'status-msg err'; return; }
   st.textContent = 'Salvando...'; st.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modoRecomendacao: sel.value }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modoRecomendacao: sel.value, numeroWhatsapp }) });
     const data = await resp.json();
-    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, { modoRecomendacao: sel.value }); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, { modoRecomendacao: sel.value, numeroWhatsapp }); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
     else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
   finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }

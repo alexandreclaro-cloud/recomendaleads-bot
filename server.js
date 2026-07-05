@@ -578,6 +578,13 @@ const EMPRESA_PADRAO = {
   //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).
   // No modo API Oficial (whatsappTipo='oficial') o fluxo roda sempre como 'full'.
   modoRecomendacao: 'basic',
+  // Número de WhatsApp da empresa (só dígitos) — usado pra montar o link que o
+  // cliente encaminha no modo Full (o amigo toca e chama ESTE número).
+  numeroWhatsapp: '',
+  // Textos do modo Full (editáveis; padrão abaixo):
+  fullMensagemAvisoInicial: 'Antes de começar, deixa eu te explicar 😊 Pra ganhar seu presente são *2 passinhos rápidos* 🎁\n\n1️⃣ Você me manda os contatos dos amigos\n2️⃣ Eu te mando uma mensagem pronta pra você encaminhar pra eles\n\nAssim que completar, seu presente é liberado na hora! Bora? 🚀',
+  fullMensagemPasso2: 'Show, {nomeRecomendado}! 🙌 Falta só o *passo 2*: encaminhe a mensagem abaixo para os amigos que você recomendou. Assim que enviar, me manda um *"enviei"* aqui que eu libero seu presente 🎁',
+  fullMensagemEncaminhar: 'Oi! 😊 Eu te recomendei pra {empresa} e você ganhou um presente 🎁 É só tocar no link aqui pra resgatar o seu:',
 
   // ===== Conversa do CLIENTE (quem recomenda) — editável =====
   mensagemPedeNome: 'Pra começar, qual é o seu nome?',
@@ -1128,6 +1135,10 @@ async function iniciarConversa(telefone) {
   const empresa = await getEmpresa();
   await getSessao(telefone);
   await sendText(telefone, substituirVariaveis(empresa.mensagemAgradecimento, { empresa: empresa.nome }));
+  // Modo Full: avisa logo no começo que são 2 fases (evita frustração depois).
+  if (modoRecAtual(empresa) === 'full') {
+    await sendText(telefone, substituirVariaveis(empresa.fullMensagemAvisoInicial || EMPRESA_PADRAO.fullMensagemAvisoInicial, { empresa: empresa.nome }));
+  }
   await sendText(telefone, substituirVariaveis(empresa.mensagemPedeNome || EMPRESA_PADRAO.mensagemPedeNome, { empresa: empresa.nome }));
 }
 
@@ -1258,6 +1269,27 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     return;
   }
 
+  // MODO FULL — passo 2: aguardando o cliente confirmar que encaminhou o link.
+  if (sessao.etapa === 'aguardando_confirmacao_envio') {
+    const t = (texto || '').toLowerCase();
+    const confirmou = /envie|enviei|mandei|encaminhei|repassei|pronto|feito|j[áa] mandei|\bsim\b|\bok\b/.test(t);
+    if (confirmou) {
+      const faixa = sessao.premioPendente || {};
+      await sendText(telefone, '🎉 Recebido! Aqui está o seu presente:');
+      if (faixa.arquivo) await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
+      else if (faixa.premio) await sendText(telefone, faixa.premio);
+      if (faixa.texto) await sendText(telefone, faixa.texto);
+      if (faixa.link) await sendText(telefone, faixa.link);
+      sessao.etapa = 'finalizado';
+      sessao.premioPendente = null;
+      await saveSessao(telefone, sessao);
+      await sendText(telefone, 'Muito obrigado(a) por participar! 🙏 Assim que seus amigos resgatarem, eu te aviso 😊');
+    } else {
+      await sendText(telefone, 'Assim que você encaminhar a mensagem pros amigos, me manda um *"enviei"* aqui que eu solto seu presente na hora 🎁');
+    }
+    return;
+  }
+
   if (sessao.etapa === 'finalizado') {
     // Conversa já terminou. Se o atendimento pós-fluxo estiver ligado, tenta
     // responder dúvidas do cliente (endereço, horário, etc.) com as infos do negócio.
@@ -1269,7 +1301,58 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   }
 }
 
+// Modo de recomendação vigente: 'full' se a empresa escolheu OU está na API
+// Oficial (compliant); senão 'basic' (padrão, comportamento atual).
+function modoRecAtual(empresa) {
+  if (empresa && empresa.whatsappTipo === 'oficial') return 'full';
+  return (empresa && empresa.modoRecomendacao === 'full') ? 'full' : 'basic';
+}
+
+// Link de resgate que o cliente encaminha (modo Full): o amigo toca e chama o
+// número da empresa com um código de indicação (#r<código>). Null se não houver número.
+function linkResgateFull(empresa, telefoneRecomendador) {
+  const num = String((empresa && empresa.numeroWhatsapp) || '').replace(/\D/g, '');
+  if (!num) return null;
+  const num55 = num.startsWith('55') ? num : '55' + num;
+  const cod = codigoNicho('ref' + String(telefoneRecomendador)); // 4 chars opacos, reusa o hash
+  const texto = `Olá! Quero resgatar meu presente 🎁 #r${cod}`;
+  return `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
+}
+
+// Conclusão no modo FULL: NÃO dispara pros amigos e NÃO entrega o presente ainda.
+// Manda o link pro cliente encaminhar e segura o presente até ele confirmar "enviei".
+async function finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDestaFaixa) {
+  await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações — falta só o último passo pra liberar seu presente!`);
+
+  // Cria os leads (dado/atribuição no CRM) — mas NÃO dispara pros amigos.
+  for (const contato of contatosDestaFaixa) {
+    try {
+      await criarLead({
+        nomeRecomendado: contato.nome, telefoneRecomendado: contato.telefone,
+        nomeRecomendador: sessao.clienteNome, telefoneRecomendador: telefone,
+        vendedor: sessao.vendedorNome, empresaId: empresaIdAtual()
+      });
+    } catch (err) { console.error('Erro ao criar lead no CRM (full):', err.message); }
+  }
+
+  const primeiroNome = (sessao.clienteNome || '').split(' ')[0];
+  const vars = { nomeRecomendado: primeiroNome, recomendador: primeiroNome, empresa: empresa.nome };
+  await sendText(telefone, substituirVariaveis(empresa.fullMensagemPasso2 || EMPRESA_PADRAO.fullMensagemPasso2, vars));
+  const link = linkResgateFull(empresa, telefone);
+  const msgEncaminhar = substituirVariaveis(empresa.fullMensagemEncaminhar || EMPRESA_PADRAO.fullMensagemEncaminhar, vars);
+  await sendText(telefone, msgEncaminhar + (link ? `\n\n${link}` : ''));
+
+  sessao.etapa = 'aguardando_confirmacao_envio';
+  sessao.premioPendente = faixa;
+  await saveSessao(telefone, sessao);
+}
+
 async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFaixa, excedente) {
+  // MODO FULL: caminho próprio (inbound) — segura presente e não dispara pros amigos.
+  if (modoRecAtual(empresa) === 'full') {
+    await finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDestaFaixa);
+    return;
+  }
   await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
   await sendText(telefone, `🎁 Aqui está o seu presente:`);
 
