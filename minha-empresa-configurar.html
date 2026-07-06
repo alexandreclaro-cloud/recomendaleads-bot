@@ -349,6 +349,30 @@
             <span class="status-msg" id="statusModo"></span>
           </div>
         </div>
+
+        <div class="card" style="margin-top:16px" id="basicConfirmCard">
+          <div class="block-title"><i data-lucide="shield-check"></i> Basic: disparar só após confirmação</div>
+          <p class="sub">Opção do modo <b>Basic</b>: em vez de chamar os amigos na hora, o robô <b>segura</b> e só dispara depois que o cliente confirmar que avisou (menos denúncia = menos ban). <span style="color:var(--text-dim)">No Full não se aplica.</span></p>
+          <label style="display:flex; align-items:center; gap:10px; margin:14px 0; cursor:pointer;">
+            <input type="checkbox" id="basicConfirmAtivo" style="width:18px;height:18px;">
+            <span style="font-weight:600;">Ativar: só disparar depois que o cliente confirmar</span>
+          </label>
+          <p class="sub" style="margin-bottom:8px;">Variáveis: <b>{cliente}</b>, <b>{empresa}</b>. O cliente confirma respondendo <b>"pode mandar"</b>.</p>
+          <label class="label">Mensagem pedindo a confirmação (logo após o presente)</label>
+          <textarea class="textarea" id="basicConfirmMsg" rows="3"></textarea>
+          <label class="label">Lembretes de confirmação <span style="font-weight:400;color:var(--text-dim)">(o robô insiste até o cliente confirmar — você define quantos, o tempo e o texto)</span></label>
+          <div id="basicCadContainer"></div>
+          <button class="btn btn-secondary" id="addLembreteBtn" type="button" style="margin-top:4px;">➕ Adicionar lembrete</button>
+          <label class="label" style="margin-top:16px;">Se o cliente nunca confirmar (após todos os lembretes):</label>
+          <select class="input" id="basicSemConf" style="max-width:340px;">
+            <option value="nao_envia">Não disparar 🛡️ (mais seguro)</option>
+            <option value="envia">Disparar mesmo assim</option>
+          </select>
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarBasicConfBtn">Salvar confirmação</button>
+            <span class="status-msg" id="statusBasicConf"></span>
+          </div>
+        </div>
       </section>
 
       <section class="view fade-in" id="view-whatsapp">
@@ -1410,6 +1434,7 @@ function carregarModo() {
   if (el) el.checked = true;
   document.getElementById('numeroWhatsappInput').value = (configuracaoAtual && configuracaoAtual.numeroWhatsapp) || '';
   destacarModo();
+  if (typeof carregarBasicConf === 'function') carregarBasicConf();
 }
 function destacarModo() {
   let full = false;
@@ -1423,6 +1448,68 @@ function destacarModo() {
   document.getElementById('modoFullExtra').style.display = full ? 'block' : 'none';
 }
 document.querySelectorAll('input[name="modoRec"]').forEach(r => r.addEventListener('change', destacarModo));
+
+// ---- Basic com confirmação: editor da cadência de lembretes ----
+let basicCad = [];
+function renderBasicCad() {
+  const cont = document.getElementById('basicCadContainer');
+  cont.innerHTML = (basicCad || []).map((item, i) => {
+    const u = (typeof minParaUnidade === 'function') ? minParaUnidade(item.esperaMin) : { valor: item.esperaMin, unidade: 'minutos' };
+    const esc = String(item.texto || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    return `<div class="basic-lembrete" style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+        <b style="min-width:78px;">Lembrete ${i + 1}</b>
+        <input class="input bc-val" type="number" min="0" value="${u.valor}" style="max-width:90px;">
+        <select class="input bc-uni" style="max-width:120px;">
+          <option value="minutos"${u.unidade === 'minutos' ? ' selected' : ''}>minutos</option>
+          <option value="horas"${u.unidade === 'horas' ? ' selected' : ''}>horas</option>
+          <option value="dias"${u.unidade === 'dias' ? ' selected' : ''}>dias</option>
+        </select>
+        <span style="color:var(--text-dim);font-size:.82rem;">depois do anterior</span>
+        <button class="btn btn-secondary bc-del" type="button" data-i="${i}" style="margin-left:auto;color:var(--danger-dark);">Remover</button>
+      </div>
+      <textarea class="textarea bc-txt" rows="2" placeholder="Texto do lembrete">${esc}</textarea>
+    </div>`;
+  }).join('');
+  cont.querySelectorAll('.bc-del').forEach(b => b.addEventListener('click', () => { syncBasicCadFromDom(); basicCad.splice(+b.dataset.i, 1); renderBasicCad(); }));
+}
+function syncBasicCadFromDom() {
+  basicCad = [...document.querySelectorAll('#basicCadContainer .basic-lembrete')].map(row => ({
+    esperaMin: (typeof unidadeParaMin === 'function') ? (unidadeParaMin(row.querySelector('.bc-val').value, row.querySelector('.bc-uni').value) || 60) : 60,
+    texto: row.querySelector('.bc-txt').value
+  }));
+}
+function carregarBasicConf() {
+  const c = configuracaoAtual || {};
+  document.getElementById('basicConfirmAtivo').checked = !!c.basicConfirmarAntesDisparo;
+  document.getElementById('basicConfirmMsg').value = c.basicConfirmMensagem || '';
+  document.getElementById('basicSemConf').value = c.basicSemConfirmacao || 'nao_envia';
+  basicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || []));
+  renderBasicCad();
+}
+document.getElementById('addLembreteBtn').addEventListener('click', () => {
+  syncBasicCadFromDom();
+  basicCad.push({ esperaMin: 1440, texto: 'Oi {cliente}! 😊 Assim que avisar seus amigos, responde "pode mandar" que eu chamo eles 🎁' });
+  renderBasicCad();
+});
+document.getElementById('salvarBasicConfBtn').addEventListener('click', async () => {
+  syncBasicCadFromDom();
+  const st = document.getElementById('statusBasicConf');
+  const body = {
+    basicConfirmarAntesDisparo: document.getElementById('basicConfirmAtivo').checked,
+    basicConfirmMensagem: document.getElementById('basicConfirmMsg').value,
+    basicConfirmacaoCadencia: basicCad.filter(x => x.texto && x.texto.trim()),
+    basicSemConfirmacao: document.getElementById('basicSemConf').value
+  };
+  st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
 
 document.getElementById('salvarModoBtn').addEventListener('click', async () => {
   const st = document.getElementById('statusModo');
