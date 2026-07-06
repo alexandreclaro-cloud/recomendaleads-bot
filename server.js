@@ -419,8 +419,12 @@ function ehGatilhoPresente(texto, empresa) {
 function querRecomendarMais(texto) {
   if (!texto) return false;
   const t = texto.toLowerCase();
-  if (!/indic|recomend/.test(t)) return false;
-  return /\b(quero|posso|gostaria|vou|tenho|preciso|mais|outr|amig|pessoa|algu[ée]m|de novo|novamente)\b/.test(t);
+  // ESTRITO: exige uma FRASE de intenção real (verbo + indicar/recomendar juntos,
+  // ou indicar/recomendar + mais/outro/amigo). Assim não dispara só porque o texto
+  // menciona "recomendaleads" (o nome do produto) ou usa "posso/quero" solto.
+  return /\b(quero|gostaria de|gostaria|posso|vou|desejo|preciso)\s+(indicar|recomendar)\b/.test(t)
+    || /\b(indicar|recomendar)\s+(mais|outr[oa]s?|de novo|novamente|um amigo|uma pessoa|mais gente|mais amigos|mais pessoas|outra pessoa)\b/.test(t)
+    || /\bmais\s+(indica|recomenda)/.test(t);
 }
 
 // ============================================================
@@ -2477,7 +2481,7 @@ async function tratarWebhook(req, res) {
     // Cliente que já terminou (ou sem fluxo ativo) pede pra recomendar mais
     // pessoas → reinicia o processo de recomendação nativo. Não interrompe quem
     // está no meio do fluxo (cliente ou recomendado ativo).
-    const querRecomendar = querRecomendarMais(texto) && !clienteAtivo && !recomendadoAtivo;
+    const querRecomendar = querRecomendarMais(texto) && sessaoExiste && !clienteAtivo && !recomendadoAtivo;
 
     if (ehGatilhoInicial || nichoDetectado || querRecomendar) {
       await resetSessao(telefone);
