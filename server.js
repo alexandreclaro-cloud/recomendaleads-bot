@@ -582,6 +582,17 @@ const EMPRESA_PADRAO = {
   //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).
   // No modo API Oficial (whatsappTipo='oficial') o fluxo roda sempre como 'full'.
   modoRecomendacao: 'basic',
+  // Basic com CONFIRMAÇÃO: no modo basic, segura o disparo pros amigos até o
+  // cliente confirmar que avisou (menos denúncia = menos ban). Lembretes de
+  // confirmação com cadência editável (quantos, tempo e texto de cada).
+  basicConfirmarAntesDisparo: false,
+  basicConfirmMensagem: 'Falta um passo pra eu chamar seus amigos! 🙌 Dá um alô rápido avisando que a {empresa} vai entrar em contato com eles. Assim que avisar, me responde *"pode mandar"* que eu já chamo eles 🎁',
+  basicConfirmacaoCadencia: [
+    { esperaMin: 120, texto: 'Oi {cliente}! 😊 Conseguiu avisar seus amigos? Quando estiver tudo certo, é só responder *"pode mandar"* que eu chamo eles 🎁' },
+    { esperaMin: 1440, texto: 'Oi {cliente}! Seus amigos ainda estão te esperando 🎁 Avisa eles e me responde *"pode mandar"*.' },
+    { esperaMin: 4320, texto: 'Oi {cliente}! Última lembrança 🙌 É só avisar os amigos e responder *"pode mandar"* que eu libero os presentes deles.' }
+  ],
+  basicSemConfirmacao: 'nao_envia', // 'nao_envia' (seguro) | 'envia' (dispara mesmo sem confirmar, após a cadência)
   // Número de WhatsApp da empresa (só dígitos) — usado pra montar o link que o
   // cliente encaminha no modo Full (o amigo toca e chama ESTE número).
   numeroWhatsapp: '',
@@ -1377,6 +1388,55 @@ async function finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDest
   await saveSessao(telefone, sessao);
 }
 
+// Agenda o disparo escalonado (anti-rajada) pros recomendados. Reutilizável:
+// chamado na hora (Basic normal) ou depois da confirmação (Basic com confirmação).
+async function dispararRecomendados(nomeRecomendador, vendedorNome, contatos, empresa) {
+  const baseMs = Math.max(0, empresa.tempoEsperaConversaoMin || 0) * 60 * 1000;
+  const gapMinMs = Math.max(0, (empresa.recomendadoGapMinMin != null ? empresa.recomendadoGapMinMin : 3)) * 60 * 1000;
+  const gapMaxMs = Math.max(gapMinMs, (empresa.recomendadoGapMaxMin != null ? empresa.recomendadoGapMaxMin : 8) * 60 * 1000);
+  let offsetMs = 0;
+  for (const contato of (contatos || [])) {
+    try {
+      const executarEm = new Date(Date.now() + baseMs + offsetMs).toISOString();
+      if (contato.telefone) {
+        const snapPendentes = await AGENDAMENTOS_COL()
+          .where('status', '==', 'pendente').where('tipo', '==', 'iniciar_conversa_recomendado').get();
+        const batch = db.batch();
+        snapPendentes.forEach(doc => { if (doc.data().dados?.contato?.telefone === contato.telefone) batch.update(doc.ref, { status: 'cancelado' }); });
+        await batch.commit();
+      }
+      await criarAgendamento({ tipo: 'iniciar_conversa_recomendado', executarEm, dados: { contato, nomeRecomendador, vendedorNome } });
+      offsetMs += gapMinMs + Math.random() * (gapMaxMs - gapMinMs);
+    } catch (err) { console.error('Erro ao agendar recomendado:', err.message); }
+  }
+}
+
+// ---- Basic com CONFIRMAÇÃO — lembretes e detecção ----
+function ehConfirmacaoDisparo(texto) {
+  const t = (texto || '').toLowerCase().trim();
+  // Negação primeiro: "ainda não avisei", "não pode" etc NÃO é confirmação.
+  if (/\bn[ãa]o\b|ainda/.test(t)) return false;
+  return /pode mandar|pode enviar|pode chamar|pode sim|confirmo|avisei|mandei|encaminhei|^pode$|^sim$|^ok$|^prontinho$|^pronto$|^feito$/.test(t);
+}
+async function agendarConfirmacaoDisparo(telefone, empresa, indice) {
+  const cad = empresa.basicConfirmacaoCadencia || EMPRESA_PADRAO.basicConfirmacaoCadencia || [];
+  const item = cad[indice];
+  if (!item) return;
+  const executarEm = new Date(Date.now() + Math.max(1, parseInt(item.esperaMin, 10) || 120) * 60000).toISOString();
+  await criarAgendamento({ tipo: 'confirmar_disparo', executarEm, dados: { telefone, indice } });
+}
+async function cancelarConfirmacoesDisparo(telefone) {
+  try {
+    const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').where('tipo', '==', 'confirmar_disparo').get();
+    const batch = db.batch(); let n = 0;
+    snap.forEach(doc => {
+      const d = doc.data();
+      if ((d.dados && d.dados.telefone) === telefone && (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) { batch.update(doc.ref, { status: 'cancelado' }); n++; }
+    });
+    if (n) await batch.commit();
+  } catch (e) { console.error('cancelarConfirmacoesDisparo:', e.message); }
+}
+
 async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFaixa, excedente) {
   // MODO FULL: caminho próprio (inbound) — segura presente e não dispara pros amigos.
   if (modoRecAtual(empresa) === 'full') {
@@ -1432,13 +1492,26 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     try { await agendarFollowupRecomendador(telefone, empresa, 0); } catch (e) { console.error('agendarFollowupRecomendador:', e.message); }
   }
 
+  // Basic com CONFIRMAÇÃO: acumula os contatos e NÃO dispara agora — segura até
+  // o cliente confirmar. Só começa a pedir confirmação quando não há mais faixas.
+  const gated = empresa.basicConfirmarAntesDisparo;
+  if (gated) {
+    sessao.contatosPendentesDisparo = [...(sessao.contatosPendentesDisparo || []), ...contatosDestaFaixa];
+  }
+
   const proximaFaixa = empresa.faixasBonus[sessao.indiceFaixaAtual + 1];
 
   if (!proximaFaixa) {
     sessao.etapa = 'finalizado';
     sessao.faixaFinal = faixa;
+    if (gated) sessao.aguardandoConfirmacaoDisparo = true;
     await saveSessao(telefone, sessao);
     await sendText(telefone, 'Muito obrigado(a) por participar e por confiar na gente! 🙏');
+    if (gated) {
+      const varsC = { nomeRecomendado: (sessao.clienteNome || '').split(' ')[0], recomendador: (sessao.clienteNome || '').split(' ')[0], empresa: empresa.nome };
+      await sendText(telefone, substituirVariaveis(empresa.basicConfirmMensagem || EMPRESA_PADRAO.basicConfirmMensagem, varsC));
+      try { await agendarConfirmacaoDisparo(telefone, empresa, 0); } catch (e) { console.error('agendarConfirmacaoDisparo:', e.message); }
+    }
   } else {
     sessao.etapa = 'aguardando_autorizacao_proxima_faixa';
     sessao.excedentePendente = excedente;
@@ -1453,49 +1526,13 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     }
   }
 
-  // Anti-rajada (anti-ban): em vez de disparar TODOS os recomendados no mesmo
-  // instante (padrão de "disparo em massa" que queima o número), escalonamos
-  // cada um com um intervalo ALEATÓRIO entre os envios. O 1º sai após
-  // tempoEsperaConversaoMin; os seguintes vão saindo espaçados, imitando envio humano.
-  const baseMs = Math.max(0, empresa.tempoEsperaConversaoMin || 0) * 60 * 1000;
-  const gapMinMs = Math.max(0, (empresa.recomendadoGapMinMin != null ? empresa.recomendadoGapMinMin : 3)) * 60 * 1000;
-  const gapMaxMs = Math.max(gapMinMs, (empresa.recomendadoGapMaxMin != null ? empresa.recomendadoGapMaxMin : 8) * 60 * 1000);
-  let offsetMs = 0;
-  for (const contato of contatosDestaFaixa) {
-    try {
-      const executarEm = new Date(Date.now() + baseMs + offsetMs).toISOString();
-      // Cancela agendamentos pendentes anteriores para este mesmo telefone
-      // evita que o recomendado receba o roteiro múltiplas vezes
-      if (contato.telefone) {
-        const snapPendentes = await AGENDAMENTOS_COL()
-          .where('status', '==', 'pendente')
-          .where('tipo', '==', 'iniciar_conversa_recomendado')
-          .get();
-        const batch = db.batch();
-        snapPendentes.forEach(doc => {
-          if (doc.data().dados?.contato?.telefone === contato.telefone) {
-            batch.update(doc.ref, { status: 'cancelado' });
-          }
-        });
-        await batch.commit();
-      }
-      await criarAgendamento({
-        tipo: 'iniciar_conversa_recomendado',
-        executarEm,
-        dados: {
-          contato,
-          nomeRecomendador: sessao.clienteNome,
-          vendedorNome: sessao.vendedorNome
-        }
-      });
-      // Próximo recomendado sai depois de um intervalo aleatório (embaralhado).
-      offsetMs += gapMinMs + Math.random() * (gapMaxMs - gapMinMs);
-    } catch (err) {
-      console.error('Erro ao criar agendamento para recomendado:', err.message);
-    }
+  // Disparo pros recomendados: no Basic normal, sai agora (escalonado/anti-rajada).
+  // No Basic-com-confirmação, NÃO sai agora — só depois do cliente confirmar.
+  if (!gated) {
+    await dispararRecomendados(sessao.clienteNome, sessao.vendedorNome, contatosDestaFaixa, empresa);
   }
 
-  console.log(`[FAIXA FINALIZADA] ${sessao.clienteNome} via ${sessao.vendedorNome} — ${contatosDestaFaixa.length} contatos nesta faixa, ${excedente.length} excedentes pendentes`);
+  console.log(`[FAIXA FINALIZADA] ${sessao.clienteNome} via ${sessao.vendedorNome} — ${contatosDestaFaixa.length} contatos${gated ? ' (segurando p/ confirmação)' : ''}, ${excedente.length} excedentes pendentes`);
 }
 
 // ============================================================
@@ -2454,6 +2491,18 @@ async function tratarWebhook(req, res) {
       const ctx = tenantContext.getStore();
       if (ctx) ctx.empresa = aplicarNicho(ctx.empresa, nichoEfetivo);
       console.log(`[NICHO] ${telefone} → ${nichoEfetivo}${nichoDetectado ? ' (novo pelo link)' : ' (sessão)'}`);
+    }
+
+    // Basic com confirmação: cliente confirmou ("pode mandar") → dispara agora
+    // os recomendados que estavam segurados. Trata antes do roteamento normal.
+    if (sessaoExiste && sessaoExistenteSnap.data().aguardandoConfirmacaoDisparo && !ehGatilhoInicial && !nichoDetectado && ehConfirmacaoDisparo(texto)) {
+      const s = sessaoExistenteSnap.data();
+      const empresaC = await getEmpresa();
+      await dispararRecomendados(s.clienteNome, s.vendedorNome, s.contatosPendentesDisparo || [], empresaC);
+      await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
+      await cancelarConfirmacoesDisparo(telefone);
+      await sendText(telefone, 'Perfeito! 🙌 Já estou avisando seus amigos. Muito obrigado(a)!');
+      return res.sendStatus(200);
     }
 
     // Follow-up do recomendador: se está aguardando resposta ao lembrete
@@ -4979,6 +5028,32 @@ async function processarAgendamentoInterno(agendamento) {
     await sendText(telefone, substituirVariaveis(textoLembrete, vars));
     await saveSessao(telefone, { followupAguardando: true });
     await agendarFollowupRecomendador(telefone, empresa, indice + 1, teste ? { teste: true } : undefined);
+    return;
+  }
+
+  // Basic com confirmação: lembrete pedindo o cliente confirmar pra a gente disparar.
+  if (agendamento.tipo === 'confirmar_disparo') {
+    const { telefone, indice } = agendamento.dados;
+    if (await numeroEstaPausado(telefone)) return;
+    const snap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
+    const sessao = snap.exists ? snap.data() : null;
+    if (!sessao || !sessao.aguardandoConfirmacaoDisparo) return; // já confirmou ou não aplica
+    const cad = empresa.basicConfirmacaoCadencia || EMPRESA_PADRAO.basicConfirmacaoCadencia || [];
+    const item = cad[indice];
+    const nome = (sessao.clienteNome || '').split(' ')[0] || 'você';
+    if (item) {
+      await sendText(telefone, substituirVariaveis(item.texto, { nomeRecomendado: nome, recomendador: nome, empresa: empresa.nome }));
+      await agendarConfirmacaoDisparo(telefone, empresa, indice + 1);
+    } else {
+      // Esgotou os lembretes sem confirmação. Segue a política escolhida.
+      if (empresa.basicSemConfirmacao === 'envia') {
+        await dispararRecomendados(sessao.clienteNome, sessao.vendedorNome, sessao.contatosPendentesDisparo || [], empresa);
+        console.log(`[BASIC-CONFIRM] ${telefone} não confirmou — disparando mesmo assim (política 'envia')`);
+      } else {
+        console.log(`[BASIC-CONFIRM] ${telefone} não confirmou — NÃO disparado (política 'nao_envia')`);
+      }
+      await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
+    }
     return;
   }
 
