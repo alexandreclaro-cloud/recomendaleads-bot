@@ -859,7 +859,7 @@
 
 <script>
   function fmt(v) {
-    return v.toLocaleString('pt-BR', { style:'currency', currency:'BRL', minimumFractionDigits:0, maximumFractionDigits:0 });
+    return v.toLocaleString('pt-BR', { style:'currency', currency:'BRL', minimumFractionDigits:0, maximumFractionDigits:0 }).replace(',00','');
   }
   function validate() {
     let ok = true;
