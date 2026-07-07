@@ -2948,6 +2948,10 @@ app.get('/barbearia', (req, res) => res.sendFile(path.join(__dirname, 'recomendo
 
 app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-dentista.html')));
 
+// Calculadora de custo de disparo (API Oficial) — página aberta, pra usar na
+// hora do orçamento com o cliente (celular/notebook, sem login).
+app.get('/calculadora', (req, res) => res.sendFile(path.join(__dirname, 'calculadora.html')));
+
 app.get('/', (req, res) => {
   if (req.hostname === 'dentista.recomendaleads.com.br') return res.sendFile(path.join(__dirname, 'recomendometro-dentista.html'));
   res.sendFile(path.join(__dirname, 'landing-nova.html'));
