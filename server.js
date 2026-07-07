@@ -371,6 +371,40 @@ async function despausarNumero(telefone) {
   await NUMEROS_PAUSADOS_COL().doc(chaveSessao(telefone)).delete();
 }
 
+// ---- Descadastro (opt-out): a pessoa não quer mais receber mensagens ----
+// Anti-ban: dar uma saída fácil desvia a DENÚNCIA (maior gatilho de ban).
+const DESCADASTROS_COL = () => db.collection('descadastros');
+function ehOptOut(texto) {
+  const t = (texto || '').toLowerCase().trim();
+  return /^sair$/.test(t)
+    || /n[ãa]o quero (mais )?(receber|mensagens|as mensagens)/.test(t)
+    || /n[ãa]o me (mande|manda|mandem|envie|envia)/.test(t)
+    || /me (tira|tire|remove|remova|retira|retire)/.test(t)
+    || /parar de receber|descadastr|remover meu n[úu]mero|sair da lista|n[ãa]o quero mais nada/.test(t);
+}
+async function estaDescadastrado(telefone) {
+  try { const s = await DESCADASTROS_COL().doc(chaveSessao(telefone)).get(); return s.exists; }
+  catch (e) { return false; }
+}
+async function processarOptOut(telefone, empresa) {
+  try { await DESCADASTROS_COL().doc(chaveSessao(telefone)).set({ em: new Date().toISOString() }); } catch (e) {}
+  await pausarNumero(telefone);
+  try { await SESSOES_RECOMENDADO_COL().doc(chaveSessao(telefone)).delete(); } catch (e) {}
+  try { await SESSOES_COL().doc(chaveSessao(telefone)).delete(); } catch (e) {}
+  try {
+    const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').get();
+    const batch = db.batch();
+    snap.forEach(doc => {
+      const d = doc.data();
+      const tel = d.dados?.contato?.telefone || d.dados?.telefone || null;
+      if (tel === telefone && (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) batch.update(doc.ref, { status: 'cancelado' });
+    });
+    await batch.commit();
+  } catch (e) { console.error('optout cancelar agendamentos:', e.message); }
+  await sendText(telefone, (empresa && empresa.mensagemOptOut) || EMPRESA_PADRAO.mensagemOptOut);
+  console.log(`[OPT-OUT] ${telefone} descadastrado (opt-out)`);
+}
+
 const EMPRESAS_COL = () => db.collection('empresas_login');
 // Usuários de login (multiusuário por empresa). Cada doc:
 //   { empresaId, nome, email, senhaHash, papel: 'gestor'|'atendente',
@@ -654,15 +688,17 @@ const EMPRESA_PADRAO = {
   humanizarMaxSeg: 4,
 
   // ===== Fluxo pós-presente (todos editáveis no painel, na sequência) =====
-  posMenuPrincipal: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida\n\n👇 _Digite o número_`,
+  // Opt-out (descadastro) — anti-ban: saída fácil desvia a denúncia.
+  mensagemOptOut: 'Tudo bem! 🙏 Não vou mais te enviar mensagens. Se um dia mudar de ideia, é só chamar aqui. Obrigado(a)!',
+  posMenuPrincipal: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digite o número_`,
   posLinkAgendamento: 'Perfeito! 😊 É só escolher o melhor horário pra você aqui:',
   posPerguntaPeriodo: `Perfeito! 😊 Vamos combinar sua visita.\n\nQual período fica melhor pra você?\n\n*1* — Manhã ☀️\n*2* — Tarde 🌤️\n*3* — Noite 🌙\n\n👇 _Digite o número_`,
   posPerguntaDia: 'Ótimo! Agora escolha o melhor dia 📅',
   posConfirmacaoAgendamento: `🎉 *Tudo certo!*\n\nSua visita foi reservada:\n📅 {dia} — período da {periodo}\n\nNossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`,
   posConfirmacaoCheck: 'Oi {nomeRecomendado}! 😊 Conseguiu confirmar seu agendamento? Se ficou alguma dúvida, é só me chamar aqui 👍',
-  posMenuDepois: `Sem problemas! 😊 Seu presente continua reservado pra você.\n\nComo prefere fazer?\n\n🟢 *1* — Deixar uma data reservada\n🟡 *2* — Receber um lembrete depois\n\n👇 _Digite o número_`,
+  posMenuDepois: `Sem problemas! 😊 Seu presente continua reservado pra você.\n\nComo prefere fazer?\n\n🟢 *1* — Deixar uma data reservada\n🟡 *2* — Receber um lembrete depois\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digite o número_`,
   posLembrete: 'Perfeito! 😊 Vamos te lembrar no momento certo de aproveitar seu presente. Até breve! 👋',
-  posMenuDuvidas: `Claro! Sobre o que você gostaria de saber?\n\n*1* — Como funciona o presente?\n*2* — Qual a validade?\n*3* — Onde fica a empresa?\n*4* — Horários de atendimento\n*5* — Falar com um atendente\n\n👇 _Digite o número_`,
+  posMenuDuvidas: `Claro! Sobre o que você gostaria de saber?\n\n*1* — Como funciona o presente?\n*2* — Qual a validade?\n*3* — Onde fica a empresa?\n*4* — Horários de atendimento\n*5* — Falar com um atendente\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digite o número_`,
   faqComoFunciona: 'Seu presente é: {premio}. É só apresentar essa mensagem quando vier nos visitar 😊',
   faqValidade: 'É por tempo limitado, então recomendo aproveitar logo! 😉 Qualquer detalhe, nossa equipe te ajuda.',
   enderecoEmpresa: '',
@@ -1397,6 +1433,11 @@ async function dispararRecomendados(nomeRecomendador, vendedorNome, contatos, em
   let offsetMs = 0;
   for (const contato of (contatos || [])) {
     try {
+      // Nunca contata quem se descadastrou (opt-out permanente).
+      if (contato.telefone && await estaDescadastrado(contato.telefone)) {
+        console.log(`[OPT-OUT] pulando ${contato.telefone} (descadastrado)`);
+        continue;
+      }
       const executarEm = new Date(Date.now() + baseMs + offsetMs).toISOString();
       if (contato.telefone) {
         const snapPendentes = await AGENDAMENTOS_COL()
@@ -1692,6 +1733,11 @@ function escolherSaudacaoRecomendado(empresa) {
 async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa) {
   if (!contato.telefone) {
     console.log(`[AVISO] Contato "${contato.nome}" sem telefone válido — não foi possível iniciar conversa.`);
+    return;
+  }
+  // Opt-out permanente: nunca reinicia conversa com quem se descadastrou.
+  if (await estaDescadastrado(contato.telefone)) {
+    console.log(`[OPT-OUT] ${contato.telefone} descadastrado — não inicia conversa.`);
     return;
   }
 
@@ -2173,6 +2219,12 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   const sessao = await getSessaoRecomendado(telefone);
   if (!sessao) return false;
 
+  // Opção "0 — Não quero receber mensagens" dos menus → descadastra na hora.
+  if ((texto || '').trim() === '0') {
+    await processarOptOut(telefone, empresa);
+    return true;
+  }
+
   // IA DESATIVADA — fluxo 100% por palavras-chave e respostas fixas do CRM.
   // Mais rápido, previsível e sem delay de API.
 
@@ -2438,6 +2490,14 @@ async function tratarWebhook(req, res) {
 
     // Empresa do contexto (pra ler a frase de ativação configurável).
     const empGatilho = await getEmpresa();
+
+    // OPT-OUT (descadastro): "não quero receber", "sair", etc. — em qualquer
+    // momento. Honra na hora e permanente (desvia a denúncia = anti-ban).
+    if (ehOptOut(texto)) {
+      await processarOptOut(telefone, empGatilho);
+      return res.sendStatus(200);
+    }
+
     // Se o número está pausado, só reage ao gatilho de ativação do presente
     const ehGatilhoInicialParaPausa = ehGatilhoPresente(texto, empGatilho) || !!detectarNichoDemo(texto, empGatilho);
     if (!ehGatilhoInicialParaPausa && await numeroEstaPausado(telefone)) {
