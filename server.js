@@ -2895,6 +2895,12 @@ app.get('/logos', (req, res) => {
   res.sendFile(path.join(__dirname, 'logos.html'));
 });
 
+app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-dentista.html')));
+
+app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-dentista.html')));
+
+app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-dentista.html')));
+
 app.get('/recomendometro', (req, res) => {
   res.sendFile(path.join(__dirname, 'recomendometro.html'));
 });

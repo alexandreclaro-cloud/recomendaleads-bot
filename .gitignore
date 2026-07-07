@@ -1,0 +1,13 @@
+# Dependências (baixadas automaticamente, não devem ir pro git)
+node_modules/
+
+# Scripts locais de uso único
+_genh.js
+
+# Arquivos de ambiente / segredos
+.env
+.env.*
+
+# Logs e temporários
+*.log
+.DS_Store
