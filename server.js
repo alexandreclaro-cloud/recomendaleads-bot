@@ -2943,6 +2943,7 @@ app.get('/admin/recomendometro-leads', exigirAdmin, async (req, res) => {
 app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-dentista.html')));
 
 app.get('/', (req, res) => {
+  if (req.hostname === 'dentista.recomendaleads.com.br') return res.sendFile(path.join(__dirname, 'recomendometro-dentista.html'));
   res.sendFile(path.join(__dirname, 'landing-nova.html'));
 });
 
