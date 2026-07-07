@@ -2897,10 +2897,6 @@ app.get('/logos', (req, res) => {
 
 app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-dentista.html')));
 
-app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-dentista.html')));
-
-app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-dentista.html')));
-
 app.get('/recomendometro', (req, res) => {
   res.sendFile(path.join(__dirname, 'recomendometro.html'));
 });
