@@ -598,6 +598,225 @@
     object-fit: cover;
     object-position: center top;
   }
+
+  /* ─── RESULT FULLSCREEN ─── */
+  .result-screen {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: #0D1B3E;
+    overflow-y: auto;
+    animation: fadeIn 0.4s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  .result-screen.visible { display: block; }
+
+  .rs-inner {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  .rs-tag {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--gold);
+    border: 1px solid rgba(201,168,76,0.3);
+    padding: 5px 16px;
+    border-radius: 100px;
+    margin-bottom: 20px;
+  }
+
+  .rs-greeting {
+    font-size: 18px;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 8px;
+    font-weight: 400;
+  }
+
+  .rs-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(32px, 5vw, 52px);
+    color: #fff;
+    line-height: 1.1;
+    margin-bottom: 40px;
+  }
+  .rs-title span { color: var(--gold); }
+
+  .rs-perda-box {
+    background: rgba(201,168,76,0.08);
+    border: 1px solid rgba(201,168,76,0.25);
+    border-radius: 20px;
+    padding: 36px 40px;
+    width: 100%;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .rs-perda-box::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: 15%; right: 15%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+  .rs-perda-lbl {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 12px;
+  }
+  .rs-perda-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(64px, 12vw, 100px);
+    color: #e05a5a;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .rs-perda-sub {
+    font-size: 14px;
+    color: rgba(255,255,255,0.5);
+  }
+
+  .rs-cards {
+    display: grid;
+    grid-template-columns: repeat(3,1fr);
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 24px;
+  }
+  .rs-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 16px 12px;
+  }
+  .rs-card .per { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: rgba(255,255,255,0.35); margin-bottom: 6px; }
+  .rs-card .val { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: #e05a5a; line-height: 1; }
+  .rs-card .lbl { font-size: 10px; color: rgba(255,255,255,0.3); margin-top: 3px; }
+
+  .rs-ganho-box {
+    background: var(--gold);
+    border-radius: 16px;
+    padding: 28px 32px;
+    width: 100%;
+    margin-bottom: 32px;
+    text-align: center;
+  }
+  .rs-ganho-lbl { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: rgba(13,27,62,0.7); margin-bottom: 8px; }
+  .rs-ganho-num { font-family: 'Bebas Neue', sans-serif; font-size: clamp(48px, 8vw, 72px); color: #0D1B3E; line-height: 1; margin-bottom: 6px; }
+  .rs-ganho-sub { font-size: 13px; color: rgba(13,27,62,0.6); }
+
+  .rs-btn-main {
+    display: block;
+    width: 100%;
+    background: #1DB954;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 22px 32px;
+    font-size: 18px;
+    font-weight: 800;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+    transition: all 0.2s;
+    box-shadow: 0 0 40px rgba(29,185,84,0.4);
+    margin-bottom: 14px;
+    letter-spacing: 0.3px;
+  }
+  .rs-btn-main:hover { background: #17a348; transform: translateY(-2px); box-shadow: 0 8px 40px rgba(29,185,84,0.5); }
+
+  .rs-btn-sec {
+    display: block;
+    width: 100%;
+    background: #C94C4C;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 20px 32px;
+    font-size: 17px;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+    transition: all 0.2s;
+    box-shadow: 0 0 32px rgba(201,76,76,0.35);
+    margin-bottom: 24px;
+  }
+  .rs-btn-sec:hover { background: #b03c3c; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(201,76,76,0.45); }
+
+  .rs-refazer {
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: 'Inter', sans-serif;
+    text-decoration: underline;
+  }
+  .rs-refazer:hover { color: rgba(255,255,255,0.6); }
+
+  @media (max-width: 540px) {
+    .rs-cards { grid-template-columns: 1fr; }
+    .rs-perda-box { padding: 24px 20px; }
+    .rs-ganho-box { padding: 20px; }
+  }
+
+  .rs-diagnostico {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-left: 3px solid var(--gold);
+    border-radius: 12px;
+    padding: 28px 28px;
+    width: 100%;
+    margin-bottom: 24px;
+    text-align: left;
+  }
+  .rs-diag-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 14px;
+  }
+  .rs-diag-text {
+    font-size: 15px;
+    color: rgba(255,255,255,0.8);
+    line-height: 1.8;
+  }
+  .rs-diag-text strong {
+    color: #fff;
+    font-weight: 700;
+  }
+  .rs-diag-text .highlight {
+    color: var(--gold);
+    font-weight: 700;
+  }
+  .rs-diag-destaque {
+    background: rgba(201,168,76,0.1);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-top: 16px;
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+    line-height: 1.7;
+    font-style: italic;
+  }
+  .rs-diag-destaque strong { color: var(--gold); font-style: normal; }
 </style>
 </head>
 <body>
@@ -630,9 +849,9 @@
     </div>
   </div>
 
-  <p class="hero-pre-cta">Descubra os dois em menos de 2 minutos — de graça.</p>
+  <p class="hero-pre-cta">Descubra em menos de 2 minutos quanto dinheiro sua clínica pode estar perdendo.</p>
   <a href="#formulario" class="btn-hero">
-    Quero ver meu diagnóstico
+    QUERO DESCOBRIR QUANTO ESTOU PERDENDO
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
   </a>
 
@@ -697,16 +916,21 @@
           <span class="hint">Valor médio que cada cliente gasta numa compra</span>
           <div class="prefix-wrap">
             <span class="prefix">R$</span>
-            <input type="number" id="ticket" placeholder="Ex: 120" min="1">
+            <input type="text" id="ticket" placeholder="0" inputmode="numeric" autocomplete="off">
           </div>
           <span class="field-err">Informe um valor válido</span>
         </div>
 
         <div class="fg">
           <label>Pergunta 4 — Quantos dias você trabalha por mês?</label>
-          <span class="hint">Dias em que a empresa atende e vende</span>
-          <input type="number" id="dias-mes" placeholder="Ex: 26" min="1" max="31">
-          <span class="field-err">Informe um valor válido</span>
+          <span class="hint">Selecione sua escala de trabalho</span>
+          <select id="dias-mes">
+            <option value="" disabled selected>Selecione…</option>
+            <option value="22">Segunda a Sexta (≈ 22 dias)</option>
+            <option value="26">Segunda a Sábado (≈ 26 dias)</option>
+            <option value="30">Segunda a Domingo (≈ 30 dias)</option>
+          </select>
+          <span class="field-err">Selecione sua escala</span>
         </div>
 
         <div class="fg">
@@ -795,7 +1019,7 @@
           💬 Quero uma sessão estratégica
         </a>
         <a href="https://recomendaleads.com.br" target="_blank" class="btn-ghost-light">
-          🚀 Conhecer o RecomendaLeads
+          ☐ ME MOSTRE COMO ISSO FUNCIONA →
         </a>
       </div>
       <div class="refazer"><button onclick="refazer()">↻ Refazer o cálculo</button></div>
@@ -863,12 +1087,14 @@
   }
   function validate() {
     let ok = true;
-    [['clientes-dia','num'],['dias-mes','num'],['ticket','num'],['nome','txt'],['whatsapp','txt'],['email','email']].forEach(([id,t]) => {
+    [['clientes-dia','num'],['dias-mes','sel'],['ticket','tick'],['nome','txt'],['whatsapp','txt'],['email','email']].forEach(([id,t]) => {
       const el = document.getElementById(id);
       const g = el.closest('.fg');
       const v = el.value.trim();
       let bad = !v;
       if (t === 'num') bad = !v || parseFloat(v) <= 0;
+      if (t === 'tick') bad = getTicketValue() <= 0;
+      if (t === 'sel') bad = !v;
       if (t === 'email' && v) bad = !v.includes('@');
       if (bad) { g.classList.add('has-error'); ok = false; }
       else { g.classList.remove('has-error'); }
@@ -879,7 +1105,7 @@
     if (!validate()) { document.getElementById('clientes-dia').closest('.fg').scrollIntoView({behavior:'smooth',block:'center'}); return; }
     const cd = parseFloat(document.getElementById('clientes-dia').value);
     const dm = parseFloat(document.getElementById('dias-mes').value);
-    const tk = parseFloat(document.getElementById('ticket').value);
+    const tk = getTicketValue();
     const temProg = document.querySelector('input[name="prog"]:checked').value === 'sim';
     const temBase = document.querySelector('input[name="base"]:checked').value === 'sim';
     const nome = document.getElementById('nome').value.split(' ')[0];
@@ -895,16 +1121,74 @@
     document.getElementById('res-12m').textContent = fmt(perdaMes * 12);
     document.getElementById('res-ganho').textContent = fmt(ganhoMes);
     document.getElementById('res-texto').textContent = 'por mês a mais no faturamento — sem gastar um real a mais em anúncios. Faturamento atual estimado: ' + fmt(fatMes) + '/mês.';
-    document.getElementById('form-box').style.display = 'none';
-    const rb = document.getElementById('result-box');
-    rb.classList.add('visible');
-    rb.scrollIntoView({behavior:'smooth',block:'start'});
+    // Preencher tela fullscreen
+    document.getElementById('rs-nome').textContent = nome;
+    document.getElementById('rs-12m').textContent = fmt(perdaMes * 12);
+    document.getElementById('rs-3m').textContent = fmt(perdaMes * 3);
+    document.getElementById('rs-6m').textContent = fmt(perdaMes * 6);
+    document.getElementById('rs-mes').textContent = fmt(perdaMes);
+    document.getElementById('rs-ganho').textContent = fmt(ganhoMes);
+    document.getElementById('rs-perda-titulo').textContent = fmt(perdaMes * 12);
+    // Montar diagnóstico personalizado
+    const diagEl = document.getElementById('rs-diag-texto');
+    let diagHTML = '';
+    if (temProg) {
+      diagHTML = `
+        Você já tem um programa de recomendação — isso é ótimo e te coloca à frente de <strong>90% dos consultórios</strong>. Mas pelos números que você me trouxe, ainda há espaço para otimizar e <span class="highlight">dobrar os resultados</span> com automação e processo mais estruturado.
+        <div class="rs-diag-destaque">
+          💡 <strong>O próximo nível:</strong> sair de um programa manual para um processo automatizado que ativa cada paciente no momento certo — sem depender de lembrança ou sorte.
+        </div>`;
+    } else if (temBase) {
+      diagHTML = `
+        Pelo que você me disse, hoje você já tem <strong>indicação passiva</strong> — seu paciente às vezes recomenda, mas só quando lembra, quando alguém pergunta, quando a estrela alinha. <span class="highlight">Isso é sorte, não estratégia.</span>
+        <br><br>
+        A diferença entre <strong>Indicação Passiva</strong> e <strong>Recomendação Ativa</strong> é simples: na passiva você espera. Na ativa, você cria o momento certo para pedir — com a mensagem certa, na hora certa, para o paciente certo.
+        <div class="rs-diag-destaque">
+          💡 <strong>Recomendação Ativa é menos esforço e mais venda</strong> — sem depender de sorte. Um processo estruturado transforma cada atendimento numa oportunidade de crescimento.
+        </div>`;
+    } else {
+      diagHTML = `
+        Pelo que vi nas suas respostas, hoje você depende <strong>100% de indicação passiva</strong> — aquela que acontece quando o paciente lembra, quando alguém pergunta, quando a sorte aparece. <span class="highlight">Sem processo, sem previsibilidade.</span>
+        <br><br>
+        Se você tivesse um <strong>Programa de Recomendação estruturado e ativo</strong>, já teria uma melhora significativa nessa perda — porque cada paciente satisfeito viraria um promotor ativo do seu consultório, não apenas um cliente silencioso.
+        <br><br>
+        A diferença é clara: <strong>Indicação Passiva</strong> depende da sorte. <strong>Recomendação Ativa</strong> depende do processo.
+        <div class="rs-diag-destaque">
+          💡 <strong>Menos esforço, mais venda.</strong> Com o método certo, seus pacientes recomendam porque foram ativados no momento certo — não porque lembraram por acaso.
+        </div>`;
+    }
+    diagEl.innerHTML = diagHTML;
+
+    // Mostrar tela fullscreen
+    const rs = document.getElementById('result-screen');
+    rs.classList.add('visible');
+    rs.scrollTo(0,0);
+    document.body.style.overflow = 'hidden';
   }
   function refazer() {
-    document.getElementById('form-box').style.display = 'block';
-    document.getElementById('result-box').classList.remove('visible');
+    document.getElementById('result-screen').classList.remove('visible');
+    document.body.style.overflow = '';
     document.getElementById('formulario').scrollIntoView({behavior:'smooth'});
   }
+  // Máscara ticket — digita número puro, exibe com ,00
+  const ticketEl = document.getElementById('ticket');
+  let ticketRaw = '';
+  ticketEl.addEventListener('keydown', function(e) {
+    if (e.key >= '0' && e.key <= '9') {
+      e.preventDefault();
+      ticketRaw += e.key;
+      this.value = parseInt(ticketRaw, 10).toLocaleString('pt-BR') + ',00';
+    } else if (e.key === 'Backspace') {
+      e.preventDefault();
+      ticketRaw = ticketRaw.slice(0, -1);
+      this.value = ticketRaw ? parseInt(ticketRaw, 10).toLocaleString('pt-BR') + ',00' : '';
+    }
+  });
+  ticketEl.addEventListener('paste', function(e) { e.preventDefault(); });
+  function getTicketValue() {
+    return parseFloat(ticketRaw) || 0;
+  }
+
   document.getElementById('whatsapp').addEventListener('input', function() {
     let v = this.value.replace(/\D/g,'').slice(0,11);
     if (v.length > 2) v = '(' + v.slice(0,2) + ') ' + v.slice(2);
@@ -912,5 +1196,60 @@
     this.value = v;
   });
 </script>
+
+<!-- RESULT FULLSCREEN -->
+<div class="result-screen" id="result-screen">
+  <div class="rs-inner">
+    <div class="rs-tag">📊 Seu diagnóstico</div>
+    <p class="rs-greeting">Olá, <strong id="rs-nome" style="color:#fff"></strong> — aqui está o que os números revelam</p>
+    <h1 class="rs-title">Você está deixando<br><span id="rs-perda-titulo">R$ 0</span> por ano<br>na mesa.</h1>
+
+    <div class="rs-perda-box">
+      <div class="rs-perda-lbl">Perda estimada nos últimos 12 meses</div>
+      <div class="rs-perda-num" id="rs-12m">R$ 0</div>
+      <div class="rs-perda-sub">por não ter um programa de recomendação estruturado</div>
+    </div>
+
+    <div class="rs-cards">
+      <div class="rs-card">
+        <div class="per">3 meses</div>
+        <div class="val" id="rs-3m">—</div>
+        <div class="lbl">perdidos</div>
+      </div>
+      <div class="rs-card">
+        <div class="per">6 meses</div>
+        <div class="val" id="rs-6m">—</div>
+        <div class="lbl">perdidos</div>
+      </div>
+      <div class="rs-card">
+        <div class="per">por mês</div>
+        <div class="val" id="rs-mes">—</div>
+        <div class="lbl">vazando</div>
+      </div>
+    </div>
+
+    <div class="rs-ganho-box">
+      <div class="rs-ganho-lbl">Com um programa completo, você poderia ter</div>
+      <div class="rs-ganho-num">+ <span id="rs-ganho">R$ 0</span></div>
+      <div class="rs-ganho-sub">por mês a mais — sem gastar um real em tráfego pago</div>
+    </div>
+
+    <div class="rs-diagnostico">
+      <div class="rs-diag-label">🔍 Diagnóstico do seu negócio</div>
+      <div class="rs-diag-text" id="rs-diag-texto">
+        <!-- preenchido pelo JS -->
+      </div>
+    </div>
+
+    <a href="https://wa.me/5511999999999?text=Fiz+o+Recomend%C3%B4metro+e+quero+saber+mais" target="_blank" class="rs-btn-main">
+      QUERO PARAR DE PERDER ESSE DINHEIRO →
+    </a>
+    <a href="https://recomendaleads.com.br" target="_blank" class="rs-btn-sec">
+      ☐ ME MOSTRE COMO ISSO FUNCIONA →
+    </a>
+    <button class="rs-refazer" onclick="refazer()">↻ Refazer o diagnóstico</button>
+  </div>
+</div>
+
 </body>
 </html>
