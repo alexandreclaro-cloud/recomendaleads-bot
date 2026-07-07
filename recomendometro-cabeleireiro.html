@@ -1251,5 +1251,28 @@
   </div>
 </div>
 
+
+<!-- PROSPECTAI-CAPTURE: envia o lead pro CRM quando preenche nome+WhatsApp -->
+<script>
+(function(){
+  var URL="https://buoaumgjjqtfavxfrwsz.supabase.co/rest/v1/rpc/capture_lead";
+  var KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1b2F1bWdqanF0ZmF2eGZyd3N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNDk0OTksImV4cCI6MjA5ODYyNTQ5OX0.A6uUArucvd9fDU-kKuTPnl-aw69Aui_-MFZYSpxBlEM", CODE="4D8ECD2D", SRC="cabeleireiro";
+  var sent=false, orig=window.calcular;
+  if(typeof orig!=="function") return;
+  window.calcular=function(){
+    try{
+      var n=((document.getElementById("nome")||{}).value||"").trim();
+      var w=((document.getElementById("whatsapp")||{}).value||"").trim();
+      var e=((document.getElementById("email")||{}).value||"").trim();
+      if(!sent && n && w){
+        sent=true;
+        fetch(URL,{method:"POST",headers:{"Content-Type":"application/json","apikey":KEY,"Authorization":"Bearer "+KEY},
+          body:JSON.stringify({p_code:CODE,p_name:n,p_phone:w,p_email:e||null,p_source:SRC,p_campaign:"funil-"+SRC})}).catch(function(){});
+      }
+    }catch(_){}
+    return orig.apply(this,arguments);
+  };
+})();
+</script>
 </body>
 </html>
