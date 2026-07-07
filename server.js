@@ -2940,6 +2940,8 @@ app.get('/admin/recomendometro-leads', exigirAdmin, async (req, res) => {
   }
 });
 
+app.get('/estetica', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-estetica.html')));
+
 app.get('/barbearia', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-barbearia.html')));
 
 app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-dentista.html')));
