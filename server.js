@@ -2448,8 +2448,25 @@ async function tratarWebhook(req, res) {
       else if (body.audio) textoChat = '🎤 Áudio';
       else if (body.document) textoChat = '📎 Documento';
     }
+    // PRIVACIDADE: só registra a mensagem na caixa de entrada se for uma conversa
+    // do BOT (tem sessão, é um gatilho/opt-out, ou já existe conversa do bot).
+    // Assim, se o número for usado também no pessoal, as conversas particulares
+    // NÃO caem no painel.
     if (textoChat) {
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat });
+      let ehDoBot = false;
+      try {
+        const chaveLog = chaveSessao(telefone);
+        if ((await SESSOES_COL().doc(chaveLog).get()).exists) ehDoBot = true;
+        else if ((await SESSOES_RECOMENDADO_COL().doc(chaveLog).get()).exists) ehDoBot = true;
+        else if ((await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).get()).exists) ehDoBot = true;
+        else {
+          const empLog = await getEmpresa();
+          ehDoBot = ehGatilhoPresente(texto, empLog) || !!detectarNichoDemo(texto, empLog) || !!detectarResgateFull(texto) || ehOptOut(texto);
+        }
+      } catch (e) { ehDoBot = false; }
+      if (ehDoBot) {
+        registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat });
+      }
     }
 
     // ============================================================
@@ -4246,6 +4263,26 @@ app.post('/minha-leads/zerar', exigirLoginEmpresa, exigirGestor, async (req, res
     if (n > 0) await batch.commit();
     console.log(`[ZERAR LEADS] empresa ${req.empresaLogin.id} — ${apagados} leads apagados`);
     res.json({ ok: true, apagados });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Zerar TODAS as conversas (caixa de entrada) da empresa — ex.: apagar conversas
+// pessoais que vazaram quando o número é o mesmo do uso pessoal. Só gestor.
+app.post('/minha-conversas/zerar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const eid = req.empresaLogin.id;
+    let apagadas = 0, batch = db.batch(), n = 0;
+    const msgs = await MENSAGENS_CHAT_COL().where('empresaId', '==', eid).get();
+    for (const d of msgs.docs) { batch.delete(d.ref); apagadas++; if (++n >= 450) { await batch.commit(); batch = db.batch(); n = 0; } }
+    if (n > 0) await batch.commit();
+    const convs = await CONVERSAS_COL().where('empresaId', '==', eid).get();
+    batch = db.batch(); n = 0;
+    for (const d of convs.docs) { batch.delete(d.ref); if (++n >= 450) { await batch.commit(); batch = db.batch(); n = 0; } }
+    if (n > 0) await batch.commit();
+    console.log(`[ZERAR CONVERSAS] empresa ${eid} — ${apagadas} mensagens apagadas`);
+    res.json({ ok: true, apagadas });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

@@ -701,11 +701,16 @@
 
         <div class="config-card" style="border:1px solid #fecaca; margin-top:16px;">
           <h2 style="color:#b91c1c;">⚠️ Zona de perigo</h2>
-          <p style="font-size:.85rem; color:var(--text-dim); margin:0 0 12px;">Apaga <b>todos</b> os leads (cards) desta empresa — útil pra limpar testes antes de ir ao ar. <b>Não dá pra desfazer.</b></p>
+          <p style="font-size:.85rem; color:var(--text-dim); margin:0 0 12px;">Apaga dados desta empresa — útil pra limpar testes antes de ir ao ar. <b>Não dá pra desfazer.</b></p>
           <div class="config-row-save">
             <button class="config-save-btn" id="zerarLeadsBtn" style="background:#dc2626;">🗑️ Zerar todos os leads</button>
             <span class="config-status-msg" id="statusZerar"></span>
           </div>
+          <div class="config-row-save" style="margin-top:10px;">
+            <button class="config-save-btn" id="zerarConversasBtn" style="background:#dc2626;">🗑️ Zerar todas as conversas</button>
+            <span class="config-status-msg" id="statusZerarConv"></span>
+          </div>
+          <p style="font-size:.78rem; color:var(--text-dim); margin:8px 0 0;">Zerar conversas apaga a caixa de entrada (útil se conversas pessoais apareceram por usar o mesmo número).</p>
         </div>
       </div>
 
@@ -1684,6 +1689,25 @@ if (zerarBtn) zerarBtn.addEventListener('click', async () => {
     } else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'config-status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'config-status-msg err'; }
   finally { zerarBtn.disabled = false; }
+});
+
+// Zerar todas as conversas (caixa de entrada) — dupla confirmação.
+const zerarConvBtn = document.getElementById('zerarConversasBtn');
+if (zerarConvBtn) zerarConvBtn.addEventListener('click', async () => {
+  const st = document.getElementById('statusZerarConv');
+  if (!confirm('⚠️ Isso vai APAGAR TODAS as conversas (caixa de entrada) desta empresa. Não dá pra desfazer.\n\nTem certeza?')) return;
+  const conf = prompt('Pra confirmar, digite ZERAR (em maiúsculas):');
+  if ((conf || '').trim().toUpperCase() !== 'ZERAR') { st.textContent = 'Cancelado.'; st.className = 'config-status-msg'; return; }
+  zerarConvBtn.disabled = true; st.textContent = 'Apagando...'; st.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-conversas/zerar`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      st.textContent = `✅ ${data.apagadas} mensagem(ns) apagada(s)!`; st.className = 'config-status-msg ok';
+      setTimeout(() => location.reload(), 1200);
+    } else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'config-status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'config-status-msg err'; }
+  finally { zerarConvBtn.disabled = false; }
 });
 
 document.getElementById('salvarRecomendadoBtn').addEventListener('click', async () => {
