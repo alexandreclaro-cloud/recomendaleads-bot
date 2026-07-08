@@ -634,6 +634,13 @@ const EMPRESA_PADRAO = {
   fullMensagemAvisoInicial: 'Antes de começar, deixa eu te explicar 😊 Pra ganhar seu presente são *2 passinhos rápidos* 🎁\n\n1️⃣ Você me manda os contatos dos amigos\n2️⃣ Eu te mando uma mensagem pronta pra você encaminhar pra eles\n\nAssim que completar, seu presente é liberado na hora! Bora? 🚀',
   fullMensagemPasso2: 'Show, {nomeRecomendado}! 🙌 Falta só o *passo 2*: encaminhe a mensagem abaixo para os amigos que você recomendou. Assim que enviar, me manda um *"enviei"* aqui que eu libero seu presente 🎁',
   fullMensagemEncaminhar: 'Oi! 😊 Eu te recomendei pra {empresa} e você ganhou um presente 🎁 É só tocar no link aqui pra resgatar o seu:',
+  // Cadência de cobrança do "enviei" no Full: se o cliente não confirmar que
+  // encaminhou, o robô insiste (você define quantos, o tempo e o texto de cada).
+  fullConfirmacaoCadencia: [
+    { esperaMin: 120, texto: 'Oi {cliente}! 😊 Conseguiu encaminhar a mensagem pros amigos? Assim que enviar, me responde *"enviei"* que eu solto seu presente 🎁' },
+    { esperaMin: 1440, texto: 'Oi {cliente}! Seu presente está reservado 🎁 É só encaminhar a mensagem pros amigos e me responder *"enviei"*.' },
+    { esperaMin: 4320, texto: 'Oi {cliente}! Última lembrança 🙌 Encaminha a mensagem pros amigos e me responde *"enviei"* que eu libero seu presente na hora.' }
+  ],
 
   // ===== Conversa do CLIENTE (quem recomenda) — editável =====
   mensagemPedeNome: 'Pra começar, qual é o seu nome?',
@@ -1334,6 +1341,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
       sessao.etapa = 'finalizado';
       sessao.premioPendente = null;
       await saveSessao(telefone, sessao);
+      await cancelarConfirmacoesEnvioFull(telefone); // confirmou → para de cobrar
       await sendText(telefone, 'Muito obrigado(a) por participar! 🙏 Assim que seus amigos resgatarem, eu te aviso 😊');
     } else {
       await sendText(telefone, 'Assim que você encaminhar a mensagem pros amigos, me manda um *"enviei"* aqui que eu solto seu presente na hora 🎁');
@@ -1447,6 +1455,8 @@ async function finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDest
   sessao.etapa = 'aguardando_confirmacao_envio';
   sessao.premioPendente = faixa;
   await saveSessao(telefone, sessao);
+  // Começa a cobrar o "enviei" (lembretes editáveis) caso o cliente não confirme.
+  try { await agendarConfirmacaoEnvioFull(telefone, empresa, 0); } catch (e) { console.error('agendarConfirmacaoEnvioFull:', e.message); }
 }
 
 // Agenda o disparo escalonado (anti-rajada) pros recomendados. Reutilizável:
@@ -1501,6 +1511,26 @@ async function cancelarConfirmacoesDisparo(telefone) {
     });
     if (n) await batch.commit();
   } catch (e) { console.error('cancelarConfirmacoesDisparo:', e.message); }
+}
+
+// ---- Full: cobrança do "enviei" (cliente confirmar que encaminhou o link) ----
+async function agendarConfirmacaoEnvioFull(telefone, empresa, indice) {
+  const cad = empresa.fullConfirmacaoCadencia || EMPRESA_PADRAO.fullConfirmacaoCadencia || [];
+  const item = cad[indice];
+  if (!item) return;
+  const executarEm = new Date(Date.now() + Math.max(1, parseInt(item.esperaMin, 10) || 120) * 60000).toISOString();
+  await criarAgendamento({ tipo: 'confirmar_envio_full', executarEm, dados: { telefone, indice } });
+}
+async function cancelarConfirmacoesEnvioFull(telefone) {
+  try {
+    const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').where('tipo', '==', 'confirmar_envio_full').get();
+    const batch = db.batch(); let n = 0;
+    snap.forEach(doc => {
+      const d = doc.data();
+      if ((d.dados && d.dados.telefone) === telefone && (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) { batch.update(doc.ref, { status: 'cancelado' }); n++; }
+    });
+    if (n) await batch.commit();
+  } catch (e) { console.error('cancelarConfirmacoesEnvioFull:', e.message); }
 }
 
 async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFaixa, excedente) {
@@ -5224,6 +5254,24 @@ async function processarAgendamentoInterno(agendamento) {
       }
       await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
     }
+    return;
+  }
+
+  // Full: cobrança do "enviei" — insiste pro cliente confirmar que encaminhou.
+  if (agendamento.tipo === 'confirmar_envio_full') {
+    const { telefone, indice } = agendamento.dados;
+    if (await numeroEstaPausado(telefone)) return;
+    const snap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
+    const sessao = snap.exists ? snap.data() : null;
+    if (!sessao || sessao.etapa !== 'aguardando_confirmacao_envio') return; // já confirmou ou saiu do estado
+    const cad = empresa.fullConfirmacaoCadencia || EMPRESA_PADRAO.fullConfirmacaoCadencia || [];
+    const item = cad[indice];
+    if (item) {
+      const nome = (sessao.clienteNome || '').split(' ')[0] || 'você';
+      await sendText(telefone, substituirVariaveis(item.texto, { nomeRecomendado: nome, recomendador: nome, empresa: empresa.nome }));
+      await agendarConfirmacaoEnvioFull(telefone, empresa, indice + 1);
+    }
+    // Esgotou os lembretes: o presente fica reservado; o cliente ainda pode confirmar depois.
     return;
   }
 

@@ -386,6 +386,24 @@
             <span class="status-msg" id="statusBasicConf"></span>
           </div>
         </div>
+
+        <div class="card" style="margin-top:16px" id="fullConfigCard">
+          <div class="block-title"><i data-lucide="shield"></i> Textos e cobrança do Full</div>
+          <p class="sub">Só se aplica no modo <b>Full</b>. Variáveis: <b>{cliente}</b>, <b>{empresa}</b>. O cliente confirma respondendo <b>"enviei"</b>.</p>
+          <label class="label">1) Aviso das 2 fases (no início)</label>
+          <textarea class="textarea" id="fullAviso" rows="4"></textarea>
+          <label class="label">2) Passo 2 (depois que o cliente manda os contatos)</label>
+          <textarea class="textarea" id="fullPasso2" rows="3"></textarea>
+          <label class="label">3) Mensagem que o cliente encaminha pros amigos <span style="font-weight:400;color:var(--text-dim)">(o link entra automaticamente no fim)</span></label>
+          <textarea class="textarea" id="fullEncaminhar" rows="3"></textarea>
+          <label class="label" style="margin-top:8px;">🔁 Cobrança do "enviei" — lembretes até o cliente confirmar (você define quantos, o tempo e o texto)</label>
+          <div id="fullCadContainer"></div>
+          <button class="btn btn-secondary" id="addFullLembreteBtn" type="button" style="margin-top:4px;">➕ Adicionar lembrete</button>
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarFullConfBtn">Salvar Full</button>
+            <span class="status-msg" id="statusFullConf"></span>
+          </div>
+        </div>
       </section>
 
       <section class="view fade-in" id="view-whatsapp">
@@ -1450,6 +1468,7 @@ function carregarModo() {
   destacarModo();
   carregarNumeroConectado();
   if (typeof carregarBasicConf === 'function') carregarBasicConf();
+  if (typeof carregarFullConf === 'function') carregarFullConf();
 }
 function destacarModo() {
   let mostra = false;
@@ -1530,6 +1549,69 @@ document.getElementById('salvarBasicConfBtn').addEventListener('click', async ()
     basicConfirmMensagem: document.getElementById('basicConfirmMsg').value,
     basicConfirmacaoCadencia: basicCad.filter(x => x.texto && x.texto.trim()),
     basicSemConfirmacao: document.getElementById('basicSemConf').value
+  };
+  st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
+
+// ---- Full: textos + cadência de cobrança do "enviei" ----
+let fullCad = [];
+function renderFullCad() {
+  const cont = document.getElementById('fullCadContainer');
+  if (!cont) return;
+  cont.innerHTML = (fullCad || []).map((item, i) => {
+    const u = (typeof minParaUnidade === 'function') ? minParaUnidade(item.esperaMin) : { valor: item.esperaMin, unidade: 'minutos' };
+    const esc = String(item.texto || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    return `<div class="full-lembrete" style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+        <b style="min-width:78px;">Lembrete ${i + 1}</b>
+        <input class="input fc2-val" type="number" min="0" value="${u.valor}" style="max-width:90px;">
+        <select class="input fc2-uni" style="max-width:120px;">
+          <option value="minutos"${u.unidade === 'minutos' ? ' selected' : ''}>minutos</option>
+          <option value="horas"${u.unidade === 'horas' ? ' selected' : ''}>horas</option>
+          <option value="dias"${u.unidade === 'dias' ? ' selected' : ''}>dias</option>
+        </select>
+        <button class="btn btn-secondary fc2-del" type="button" data-i="${i}" style="margin-left:auto;color:var(--danger-dark);">Remover</button>
+      </div>
+      <textarea class="textarea fc2-txt" rows="2" placeholder="Texto do lembrete">${esc}</textarea>
+    </div>`;
+  }).join('');
+  cont.querySelectorAll('.fc2-del').forEach(b => b.addEventListener('click', () => { syncFullCadFromDom(); fullCad.splice(+b.dataset.i, 1); renderFullCad(); }));
+}
+function syncFullCadFromDom() {
+  fullCad = [...document.querySelectorAll('#fullCadContainer .full-lembrete')].map(row => ({
+    esperaMin: (typeof unidadeParaMin === 'function') ? (unidadeParaMin(row.querySelector('.fc2-val').value, row.querySelector('.fc2-uni').value) || 60) : 60,
+    texto: row.querySelector('.fc2-txt').value
+  }));
+}
+function carregarFullConf() {
+  const c = configuracaoAtual || {};
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('fullAviso', c.fullMensagemAvisoInicial);
+  set('fullPasso2', c.fullMensagemPasso2);
+  set('fullEncaminhar', c.fullMensagemEncaminhar);
+  fullCad = JSON.parse(JSON.stringify(c.fullConfirmacaoCadencia || []));
+  renderFullCad();
+}
+document.getElementById('addFullLembreteBtn').addEventListener('click', () => {
+  syncFullCadFromDom();
+  fullCad.push({ esperaMin: 1440, texto: 'Oi {cliente}! 😊 Assim que encaminhar a mensagem pros amigos, me responde "enviei" que eu solto seu presente 🎁' });
+  renderFullCad();
+});
+document.getElementById('salvarFullConfBtn').addEventListener('click', async () => {
+  syncFullCadFromDom();
+  const st = document.getElementById('statusFullConf');
+  const body = {
+    fullMensagemAvisoInicial: document.getElementById('fullAviso').value,
+    fullMensagemPasso2: document.getElementById('fullPasso2').value,
+    fullMensagemEncaminhar: document.getElementById('fullEncaminhar').value,
+    fullConfirmacaoCadencia: fullCad.filter(x => x.texto && x.texto.trim())
   };
   st.textContent = 'Salvando...'; st.className = 'status-msg';
   try {
