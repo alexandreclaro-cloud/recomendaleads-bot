@@ -1356,7 +1356,9 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 // Oficial (compliant); senão 'basic' (padrão, comportamento atual).
 function modoRecAtual(empresa) {
   if (empresa && empresa.whatsappTipo === 'oficial') return 'full';
-  return (empresa && empresa.modoRecomendacao === 'full') ? 'full' : 'basic';
+  const m = empresa && empresa.modoRecomendacao;
+  // 'official' (escolhido no painel) roda como Full (seguro/compliant), igual à API Oficial.
+  return (m === 'full' || m === 'official') ? 'full' : 'basic';
 }
 
 // Link de resgate que o cliente encaminha (modo Full): o amigo toca e chama o
