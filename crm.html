@@ -698,6 +698,15 @@
             <span class="config-status-msg" id="statusEmpresa"></span>
           </div>
         </div>
+
+        <div class="config-card" style="border:1px solid #fecaca; margin-top:16px;">
+          <h2 style="color:#b91c1c;">⚠️ Zona de perigo</h2>
+          <p style="font-size:.85rem; color:var(--text-dim); margin:0 0 12px;">Apaga <b>todos</b> os leads (cards) desta empresa — útil pra limpar testes antes de ir ao ar. <b>Não dá pra desfazer.</b></p>
+          <div class="config-row-save">
+            <button class="config-save-btn" id="zerarLeadsBtn" style="background:#dc2626;">🗑️ Zerar todos os leads</button>
+            <span class="config-status-msg" id="statusZerar"></span>
+          </div>
+        </div>
       </div>
 
       <!-- Sub-aba: Conversa do Cliente (quem recomenda) -->
@@ -1656,6 +1665,25 @@ document.getElementById('enviarTesteMarketingBtn').addEventListener('click', asy
     else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao enviar'); statusEl.className = 'config-status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
   finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 6000); }
+});
+
+// Zerar todos os leads — dupla confirmação (destrutivo, não desfaz).
+const zerarBtn = document.getElementById('zerarLeadsBtn');
+if (zerarBtn) zerarBtn.addEventListener('click', async () => {
+  const st = document.getElementById('statusZerar');
+  if (!confirm('⚠️ Isso vai APAGAR TODOS os leads (cards) desta empresa. Não dá pra desfazer.\n\nTem certeza?')) return;
+  const conf = prompt('Pra confirmar, digite ZERAR (em maiúsculas):');
+  if ((conf || '').trim().toUpperCase() !== 'ZERAR') { st.textContent = 'Cancelado.'; st.className = 'config-status-msg'; return; }
+  zerarBtn.disabled = true; st.textContent = 'Apagando...'; st.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-leads/zerar`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      st.textContent = `✅ ${data.apagados} lead(s) apagado(s)!`; st.className = 'config-status-msg ok';
+      setTimeout(() => location.reload(), 1200);
+    } else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'config-status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'config-status-msg err'; }
+  finally { zerarBtn.disabled = false; }
 });
 
 document.getElementById('salvarRecomendadoBtn').addEventListener('click', async () => {

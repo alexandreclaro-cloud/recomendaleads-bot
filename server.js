@@ -4192,6 +4192,26 @@ app.get('/minha-leads', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Zerar TODOS os leads da empresa logada (ex.: limpar testes antes de ir ao ar).
+// Só gestor. Apaga somente os leads DESTA empresa (isolado por empresaId).
+app.post('/minha-leads/zerar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const snap = await LEADS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    let apagados = 0;
+    let batch = db.batch();
+    let n = 0;
+    for (const doc of snap.docs) {
+      batch.delete(doc.ref); apagados++; n++;
+      if (n >= 450) { await batch.commit(); batch = db.batch(); n = 0; }
+    }
+    if (n > 0) await batch.commit();
+    console.log(`[ZERAR LEADS] empresa ${req.empresaLogin.id} — ${apagados} leads apagados`);
+    res.json({ ok: true, apagados });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
   try {
     const { id } = req.params;
