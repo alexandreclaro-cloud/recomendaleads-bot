@@ -345,9 +345,14 @@
           </label>
 
           <div id="modoFullExtra" style="margin-top:14px; display:none;">
-            <label class="label">📱 Seu número de WhatsApp (com DDD) — usado no link que o cliente encaminha</label>
-            <input class="input" type="text" id="numeroWhatsappInput" placeholder="Ex: 11999998888" style="max-width:280px;">
-            <div class="hint" style="margin-top:6px;">É o número onde o robô está ligado. O amigo toca no link e cai numa conversa com <b>este</b> número.</div>
+            <div id="numeroDetectadoBox" style="display:none; background:var(--brand-soft,#eff4ff); border:1px solid var(--border); border-radius:10px; padding:12px 14px; font-size:.9rem;">
+              📱 O link usa <b>automaticamente</b> o número do WhatsApp conectado: <b id="numeroDetectadoValor">—</b>
+            </div>
+            <div id="numeroManualBox" style="display:none;">
+              <label class="label">📱 Não consegui detectar o número conectado. Informe manualmente (com DDD):</label>
+              <input class="input" type="text" id="numeroWhatsappInput" placeholder="Ex: 11999998888" style="max-width:280px;">
+              <div class="hint" style="margin-top:6px;">É o número onde o robô está ligado.</div>
+            </div>
           </div>
 
           <div class="hint" style="margin-top:12px;">ℹ️ Se você usar a <b>API Oficial da Meta</b>, o fluxo roda sempre no modo <b>Full</b> (seguro/compliant), automaticamente.</div>
@@ -1440,20 +1445,37 @@ function carregarModo() {
   const modo = (configuracaoAtual && configuracaoAtual.modoRecomendacao) || 'basic';
   const el = document.querySelector(`input[name="modoRec"][value="${modo}"]`);
   if (el) el.checked = true;
-  document.getElementById('numeroWhatsappInput').value = (configuracaoAtual && configuracaoAtual.numeroWhatsapp) || '';
+  const manualInput = document.getElementById('numeroWhatsappInput');
+  if (manualInput) manualInput.value = (configuracaoAtual && configuracaoAtual.numeroWhatsapp) || '';
   destacarModo();
+  carregarNumeroConectado();
   if (typeof carregarBasicConf === 'function') carregarBasicConf();
 }
 function destacarModo() {
-  let full = false;
+  let mostra = false;
   document.querySelectorAll('.modo-opt').forEach(opt => {
     const inp = opt.querySelector('input[name="modoRec"]');
     const marcado = inp.checked;
     opt.style.borderColor = marcado ? 'var(--brand)' : 'var(--border)';
     opt.style.background = marcado ? 'var(--brand-soft,#eff4ff)' : 'transparent';
-    if (marcado && inp.value === 'full') full = true;
+    if (marcado && (inp.value === 'full' || inp.value === 'official')) mostra = true;
   });
-  document.getElementById('modoFullExtra').style.display = full ? 'block' : 'none';
+  document.getElementById('modoFullExtra').style.display = mostra ? 'block' : 'none';
+}
+// Descobre o número conectado (auto) e decide se mostra o "detectado" ou o campo manual.
+async function carregarNumeroConectado() {
+  const box = document.getElementById('numeroDetectadoBox');
+  const manual = document.getElementById('numeroManualBox');
+  const val = document.getElementById('numeroDetectadoValor');
+  if (!box || !manual) return;
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/numero`);
+    const data = await resp.json();
+    if (data.ok && data.numero) {
+      val.textContent = data.numero;
+      box.style.display = 'block'; manual.style.display = 'none';
+    } else { box.style.display = 'none'; manual.style.display = 'block'; }
+  } catch (e) { box.style.display = 'none'; manual.style.display = 'block'; }
 }
 document.querySelectorAll('input[name="modoRec"]').forEach(r => r.addEventListener('change', destacarModo));
 
@@ -1523,13 +1545,21 @@ document.getElementById('salvarModoBtn').addEventListener('click', async () => {
   const st = document.getElementById('statusModo');
   const sel = document.querySelector('input[name="modoRec"]:checked');
   if (!sel) { st.textContent = '❌ Escolha um modo'; st.className = 'status-msg err'; return; }
-  const numeroWhatsapp = document.getElementById('numeroWhatsappInput').value.replace(/\D/g, '');
-  if (sel.value === 'full' && numeroWhatsapp.length < 10) { st.textContent = '❌ Informe seu número de WhatsApp (com DDD) pro link'; st.className = 'status-msg err'; return; }
+  const body = { modoRecomendacao: sel.value };
+  // Número manual só é exigido se a detecção automática falhou (campo manual visível).
+  if (sel.value === 'full' || sel.value === 'official') {
+    const manualBox = document.getElementById('numeroManualBox');
+    const manualInput = document.getElementById('numeroWhatsappInput');
+    const numeroWhatsapp = manualInput ? manualInput.value.replace(/\D/g, '') : '';
+    const manualVisivel = manualBox && manualBox.style.display !== 'none';
+    if (manualVisivel && numeroWhatsapp.length < 10) { st.textContent = '❌ Não detectei seu número — informe manualmente (com DDD).'; st.className = 'status-msg err'; return; }
+    if (numeroWhatsapp) body.numeroWhatsapp = numeroWhatsapp;
+  }
   st.textContent = 'Salvando...'; st.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modoRecomendacao: sel.value, numeroWhatsapp }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await resp.json();
-    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, { modoRecomendacao: sel.value, numeroWhatsapp }); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
     else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
   finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }

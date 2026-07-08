@@ -1361,10 +1361,32 @@ function modoRecAtual(empresa) {
   return (m === 'full' || m === 'official') ? 'full' : 'basic';
 }
 
+// Descobre AUTOMATICAMENTE o número do WhatsApp conectado (Z-API) — pra montar o
+// link do Full sem pedir na mão (o robô já está ligado num número, o sistema sabe qual).
+// Cacheia em memória por empresa. Fallback: número salvo manualmente, se houver.
+const _numeroConectadoCache = {};
+async function getNumeroConectado(empresa) {
+  const eid = empresaIdAtual();
+  const cache = _numeroConectadoCache[eid];
+  if (cache && (Date.now() - cache.em) < 10 * 60 * 1000 && cache.numero) return cache.numero;
+  let numero = String((empresa && empresa.numeroWhatsapp) || '').replace(/\D/g, '') || null;
+  try {
+    const cfg = zapiDaEmpresa(empresa);
+    if (cfg && cfg.instanceId && cfg.token) {
+      const resp = await axios.get(`${zapiBaseUrl(cfg)}/device`, { headers: zapiHeaders(cfg), timeout: 5000 });
+      const d = resp.data || {};
+      const p = String(d.phone || d.numero || (d.device && d.device.phone) || (d.value && d.value.phone) || '').replace(/\D/g, '');
+      if (p) numero = p;
+    }
+  } catch (e) { /* mantém o fallback (número manual) */ }
+  if (numero) _numeroConectadoCache[eid] = { numero, em: Date.now() };
+  return numero;
+}
+
 // Link de resgate que o cliente encaminha (modo Full): o amigo toca e chama o
 // número da empresa com um código de indicação (#r<código>). Null se não houver número.
-function linkResgateFull(empresa, telefoneRecomendador) {
-  const num = String((empresa && empresa.numeroWhatsapp) || '').replace(/\D/g, '');
+function linkResgateFull(numero, telefoneRecomendador) {
+  const num = String(numero || '').replace(/\D/g, '');
   if (!num) return null;
   const num55 = num.startsWith('55') ? num : '55' + num;
   const cod = codigoNicho('ref' + String(telefoneRecomendador)); // 4 chars opacos, reusa o hash
@@ -1417,7 +1439,8 @@ async function finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDest
   await sendText(telefone, substituirVariaveis(empresa.fullMensagemPasso2 || EMPRESA_PADRAO.fullMensagemPasso2, vars));
   // Guarda a referência (código → quem indicou) pra atribuir quando o amigo chegar.
   await salvarRefFull(codigoNicho('ref' + telefone), telefone, sessao);
-  const link = linkResgateFull(empresa, telefone);
+  const numeroLink = await getNumeroConectado(empresa); // descobre sozinho o número do robô
+  const link = linkResgateFull(numeroLink, telefone);
   const msgEncaminhar = substituirVariaveis(empresa.fullMensagemEncaminhar || EMPRESA_PADRAO.fullMensagemEncaminhar, vars);
   await sendText(telefone, msgEncaminhar + (link ? `\n\n${link}` : ''));
 
@@ -3660,6 +3683,20 @@ app.delete('/minha-nichos/:nicho', exigirLoginEmpresa, exigirGestor, exigirMatri
       [`configuracao.nichos.${nicho}`]: admin.firestore.FieldValue.delete()
     });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Número do WhatsApp CONECTADO (auto-detectado da Z-API) — pro painel mostrar
+// e pro link do Full sair certo sozinho.
+app.get('/minha-whatsapp/numero', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa), oficial: oficialDaEmpresa(empresa) };
+    let numero = null;
+    await tenantContext.run(contexto, async () => { numero = await getNumeroConectado(empresa); });
+    res.json({ ok: true, numero: numero || null });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
