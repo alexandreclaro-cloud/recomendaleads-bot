@@ -1207,11 +1207,6 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     sessao.etapa = 'aguardando_vendedor';
     await saveSessao(telefone, sessao);
 
-    // Modo Full: só agora (depois do nome) explica que são 2 fases — personalizado.
-    if (modoRecAtual(empresa) === 'full') {
-      await sendText(telefone, substituirVariaveis(empresa.fullMensagemAvisoInicial || EMPRESA_PADRAO.fullMensagemAvisoInicial, { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome }));
-    }
-
     const listaVendedores = empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
     const perguntaVendedor = substituirVariaveis(empresa.mensagemPedeVendedor || EMPRESA_PADRAO.mensagemPedeVendedor, { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome });
     await sendText(telefone, `${perguntaVendedor}\n\n${listaVendedores}\n\nResponda com o número ou o nome.`);
@@ -1242,6 +1237,10 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
     const primeiraFaixa = empresa.faixasBonus[0];
     const varsCliente = { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome, premio: primeiraFaixa.premio, quantidade: primeiraFaixa.quantidade };
+    // Modo Full: explica as 2 fases só agora, na hora de pedir os contatos (segue a lógica nome → vendedor → contatos).
+    if (modoRecAtual(empresa) === 'full') {
+      await sendText(telefone, substituirVariaveis(empresa.fullMensagemAvisoInicial || EMPRESA_PADRAO.fullMensagemAvisoInicial, varsCliente));
+    }
     await sendText(telefone, substituirVariaveis(empresa.mensagemPedeContatos || EMPRESA_PADRAO.mensagemPedeContatos, varsCliente));
     await sendText(telefone, substituirVariaveis(empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta, varsCliente));
     return;
