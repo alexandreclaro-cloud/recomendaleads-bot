@@ -620,7 +620,7 @@ const EMPRESA_PADRAO = {
   // cliente confirmar que avisou (menos denúncia = menos ban). Lembretes de
   // confirmação com cadência editável (quantos, tempo e texto de cada).
   basicConfirmarAntesDisparo: false,
-  basicConfirmMensagem: 'Falta só um passo pra eu chamar seus amigos! 🙌 Dá um alô rápido avisando que a {empresa} vai entrar em contato com eles.\n\n1️⃣ Já avisei → pode chamar eles\n2️⃣ Ainda não avisei\n3️⃣ Me manda um textinho pronto pra eu encaminhar\n\n👇 _Responda com o número_',
+  basicConfirmMensagem: 'Falta só um passo pra eu chamar seus amigos! 🙌 Dá um alô rápido avisando que a {empresa} vai entrar em contato com eles.\n\n1️⃣ Já avisei → pode chamar eles\n2️⃣ Ainda não avisei\n3️⃣ Me manda um textinho pronto pra eu encaminhar\n\n👇 _Digita o número aqui_ 👇',
   // Opção 3 do menu: texto pronto que o robô manda pro cliente ENCAMINHAR pros amigos (avisar antes).
   basicTextoPronto: 'Oi! 😊 Acabei de te recomendar pra {empresa} e você vai ganhar um presente 🎁 Eles vão te mandar uma mensagem por aqui — é só responder que garante o seu!',
   // Opção 2 do menu: resposta quando o cliente diz que ainda NÃO avisou (segue aguardando).
@@ -667,13 +667,13 @@ const EMPRESA_PADRAO = {
   // Espera de cada lembrete (em minutos), contada do fim da recomendação.
   // Padrão: 1 dia, 3 dias, 7 dias.
   cadenciaFollowupRecomendador: [{ esperaMin: 1440 }, { esperaMin: 4320 }, { esperaMin: 10080 }],
-  followupRecomendadorMensagem: 'Oi {cliente}! 😊 Passando pra lembrar: você já avisou seus amigos que a {empresa} vai entrar em contato com eles?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
+  followupRecomendadorMensagem: 'Oi {cliente}! 😊 Passando pra lembrar: você já avisou seus amigos que a {empresa} vai entrar em contato com eles?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digita o número aqui_ 👇',
   followupJaAvisei: 'Perfeito, muito obrigado(a)! 🙌 Isso ajuda bastante — assim seus amigos já esperam a nossa mensagem.',
   followupAindaNao: 'Sem problema! 😉 Quando puder, dá um alô pra eles avisando. Assim eles recebem nosso contato numa boa. Obrigado(a)!',
   followupTextoPronto: 'Oi! 😊 Acabei de te recomendar pra {empresa} e você vai ganhar um presente 🎁 Eles vão te chamar aqui no WhatsApp, pode responder tranquilo!',
   // Textos do 2º e 3º lembretes (opcionais). Vazio = repete o texto do 1º.
-  followupRecomendadorMensagem2: 'Oi {cliente}! 😊 Só passando de novo: conseguiu avisar seus amigos que a {empresa} vai chamar eles?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
-  followupRecomendadorMensagem3: 'Oi {cliente}! 😊 Última passadinha aqui 🙌 Já deu aquele alô pros amigos que você recomendou?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digite o número_',
+  followupRecomendadorMensagem2: 'Oi {cliente}! 😊 Só passando de novo: conseguiu avisar seus amigos que a {empresa} vai chamar eles?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digita o número aqui_ 👇',
+  followupRecomendadorMensagem3: 'Oi {cliente}! 😊 Última passadinha aqui 🙌 Já deu aquele alô pros amigos que você recomendou?\n\n1️⃣ Sim, já avisei\n2️⃣ Ainda não\n3️⃣ Me manda um textinho pronto pra eu enviar\n\n👇 _Digita o número aqui_ 👇',
 
   // ===== Atendimento pós-fluxo: responde dúvidas do cliente com as infos do
   // negócio (endereço, horário, site...). Usa IA (Claude) com as infos abaixo. =====
@@ -705,15 +705,15 @@ const EMPRESA_PADRAO = {
   // ===== Fluxo pós-presente (todos editáveis no painel, na sequência) =====
   // Opt-out (descadastro) — anti-ban: saída fácil desvia a denúncia.
   mensagemOptOut: 'Tudo bem! 🙏 Não vou mais te enviar mensagens. Se um dia mudar de ideia, é só chamar aqui. Obrigado(a)!',
-  posMenuPrincipal: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digite o número_`,
+  posMenuPrincipal: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
   posLinkAgendamento: 'Perfeito! 😊 É só escolher o melhor horário pra você aqui:',
-  posPerguntaPeriodo: `Perfeito! 😊 Vamos combinar sua visita.\n\nQual período fica melhor pra você?\n\n*1* — Manhã ☀️\n*2* — Tarde 🌤️\n*3* — Noite 🌙\n\n👇 _Digite o número_`,
+  posPerguntaPeriodo: `Perfeito! 😊 Vamos combinar sua visita.\n\nQual período fica melhor pra você?\n\n*1* — Manhã ☀️\n*2* — Tarde 🌤️\n*3* — Noite 🌙\n\n👇 _Digita o número aqui_ 👇`,
   posPerguntaDia: 'Ótimo! Agora escolha o melhor dia 📅',
   posConfirmacaoAgendamento: `🎉 *Tudo certo!*\n\nSua visita foi reservada:\n📅 {dia} — período da {periodo}\n\nNossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`,
   posConfirmacaoCheck: 'Oi {nomeRecomendado}! 😊 Conseguiu confirmar seu agendamento? Se ficou alguma dúvida, é só me chamar aqui 👍',
-  posMenuDepois: `Sem problemas! 😊 Seu presente continua reservado pra você.\n\nComo prefere fazer?\n\n🟢 *1* — Deixar uma data reservada\n🟡 *2* — Receber um lembrete depois\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digite o número_`,
+  posMenuDepois: `Sem problemas! 😊 Seu presente continua reservado pra você.\n\nComo prefere fazer?\n\n🟢 *1* — Deixar uma data reservada\n🟡 *2* — Receber um lembrete depois\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
   posLembrete: 'Perfeito! 😊 Vamos te lembrar no momento certo de aproveitar seu presente. Até breve! 👋',
-  posMenuDuvidas: `Claro! Sobre o que você gostaria de saber?\n\n*1* — Como funciona o presente?\n*2* — Qual a validade?\n*3* — Onde fica a empresa?\n*4* — Horários de atendimento\n*5* — Falar com um atendente\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digite o número_`,
+  posMenuDuvidas: `Claro! Sobre o que você gostaria de saber?\n\n*1* — Como funciona o presente?\n*2* — Qual a validade?\n*3* — Onde fica a empresa?\n*4* — Horários de atendimento\n*5* — Falar com um atendente\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
   faqComoFunciona: 'Seu presente é: {premio}. É só apresentar essa mensagem quando vier nos visitar 😊',
   faqValidade: 'É por tempo limitado, então recomendo aproveitar logo! 😉 Qualquer detalhe, nossa equipe te ajuda.',
   enderecoEmpresa: '',
@@ -1217,7 +1217,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
     const listaVendedores = empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
     const perguntaVendedor = substituirVariaveis(empresa.mensagemPedeVendedor || EMPRESA_PADRAO.mensagemPedeVendedor, { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome });
-    await sendText(telefone, `${perguntaVendedor}\n\n${listaVendedores}\n\n👇 _Digite o número_`);
+    await sendText(telefone, `${perguntaVendedor}\n\n${listaVendedores}\n\n👇 _Digita o número aqui_ 👇`);
     return;
   }
 
@@ -1233,7 +1233,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     }
 
     if (!vendedor) {
-      await sendText(telefone, 'Não encontrei esse vendedor 😊 👇 _Digite o número_ da lista.');
+      await sendText(telefone, 'Não encontrei esse vendedor 😊\n\n👇 _Digita o número aqui_ 👇');
       return;
     }
 
@@ -2013,7 +2013,7 @@ async function enviarPerguntaDiaRec(telefone) {
   const dias = gerarOpcoesDias();
   const linhas = dias.map(d => `*${d.idx}* — ${d.label}`).join('\n');
   const header = (empresa.posPerguntaDia || EMPRESA_PADRAO.posPerguntaDia);
-  await sendText(telefone, `${header}\n\n${linhas}\n\n👇 _Digite o número_`);
+  await sendText(telefone, `${header}\n\n${linhas}\n\n👇 _Digita o número aqui_ 👇`);
   await saveSessaoRecomendado(telefone, { etapa: 'agendar_dia', diasOpcoes: dias, ultimaMensagemEm: new Date().toISOString() });
 }
 
