@@ -52,6 +52,7 @@
     <nav class="nav" id="nav">
       <button class="nav-item active" data-section="overview"><i data-lucide="layout-dashboard"></i><span class="txt">Visão geral</span></button>
       <button class="nav-item" data-section="empresa" data-gestor><i data-lucide="building-2"></i><span class="txt">Minha empresa</span></button>
+      <button class="nav-item" data-section="conversaCliente" data-gestor><i data-lucide="message-square"></i><span class="txt">Conversa do cliente</span></button>
       <button class="nav-item" data-section="premios" data-gestor><i data-lucide="gift"></i><span class="txt">Prêmios</span></button>
       <button class="nav-item" data-section="nichos" data-gestor><i data-lucide="sparkles"></i><span class="txt">Demonstração por nicho</span></button>
       <button class="nav-item" data-section="followup" data-gestor><i data-lucide="bell-ring"></i><span class="txt">Follow-up (avisar amigos)</span></button>
@@ -165,6 +166,37 @@
           <div class="row-save">
             <button class="btn btn-action" id="salvarSenhaBtn">Trocar senha</button>
             <span class="status-msg" id="statusSenha"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="view fade-in" id="view-conversaCliente">
+        <div class="card">
+          <div class="block-title"><i data-lucide="message-square"></i> Mensagens do fluxo do cliente</div>
+          <p class="sub">Os textos que o robô envia pra quem <b>recomenda</b>, na ordem do fluxo. A mensagem de <b>boas-vindas</b> fica em <b>Minha empresa</b>. Variáveis: <b>{cliente}</b>, <b>{empresa}</b>, <b>{premio}</b>, <b>{quantidade}</b>.</p>
+
+          <label class="label">Frase-gatilho que inicia o fluxo</label>
+          <input class="input" type="text" id="ccGatilho" placeholder="Ex: quero meu presente">
+          <p class="sub" style="margin-top:4px;">Pode cadastrar mais de uma, separadas por vírgula (ex: <i>quero meu presente, quero meu voucher</i>). Basta a mensagem do cliente conter uma delas.</p>
+
+          <label class="label" style="margin-top:16px;">1) Pergunta o nome</label>
+          <textarea class="textarea" id="ccPedeNome" rows="2"></textarea>
+
+          <label class="label" style="margin-top:16px;">2) Pergunta o vendedor <span style="font-weight:400;color:var(--text-dim)">(a lista de vendedores entra automática)</span></label>
+          <textarea class="textarea" id="ccPedeVendedor" rows="2"></textarea>
+
+          <label class="label" style="margin-top:16px;">3) Convite pra enviar os contatos <span style="font-weight:400;color:var(--text-dim)">(use {premio})</span></label>
+          <textarea class="textarea" id="ccPedeContatos" rows="3"></textarea>
+
+          <label class="label" style="margin-top:16px;">4) Instrução de coleta <span style="font-weight:400;color:var(--text-dim)">(use {quantidade})</span></label>
+          <textarea class="textarea" id="ccColeta" rows="4"></textarea>
+
+          <label class="label" style="margin-top:16px;">5) Aviso pra avisar os amigos <span style="font-weight:400;color:var(--text-dim)">(logo após o presente — deixe vazio pra não enviar)</span></label>
+          <textarea class="textarea" id="ccValidarAmigo" rows="3"></textarea>
+
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarConversaClienteBtn">Salvar conversa do cliente</button>
+            <span class="status-msg" id="statusConversaCliente"></span>
           </div>
         </div>
       </section>
@@ -625,7 +657,7 @@ const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') 
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
 let EH_MATRIZ = false;
-const SECOES_GESTOR = ['empresa', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'equipe', 'assinatura'];
+const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
@@ -650,6 +682,7 @@ let configuracaoAtual = null;
 const TITULOS = {
   overview: ['Olá, {nome}', 'Resumo do que está acontecendo no seu programa de recomendações.'],
   empresa: ['Minha empresa', 'Ajuste os dados que aparecem nas mensagens.'],
+  conversaCliente: ['Conversa do cliente', 'As mensagens que o robô envia pra quem recomenda.'],
   premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
   nichos: ['Demonstração por nicho', 'Personalize a apresentação para cada tipo de cliente.'],
   followup: ['Follow-up', 'Lembretes automáticos pro cliente avisar os amigos.'],
@@ -725,6 +758,13 @@ async function carregarConfiguracao() {
     document.getElementById('empresaNomeInput').value = configuracaoAtual.nome || '';
     document.getElementById('empresaMsgInput').value = configuracaoAtual.mensagemAgradecimento || '';
     document.getElementById('empresaVendedoresInput').value = (configuracaoAtual.vendedores || []).join('\n');
+    // Conversa do cliente (mensagens do fluxo)
+    document.getElementById('ccGatilho').value = configuracaoAtual.gatilhoPresente || '';
+    document.getElementById('ccPedeNome').value = configuracaoAtual.mensagemPedeNome || '';
+    document.getElementById('ccPedeVendedor').value = configuracaoAtual.mensagemPedeVendedor || '';
+    document.getElementById('ccPedeContatos').value = configuracaoAtual.mensagemPedeContatos || '';
+    document.getElementById('ccColeta').value = configuracaoAtual.mensagemColeta || '';
+    document.getElementById('ccValidarAmigo').value = configuracaoAtual.mensagemValidarAmigo || '';
 
     const faixas = configuracaoAtual.faixasBonus || [];
     renderFaixas(faixas);
@@ -886,6 +926,28 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome, mensagemAgradecimento, vendedores }) });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok'; configuracaoAtual = data.empresa; document.getElementById('userNome').textContent = nome || 'Empresa'; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
+});
+
+document.getElementById('salvarConversaClienteBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarConversaClienteBtn');
+  const statusEl = document.getElementById('statusConversaCliente');
+  const body = {
+    gatilhoPresente: document.getElementById('ccGatilho').value.trim() || 'quero meu presente',
+    mensagemPedeNome: document.getElementById('ccPedeNome').value.trim() || null,
+    mensagemPedeVendedor: document.getElementById('ccPedeVendedor').value.trim() || null,
+    mensagemPedeContatos: document.getElementById('ccPedeContatos').value.trim() || null,
+    mensagemColeta: document.getElementById('ccColeta').value.trim() || null,
+    // Vazio salva '' (não null) de propósito: '' = não enviar; null cairia no padrão.
+    mensagemValidarAmigo: document.getElementById('ccValidarAmigo').value.trim()
+  };
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok'; configuracaoAtual = data.empresa; }
     else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
   finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000); }
