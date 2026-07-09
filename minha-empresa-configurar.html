@@ -370,10 +370,14 @@
             <input type="checkbox" id="basicConfirmAtivo" style="width:18px;height:18px;">
             <span style="font-weight:600;">Ativar: só disparar depois que o cliente confirmar</span>
           </label>
-          <p class="sub" style="margin-bottom:8px;">Variáveis: <b>{cliente}</b>, <b>{empresa}</b>. O cliente confirma respondendo <b>"pode mandar"</b>.</p>
-          <label class="label">Mensagem pedindo a confirmação (logo após o presente)</label>
-          <textarea class="textarea" id="basicConfirmMsg" rows="3"></textarea>
-          <label class="label">Lembretes de confirmação <span style="font-weight:400;color:var(--text-dim)">(o robô insiste até o cliente confirmar — você define quantos, o tempo e o texto)</span></label>
+          <p class="sub" style="margin-bottom:8px;">Variáveis: <b>{cliente}</b>, <b>{empresa}</b>. O cliente responde por um <b>menu</b>: <b>1</b> já avisei → dispara · <b>2</b> ainda não → espera · <b>3</b> me manda um texto pronto.</p>
+          <label class="label">Mensagem pedindo a confirmação — com o menu 1/2/3 <span style="font-weight:400;color:var(--text-dim)">(logo após o presente)</span></label>
+          <textarea class="textarea" id="basicConfirmMsg" rows="5"></textarea>
+          <label class="label" style="margin-top:14px;">Opção 3 — texto pronto pro cliente encaminhar pros amigos</label>
+          <textarea class="textarea" id="basicTextoPronto" rows="3"></textarea>
+          <label class="label" style="margin-top:14px;">Opção 2 — resposta quando o cliente diz que "ainda não" avisou</label>
+          <textarea class="textarea" id="basicAindaNao" rows="3"></textarea>
+          <label class="label" style="margin-top:16px;">Lembretes de confirmação <span style="font-weight:400;color:var(--text-dim)">(o robô insiste até o cliente confirmar — você define quantos, o tempo e o texto)</span></label>
           <div id="basicCadContainer"></div>
           <button class="btn btn-secondary" id="addLembreteBtn" type="button" style="margin-top:4px;">➕ Adicionar lembrete</button>
           <label class="label" style="margin-top:16px;">Se o cliente nunca confirmar (após todos os lembretes):</label>
@@ -1532,13 +1536,15 @@ function carregarBasicConf() {
   const c = configuracaoAtual || {};
   document.getElementById('basicConfirmAtivo').checked = !!c.basicConfirmarAntesDisparo;
   document.getElementById('basicConfirmMsg').value = c.basicConfirmMensagem || '';
+  document.getElementById('basicTextoPronto').value = c.basicTextoPronto || '';
+  document.getElementById('basicAindaNao').value = c.basicAindaNao || '';
   document.getElementById('basicSemConf').value = c.basicSemConfirmacao || 'nao_envia';
   basicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || []));
   renderBasicCad();
 }
 document.getElementById('addLembreteBtn').addEventListener('click', () => {
   syncBasicCadFromDom();
-  basicCad.push({ esperaMin: 1440, texto: 'Oi {cliente}! 😊 Assim que avisar seus amigos, responde "pode mandar" que eu chamo eles 🎁' });
+  basicCad.push({ esperaMin: 1440, texto: 'Oi {cliente}! 😊 Assim que avisar seus amigos, responde *1* (já avisei) que eu chamo eles 🎁' });
   renderBasicCad();
 });
 document.getElementById('salvarBasicConfBtn').addEventListener('click', async () => {
@@ -1547,6 +1553,8 @@ document.getElementById('salvarBasicConfBtn').addEventListener('click', async ()
   const body = {
     basicConfirmarAntesDisparo: document.getElementById('basicConfirmAtivo').checked,
     basicConfirmMensagem: document.getElementById('basicConfirmMsg').value,
+    basicTextoPronto: document.getElementById('basicTextoPronto').value,
+    basicAindaNao: document.getElementById('basicAindaNao').value,
     basicConfirmacaoCadencia: basicCad.filter(x => x.texto && x.texto.trim()),
     basicSemConfirmacao: document.getElementById('basicSemConf').value
   };

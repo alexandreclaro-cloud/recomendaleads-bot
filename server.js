@@ -620,11 +620,15 @@ const EMPRESA_PADRAO = {
   // cliente confirmar que avisou (menos denúncia = menos ban). Lembretes de
   // confirmação com cadência editável (quantos, tempo e texto de cada).
   basicConfirmarAntesDisparo: false,
-  basicConfirmMensagem: 'Falta um passo pra eu chamar seus amigos! 🙌 Dá um alô rápido avisando que a {empresa} vai entrar em contato com eles. Assim que avisar, me responde *"pode mandar"* que eu já chamo eles 🎁',
+  basicConfirmMensagem: 'Falta só um passo pra eu chamar seus amigos! 🙌 Dá um alô rápido avisando que a {empresa} vai entrar em contato com eles.\n\n1️⃣ Já avisei → pode chamar eles\n2️⃣ Ainda não avisei\n3️⃣ Me manda um textinho pronto pra eu encaminhar\n\n👇 _Responda com o número_',
+  // Opção 3 do menu: texto pronto que o robô manda pro cliente ENCAMINHAR pros amigos (avisar antes).
+  basicTextoPronto: 'Oi! 😊 Acabei de te recomendar pra {empresa} e você vai ganhar um presente 🎁 Eles vão te mandar uma mensagem por aqui — é só responder que garante o seu!',
+  // Opção 2 do menu: resposta quando o cliente diz que ainda NÃO avisou (segue aguardando).
+  basicAindaNao: 'Tranquilo, {cliente}! 😊 Sem pressa. Assim que avisar seus amigos, é só me responder *1* (ou "pode mandar") que eu chamo eles na hora 🎁',
   basicConfirmacaoCadencia: [
-    { esperaMin: 120, texto: 'Oi {cliente}! 😊 Conseguiu avisar seus amigos? Quando estiver tudo certo, é só responder *"pode mandar"* que eu chamo eles 🎁' },
-    { esperaMin: 1440, texto: 'Oi {cliente}! Seus amigos ainda estão te esperando 🎁 Avisa eles e me responde *"pode mandar"*.' },
-    { esperaMin: 4320, texto: 'Oi {cliente}! Última lembrança 🙌 É só avisar os amigos e responder *"pode mandar"* que eu libero os presentes deles.' }
+    { esperaMin: 120, texto: 'Oi {cliente}! 😊 Conseguiu avisar seus amigos? Quando estiver tudo certo, responde *1* (já avisei) que eu chamo eles 🎁' },
+    { esperaMin: 1440, texto: 'Oi {cliente}! Seus amigos ainda estão te esperando 🎁 Avisa eles e responde *1* (já avisei).' },
+    { esperaMin: 4320, texto: 'Oi {cliente}! Última lembrança 🙌 É só avisar os amigos e responder *1* (já avisei) que eu libero os presentes deles.' }
   ],
   basicSemConfirmacao: 'nao_envia', // 'nao_envia' (seguro) | 'envia' (dispara mesmo sem confirmar, após a cadência)
   // Número de WhatsApp da empresa (só dígitos) — usado pra montar o link que o
@@ -2627,16 +2631,35 @@ async function tratarWebhook(req, res) {
       console.log(`[NICHO] ${telefone} → ${nichoEfetivo}${nichoDetectado ? ' (novo pelo link)' : ' (sessão)'}`);
     }
 
-    // Basic com confirmação: cliente confirmou ("pode mandar") → dispara agora
-    // os recomendados que estavam segurados. Trata antes do roteamento normal.
-    if (sessaoExiste && sessaoExistenteSnap.data().aguardandoConfirmacaoDisparo && !ehGatilhoInicial && !nichoDetectado && ehConfirmacaoDisparo(texto)) {
+    // Basic com confirmação: cliente respondeu ao menu (1 já avisei / 2 ainda não /
+    // 3 me manda um texto pronto). Trata antes do roteamento normal.
+    if (sessaoExiste && sessaoExistenteSnap.data().aguardandoConfirmacaoDisparo && !ehGatilhoInicial && !nichoDetectado) {
       const s = sessaoExistenteSnap.data();
       const empresaC = await getEmpresa();
-      await dispararRecomendados(s.clienteNome, s.vendedorNome, s.contatosPendentesDisparo || [], empresaC);
-      await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
-      await cancelarConfirmacoesDisparo(telefone);
-      await sendText(telefone, 'Perfeito! 🙌 Já estou avisando seus amigos. Muito obrigado(a)!');
-      return res.sendStatus(200);
+      const t = (texto || '').trim().toLowerCase();
+      const primeiro = t.charAt(0);
+      const nome1 = (s.clienteNome || '').split(' ')[0] || 'você';
+      const varsC = { nomeRecomendado: nome1, recomendador: nome1, empresa: empresaC.nome };
+
+      // 3 → manda o texto pronto pro cliente encaminhar (continua aguardando)
+      if (primeiro === '3' || /textinho|texto pronto|manda o texto|manda um texto|modelo/.test(t)) {
+        await sendText(telefone, substituirVariaveis(empresaC.basicTextoPronto || EMPRESA_PADRAO.basicTextoPronto, varsC));
+        return res.sendStatus(200);
+      }
+      // 2 → ainda não avisou (continua aguardando; os lembretes seguem)
+      if (primeiro === '2' || /ainda n[ãa]o|n[ãa]o avisei|n[ãa]o mandei/.test(t)) {
+        await sendText(telefone, substituirVariaveis(empresaC.basicAindaNao || EMPRESA_PADRAO.basicAindaNao, varsC));
+        return res.sendStatus(200);
+      }
+      // 1 / "já avisei" / "pode mandar" → dispara agora os recomendados segurados
+      if (primeiro === '1' || ehConfirmacaoDisparo(texto)) {
+        await dispararRecomendados(s.clienteNome, s.vendedorNome, s.contatosPendentesDisparo || [], empresaC);
+        await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
+        await cancelarConfirmacoesDisparo(telefone);
+        await sendText(telefone, 'Perfeito! 🙌 Já estou avisando seus amigos. Muito obrigado(a)!');
+        return res.sendStatus(200);
+      }
+      // não reconheceu a resposta → segue o roteamento normal (não força nada)
     }
 
     // Follow-up do recomendador: se está aguardando resposta ao lembrete
