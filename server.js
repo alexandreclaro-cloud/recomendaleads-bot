@@ -631,6 +631,10 @@ const EMPRESA_PADRAO = {
     { esperaMin: 4320, texto: 'Oi {cliente}! Última lembrança 🙌 É só avisar os amigos e responder *1* (já avisei) que eu libero os presentes deles.' }
   ],
   basicSemConfirmacao: 'nao_envia', // 'nao_envia' (seguro) | 'envia' (dispara mesmo sem confirmar, após a cadência)
+  // Intervalo (min) entre entregar o presente e perguntar se quer o próximo prêmio.
+  // Evita encavalar essa pergunta com o aviso de "avise seus amigos" (o cliente
+  // respondia "ok" e o robô achava que era "sim" pra próxima faixa).
+  intervaloProximaFaixaMin: 1,
   // Número de WhatsApp da empresa (só dígitos) — usado pra montar o link que o
   // cliente encaminha no modo Full (o amigo toca e chama ESTE número).
   numeroWhatsapp: '',
@@ -1303,6 +1307,13 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     return;
   }
 
+  if (sessao.etapa === 'aguardando_intervalo_proxima_faixa') {
+    // Janela curta entre entregar o presente e perguntar o próximo prêmio (a
+    // pergunta vem por agendamento). Não avança faixa aqui: o "ok"/"combinado"
+    // que o cliente manda é resposta à mensagem anterior (avisar os amigos).
+    return;
+  }
+
   if (sessao.etapa === 'aguardando_autorizacao_proxima_faixa') {
     if (respostaEhPositiva(texto)) {
       const proximoIndice = sessao.indiceFaixaAtual + 1;
@@ -1329,6 +1340,9 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
       sessao.etapa = 'finalizado';
       await saveSessao(telefone, sessao);
       await sendText(telefone, 'Sem problemas! Muito obrigado(a) por participar e por confiar na gente 🙏');
+      // Basic com confirmação: o cliente parou aqui → pede a confirmação (menu 1/2/3)
+      // pra disparar os contatos que ficaram segurados.
+      if (empresa.basicConfirmarAntesDisparo) await pedirConfirmacaoDisparoBasic(telefone, sessao, empresa);
     }
     return;
   }
@@ -1519,6 +1533,23 @@ async function cancelarConfirmacoesDisparo(telefone) {
   } catch (e) { console.error('cancelarConfirmacoesDisparo:', e.message); }
 }
 
+// Basic com confirmação: envia o menu (1/2/3) e agenda os lembretes de cobrança.
+async function pedirConfirmacaoDisparoBasic(telefone, sessao, empresa) {
+  sessao.aguardandoConfirmacaoDisparo = true;
+  await saveSessao(telefone, sessao);
+  const nome = (sessao.clienteNome || '').split(' ')[0] || 'você';
+  const varsC = { nomeRecomendado: nome, recomendador: nome, empresa: empresa.nome };
+  await sendText(telefone, substituirVariaveis(empresa.basicConfirmMensagem || EMPRESA_PADRAO.basicConfirmMensagem, varsC));
+  try { await agendarConfirmacaoDisparo(telefone, empresa, 0); } catch (e) { console.error('agendarConfirmacaoDisparo:', e.message); }
+}
+// Agenda (com intervalo) a pergunta "quer liberar o próximo prêmio?", pra não
+// encavalar com a mensagem anterior (o "combinado?" de avisar os amigos).
+async function agendarPerguntaProximaFaixa(telefone, empresa) {
+  const min = Math.max(1, parseInt(empresa.intervaloProximaFaixaMin, 10) || EMPRESA_PADRAO.intervaloProximaFaixaMin || 1);
+  const executarEm = new Date(Date.now() + min * 60000).toISOString();
+  await criarAgendamento({ tipo: 'perguntar_proxima_faixa', executarEm, dados: { telefone } });
+}
+
 // ---- Full: cobrança do "enviei" (cliente confirmar que encaminhou o link) ----
 async function agendarConfirmacaoEnvioFull(telefone, empresa, indice) {
   const cad = empresa.fullConfirmacaoCadencia || EMPRESA_PADRAO.fullConfirmacaoCadencia || [];
@@ -1606,26 +1637,26 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   if (!proximaFaixa) {
     sessao.etapa = 'finalizado';
     sessao.faixaFinal = faixa;
-    if (gated) sessao.aguardandoConfirmacaoDisparo = true;
     await saveSessao(telefone, sessao);
     await sendText(telefone, 'Muito obrigado(a) por participar e por confiar na gente! 🙏');
-    if (gated) {
-      const varsC = { nomeRecomendado: (sessao.clienteNome || '').split(' ')[0], recomendador: (sessao.clienteNome || '').split(' ')[0], empresa: empresa.nome };
-      await sendText(telefone, substituirVariaveis(empresa.basicConfirmMensagem || EMPRESA_PADRAO.basicConfirmMensagem, varsC));
-      try { await agendarConfirmacaoDisparo(telefone, empresa, 0); } catch (e) { console.error('agendarConfirmacaoDisparo:', e.message); }
-    }
+    // Basic com confirmação: agora sim pede a confirmação (menu 1/2/3) pra disparar os contatos segurados.
+    if (gated) await pedirConfirmacaoDisparoBasic(telefone, sessao, empresa);
   } else {
-    sessao.etapa = 'aguardando_autorizacao_proxima_faixa';
-    sessao.excedentePendente = excedente;
-    await saveSessao(telefone, sessao);
-
+    // Monta a pergunta do próximo prêmio, mas NÃO envia agora — agenda com intervalo
+    // (≥1 min) pra não encavalar com o aviso anterior de avisar os amigos.
+    let pergunta;
     if (excedente.length > 0) {
       const palavraContato = excedente.length === 1 ? 'contato' : 'contatos';
-      await sendText(telefone, `E olha, você já mandou ${excedente.length} ${palavraContato} a mais! Quer completar mais ${proximaFaixa.quantidade - excedente.length} recomendações e ganhar "${proximaFaixa.premio}"?`);
+      pergunta = `E olha, você já mandou ${excedente.length} ${palavraContato} a mais! Quer completar mais ${proximaFaixa.quantidade - excedente.length} recomendações e ganhar "${proximaFaixa.premio}"?`;
     } else {
       const incremento = proximaFaixa.quantidade - faixa.quantidade;
-      await sendText(telefone, `Quer liberar o próximo prêmio? São +${incremento} recomendações e o prêmio é "${proximaFaixa.premio}". Quer continuar?`);
+      pergunta = `Quer liberar o próximo prêmio? São +${incremento} recomendações e o prêmio é "${proximaFaixa.premio}". Quer continuar?`;
     }
+    sessao.etapa = 'aguardando_intervalo_proxima_faixa';
+    sessao.excedentePendente = excedente;
+    sessao.proximaFaixaPergunta = pergunta;
+    await saveSessao(telefone, sessao);
+    try { await agendarPerguntaProximaFaixa(telefone, empresa); } catch (e) { console.error('agendarPerguntaProximaFaixa:', e.message); }
   }
 
   // Disparo pros recomendados: no Basic normal, sai agora (escalonado/anti-rajada).
@@ -5253,6 +5284,19 @@ async function processarAgendamentoInterno(agendamento) {
     await sendText(telefone, substituirVariaveis(textoLembrete, vars));
     await saveSessao(telefone, { followupAguardando: true });
     await agendarFollowupRecomendador(telefone, empresa, indice + 1, teste ? { teste: true } : undefined);
+    return;
+  }
+
+  // Pergunta do próximo prêmio, enviada com intervalo pra não encavalar com o
+  // aviso anterior (avisar os amigos) — evita o cliente responder "ok" pra pergunta errada.
+  if (agendamento.tipo === 'perguntar_proxima_faixa') {
+    const { telefone } = agendamento.dados;
+    if (await numeroEstaPausado(telefone)) return;
+    const snap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
+    const sessao = snap.exists ? snap.data() : null;
+    if (!sessao || sessao.etapa !== 'aguardando_intervalo_proxima_faixa') return; // cliente já mudou de estado
+    await sendText(telefone, sessao.proximaFaixaPergunta || 'Quer liberar o próximo prêmio? 😊');
+    await saveSessao(telefone, { etapa: 'aguardando_autorizacao_proxima_faixa' });
     return;
   }
 
