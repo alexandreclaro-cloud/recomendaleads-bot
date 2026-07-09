@@ -624,6 +624,11 @@
   </div>
   <div class="periodo-stat" id="periodoStatLeads"></div>
 
+  <div class="download-bar" style="display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px;">
+    <button type="button" class="periodo-btn" id="baixarClientesBtn">⬇️ Baixar clientes (.csv)</button>
+    <button type="button" class="periodo-btn" id="baixarRecomendadosBtn">⬇️ Baixar recomendados (.csv)</button>
+  </div>
+
   <div id="loadMsg" class="load-msg">Carregando leads...</div>
   <div class="board" id="board" style="display:none"></div>
 </div>
@@ -1101,6 +1106,65 @@ async function carregarLeads() {
     loadMsg.textContent = 'Não foi possível carregar os leads. Verifique se o bot está rodando.';
   }
 }
+
+// ============================================================
+// EXPORTAÇÃO CSV (clientes e recomendados) — usa os leads já carregados
+// ============================================================
+function csvEscapar(v) {
+  const s = (v == null ? '' : String(v));
+  return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function baixarCSV(nomeArquivo, cabecalho, linhas) {
+  const conteudo = [cabecalho, ...linhas].map(r => r.map(csvEscapar).join(';')).join('\r\n');
+  // BOM (﻿) pra o Excel abrir os acentos certinho.
+  const blob = new Blob(['﻿' + conteudo], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nomeArquivo;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function fmtDataCSV(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function nomeEtapaCSV(id) {
+  const e = (etapas || []).find(x => x.id === id);
+  return e ? e.nome : (id || '');
+}
+function baixarRecomendadosCSV() {
+  if (!leads || !leads.length) { alert('Ainda não há recomendados para exportar.'); return; }
+  const cab = ['Recomendado', 'Telefone', 'Recomendado por', 'Telefone do cliente', 'Vendedor', 'Etapa', 'Data'];
+  const linhas = leads.map(l => [
+    l.nomeRecomendado || '', l.telefoneRecomendado || '', l.nomeRecomendador || '',
+    l.telefoneRecomendador || '', l.vendedor || '', nomeEtapaCSV(l.etapa), fmtDataCSV(l.criadoEm)
+  ]);
+  baixarCSV(`recomendados_${new Date().toISOString().slice(0, 10)}.csv`, cab, linhas);
+}
+function baixarClientesCSV() {
+  if (!leads || !leads.length) { alert('Ainda não há clientes para exportar.'); return; }
+  // Agrupa os leads por cliente (quem recomendou).
+  const mapa = {};
+  leads.forEach(l => {
+    const tel = l.telefoneRecomendador || '';
+    const chave = tel || ('nome:' + (l.nomeRecomendador || ''));
+    if (!mapa[chave]) mapa[chave] = { nome: l.nomeRecomendador || '', telefone: tel, vendedor: l.vendedor || '', qtd: 0, primeira: l.criadoEm, ultima: l.criadoEm };
+    const c = mapa[chave];
+    c.qtd++;
+    if (!c.nome && l.nomeRecomendador) c.nome = l.nomeRecomendador;
+    if (!c.vendedor && l.vendedor) c.vendedor = l.vendedor;
+    if (l.criadoEm && (!c.primeira || l.criadoEm < c.primeira)) c.primeira = l.criadoEm;
+    if (l.criadoEm && (!c.ultima || l.criadoEm > c.ultima)) c.ultima = l.criadoEm;
+  });
+  const cab = ['Cliente', 'Telefone', 'Vendedor', 'Qtd recomendações', 'Primeira recomendação', 'Última recomendação'];
+  const linhas = Object.values(mapa).sort((a, b) => b.qtd - a.qtd).map(c => [
+    c.nome, c.telefone, c.vendedor, c.qtd, fmtDataCSV(c.primeira), fmtDataCSV(c.ultima)
+  ]);
+  baixarCSV(`clientes_${new Date().toISOString().slice(0, 10)}.csv`, cab, linhas);
+}
+document.getElementById('baixarClientesBtn') && document.getElementById('baixarClientesBtn').addEventListener('click', baixarClientesCSV);
+document.getElementById('baixarRecomendadosBtn') && document.getElementById('baixarRecomendadosBtn').addEventListener('click', baixarRecomendadosCSV);
 
 function montarColunas() {
   const board = document.getElementById('board');
