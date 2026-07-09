@@ -1217,7 +1217,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
     const listaVendedores = empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
     const perguntaVendedor = substituirVariaveis(empresa.mensagemPedeVendedor || EMPRESA_PADRAO.mensagemPedeVendedor, { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome });
-    await sendText(telefone, `${perguntaVendedor}\n\n${listaVendedores}\n\nResponda com o número ou o nome.`);
+    await sendText(telefone, `${perguntaVendedor}\n\n${listaVendedores}\n\n👇 _Digite o número_`);
     return;
   }
 
@@ -1233,7 +1233,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     }
 
     if (!vendedor) {
-      await sendText(telefone, 'Não encontrei esse vendedor. Pode digitar o número da lista ou o nome certinho?');
+      await sendText(telefone, 'Não encontrei esse vendedor 😊 👇 _Digite o número_ da lista.');
       return;
     }
 
