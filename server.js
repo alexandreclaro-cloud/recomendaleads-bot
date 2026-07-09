@@ -2130,7 +2130,7 @@ async function responderDuvidaRec(telefone, opcao, empresa) {
   else if (opcao === 4) resposta = empresa.horariosEmpresa ? `Nosso atendimento: ${empresa.horariosEmpresa} 🕒` : 'Um atendente já te passa os horários 😊';
   else return false;
   await sendText(telefone, resposta);
-  await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona   *2* — Validade\n*3* — Endereço   *4* — Horários\n*5* — Falar com atendente\n\nOu responda *0* se estiver tudo certo 👍`);
+  await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona\n*2* — Validade\n*3* — Endereço\n*4* — Horários\n*5* — Falar com atendente\n\nOu responda *0* se estiver tudo certo 👍`);
   await saveSessaoRecomendado(telefone, { etapa: 'menu_duvidas', ultimaMensagemEm: new Date().toISOString() });
   return true;
 }
