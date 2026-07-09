@@ -1133,20 +1133,29 @@ function nomeEtapaCSV(id) {
   const e = (etapas || []).find(x => x.id === id);
   return e ? e.nome : (id || '');
 }
+// Base do export = leads no período selecionado na barra (Hoje / mês / 7 / 30 / Tudo / datas).
+function leadsParaExport() { return filtrarPorPeriodo(leads, periodoSelLeads); }
+function tagPeriodoArquivo() {
+  const s = periodoSelLeads || { tipo: 'all' };
+  if (s.tipo === 'custom') return `${s.inicio || 'inicio'}_a_${s.fim || 'fim'}`;
+  return s.tipo; // hoje | mes | 7 | 30 | all
+}
 function baixarRecomendadosCSV() {
-  if (!leads || !leads.length) { alert('Ainda não há recomendados para exportar.'); return; }
+  const base = leadsParaExport();
+  if (!base.length) { alert('Nenhum recomendado nesse período. Ajuste o filtro de datas acima e tente de novo.'); return; }
   const cab = ['Recomendado', 'Telefone', 'Recomendado por', 'Telefone do cliente', 'Vendedor', 'Etapa', 'Data'];
-  const linhas = leads.map(l => [
+  const linhas = base.map(l => [
     l.nomeRecomendado || '', l.telefoneRecomendado || '', l.nomeRecomendador || '',
     l.telefoneRecomendador || '', l.vendedor || '', nomeEtapaCSV(l.etapa), fmtDataCSV(l.criadoEm)
   ]);
-  baixarCSV(`recomendados_${new Date().toISOString().slice(0, 10)}.csv`, cab, linhas);
+  baixarCSV(`recomendados_${tagPeriodoArquivo()}_${new Date().toISOString().slice(0, 10)}.csv`, cab, linhas);
 }
 function baixarClientesCSV() {
-  if (!leads || !leads.length) { alert('Ainda não há clientes para exportar.'); return; }
-  // Agrupa os leads por cliente (quem recomendou).
+  const base = leadsParaExport();
+  if (!base.length) { alert('Nenhum cliente nesse período. Ajuste o filtro de datas acima e tente de novo.'); return; }
+  // Agrupa os leads (do período) por cliente (quem recomendou).
   const mapa = {};
-  leads.forEach(l => {
+  base.forEach(l => {
     const tel = l.telefoneRecomendador || '';
     const chave = tel || ('nome:' + (l.nomeRecomendador || ''));
     if (!mapa[chave]) mapa[chave] = { nome: l.nomeRecomendador || '', telefone: tel, vendedor: l.vendedor || '', qtd: 0, primeira: l.criadoEm, ultima: l.criadoEm };
@@ -1161,7 +1170,7 @@ function baixarClientesCSV() {
   const linhas = Object.values(mapa).sort((a, b) => b.qtd - a.qtd).map(c => [
     c.nome, c.telefone, c.vendedor, c.qtd, fmtDataCSV(c.primeira), fmtDataCSV(c.ultima)
   ]);
-  baixarCSV(`clientes_${new Date().toISOString().slice(0, 10)}.csv`, cab, linhas);
+  baixarCSV(`clientes_${tagPeriodoArquivo()}_${new Date().toISOString().slice(0, 10)}.csv`, cab, linhas);
 }
 document.getElementById('baixarClientesBtn') && document.getElementById('baixarClientesBtn').addEventListener('click', baixarClientesCSV);
 document.getElementById('baixarRecomendadosBtn') && document.getElementById('baixarRecomendadosBtn').addEventListener('click', baixarRecomendadosCSV);
