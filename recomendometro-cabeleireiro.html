@@ -960,7 +960,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
           <div class="radio-group">
             <input class="radio-opt" type="radio" name="prog" id="prog-sim" value="sim">
             <label class="radio-lbl" for="prog-sim"><span class="dot"></span>Sim, tenho</label>
-            <input class="radio-opt" type="radio" name="prog" id="prog-nao" value="nao" checked>
+            <input class="radio-opt" type="radio" name="prog" id="prog-nao" value="nao">
             <label class="radio-lbl" for="prog-nao"><span class="dot"></span>Não tenho</label>
           </div>
         </div>
@@ -971,7 +971,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
           <div class="radio-group">
             <input class="radio-opt" type="radio" name="base" id="base-sim" value="sim">
             <label class="radio-lbl" for="base-sim"><span class="dot"></span>Sim, no boca a boca</label>
-            <input class="radio-opt" type="radio" name="base" id="base-nao" value="nao" checked>
+            <input class="radio-opt" type="radio" name="base" id="base-nao" value="nao">
             <label class="radio-lbl" for="base-nao"><span class="dot"></span>Não / quase nada</label>
           </div>
         </div>
@@ -1133,8 +1133,11 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     const cd = parseFloat(document.getElementById('clientes-dia').value);
     const dm = parseFloat(document.getElementById('dias-mes').value);
     const tk = getTicketValue();
-    const temProg = document.querySelector('input[name="prog"]:checked').value === 'sim';
-    const temBase = document.querySelector('input[name="base"]:checked').value === 'sim';
+    const progSel = document.querySelector('input[name="prog"]:checked');
+    const baseSel = document.querySelector('input[name="base"]:checked');
+    if (!progSel || !baseSel) { alert('Responda as perguntas 5 e 6 antes de continuar.'); return; }
+    const temProg = progSel.value === 'sim';
+    const temBase = baseSel.value === 'sim';
     const nome = document.getElementById('nome').value.split(' ')[0];
     let taxa = 0.20;
     if (temProg) taxa = 0.05;
@@ -1150,7 +1153,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     document.getElementById('res-texto').textContent = 'por mês a mais no faturamento — sem gastar um real a mais em anúncios. Faturamento atual estimado: ' + fmt(fatMes) + '/mês.';
     // Preencher tela fullscreen
     document.getElementById('rs-nome').textContent = nome;
-    document.getElementById('rs-12m').textContent = fmt(perdaMes * 12);
+    animarNum(document.getElementById('rs-12m'), perdaMes * 12);
     document.getElementById('rs-3m').textContent = fmt(perdaMes * 3);
     document.getElementById('rs-6m').textContent = fmt(perdaMes * 6);
     document.getElementById('rs-mes').textContent = fmt(perdaMes);
