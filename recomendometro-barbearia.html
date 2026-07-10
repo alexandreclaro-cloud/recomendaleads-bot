@@ -1271,27 +1271,35 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 </div>
 
 
-<!-- PROSPECTAI-CAPTURE: envia o lead pro CRM quando preenche nome+WhatsApp -->
+<!-- PROSPECTAI-CAPTURE: envia o lead pro CRM (nome+WhatsApp) e marca quando o lead clica no WhatsApp -->
 <script>
 (function(){
-  var URL="https://buoaumgjjqtfavxfrwsz.supabase.co/rest/v1/rpc/capture_lead";
+  var BASE="https://buoaumgjjqtfavxfrwsz.supabase.co/rest/v1/rpc/";
   var KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1b2F1bWdqanF0ZmF2eGZyd3N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNDk0OTksImV4cCI6MjA5ODYyNTQ5OX0.A6uUArucvd9fDU-kKuTPnl-aw69Aui_-MFZYSpxBlEM", CODE="4D8ECD2D", SRC="barbearia";
-  var sent=false, orig=window.calcular;
-  if(typeof orig!=="function") return;
-  window.calcular=function(){
-    try{
-      var n=((document.getElementById("nome")||{}).value||"").trim();
-      var w=((document.getElementById("whatsapp")||{}).value||"").trim();
-      var e=((document.getElementById("email")||{}).value||"").trim();
-      if(!sent && n && w){
-        sent=true;
-        try{if(window.fbq)fbq('track','Lead');}catch(_){}
-        fetch(URL,{method:"POST",headers:{"Content-Type":"application/json","apikey":KEY,"Authorization":"Bearer "+KEY},
-          body:JSON.stringify({p_code:CODE,p_name:n,p_phone:w,p_email:e||null,p_source:SRC,p_campaign:"funil-"+SRC})}).catch(function(){});
-      }
-    }catch(_){}
-    return orig.apply(this,arguments);
-  };
+  var H={"Content-Type":"application/json","apikey":KEY,"Authorization":"Bearer "+KEY};
+  function rpc(fn,body){ return fetch(BASE+fn,{method:"POST",headers:H,body:JSON.stringify(body)}); }
+  var sent=false, leadId=null, orig=window.calcular;
+  if(typeof orig==="function"){
+    window.calcular=function(){
+      try{
+        var n=((document.getElementById("nome")||{}).value||"").trim();
+        var w=((document.getElementById("whatsapp")||{}).value||"").trim();
+        var e=((document.getElementById("email")||{}).value||"").trim();
+        if(!sent && n && w){
+          sent=true;
+          try{if(window.fbq)fbq("track","Lead");}catch(_){}
+          rpc("capture_lead",{p_code:CODE,p_name:n,p_phone:w,p_email:e||null,p_source:SRC,p_campaign:"funil-"+SRC})
+            .then(function(r){return r.json();}).then(function(id){ leadId=id; }).catch(function(){});
+        }
+      }catch(_){}
+      return orig.apply(this,arguments);
+    };
+  }
+  // Fase do lead: ao clicar pra ir pro WhatsApp, avisa o CRM (mark_wa_click)
+  document.addEventListener("click",function(ev){
+    var a=ev.target.closest?ev.target.closest('a[href*="wa.me"]'):null;
+    if(a && leadId){ rpc("mark_wa_click",{p_lead_id:leadId}).catch(function(){}); }
+  });
 })();
 </script>
 </body>
