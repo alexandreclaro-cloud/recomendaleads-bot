@@ -1,6 +1,22 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '363744313888');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=363744313888&ev=PageView&noscript=1"/></noscript>
+<!-- End Meta Pixel Code -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Recomendômetro — Quanto você deixa na mesa sem um programa de recomendação?</title>
@@ -211,7 +227,7 @@
 </div>
 
 <script>
-  var WPP = '5511940816872';
+  var WPP = '5511924707128';
   var ans = { dias: 26 };
   var cur = 0;
   var TOTAL = 7;
@@ -247,6 +263,7 @@
     if(tel.replace(/\D/g,'').length<8){alert('Informe um telefone válido.');document.getElementById('leadTel').focus();return;}
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){alert('Informe um e-mail válido.');document.getElementById('leadEmail').focus();return;}
     ans.nome=nome; ans.telefone=tel; ans.email=email;
+    try{if(window.fbq)fbq('track','Lead');}catch(_){}
     calcular();
   }
 

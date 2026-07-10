@@ -1,6 +1,22 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '363744313888');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=363744313888&ev=PageView&noscript=1"/></noscript>
+<!-- End Meta Pixel Code -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Recomendômetro para Salão de Cabeleireiro — RecomendaLeads</title>
@@ -1015,7 +1031,7 @@
       </div>
 
       <div class="res-ctas">
-        <a href="https://wa.me/5511940816872?text=Fiz+o+Recoment%C3%B4metro+e+quero+saber+mais" target="_blank" class="btn-prim">
+        <a href="https://wa.me/5511924707128?text=Fiz+o+Recoment%C3%B4metro+e+quero+saber+mais" target="_blank" class="btn-prim">
           💬 Quero uma sessão estratégica
         </a>
         <a href="https://recomendaleads.com.br" target="_blank" class="btn-ghost-light">
@@ -1241,11 +1257,14 @@
       </div>
     </div>
 
-    <a href="https://wa.me/5511940816872?text=Fiz+o+Recoment%C3%B4metro+e+quero+saber+mais" target="_blank" class="rs-btn-main">
-      QUERO PARAR DE PERDER ESSE DINHEIRO →
+        <a href="https://wa.me/5511924707128?text=Fiz%20o%20Recomend%C3%B4metro%20do%20meu%20sal%C3%A3o%20e%20quero%20aplicar%20um%20programa%20de%20recomenda%C3%A7%C3%A3o%20agora." target="_blank" class="rs-btn-main">
+      Quero aplicar um programa agora →
     </a>
-    <a href="https://recomendaleads.com.br" target="_blank" class="rs-btn-sec">
-      ☐ ME MOSTRE COMO ISSO FUNCIONA →
+    <a href="https://wa.me/5511924707128?text=Fiz%20o%20Recomend%C3%B4metro%20do%20meu%20sal%C3%A3o%20e%20quero%20uma%20sess%C3%A3o%20estrat%C3%A9gica%20agora." target="_blank" class="rs-btn-sec">
+      Quero uma sessão estratégica agora
+    </a>
+    <a href="https://wa.me/5511924707128?text=Fiz%20o%20Recomend%C3%B4metro%20do%20meu%20sal%C3%A3o%20e%20quero%20falar%20com%20o%20comercial%20agora." target="_blank" class="rs-btn-sec">
+      Quero falar com o comercial agora
     </a>
     <button class="rs-refazer" onclick="refazer()">↻ Refazer o diagnóstico</button>
   </div>
@@ -1266,6 +1285,7 @@
       var e=((document.getElementById("email")||{}).value||"").trim();
       if(!sent && n && w){
         sent=true;
+        try{if(window.fbq)fbq('track','Lead');}catch(_){}
         fetch(URL,{method:"POST",headers:{"Content-Type":"application/json","apikey":KEY,"Authorization":"Bearer "+KEY},
           body:JSON.stringify({p_code:CODE,p_name:n,p_phone:w,p_email:e||null,p_source:SRC,p_campaign:"funil-"+SRC})}).catch(function(){});
       }
