@@ -216,9 +216,8 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
       <div class="curr">Seu faturamento médio hoje, de acordo com as suas informações: <b id="faturAtual">R$ 0 / mês</b></div>
       <div class="fire">Cada mês sem processo é mais dinheiro deixado na mesa. Comece agora:</div>
       <div class="ctas">
-        <a class="btn btn-wpp" id="cta1">Quero aplicar um programa agora</a>
-        <a class="btn btn-brand" id="cta2">Quero uma sessão estratégica agora</a>
-        <a class="btn btn-ghost" id="cta3">Quero falar com o comercial agora</a>
+        <a class="btn btn-wpp" id="cta1">Falar com 1 atendente</a>
+        <a class="btn btn-brand" id="cta2" href="https://calendar.app.google/tzMa4HTYewwhLtxC6" target="_blank">Agendar uma reunião agora</a>
       </div>
       <div class="restart"><a onclick="restart()">↻ Refazer o cálculo</a></div>
       <div class="rnote">Estimativa baseada em médias de mercado, aplicando um programa estruturado com processos, um método validado e muita tecnologia de Inteligência Artificial.</div>
@@ -291,9 +290,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     document.getElementById('bigSub').textContent = sub;
 
     var msgBase = 'Olá! Fiz o Recomendômetro (ramo: '+ans.ramo+') e descobri que posso estar deixando cerca de '+brl(p12)+' por ano na mesa. ';
-    document.getElementById('cta1').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero aplicar um programa de recomendação agora.');
-    document.getElementById('cta2').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero uma sessão estratégica agora.');
-    document.getElementById('cta3').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero falar com o comercial agora.');
+    document.getElementById('cta1').href = 'https://wa.me/'+WPP+'?text='+encodeURIComponent(msgBase+'Quero falar com um atendente.');
 
     try {
       fetch('/recomendometro/lead', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
