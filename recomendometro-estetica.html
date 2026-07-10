@@ -773,6 +773,11 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     margin-bottom: 24px;
   }
   .rs-btn-sec:hover { background: #b03c3c; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(201,76,76,0.45); }
+  /* 3 botões no estilo do recomendometro: verde / azul / branco */
+  .rs-btn-sec.rs-mod-brand { background:#2563EB; box-shadow:0 0 32px rgba(37,99,235,0.35); margin-bottom:14px; }
+  .rs-btn-sec.rs-mod-brand:hover { background:#1D4ED8; box-shadow:0 8px 32px rgba(37,99,235,0.45); }
+  .rs-btn-sec.rs-mod-ghost { background:#fff; color:#0F172A; border:1px solid #E2E8F0; box-shadow:0 0 24px rgba(0,0,0,0.12); }
+  .rs-btn-sec.rs-mod-ghost:hover { background:#f3f4f6; box-shadow:0 8px 24px rgba(0,0,0,0.16); }
 
   .rs-refazer {
     font-size: 12px;
@@ -1101,6 +1106,12 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   function fmt(v) {
     return v.toLocaleString('pt-BR', { style:'currency', currency:'BRL', minimumFractionDigits:0, maximumFractionDigits:0 }).replace(',00','');
   }
+  // Contador animado (igual recomendometro): sobe de 0 até o valor
+  function animarNum(el, alvo){
+    var ini=0, t0=null, dur=1100;
+    function passo(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1); var val=Math.floor(ini+(alvo-ini)*(0.5-Math.cos(p*Math.PI)/2)); el.textContent=fmt(val); if(p<1)requestAnimationFrame(passo); }
+    requestAnimationFrame(passo);
+  }
   function validate() {
     let ok = true;
     [['clientes-dia','num'],['dias-mes','sel'],['ticket','tick'],['nome','txt'],['whatsapp','txt'],['email','email']].forEach(([id,t]) => {
@@ -1144,7 +1155,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     document.getElementById('rs-6m').textContent = fmt(perdaMes * 6);
     document.getElementById('rs-mes').textContent = fmt(perdaMes);
     document.getElementById('rs-ganho').textContent = fmt(ganhoMes);
-    document.getElementById('rs-perda-titulo').textContent = fmt(perdaMes * 12);
+    animarNum(document.getElementById('rs-perda-titulo'), perdaMes * 12);
     // Montar diagnóstico personalizado
     const diagEl = document.getElementById('rs-diag-texto');
     let diagHTML = '';
@@ -1260,10 +1271,10 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
         <a href="https://wa.me/5511924707128?text=Fiz%20o%20Recomend%C3%B4metro%20da%20minha%20cl%C3%ADnica%20de%20est%C3%A9tica%20e%20quero%20aplicar%20um%20programa%20de%20recomenda%C3%A7%C3%A3o%20agora." target="_blank" class="rs-btn-main">
       Quero aplicar um programa agora →
     </a>
-    <a href="https://wa.me/5511924707128?text=Fiz%20o%20Recomend%C3%B4metro%20da%20minha%20cl%C3%ADnica%20de%20est%C3%A9tica%20e%20quero%20uma%20sess%C3%A3o%20estrat%C3%A9gica%20agora." target="_blank" class="rs-btn-sec">
+    <a href="https://wa.me/5511924707128?text=Fiz%20o%20Recomend%C3%B4metro%20da%20minha%20cl%C3%ADnica%20de%20est%C3%A9tica%20e%20quero%20uma%20sess%C3%A3o%20estrat%C3%A9gica%20agora." target="_blank" class="rs-btn-sec rs-mod-brand">
       Quero uma sessão estratégica agora
     </a>
-    <a href="https://wa.me/5511924707128?text=Fiz%20o%20Recomend%C3%B4metro%20da%20minha%20cl%C3%ADnica%20de%20est%C3%A9tica%20e%20quero%20falar%20com%20o%20comercial%20agora." target="_blank" class="rs-btn-sec">
+    <a href="https://wa.me/5511924707128?text=Fiz%20o%20Recomend%C3%B4metro%20da%20minha%20cl%C3%ADnica%20de%20est%C3%A9tica%20e%20quero%20falar%20com%20o%20comercial%20agora." target="_blank" class="rs-btn-sec rs-mod-ghost">
       Quero falar com o comercial agora
     </a>
     <button class="rs-refazer" onclick="refazer()">↻ Refazer o diagnóstico</button>
