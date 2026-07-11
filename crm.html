@@ -1408,6 +1408,7 @@ function abrirModalLead(leadId) {
         <div class="modal-actions">
           ${waLink ? `<a class="wa-btn" href="${waLink}" target="_blank">Abrir WhatsApp</a>` : ''}
           <button class="save-vendedor-btn" id="modalSalvarBtn">Salvar vendedor</button>
+          <button class="save-vendedor-btn" id="modalExcluirBtn" style="background:#dc2626;">🗑️ Excluir este lead</button>
         </div>
         <div class="modal-status" id="modalStatus"></div>
       </div>
@@ -1419,6 +1420,19 @@ function abrirModalLead(leadId) {
     if (e.target.id === 'modalOverlay') fecharModal();
   });
   document.getElementById('modalSalvarBtn').addEventListener('click', () => salvarVendedorModal(leadId));
+  document.getElementById('modalExcluirBtn').addEventListener('click', () => excluirLeadModal(leadId));
+}
+
+async function excluirLeadModal(leadId) {
+  if (!confirm('Excluir este lead? Não dá pra desfazer.')) return;
+  const st = document.getElementById('modalStatus');
+  st.textContent = 'Excluindo...'; st.className = 'modal-status';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-leads/${leadId}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { fecharModal(); await carregarLeads(); }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro ao excluir'); }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; }
 }
 
 function fecharModal() {

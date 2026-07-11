@@ -4374,6 +4374,22 @@ app.post('/minha-conversas/zerar', exigirLoginEmpresa, exigirGestor, async (req,
   }
 });
 
+// Exclui UM lead (card). Só o gestor, e só da própria empresa.
+app.delete('/minha-leads/:id', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ref = LEADS_COL().doc(id);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
+    }
+    await ref.delete();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
   try {
     const { id } = req.params;
