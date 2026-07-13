@@ -1197,6 +1197,13 @@ function mensagemNaoEntendiPorEtapa(etapa, empresa) {
 // LÓGICA PRINCIPAL DO ROTEIRO DE NEUROVENDAS
 // ============================================================
 
+// Faixas de prêmio ATIVAS. O dono pode DESLIGAR as faixas extras (2ª em diante)
+// pra dar só o 1º prêmio. A 1ª está SEMPRE ativa; as demais valem se ativa !== false.
+function faixasAtivas(empresa) {
+  const todas = (empresa && empresa.faixasBonus) || [];
+  return todas.filter((f, i) => i === 0 || (f && f.ativa !== false));
+}
+
 async function iniciarConversa(telefone) {
   const empresa = await getEmpresa();
   await getSessao(telefone);
@@ -1243,7 +1250,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     sessao.contatosFaixaAtual = [];
     await saveSessao(telefone, sessao);
 
-    const primeiraFaixa = empresa.faixasBonus[0];
+    const primeiraFaixa = faixasAtivas(empresa)[0];
     const varsCliente = { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome, premio: primeiraFaixa.premio, quantidade: primeiraFaixa.quantidade };
     // Modo Full: explica as 2 fases só agora, na hora de pedir os contatos (segue a lógica nome → vendedor → contatos).
     if (modoRecAtual(empresa) === 'full') {
@@ -1282,7 +1289,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     }
 
     if (novosContatos.length > 0) {
-      const faixaAtual = empresa.faixasBonus[sessao.indiceFaixaAtual];
+      const faixaAtual = faixasAtivas(empresa)[sessao.indiceFaixaAtual];
       const contatosFaixaAtual = [...(sessao.contatosFaixaAtual || []), ...novosContatos];
 
       sessao.contatos = [...(sessao.contatos || []), ...novosContatos];
@@ -1317,7 +1324,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   if (sessao.etapa === 'aguardando_autorizacao_proxima_faixa') {
     if (respostaEhPositiva(texto)) {
       const proximoIndice = sessao.indiceFaixaAtual + 1;
-      const proximaFaixa = empresa.faixasBonus[proximoIndice];
+      const proximaFaixa = faixasAtivas(empresa)[proximoIndice];
       const excedentePendente = sessao.excedentePendente || [];
 
       sessao.indiceFaixaAtual = proximoIndice;
@@ -1632,7 +1639,7 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     sessao.contatosPendentesDisparo = [...(sessao.contatosPendentesDisparo || []), ...contatosDestaFaixa];
   }
 
-  const proximaFaixa = empresa.faixasBonus[sessao.indiceFaixaAtual + 1];
+  const proximaFaixa = faixasAtivas(empresa)[sessao.indiceFaixaAtual + 1];
 
   if (!proximaFaixa) {
     sessao.etapa = 'finalizado';
@@ -4299,7 +4306,7 @@ app.post('/minha-conversas/:telefone/resetar', exigirLoginEmpresa, exigirGestor,
 
 app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
-    const { quantidade, novaQuantidade, arquivo, link, texto, premio } = req.body;
+    const { quantidade, novaQuantidade, arquivo, link, texto, premio, ativa } = req.body;
     const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
 
     const faixa = configuracao.faixasBonus.find(f => f.quantidade === quantidade);
@@ -4310,6 +4317,7 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, async (req, re
     if (link !== undefined) faixa.link = link;
     if (texto !== undefined) faixa.texto = texto;
     if (premio !== undefined) faixa.premio = premio;
+    if (ativa !== undefined) faixa.ativa = !!ativa;
     if (novaQuantidade && novaQuantidade !== quantidade) {
       faixa.quantidade = novaQuantidade;
     }

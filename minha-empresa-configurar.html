@@ -987,10 +987,18 @@ function renderFaixas(faixas) {
   const container = document.getElementById('faixasContainer');
   container.innerHTML = '';
   if (!faixas.length) { container.innerHTML = '<div class="card"><p class="empty">Nenhuma faixa configurada.</p></div>'; return; }
-  faixas.forEach((faixa) => {
+  faixas.forEach((faixa, idx) => {
     const card = document.createElement('div');
     card.className = 'card';
     card.style.marginBottom = '16px';
+    // 1º prêmio é sempre ativo; os extras (2º em diante) têm liga/desliga.
+    const toggleHtml = idx === 0
+      ? `<div class="hint" style="margin-bottom:12px;">🎁 <b>1º prêmio</b> — sempre ativo.</div>`
+      : `<label style="display:flex; align-items:center; gap:9px; margin-bottom:12px; cursor:pointer;">
+           <input type="checkbox" class="faixa-ativa" ${faixa.ativa !== false ? 'checked' : ''} style="width:18px;height:18px;">
+           <span style="font-weight:600;">Prêmio ativo</span>
+           <span class="hint" style="margin:0;">(desligue pra dar só o 1º prêmio)</span>
+         </label>`;
     card.innerHTML = `
       <div class="faixa-head">
         <h3>${(faixa.premio || 'Prêmio').replace(/</g,'&lt;')}</h3>
@@ -999,6 +1007,7 @@ function renderFaixas(faixas) {
           <span>recomendações</span>
         </div>
       </div>
+      ${toggleHtml}
       <label class="label">Prêmio (texto curto mostrado ao cliente)</label>
       <input class="input" type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
       <label class="label">Arquivo do voucher (PDF ou imagem) — envie do seu computador ou cole um link</label>
@@ -1019,6 +1028,7 @@ function renderFaixas(faixas) {
     container.appendChild(card);
   });
   container.querySelectorAll('.btn-action').forEach(btn => btn.addEventListener('click', () => salvarFaixa(btn)));
+  container.querySelectorAll('.faixa-ativa').forEach(chk => chk.addEventListener('change', () => salvarAtivaFaixa(chk)));
 
   container.querySelectorAll('.card').forEach(card => {
     const uploadBtn = card.querySelector('.upload-btn');
@@ -1057,6 +1067,26 @@ async function uploadArquivo(inputFile, inputTexto, statusEl) {
   inputFile.value = '';
 }
 
+// Liga/desliga um prêmio extra na hora (auto-salva).
+async function salvarAtivaFaixa(chk) {
+  const card = chk.closest('.card');
+  const btn = card.querySelector('.btn-action[data-quantidade]');
+  const quantidade = parseInt(btn.dataset.quantidade);
+  const statusEl = card.querySelector(`[data-statusfor="${quantidade}"]`);
+  statusEl.textContent = chk.checked ? 'Ativando...' : 'Desativando...'; statusEl.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantidade, ativa: chk.checked }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      statusEl.textContent = chk.checked ? '✅ Prêmio ativado' : '✅ Desligado — só o 1º será dado';
+      statusEl.className = 'status-msg ok';
+      const f = (configuracaoAtual.faixasBonus || []).find(x => x.quantidade === quantidade);
+      if (f) f.ativa = chk.checked;
+    } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro'); statusEl.className = 'status-msg err'; chk.checked = !chk.checked; }
+  } catch (e) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; chk.checked = !chk.checked; }
+  setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status-msg'; }, 4000);
+}
+
 async function salvarFaixa(btn) {
   const quantidade = parseInt(btn.dataset.quantidade);
   const card = btn.closest('.card');
@@ -1066,6 +1096,8 @@ async function salvarFaixa(btn) {
   const link = card.querySelector('[data-field="link"]').value.trim() || null;
   const texto = card.querySelector('[data-field="texto"]').value.trim() || null;
   const novaQuantidade = parseInt(card.querySelector('[data-field="quantidade"]').value);
+  const ativaEl = card.querySelector('.faixa-ativa');
+  const ativa = ativaEl ? ativaEl.checked : undefined; // 1ª faixa não tem toggle → não mexe
 
   if (!novaQuantidade || novaQuantidade < 1) {
     statusEl.textContent = '❌ Quantidade inválida'; statusEl.className = 'status-msg err'; return;
@@ -1076,12 +1108,12 @@ async function salvarFaixa(btn) {
 
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantidade, novaQuantidade, premio, arquivo, link, texto }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantidade, novaQuantidade, premio, arquivo, link, texto, ativa }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       statusEl.textContent = '✅ Salvo!'; statusEl.className = 'status-msg ok';
       const f = (configuracaoAtual.faixasBonus || []).find(x => x.quantidade === quantidade);
-      if (f) { f.premio = premio; f.arquivo = arquivo; f.link = link; f.texto = texto; f.quantidade = novaQuantidade; }
+      if (f) { f.premio = premio; f.arquivo = arquivo; f.link = link; f.texto = texto; f.quantidade = novaQuantidade; if (ativa !== undefined) f.ativa = ativa; }
       if (novaQuantidade !== quantidade) setTimeout(() => renderFaixas(configuracaoAtual.faixasBonus || []), 1100);
     }
     else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
