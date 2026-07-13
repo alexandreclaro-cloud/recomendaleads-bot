@@ -160,7 +160,7 @@
     <input type="text" id="senhaInput" value="123mudar" placeholder="Senha provisória de primeiro acesso">
     <div class="hint">Padrão: <b>123mudar</b>. O cliente será obrigado a definir a própria senha no primeiro login.</div>
 
-    <div id="trialBlock">
+    <div id="trialBlock" style="display:none">
       <div class="sec">Cobrança</div>
       <label>Período gratuito (sem cobrar)</label>
       <select id="trialSelect" style="width:100%;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:8px;font-size:0.95rem;">
@@ -174,6 +174,7 @@
       <div class="hint">Use para mentorados ou cortesias. No período gratuito o cliente usa tudo sem pagar; depois, o acesso é bloqueado até assinar.</div>
     </div>
 
+    <div id="blocoTecnico" style="display:none">
     <div class="sec">WhatsApp</div>
     <label>Modo de conexão</label>
     <select id="whatsappTipoSelect" style="width:100%;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:8px;font-size:0.95rem;">
@@ -201,6 +202,8 @@
       </div>
     </div>
 
+    </div><!-- /blocoTecnico -->
+
     <button id="criarBtn">Cadastrar empresa</button>
     <div class="status" id="statusMsg"></div>
 
@@ -208,9 +211,8 @@
       <div>✅ Empresa <b id="resultadoNome"></b> cadastrada!</div>
       <div style="margin-top:8px;">Login: <b id="resultadoEmail"></b></div>
       <div>Senha provisória: <b id="resultadoSenha"></b></div>
-      <div style="margin-top:10px;">Webhook (cole na Z-API do cliente, em "Ao receber"):</div>
-      <div style="margin-top:4px; word-break:break-all;"><b id="resultadoWebhook" style="color:var(--gold-light)"></b></div>
-      <div style="margin-top:10px; color:var(--text-dim);">Envie o login ao cliente. Ele acessa <a href="/login" style="color:var(--gold);">/login</a> e define a senha própria no primeiro acesso.</div>
+      <div style="display:none; margin-top:4px; word-break:break-all;"><b id="resultadoWebhook"></b></div>
+      <div style="margin-top:10px; color:var(--text-dim);">📩 <b>Envie o login ao cliente.</b> Ele acessa <a href="/login" style="color:var(--gold);">/login</a>, define a senha no primeiro acesso e faz o pagamento na aba <b>Assinatura</b>. O WhatsApp ele conecta sozinho na aba <b>WhatsApp</b>.</div>
     </div>
   </div>
 </div>
