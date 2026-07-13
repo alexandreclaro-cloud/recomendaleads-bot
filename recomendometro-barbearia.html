@@ -1241,12 +1241,14 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     var e=document.getElementById('g-email').value.trim();
     if(!n){ alert('Como te chamam? 👊'); document.getElementById('g-nome').focus(); return; }
     if(w.replace(/\D/g,'').length<10){ alert('Coloca seu WhatsApp com DDD 📱'); document.getElementById('g-wpp').focus(); return; }
-    // dispara o Pixel (Lead) e manda o lead pro CRM
+    // dispara o Pixel (Lead)
     try{ if(window.fbq) fbq('track','Lead'); }catch(_){}
-    rpc('capture_lead',{p_code:CAP_CODE,p_name:n,p_phone:w,p_email:e||null,p_source:'barbearia',p_campaign:'funil-barbearia',p_payload:ans})
-      .then(function(r){return r.json();}).then(function(id){ leadId=id; }).catch(function(){});
+    // mostra o resultado (render calcula e guarda o resumo legível em window.__quizResumo)
     document.getElementById('s-gate').classList.remove('on'); document.getElementById('s-res').classList.add('on'); scrollQuiz();
     render();
+    // manda o lead pro CRM com o resumo (Score, ociosidade, dinheiro na mesa, respostas)
+    rpc('capture_lead',{p_code:CAP_CODE,p_name:n,p_phone:w,p_email:e||null,p_source:'barbearia',p_campaign:'funil-barbearia',p_payload:(window.__quizResumo||ans)})
+      .then(function(r){return r.json();}).then(function(id){ leadId=id; }).catch(function(){});
   };
 
   function pts(k){ return (ans[k]&&ans[k].pts)||0; }
@@ -1328,6 +1330,28 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
     // ring + score animam
     animRing(score,rc);
+
+    // resumo LEGÍVEL pro CRM (ProspectAI) — o que o barbeiro respondeu + os números-chave
+    var agendaLbl={lotada:'Agenda lotada',boa:'Boa parte ocupada',vazia:'Tenho dias vazios',fraca:'Preciso de mais clientes'}[val('agenda')]||'—';
+    var novosLbl={'30':'Mais de 30','15':'Entre 15 e 30','5':'Entre 5 e 15','0':'Menos de 5'}[val('novos')]||'—';
+    var comportLbl={indica:'Fala que vai me indicar',asvezes:'Indica de vez em quando',volta:'Só volta sozinho',ninguem:'Quase ninguém traz amigo'}[val('comport')]||'—';
+    var tkLbl={65:'R$ 50 a 80',90:'R$ 80 a 100',115:'R$ 100 a 130',140:'R$ 130 a 150'}[tk]||('R$ '+tk);
+    var diasLbl={22:'5 dias',26:'6 dias',30:'7 dias'}[val('dias')]||(val('dias')||'—');
+    window.__quizResumo={
+      'Score':score+' · '+tier[1],
+      'Ociosidade':ocioso+'%',
+      'Dinheiro na mesa (mês)':'R$ '+Number(potencial).toLocaleString('pt-BR'),
+      'Ticket médio':tkLbl,
+      'Clientes por dia':String(cd),
+      'Clientes por mês (aprox)':String(clientesMes),
+      'Cadeiras':String(cadLbl),
+      'Horas por dia':horas+'h',
+      'Dias por semana':diasLbl,
+      'Tem programa de indicação':val('prog')==='sim'?'Sim':'Não',
+      'Como está a agenda':agendaLbl,
+      'Novos por indicação/mês':novosLbl,
+      'Quando o cliente ama o corte':comportLbl
+    };
   }
   function li(ic,t){ return '<div class="li"><span class="i">'+ic+'</span><span>'+t+'</span></div>'; }
   function getcss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
