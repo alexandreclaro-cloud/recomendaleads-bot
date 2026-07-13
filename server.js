@@ -4851,6 +4851,16 @@ app.get('/admin/avisos', exigirAdmin, async (req, res) => {
   }
 });
 
+// Apaga um aviso (some da lista e para de aparecer pros clientes).
+app.delete('/admin/aviso/:id', exigirAdmin, async (req, res) => {
+  try {
+    await AVISOS_COL().doc(req.params.id).delete();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.post('/admin/aviso', exigirAdmin, async (req, res) => {
   try {
     const { titulo, mensagem, enviarWhatsapp } = req.body || {};

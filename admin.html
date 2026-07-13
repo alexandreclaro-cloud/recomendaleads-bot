@@ -139,6 +139,11 @@
         <button class="btn btn-brand" id="avisoEnviarBtn"><i data-lucide="send"></i> Enviar para todos</button>
         <span class="status-msg" id="avisoStatus"></span>
       </div>
+
+      <div style="margin-top:18px; border-top:1px solid var(--border); padding-top:14px;">
+        <h3 style="font-size:0.92rem; margin:0 0 8px;">📋 Avisos enviados</h3>
+        <div id="avisosEnviados"><span class="muted" style="font-size:0.82rem;">Carregando...</span></div>
+      </div>
     </div>
 
     <div class="card" style="margin-bottom:18px; padding:16px 18px;">
@@ -312,7 +317,7 @@ function mostrarApp() {
   }
   icons();
   carregarComissoes();
-  if (!vend) { carregarVendedores(); carregarMeuAcesso(); }
+  if (!vend) { carregarVendedores(); carregarMeuAcesso(); carregarAvisosEnviados(); }
 }
 
 async function carregarMeuAcesso() {
@@ -390,10 +395,44 @@ document.getElementById('avisoEnviarBtn').addEventListener('click', async () => 
       st.textContent = '✅ Aviso enviado!' + (enviarWhatsapp ? ` WhatsApp: ${w.enviados || 0} enviados${w.semNumero ? `, ${w.semNumero} sem número` : ''}.` : '');
       st.className = 'status-msg ok';
       document.getElementById('avisoTitulo').value = ''; document.getElementById('avisoMensagem').value = ''; document.getElementById('avisoWpp').checked = false;
+      carregarAvisosEnviados();
     } else { st.textContent = '❌ ' + (data.erro || 'Erro ao enviar'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
   finally { btn.disabled = false; setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 7000); }
 });
+
+async function carregarAvisosEnviados() {
+  const box = document.getElementById('avisosEnviados');
+  if (!box) return;
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/avisos`);
+    const data = await resp.json();
+    const avisos = (data && data.avisos) || [];
+    if (!avisos.length) { box.innerHTML = '<span class="muted" style="font-size:0.82rem;">Nenhum aviso enviado ainda.</span>'; return; }
+    box.innerHTML = avisos.map(a => {
+      const dt = a.criadoEm ? new Date(a.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+      const titulo = esc(a.titulo) || '(sem título)';
+      const msg = esc(a.mensagem || '');
+      return `<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border);">
+        <div style="min-width:0;">
+          <div style="font-weight:600; font-size:0.88rem;">${titulo}</div>
+          <div class="muted" style="font-size:0.82rem; white-space:pre-wrap;">${msg}</div>
+          <div class="muted" style="font-size:0.76rem; margin-top:3px;">🕒 ${dt}</div>
+        </div>
+        <button class="btn btn-secondary btn-mini" style="color:#dc2626; border-color:#dc2626; flex-shrink:0;" onclick="apagarAviso('${a.id}')">🗑️ Apagar</button>
+      </div>`;
+    }).join('');
+  } catch (e) { box.innerHTML = '<span class="muted" style="font-size:0.82rem;">Não foi possível carregar.</span>'; }
+}
+async function apagarAviso(id) {
+  if (!confirm('Apagar este aviso? Ele some da lista e para de aparecer pros clientes.')) return;
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/aviso/${id}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) carregarAvisosEnviados();
+    else alert('Erro ao apagar: ' + (data.erro || ''));
+  } catch (e) { alert('Erro de conexão'); }
+}
 
 document.getElementById('sairBtn').addEventListener('click', () => { ['recomendaleads_admin_key', 'recomendaleads_dono_token', 'recomendaleads_vend_token', 'recomendaleads_vend_nome'].forEach(k => localStorage.removeItem(k)); location.reload(); });
 document.getElementById('atualizarBtn').addEventListener('click', carregar);
