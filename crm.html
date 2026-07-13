@@ -2072,13 +2072,11 @@ function renderFaixas(faixas) {
       const card = document.createElement('div');
       card.className = 'config-card';
 
-      // Badge/input de quantidade — editável só na primeira faixa
-      const quantidadeHtml = isPrimeiraFaixa
-        ? `<div class="quantidade-editavel">
-             <input type="number" class="quantidade-input" value="${faixa.quantidade}" min="1" max="50" title="Quantidade mínima de recomendações para esta faixa">
+      // Quantidade de recomendações — editável em TODAS as etapas.
+      const quantidadeHtml = `<div class="quantidade-editavel">
+             <input type="number" class="quantidade-input" value="${faixa.quantidade}" min="1" max="50" title="Quantidade de recomendações para esta etapa">
              <span>recomendações</span>
-           </div>`
-        : `<span class="config-badge">${faixa.quantidade} recomendações</span>`;
+           </div>`;
 
       // 1º prêmio sempre ativo; extras têm liga/desliga.
       const ativaHtml = isPrimeiraFaixa
@@ -2094,7 +2092,7 @@ function renderFaixas(faixas) {
           <h2>${faixa.premio}</h2>
           ${quantidadeHtml}
         </div>
-        ${isPrimeiraFaixa ? '<p style="font-size:0.78rem;color:var(--text-dim);margin:4px 0 0;">✏️ Você pode alterar a quantidade mínima desta faixa.</p>' : ''}
+        <p style="font-size:0.78rem;color:var(--text-dim);margin:4px 0 0;">✏️ Você pode alterar a quantidade de recomendações desta etapa.</p>
         ${ativaHtml}
         <label>Prêmio (texto curto mostrado ao cliente)</label>
         <input type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
@@ -2123,15 +2121,13 @@ function renderFaixas(faixas) {
         h2.textContent = inputPremio.value || '(sem título)';
       });
 
-      // Se é a primeira faixa, o input de quantidade também atualiza o botão
-      if (isPrimeiraFaixa) {
-        const inputQtd = card.querySelector('.quantidade-input');
-        const btnSalvar = card.querySelector('.config-save-btn');
-        inputQtd.addEventListener('input', () => {
-          const v = parseInt(inputQtd.value) || faixa.quantidade;
-          btnSalvar.textContent = `Salvar faixa de ${v}`;
-        });
-      }
+      // O input de quantidade atualiza o texto do botão (em qualquer etapa).
+      const inputQtd = card.querySelector('.quantidade-input');
+      const btnSalvar = card.querySelector('.config-save-btn');
+      inputQtd.addEventListener('input', () => {
+        const v = parseInt(inputQtd.value) || faixa.quantidade;
+        btnSalvar.textContent = `Salvar faixa de ${v}`;
+      });
 
       // Upload de arquivo para essa faixa
       const inputFileFaixa = card.querySelector(`#arquivoFaixaFile_${containerId}_${faixa.quantidade}`);

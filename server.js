@@ -4319,8 +4319,15 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, async (req, re
     if (premio !== undefined) faixa.premio = premio;
     if (ativa !== undefined) faixa.ativa = !!ativa;
     if (novaQuantidade && novaQuantidade !== quantidade) {
+      // Não pode ter duas etapas com o mesmo número de recomendações.
+      if (configuracao.faixasBonus.some(f => f !== faixa && f.quantidade === novaQuantidade)) {
+        return res.status(400).json({ ok: false, erro: 'Já existe uma etapa com esse número de recomendações' });
+      }
       faixa.quantidade = novaQuantidade;
     }
+
+    // Mantém as etapas SEMPRE em ordem crescente de quantidade (o fluxo avança por ordem).
+    configuracao.faixasBonus.sort((a, b) => (a.quantidade || 0) - (b.quantidade || 0));
 
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao }, { merge: true });
     res.json({ ok: true, faixa });
