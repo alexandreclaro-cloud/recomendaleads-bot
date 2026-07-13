@@ -502,6 +502,15 @@
           <details style="margin-top:20px">
             <summary style="cursor:pointer; font-size:0.84rem; color:var(--text-dim)">Configuração avançada (Z-API)</summary>
             <div style="margin-top:12px">
+              <div style="background:var(--brand-soft,#EFF4FF); border:1px solid var(--brand,#2563EB); border-radius:10px; padding:14px; margin-bottom:18px;">
+                <label class="label" style="margin-top:0;">⚡ Jeito fácil — cole o endereço "API da instância" do Z-API</label>
+                <input class="input" type="text" id="zapiUrlInput" placeholder="https://api.z-api.io/instances/SEU_ID/token/SEU_TOKEN">
+                <div class="hint">No Z-API → aba <b>"Dados da instância web"</b> → copie a linha <b>"API da instância"</b> (o endereço longo) e cole aqui. Eu separo o Instance ID e o Token sozinho 😊</div>
+                <div class="row-save" style="margin-top:8px;">
+                  <button type="button" class="btn btn-action" id="preencherZapiUrlBtn">Preencher automático</button>
+                  <span class="status-msg" id="statusZapiUrl"></span>
+                </div>
+              </div>
               <label class="label">Instance ID (ID da instância na Z-API)</label>
               <input class="input" type="text" id="zapiInstanceInput" placeholder="Ex: 3D1A2B3C4D5E...">
               <label class="label">Token da instância</label>
@@ -1272,6 +1281,22 @@ document.getElementById('copyWebhookBtn').addEventListener('click', () => {
     const btn = document.getElementById('copyWebhookBtn'); const txt = btn.textContent;
     btn.textContent = 'Copiado!'; setTimeout(() => { btn.textContent = txt; }, 2000);
   });
+});
+
+// Jeito fácil: extrai Instance ID + Token do endereço "API da instância" do Z-API
+// (formato: https://api.z-api.io/instances/<ID>/token/<TOKEN>).
+document.getElementById('preencherZapiUrlBtn').addEventListener('click', () => {
+  const raw = document.getElementById('zapiUrlInput').value.trim();
+  const st = document.getElementById('statusZapiUrl');
+  const m = raw.match(/instances\/([^\/\s?#]+)\/token\/([^\/\s?#]+)/i);
+  if (!m) {
+    st.textContent = '❌ Não achei o padrão. Cole o endereço "API da instância" inteiro.';
+    st.className = 'status-msg err'; return;
+  }
+  document.getElementById('zapiInstanceInput').value = m[1];
+  document.getElementById('zapiTokenInput').value = m[2];
+  st.textContent = '✅ Preenchido! Agora é só clicar em "Salvar WhatsApp" ali embaixo.';
+  st.className = 'status-msg ok';
 });
 
 document.getElementById('salvarWhatsappBtn').addEventListener('click', async () => {
