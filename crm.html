@@ -660,8 +660,8 @@
     <div id="configConteudo" style="display:none">
       <div class="subtabs">
         <button class="subtab-btn active" data-subtab="empresa">Empresa</button>
-        <button class="subtab-btn" data-subtab="clienteConversa" style="display:none">Conversa do Cliente</button>
-        <button class="subtab-btn" data-subtab="premioCliente" style="display:none">Presente Cliente</button>
+        <button class="subtab-btn" data-subtab="clienteConversa">Conversa do Cliente</button>
+        <button class="subtab-btn" data-subtab="premioCliente">Presente Cliente</button>
         <button class="subtab-btn" data-subtab="recomendado">Conversa do Recomendado</button>
         <button class="subtab-btn" data-subtab="faixas">Presente Recomendado</button>
         <button class="subtab-btn" data-subtab="venda">Presente Cliente com venda</button>
@@ -1968,12 +1968,22 @@ function renderFaixas(faixas) {
            </div>`
         : `<span class="config-badge">${faixa.quantidade} recomendações</span>`;
 
+      // 1º prêmio sempre ativo; extras têm liga/desliga.
+      const ativaHtml = isPrimeiraFaixa
+        ? '<p style="font-size:0.78rem;color:var(--text-dim);margin:6px 0 0;">🎁 1º prêmio — sempre ativo.</p>'
+        : `<label style="display:flex;align-items:center;gap:9px;margin:8px 0 4px;cursor:pointer;">
+             <input type="checkbox" class="faixa-ativa" ${faixa.ativa !== false ? 'checked' : ''} style="width:17px;height:17px;">
+             <span style="font-weight:600;">Prêmio ativo</span>
+             <span style="font-weight:400;color:var(--text-dim);font-size:0.8rem;">(desligue pra dar só o 1º prêmio)</span>
+           </label>`;
+
       card.innerHTML = `
         <div class="config-card-head">
           <h2>${faixa.premio}</h2>
           ${quantidadeHtml}
         </div>
         ${isPrimeiraFaixa ? '<p style="font-size:0.78rem;color:var(--text-dim);margin:4px 0 0;">✏️ Você pode alterar a quantidade mínima desta faixa.</p>' : ''}
+        ${ativaHtml}
         <label>Prêmio (texto curto mostrado ao cliente)</label>
         <input type="text" data-field="premio" value="${(faixa.premio || '').replace(/"/g, '&quot;')}">
         <label>Arquivo (imagem JPEG/PNG ou PDF)</label>
@@ -2025,7 +2035,36 @@ function renderFaixas(faixas) {
     container.querySelectorAll('.config-save-btn').forEach(btn => {
       btn.addEventListener('click', () => salvarFaixa(btn));
     });
+    container.querySelectorAll('.faixa-ativa').forEach(chk => {
+      chk.addEventListener('change', () => salvarAtivaFaixa(chk));
+    });
   });
+}
+
+// Liga/desliga um prêmio extra na hora (auto-salva).
+async function salvarAtivaFaixa(chk) {
+  const card = chk.closest('.config-card');
+  const btn = card.querySelector('.config-save-btn[data-quantidade]');
+  const quantidade = parseInt(btn.dataset.quantidade);
+  const containerId = card.closest('[id]').id;
+  const statusEl = card.querySelector(`[data-statusfor="${quantidade}_${containerId}"]`);
+  if (statusEl) { statusEl.textContent = chk.checked ? 'Ativando...' : 'Desativando...'; statusEl.className = 'config-status-msg'; }
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, { method: 'POST', body: JSON.stringify({ quantidade, ativa: chk.checked }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      if (statusEl) { statusEl.textContent = chk.checked ? '✅ Prêmio ativado' : '✅ Desligado — só o 1º será dado'; statusEl.className = 'config-status-msg ok'; }
+      const f = (configuracaoAtual.faixasBonus || []).find(x => x.quantidade === quantidade);
+      if (f) f.ativa = chk.checked;
+    } else {
+      if (statusEl) { statusEl.textContent = '❌ ' + (data.erro || 'Erro'); statusEl.className = 'config-status-msg err'; }
+      chk.checked = !chk.checked;
+    }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+    chk.checked = !chk.checked;
+  }
+  setTimeout(() => { if (statusEl) { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; } }, 4000);
 }
 
 async function salvarFaixa(btn) {
@@ -2042,12 +2081,14 @@ async function salvarFaixa(btn) {
   // Verifica se tem input de quantidade editável (primeira faixa)
   const inputQtd = card.querySelector('.quantidade-input');
   const novaQuantidade = inputQtd ? (parseInt(inputQtd.value) || quantidadeOriginal) : null;
+  const ativaEl = card.querySelector('.faixa-ativa'); // 1ª faixa não tem toggle
 
   btn.disabled = true;
   if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg'; }
 
   try {
     const body = { quantidade: quantidadeOriginal, premio, arquivo, link, texto };
+    if (ativaEl) body.ativa = ativaEl.checked;
     // Só envia novaQuantidade se for diferente da original (e for a primeira faixa)
     if (novaQuantidade && novaQuantidade !== quantidadeOriginal) {
       body.novaQuantidade = novaQuantidade;
