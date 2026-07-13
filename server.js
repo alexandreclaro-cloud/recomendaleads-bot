@@ -91,13 +91,15 @@ const PLANOS = {
   semestral: {
     nome: 'Semestral', tipo: 'unico', meses: 6,
     valorCentavos: 208200, // 6 x 347,00
-    metodos: ['card', 'boleto', 'pix'],
+    metodos: ['card', 'pix'], // automático: cartão + pix (boleto NÃO)
+    metodosVendedor: ['card', 'pix', 'boleto'], // boleto só no link do vendedor (?boleto=1)
     descricao: 'R$ 347/mês — R$ 2.082 cobrados de uma vez (6 meses)'
   },
   anual: {
     nome: 'Anual', tipo: 'unico', meses: 12,
     valorCentavos: 356400, // 12 x 297,00
-    metodos: ['card', 'boleto', 'pix'],
+    metodos: ['card', 'pix'], // automático: cartão + pix (boleto NÃO)
+    metodosVendedor: ['card', 'pix', 'boleto'], // boleto só no link do vendedor (?boleto=1)
     descricao: 'R$ 297/mês — R$ 3.564 cobrados de uma vez (12 meses)'
   }
 };
@@ -3297,6 +3299,22 @@ app.get('/aviso', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Cria a sessão de checkout tentando os métodos pedidos; se algum (pix/boleto)
+// não estiver ativado no painel do Stripe, cai pra CARTÃO em vez de quebrar tudo.
+async function criarCheckoutSession(params, metodos) {
+  const lista = (metodos && metodos.length) ? metodos : ['card'];
+  try {
+    return await stripe.checkout.sessions.create({ ...params, payment_method_types: lista });
+  } catch (err) {
+    const msg = (err && err.message) || '';
+    if (lista.some(m => m !== 'card') && /payment[_ ]method|is invalid|not activated|ativad/i.test(msg)) {
+      console.warn('[STRIPE] método não ativado, caindo pra cartão:', msg);
+      return await stripe.checkout.sessions.create({ ...params, payment_method_types: ['card'] });
+    }
+    throw err;
+  }
+}
+
 // Cria a sessão de checkout do Stripe para o plano escolhido (apenas gestor).
 app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
@@ -3323,10 +3341,8 @@ app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (
 
     const base = urlBase(req);
     const ehAssinatura = plano.tipo === 'assinatura';
-    const session = await stripe.checkout.sessions.create({
+    const session = await criarCheckoutSession({
       mode: ehAssinatura ? 'subscription' : 'payment',
-      // Sem payment_method_types fixo: o Stripe usa os métodos ATIVADOS no painel
-      // dele (cartão já funciona; pix/boleto aparecem sozinhos quando forem ativados).
       customer: customerId,
       client_reference_id: empresa.id,
       metadata: { empresaId: empresa.id, plano: planoId },
@@ -3342,7 +3358,7 @@ app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (
       }],
       success_url: `${base}/minha-empresa/configurar?assinatura=ok`,
       cancel_url: `${base}/minha-empresa/configurar?assinatura=cancelado`
-    });
+    }, ehAssinatura ? ['card'] : plano.metodos);
     res.json({ ok: true, url: session.url });
   } catch (err) {
     console.error('Erro no checkout Stripe:', err.message);
@@ -3375,11 +3391,12 @@ app.post('/assinar/checkout', async (req, res) => {
     const vendedor = String((req.body && req.body.vendedor) || '').trim().slice(0, 60);
     const base = urlBase(req);
     const ehAssinatura = plano.tipo === 'assinatura';
+    // Boleto só entra quando o VENDEDOR manda o link com ?boleto=1 (não no automático).
+    const comBoleto = !!(req.body && req.body.boleto);
+    const metodos = ehAssinatura ? ['card'] : ((comBoleto && plano.metodosVendedor) ? plano.metodosVendedor : plano.metodos);
     const meta = { tipo: 'signup', plano: planoId, ...(vendedor ? { vendedor } : {}) };
-    const session = await stripe.checkout.sessions.create({
+    const session = await criarCheckoutSession({
       mode: ehAssinatura ? 'subscription' : 'payment',
-      // Sem payment_method_types fixo: o Stripe usa os métodos ATIVADOS no painel
-      // dele (cartão já funciona; pix/boleto aparecem sozinhos quando forem ativados).
       metadata: meta,
       ...(ehAssinatura ? { subscription_data: { metadata: meta } } : { customer_creation: 'always' }),
       line_items: [{
@@ -3393,7 +3410,7 @@ app.post('/assinar/checkout', async (req, res) => {
       }],
       success_url: `${base}/completar?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${base}/assinar?cancelado=1`
-    });
+    }, metodos);
     res.json({ ok: true, url: session.url });
   } catch (err) {
     console.error('Erro no checkout público:', err.message);

@@ -45,6 +45,7 @@ const API_BASE = window.location.origin;
 const params = new URLSearchParams(location.search);
 const planoUrl = (params.get('plano') || '').toLowerCase();
 const vendedorUrl = (params.get('vendedor') || '').trim();
+const comBoleto = params.get('boleto') === '1'; // link do vendedor libera boleto
 if (params.get('cancelado')) document.getElementById('avisoCancelado').style.display = 'block';
 
 function moeda(c) { return (c/100).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
@@ -78,7 +79,7 @@ async function assinar(btn) {
   document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = true);
   btn.textContent = 'Abrindo pagamento...';
   try {
-    const resp = await fetch(`${API_BASE}/assinar/checkout`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plano, vendedor: vendedorUrl }) });
+    const resp = await fetch(`${API_BASE}/assinar/checkout`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plano, vendedor: vendedorUrl, boleto: comBoleto }) });
     const data = await resp.json();
     if (resp.ok && data.ok && data.url) { window.location.href = data.url; }
     else { alert(data.erro || 'Não foi possível iniciar o pagamento.'); document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = false); carregar(); }
