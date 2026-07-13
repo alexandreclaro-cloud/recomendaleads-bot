@@ -661,11 +661,12 @@
       <div class="subtabs">
         <button class="subtab-btn active" data-subtab="empresa">Empresa</button>
         <button class="subtab-btn" data-subtab="clienteConversa">Conversa do Cliente</button>
+        <button class="subtab-btn" data-subtab="followupCliente">Lembrete p/ cliente avisar amigos</button>
         <button class="subtab-btn" data-subtab="premioCliente">Presente Cliente</button>
         <button class="subtab-btn" data-subtab="recomendado">Conversa do Recomendado</button>
         <button class="subtab-btn" data-subtab="faixas">Presente Recomendado</button>
         <button class="subtab-btn" data-subtab="venda">Presente Cliente com venda</button>
-        <button class="subtab-btn" data-subtab="cadencia">Cadência de Follow-up</button>
+        <button class="subtab-btn" data-subtab="cadencia">Insistência (amigo não respondeu)</button>
         <button class="subtab-btn" data-subtab="marketing">📅 Agenda de Marketing</button>
         <button class="subtab-btn" data-subtab="etapas">Etapas do Pipeline</button>
       </div>
@@ -758,6 +759,60 @@
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarClienteConversaBtn">Salvar conversa do cliente</button>
             <span class="config-status-msg" id="statusClienteConversa"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-aba: Lembrete pro cliente avisar os amigos -->
+      <div class="subtab-panel" id="subtabFollowupCliente">
+        <div class="config-card">
+          <h2>🔔 Lembrete pro CLIENTE avisar os amigos</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 8px;">
+            Depois que o cliente recebe o prêmio, o robô manda até 3 lembretes pedindo que <b>ele</b> avise os amigos (menu 1/2/3). Aumenta a taxa de resposta. 💡<br>
+            Variáveis: <code class="var-chip">{cliente}</code> <code class="var-chip">{empresa}</code>
+          </p>
+          <label style="display:flex; align-items:center; gap:10px; margin:10px 0; cursor:pointer;">
+            <input type="checkbox" id="fcAtivo" style="width:18px;height:18px;">
+            <span style="font-weight:600;">Ativar os lembretes automáticos</span>
+          </label>
+
+          <label>⏰ Quando enviar cada lembrete (contando de quando o cliente recebeu o prêmio)</label>
+          <div style="display:flex; gap:8px; align-items:center; margin:6px 0 8px; flex-wrap:wrap;">
+            <span style="min-width:86px; font-weight:600;">1º lembrete</span>
+            <input type="number" step="1" min="0" id="fcVal1" style="max-width:110px;" placeholder="ex: 24">
+            <select id="fcUni1" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas" selected>horas</option><option value="dias">dias</option></select>
+            <span style="color:var(--text-dim);font-size:.82rem;">depois do prêmio</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+            <span style="min-width:86px; font-weight:600;">2º lembrete</span>
+            <input type="number" step="1" min="0" id="fcVal2" style="max-width:110px;" placeholder="ex: 72">
+            <select id="fcUni2" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas" selected>horas</option><option value="dias">dias</option></select>
+            <span style="color:var(--text-dim);font-size:.82rem;">depois do prêmio</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+            <span style="min-width:86px; font-weight:600;">3º lembrete</span>
+            <input type="number" step="1" min="0" id="fcVal3" style="max-width:110px;" placeholder="ex: 7">
+            <select id="fcUni3" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias" selected>dias</option></select>
+            <span style="color:var(--text-dim);font-size:.82rem;">depois do prêmio</span>
+          </div>
+          <p style="font-size:0.74rem;color:var(--text-dim);margin:0 0 12px;">Deixe o valor vazio pra ter menos lembretes. Pra testar rápido, use minutos.</p>
+
+          <label>1º lembrete (com o menu 1 / 2 / 3)</label>
+          <textarea id="fcMsg1" rows="7"></textarea>
+          <label>2º lembrete (vazio = repete o 1º)</label>
+          <textarea id="fcMsg2" rows="5" placeholder="Vazio = usa o texto do 1º lembrete"></textarea>
+          <label>3º lembrete (vazio = repete o 1º)</label>
+          <textarea id="fcMsg3" rows="5" placeholder="Vazio = usa o texto do 1º lembrete"></textarea>
+          <label>Resposta quando ele escolhe "1 — Já avisei"</label>
+          <textarea id="fcJaAvisei" rows="2"></textarea>
+          <label>Resposta quando escolhe "2 — Ainda não"</label>
+          <textarea id="fcAindaNao" rows="2"></textarea>
+          <label>Texto pronto no "3 — Me manda um texto" (ele copia e envia pro amigo)</label>
+          <textarea id="fcTextoPronto" rows="3"></textarea>
+
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarFollowupClienteBtn">Salvar lembretes</button>
+            <span class="config-status-msg" id="statusFollowupCliente"></span>
           </div>
         </div>
       </div>
@@ -906,7 +961,7 @@
       <!-- Sub-aba: Cadência de Follow-up -->
       <div class="subtab-panel" id="subtabCadencia">
         <div class="config-card">
-          <h2>Cadência de follow-up (se a pessoa não responder)</h2>
+          <h2>Insistência com o AMIGO que não respondeu</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
             Mensagens enviadas em sequência se o recomendado não responder.
           </p>
@@ -1041,6 +1096,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 const MAPA_SUBTABS = {
   empresa: 'subtabEmpresa',
   clienteConversa: 'subtabClienteConversa',
+  followupCliente: 'subtabFollowupCliente',
   premioCliente: 'subtabPremioCliente',
   recomendado: 'subtabRecomendado',
   faixas: 'subtabFaixas',
@@ -1613,10 +1669,66 @@ async function carregarConfiguracao() {
 
     renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
     renderFaixas(configuracaoAtual.faixasBonus || []);
+    carregarFollowupCliente();
   } catch (err) {
     loadMsg.textContent = 'Não foi possível carregar a configuração.';
   }
 }
+
+// ---- Lembrete pro cliente avisar amigos (movido do painel) ----
+function minParaUnidade(min) {
+  if (min == null) return { valor: '', unidade: 'horas' };
+  if (min % 60 === 0 && (min / 60) <= 96) return { valor: min / 60, unidade: 'horas' };
+  if (min % 1440 === 0) return { valor: min / 1440, unidade: 'dias' };
+  if (min % 60 === 0) return { valor: min / 60, unidade: 'horas' };
+  return { valor: min, unidade: 'minutos' };
+}
+function unidadeParaMin(valor, unidade) {
+  const n = parseFloat(valor);
+  if (isNaN(n) || n <= 0) return null;
+  const mult = unidade === 'dias' ? 1440 : unidade === 'horas' ? 60 : 1;
+  return Math.max(1, Math.round(n * mult));
+}
+function carregarFollowupCliente() {
+  const c = configuracaoAtual || {};
+  document.getElementById('fcAtivo').checked = !!c.followupRecomendadorAtivo;
+  document.getElementById('fcMsg1').value = c.followupRecomendadorMensagem || '';
+  document.getElementById('fcMsg2').value = c.followupRecomendadorMensagem2 || '';
+  document.getElementById('fcMsg3').value = c.followupRecomendadorMensagem3 || '';
+  document.getElementById('fcJaAvisei').value = c.followupJaAvisei || '';
+  document.getElementById('fcAindaNao').value = c.followupAindaNao || '';
+  document.getElementById('fcTextoPronto').value = c.followupTextoPronto || '';
+  const cad = c.cadenciaFollowupRecomendador || [];
+  [0, 1, 2].forEach(i => {
+    const u = minParaUnidade(cad[i] ? cad[i].esperaMin : null);
+    document.getElementById('fcVal' + (i + 1)).value = u.valor;
+    document.getElementById('fcUni' + (i + 1)).value = u.unidade;
+  });
+}
+document.getElementById('salvarFollowupClienteBtn').addEventListener('click', async () => {
+  const st = document.getElementById('statusFollowupCliente');
+  const cad = [1, 2, 3]
+    .map(i => unidadeParaMin(document.getElementById('fcVal' + i).value, document.getElementById('fcUni' + i).value))
+    .filter(x => x != null).map(esperaMin => ({ esperaMin }));
+  const body = {
+    followupRecomendadorAtivo: document.getElementById('fcAtivo').checked,
+    followupRecomendadorMensagem: document.getElementById('fcMsg1').value,
+    followupRecomendadorMensagem2: document.getElementById('fcMsg2').value,
+    followupRecomendadorMensagem3: document.getElementById('fcMsg3').value,
+    followupJaAvisei: document.getElementById('fcJaAvisei').value,
+    followupAindaNao: document.getElementById('fcAindaNao').value,
+    followupTextoPronto: document.getElementById('fcTextoPronto').value,
+    cadenciaFollowupRecomendador: cad
+  };
+  st.textContent = 'Salvando...'; st.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); st.textContent = '✅ Salvo!'; st.className = 'config-status-msg ok'; }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'config-status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'config-status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'config-status-msg'; }, 4000); }
+});
 
 document.getElementById('salvarEmpresaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarEmpresaBtn');
