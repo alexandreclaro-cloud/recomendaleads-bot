@@ -91,15 +91,15 @@ const PLANOS = {
   semestral: {
     nome: 'Semestral', tipo: 'unico', meses: 6,
     valorCentavos: 208200, // 6 x 347,00
-    metodos: ['card', 'pix'], // automático: cartão + pix (boleto NÃO)
-    metodosVendedor: ['card', 'pix', 'boleto'], // boleto só no link do vendedor (?boleto=1)
+    metodos: ['card'], // site automático: SÓ cartão de crédito
+    metodosVendedor: ['card', 'pix', 'boleto'], // vendedor (?boleto=1): cartão + pix + boleto
     descricao: 'R$ 347/mês — R$ 2.082 cobrados de uma vez (6 meses)'
   },
   anual: {
     nome: 'Anual', tipo: 'unico', meses: 12,
     valorCentavos: 356400, // 12 x 297,00
-    metodos: ['card', 'pix'], // automático: cartão + pix (boleto NÃO)
-    metodosVendedor: ['card', 'pix', 'boleto'], // boleto só no link do vendedor (?boleto=1)
+    metodos: ['card'], // site automático: SÓ cartão de crédito
+    metodosVendedor: ['card', 'pix', 'boleto'], // vendedor (?boleto=1): cartão + pix + boleto
     descricao: 'R$ 297/mês — R$ 3.564 cobrados de uma vez (12 meses)'
   }
 };
