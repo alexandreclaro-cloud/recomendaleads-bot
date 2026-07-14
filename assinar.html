@@ -12,8 +12,8 @@
   .top { text-align: center; margin-bottom: 36px; }
   .top h1 { font-size: 2rem; margin: 0 0 8px; }
   .top p { color: var(--text-dim, #9aa3af); margin: 0; font-size: 1.02rem; }
-  .planos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 320px)); gap: 18px; justify-content: center; }
-  .plano { background: var(--surface-2, #1a1d24); border: 1px solid var(--border, #2a2f3a); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
+  .planos { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
+  .plano { width: 290px; max-width: 100%; box-sizing: border-box; background: var(--surface-2, #1a1d24); border: 1px solid var(--border, #2a2f3a); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
   .plano.destaque { border-color: var(--gold, #c9a227); box-shadow: 0 0 0 1px var(--gold, #c9a227); }
   .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--gold, #c9a227); color: #1a1d24; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
   .plano h2 { font-size: 1.25rem; margin: 0 0 6px; }
@@ -63,13 +63,16 @@ async function carregar() {
     const cont = document.getElementById('planos');
     cont.innerHTML = planos.map(p => {
       const destaque = p.id === 'anual' || p.id === planoUrl;
-      const sufixo = p.tipo === 'assinatura' ? '/mês' : '';
+      const porMes = Math.round(p.valorCentavos / (p.meses || 1));
+      const desc = p.tipo === 'assinatura'
+        ? 'no cartão, renovação automática'
+        : `${moeda(p.valorCentavos)} cobrados de uma vez (${p.meses} meses)`;
       return `
         <div class="plano ${destaque ? 'destaque' : ''}">
           ${p.id === planoUrl ? '<span class="tag">Selecionado</span>' : (p.id === 'anual' ? '<span class="tag">Melhor valor</span>' : '')}
           <h2>${p.nome}</h2>
-          <div class="preco">${moeda(p.valorCentavos)}<small>${sufixo}</small></div>
-          <div class="desc">${p.descricao || ''}</div>
+          <div class="preco">${moeda(porMes)}<small>/mês</small></div>
+          <div class="desc">${desc}</div>
           <button data-plano="${p.id}">Assinar ${p.nome}</button>
         </div>`;
     }).join('');
