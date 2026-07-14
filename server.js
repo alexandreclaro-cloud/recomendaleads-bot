@@ -3878,19 +3878,19 @@ app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, exigirMatriz, async (
     const config = req.empresaLogin.configuracao || {};
     const base = { ...EMPRESA_PADRAO, ...config };
     delete base.nichos; // não devolve os nichos dentro da base
-    // Número da demonstração = o número CONECTADO no Z-API (detectado sozinho),
-    // não mais um campo manual. Fallback pro que estava salvo, se a detecção falhar.
-    const empresa = await getEmpresaById(req.empresaLogin.id);
-    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa), oficial: oficialDaEmpresa(empresa) };
-    let numero = null;
-    try { await tenantContext.run(contexto, async () => { numero = await getNumeroConectado(empresa); }); } catch (e) {}
+    // Número da demonstração — prioridade: (1) o que o webhook do Z-API informou
+    // (numeroConectado, confiável); (2) o manual que o dono salvou; (3) fallback.
+    // O manual serve de override quando a captura automática ainda não pegou.
+    const numeroAuto = String(config.numeroConectado || '').replace(/\D/g, '');
+    const numeroDemo = numeroAuto || String(config.numeroDemo || config.numeroWhatsapp || '').replace(/\D/g, '');
     res.json({
       ok: true,
       lista: listaNichos(config),
       nichos: config.nichos || {},
       defaults: NICHOS_DEMO,
       base,
-      numeroDemo: numero || config.numeroDemo || ''
+      numeroDemo,
+      numeroAuto // pra o painel saber se veio da detecção ou é manual
     });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
