@@ -22,7 +22,7 @@
   .form button:disabled { opacity: .6; cursor: default; }
   .msg { margin-top: 12px; font-size: 0.88rem; text-align: center; min-height: 18px; }
   .msg.err { color: #e57373; }
-  .planos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; }
+  .planos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 320px)); gap: 18px; justify-content: center; }
   .plano { background: var(--surface-2, #1a1d24); border: 1px solid var(--border, #2a2f3a); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
   .plano.destaque { border-color: var(--gold, #c9a227); box-shadow: 0 0 0 1px var(--gold, #c9a227); }
   .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--gold, #c9a227); color: #1a1d24; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
@@ -122,7 +122,7 @@ async function carregarPlanos() {
   try {
     const resp = await fetch(`${API_BASE}/planos`);
     const data = await resp.json();
-    const planos = (data && data.planos) || [];
+    const planos = ((data && data.planos) || []).filter(p => p.id !== 'mensal'); // site: só Semestral + Anual
     const cont = document.getElementById('planos');
     cont.innerHTML = planos.map(p => {
       const destaque = p.id === 'anual';

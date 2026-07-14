@@ -12,7 +12,7 @@
   .top { text-align: center; margin-bottom: 36px; }
   .top h1 { font-size: 2rem; margin: 0 0 8px; }
   .top p { color: var(--text-dim, #9aa3af); margin: 0; font-size: 1.02rem; }
-  .planos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; }
+  .planos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 320px)); gap: 18px; justify-content: center; }
   .plano { background: var(--surface-2, #1a1d24); border: 1px solid var(--border, #2a2f3a); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
   .plano.destaque { border-color: var(--gold, #c9a227); box-shadow: 0 0 0 1px var(--gold, #c9a227); }
   .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--gold, #c9a227); color: #1a1d24; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
@@ -45,7 +45,10 @@ const API_BASE = window.location.origin;
 const params = new URLSearchParams(location.search);
 const planoUrl = (params.get('plano') || '').toLowerCase();
 const vendedorUrl = (params.get('vendedor') || '').trim();
-const comBoleto = params.get('boleto') === '1'; // link do vendedor libera boleto
+const comBoleto = params.get('boleto') === '1';
+// Modo vendedor: link com ?vendedor=... ou ?boleto=1 → mostra TODOS os planos
+// (inclui Mensal recorrente) e libera pix/boleto. No site normal: só Semestral + Anual, cartão.
+const modoVendedor = !!vendedorUrl || comBoleto;
 if (params.get('cancelado')) document.getElementById('avisoCancelado').style.display = 'block';
 
 function moeda(c) { return (c/100).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
@@ -54,7 +57,9 @@ async function carregar() {
   try {
     const resp = await fetch(`${API_BASE}/planos`);
     const data = await resp.json();
-    const planos = (data && data.planos) || [];
+    let planos = (data && data.planos) || [];
+    // Site normal: só Semestral + Anual. Vendedor: todos (inclui Mensal recorrente).
+    if (!modoVendedor) planos = planos.filter(p => p.id !== 'mensal');
     const cont = document.getElementById('planos');
     cont.innerHTML = planos.map(p => {
       const destaque = p.id === 'anual' || p.id === planoUrl;
@@ -79,7 +84,7 @@ async function assinar(btn) {
   document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = true);
   btn.textContent = 'Abrindo pagamento...';
   try {
-    const resp = await fetch(`${API_BASE}/assinar/checkout`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plano, vendedor: vendedorUrl, boleto: comBoleto }) });
+    const resp = await fetch(`${API_BASE}/assinar/checkout`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plano, vendedor: vendedorUrl, boleto: modoVendedor }) });
     const data = await resp.json();
     if (resp.ok && data.ok && data.url) { window.location.href = data.url; }
     else { alert(data.erro || 'Não foi possível iniciar o pagamento.'); document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = false); carregar(); }
