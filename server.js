@@ -3381,6 +3381,53 @@ app.get('/planos', (req, res) => {
 app.get('/assinar', (req, res) => res.sendFile(path.join(__dirname, 'assinar.html')));
 app.get('/completar', (req, res) => res.sendFile(path.join(__dirname, 'completar.html')));
 
+// Cadastro público de autoatendimento: o cliente cria a conta (BLOQUEADA) e, na
+// sequência, escolhe o plano e paga (o pagamento libera o acesso). Link aberto.
+app.get('/cadastro', (req, res) => res.sendFile(path.join(__dirname, 'cadastro.html')));
+app.post('/cadastro', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const nomeEmpresa = String(b.nomeFantasia || b.nome || '').trim();
+    const emailLogin = String(b.email || '').trim().toLowerCase();
+    const senha = String(b.senha || '');
+    const telefone = String(b.telefone || '').trim();
+    const nomeSocio = String(b.nomeSocio || '').trim();
+    const vendedor = String(b.vendedor || '').trim().slice(0, 60);
+    if (!nomeEmpresa || !emailLogin || senha.length < 6) {
+      return res.status(400).json({ ok: false, erro: 'Preencha o nome da empresa, um e-mail e uma senha de ao menos 6 caracteres.' });
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailLogin)) {
+      return res.status(400).json({ ok: false, erro: 'E-mail inválido.' });
+    }
+    const [empExiste, usrExiste] = await Promise.all([
+      EMPRESAS_COL().where('email', '==', emailLogin).limit(1).get(),
+      USUARIOS_COL().where('email', '==', emailLogin).limit(1).get()
+    ]);
+    if (!empExiste.empty || !usrExiste.empty) {
+      return res.status(409).json({ ok: false, erro: 'Já existe uma conta com esse e-mail. Faça login.' });
+    }
+    // Conta BLOQUEADA (status 'pendente', sem acessoAte) — o pagamento libera.
+    const ref = await EMPRESAS_COL().add({
+      nome: nomeEmpresa,
+      email: emailLogin,
+      cadastro: { nomeFantasia: nomeEmpresa, emailEmpresa: emailLogin, telefoneEmpresa: telefone || null, nomeSocio: nomeSocio || null },
+      configuracao: { ...EMPRESA_PADRAO, nome: nomeEmpresa },
+      ...(vendedor ? { vendedorComissao: vendedor } : {}),
+      assinatura: { status: 'pendente', acessoAte: null, atualizadoEm: new Date().toISOString() },
+      criadoEm: new Date().toISOString()
+    });
+    const senhaHash = await bcrypt.hash(senha, 10);
+    const uref = await USUARIOS_COL().add({
+      empresaId: ref.id, nome: nomeSocio || nomeEmpresa, email: emailLogin, senhaHash,
+      papel: 'gestor', senhaProvisoria: false, ativo: true, criadoEm: new Date().toISOString()
+    });
+    const token = jwt.sign({ usuarioId: uref.id, empresaLoginId: ref.id, papel: 'gestor' }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ ok: true, token, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, papel: 'gestor', senhaProvisoria: false } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Checkout público (sem login) — cria a sessão e manda pro Stripe.
 app.post('/assinar/checkout', async (req, res) => {
   try {

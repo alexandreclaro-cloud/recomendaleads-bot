@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Criar conta — RecomendaLeads</title>
+<link rel="icon" type="image/png" href="/assets/logo-symbol.png">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  body { background: var(--bg, #0f1115); color: var(--text, #f3f4f6); font-family: 'Inter', -apple-system, system-ui, sans-serif; margin: 0; min-height: 100vh; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 20px 80px; }
+  .top { text-align: center; margin-bottom: 30px; }
+  .top h1 { font-size: 2rem; margin: 0 0 8px; }
+  .top p { color: var(--text-dim, #9aa3af); margin: 0; font-size: 1.02rem; }
+  .form { max-width: 460px; margin: 0 auto; background: var(--surface-2, #1a1d24); border: 1px solid var(--border, #2a2f3a); border-radius: 16px; padding: 26px 24px; }
+  .form label { display: block; font-size: 0.86rem; font-weight: 600; margin: 14px 0 5px; }
+  .form label:first-child { margin-top: 0; }
+  .form input { width: 100%; box-sizing: border-box; padding: 12px 13px; border: 1px solid var(--border, #2a2f3a); border-radius: 10px; background: var(--bg, #0f1115); color: var(--text, #f3f4f6); font-size: 1rem; }
+  .form input:focus { outline: none; border-color: var(--gold, #c9a227); }
+  .form button { width: 100%; margin-top: 22px; padding: 14px; border: none; border-radius: 10px; background: var(--gold, #c9a227); color: #1a1d24; font-weight: 700; font-size: 1rem; cursor: pointer; }
+  .form button:hover { filter: brightness(1.06); }
+  .form button:disabled { opacity: .6; cursor: default; }
+  .msg { margin-top: 12px; font-size: 0.88rem; text-align: center; min-height: 18px; }
+  .msg.err { color: #e57373; }
+  .planos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; }
+  .plano { background: var(--surface-2, #1a1d24); border: 1px solid var(--border, #2a2f3a); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
+  .plano.destaque { border-color: var(--gold, #c9a227); box-shadow: 0 0 0 1px var(--gold, #c9a227); }
+  .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--gold, #c9a227); color: #1a1d24; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
+  .plano h2 { font-size: 1.25rem; margin: 0 0 6px; }
+  .plano .preco { font-size: 2rem; font-weight: 800; margin: 6px 0; }
+  .plano .preco small { font-size: 0.95rem; font-weight: 500; color: var(--text-dim, #9aa3af); }
+  .plano .desc { color: var(--text-dim, #9aa3af); font-size: 0.86rem; margin: 4px 0 20px; flex: 1; }
+  .plano button { width: 100%; padding: 13px; border: none; border-radius: 10px; background: var(--gold, #c9a227); color: #1a1d24; font-weight: 700; font-size: 0.98rem; cursor: pointer; }
+  .plano button:hover { filter: brightness(1.06); }
+  .plano button:disabled { opacity: .6; cursor: default; }
+  .aviso { text-align: center; margin: 0 auto 22px; max-width: 560px; padding: 12px; border-radius: 10px; background: rgba(34,197,94,.15); color: #6ee7a0; font-size: 0.92rem; }
+  .rodape { text-align: center; margin-top: 30px; font-size: 0.8rem; color: var(--text-dim, #9aa3af); }
+  .rodape a { color: var(--gold, #c9a227); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <img src="/assets/logo.png" alt="RecomendaLeads" style="height:70px;width:auto;margin:0 auto 16px;display:block">
+      <h1 id="titulo">Crie sua conta</h1>
+      <p id="sub">Preencha seus dados e depois escolha o plano.</p>
+    </div>
+
+    <!-- Passo 1: cadastro -->
+    <div class="form" id="passo1">
+      <label>Nome da empresa</label>
+      <input id="fNome" placeholder="Ex: Studio Carly" autocomplete="organization">
+      <label>Seu nome</label>
+      <input id="fResp" placeholder="Nome do responsável" autocomplete="name">
+      <label>E-mail (será o seu login)</label>
+      <input id="fEmail" type="email" placeholder="voce@empresa.com" autocomplete="email">
+      <label>WhatsApp / telefone</label>
+      <input id="fTel" placeholder="(11) 90000-0000" autocomplete="tel">
+      <label>Crie uma senha</label>
+      <input id="fSenha" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+      <button id="btnCadastrar">Continuar para o pagamento →</button>
+      <div class="msg" id="msg1"></div>
+    </div>
+
+    <!-- Passo 2: planos -->
+    <div id="passo2" style="display:none">
+      <div class="aviso">✅ Conta criada! Agora escolha seu plano para <b>ativar o acesso</b>.</div>
+      <div class="planos" id="planos"><p style="text-align:center;color:var(--text-dim,#9aa3af)">Carregando planos...</p></div>
+    </div>
+
+    <div class="rodape">Ao criar a conta, você concorda com o <a href="/contrato" target="_blank">Contrato e a Política de Privacidade</a>.</div>
+  </div>
+
+<script>
+const API_BASE = window.location.origin;
+const params = new URLSearchParams(location.search);
+const vendedorUrl = (params.get('vendedor') || '').trim();
+let TOKEN = null;
+
+document.getElementById('btnCadastrar').addEventListener('click', cadastrar);
+[ 'fNome','fResp','fEmail','fTel','fSenha' ].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') cadastrar(); });
+});
+
+async function cadastrar() {
+  const btn = document.getElementById('btnCadastrar');
+  const msg = document.getElementById('msg1');
+  const body = {
+    nomeFantasia: document.getElementById('fNome').value.trim(),
+    nomeSocio: document.getElementById('fResp').value.trim(),
+    email: document.getElementById('fEmail').value.trim(),
+    telefone: document.getElementById('fTel').value.trim(),
+    senha: document.getElementById('fSenha').value,
+    vendedor: vendedorUrl
+  };
+  if (!body.nomeFantasia || !body.email || body.senha.length < 6) {
+    msg.textContent = 'Preencha o nome da empresa, o e-mail e uma senha de 6+ caracteres.'; msg.className = 'msg err'; return;
+  }
+  btn.disabled = true; msg.textContent = 'Criando sua conta...'; msg.className = 'msg';
+  try {
+    const resp = await fetch(`${API_BASE}/cadastro`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      TOKEN = data.token;
+      localStorage.setItem('recomendaleads_token', data.token);
+      localStorage.setItem('recomendaleads_empresa', JSON.stringify(data.empresa));
+      document.getElementById('passo1').style.display = 'none';
+      document.getElementById('passo2').style.display = 'block';
+      document.getElementById('titulo').textContent = 'Escolha seu plano';
+      document.getElementById('sub').textContent = 'Falta só ativar o acesso com o pagamento.';
+      window.scrollTo({ top: 0 });
+      carregarPlanos();
+    } else {
+      msg.textContent = '❌ ' + (data.erro || 'Erro ao criar conta'); msg.className = 'msg err'; btn.disabled = false;
+    }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'msg err'; btn.disabled = false; }
+}
+
+function moeda(c) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+async function carregarPlanos() {
+  try {
+    const resp = await fetch(`${API_BASE}/planos`);
+    const data = await resp.json();
+    const planos = (data && data.planos) || [];
+    const cont = document.getElementById('planos');
+    cont.innerHTML = planos.map(p => {
+      const destaque = p.id === 'anual';
+      const sufixo = p.tipo === 'assinatura' ? '/mês' : '';
+      return `
+        <div class="plano ${destaque ? 'destaque' : ''}">
+          ${destaque ? '<span class="tag">Melhor valor</span>' : ''}
+          <h2>${p.nome}</h2>
+          <div class="preco">${moeda(p.valorCentavos)}<small>${sufixo}</small></div>
+          <div class="desc">${p.descricao || ''}</div>
+          <button data-plano="${p.id}">Assinar ${p.nome}</button>
+        </div>`;
+    }).join('');
+    cont.querySelectorAll('button[data-plano]').forEach(b => b.addEventListener('click', () => pagar(b)));
+  } catch (e) {
+    document.getElementById('planos').innerHTML = '<p style="text-align:center;color:#e57373">Não foi possível carregar os planos.</p>';
+  }
+}
+
+async function pagar(btn) {
+  const plano = btn.dataset.plano;
+  document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = true);
+  btn.textContent = 'Abrindo pagamento...';
+  try {
+    const resp = await fetch(`${API_BASE}/minha-assinatura/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+      body: JSON.stringify({ plano })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok && data.url) { window.location.href = data.url; }
+    else { alert(data.erro || 'Não foi possível iniciar o pagamento.'); carregarPlanos(); }
+  } catch (e) { alert('Erro de conexão.'); carregarPlanos(); }
+}
+</script>
+</body>
+</html>
