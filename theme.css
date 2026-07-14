@@ -212,11 +212,27 @@ a:hover { color: var(--brand-dark); }
 /* ---------- Responsivo ---------- */
 @media (max-width: 860px) {
   .app-shell { flex-direction: column; }
-  .sidebar { width: 100%; height: auto; position: static; flex-direction: row; align-items: center; padding: 10px 12px; overflow-x: auto; }
-  .sidebar .brand { padding: 0 12px 0 4px; }
-  .nav { flex-direction: row; }
-  .nav-item span.txt { display: none; }
-  .user-box { border-top: none; margin: 0; padding-left: 8px; }
+  .sidebar {
+    width: 100%; height: auto; position: sticky; top: 0; z-index: 30;
+    flex-direction: row; align-items: center; gap: 4px;
+    padding: 8px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    border-right: none; border-bottom: 1px solid var(--border);
+  }
+  .sidebar::-webkit-scrollbar { height: 0; }
+  .sidebar .brand { padding: 0 6px 0 2px; flex-shrink: 0; }
+  .sidebar .brand span { display: none; }
+  .nav { flex-direction: row; gap: 4px; flex: 0 0 auto; }
+  /* Cada item vira uma "abinha": ícone em cima, rótulo curto embaixo. */
+  .nav-item {
+    flex-direction: column; gap: 3px; width: auto; flex-shrink: 0;
+    padding: 7px 9px; font-size: 0.64rem; text-align: center; line-height: 1.1;
+    border-radius: var(--r-sm);
+  }
+  .nav-item .ti { width: 21px; height: 21px; }
+  .nav-item span.txt { display: block; max-width: 74px; white-space: normal; }
+  .user-box { border-top: none; margin: 0; padding: 0 4px; flex-shrink: 0; }
   .user-box .meta { display: none; }
-  .main { padding: 22px 16px 50px; }
+  .main { padding: 20px 14px 48px; max-width: 100%; overflow-x: hidden; }
+  .page-head h1 { font-size: 1.3rem; }
+  .page-head p { font-size: 0.9rem; }
 }
