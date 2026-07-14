@@ -855,7 +855,11 @@
             Variáveis (clique para copiar): <code class="var-chip">{nomeRecomendado}</code> <code class="var-chip">{recomendador}</code> <code class="var-chip">{empresa}</code> <code class="var-chip">{premio}</code> <code class="var-chip">{dia}</code> <code class="var-chip">{periodo}</code>
           </p>
 
-          <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">1) Menu de opções (enviado logo após o presente)</p>
+          <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">0) Conexão (logo após o presente, ANTES do menu)</p>
+          <label>Mensagem de conexão — o robô manda e <b>espera a pessoa responder</b> (ou 1 min) antes do menu. Ex: "E aí, gostou? 😍". Deixe vazio pra ir direto ao menu.</label>
+          <input type="text" id="posMensagemConexaoInput" placeholder="E aí, gostou? 😍">
+
+          <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">1) Menu de opções (enviado após a reação)</p>
           <label>Menu principal</label>
           <textarea id="posMenuPrincipalInput" rows="6"></textarea>
 
@@ -1651,6 +1655,7 @@ async function carregarConfiguracao() {
     document.getElementById('mensagemColetaInput').value = configuracaoAtual.mensagemColeta || '';
     document.getElementById('mensagemValidarAmigoInput').value = configuracaoAtual.mensagemValidarAmigo ?? '';
     document.getElementById('tempoEsperaConversaoMinInput').value = configuracaoAtual.tempoEsperaConversaoMin || 60;
+    document.getElementById('posMensagemConexaoInput').value = configuracaoAtual.posMensagemConexao ?? '';
     document.getElementById('posMenuPrincipalInput').value = configuracaoAtual.posMenuPrincipal || '';
     document.getElementById('linkAgendamentoInput').value = configuracaoAtual.linkAgendamento || '';
     document.getElementById('posLinkAgendamentoInput').value = configuracaoAtual.posLinkAgendamento || '';
@@ -1923,6 +1928,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const mensagemAguardandoConfirmacao = document.getElementById('mensagemAguardandoConfirmacaoInput').value.trim();
   const mensagemAntesPresente = document.getElementById('mensagemAntesPresenteInput').value.trim();
   const tempoEsperaConversaoMin = parseInt(document.getElementById('tempoEsperaConversaoMinInput').value) || 60;
+  const posMensagemConexao = document.getElementById('posMensagemConexaoInput').value.trim();
   const posMenuPrincipal = document.getElementById('posMenuPrincipalInput').value.trim() || null;
   const linkAgendamento = document.getElementById('linkAgendamentoInput').value.trim() || null;
   const posLinkAgendamento = document.getElementById('posLinkAgendamentoInput').value.trim() || null;
@@ -1948,7 +1954,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
       method: 'POST',
       body: JSON.stringify({
         mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
-        posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia,
+        posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         faqComoFunciona, faqValidade, enderecoEmpresa, horariosEmpresa, posAtendente
       })
