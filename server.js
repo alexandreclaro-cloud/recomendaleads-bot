@@ -424,6 +424,10 @@ const COMISSAO_PCT = 20;
 const VENDEDORES_COL = () => db.collection('vendedores');
 // Contas de administrador (login fácil e-mail+senha; acesso total, igual à chave mestra).
 const ADMINS_COL = () => db.collection('admins');
+// Convites de cadastro: link que o cliente abre pra terminar o cadastro sozinho,
+// SEM chave de admin. Uso único e com validade. Doc:
+//   { criadoEm, criadoPor, vendedorId, usado, usadoEm, empresaId, expiraEm }
+const CONVITES_COL = () => db.collection('convites_empresa');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'okk', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'tabom',
@@ -4629,7 +4633,7 @@ app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
 // ROTA DE CRIAÇÃO DE EMPRESA (admin)
 // ============================================================
 
-app.post('/admin/empresas', exigirAcessoAdmin, async (req, res) => {
+app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
   try {
     const ehVendedor = !req.acesso.ehDono;
 
@@ -4720,6 +4724,14 @@ app.post('/admin/empresas', exigirAcessoAdmin, async (req, res) => {
       ...(assinatura ? { assinatura } : {})
     });
 
+    // Veio de um link de convite? Queima o convite (uso único).
+    if (req.acesso.ehConvite && req.acesso.convId) {
+      try {
+        await CONVITES_COL().doc(req.acesso.convId).update({
+          usado: true, usadoEm: new Date().toISOString(), empresaId: ref.id
+        });
+      } catch (e) { console.error('[convite] falha ao marcar como usado:', e.message); }
+    }
     res.json({ ok: true, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, empresaTeste: !!_empresaTeste, trialDias: dias } });
 
     // E-mail de boas-vindas (não bloqueia a resposta; ignora se não configurado)
@@ -4830,6 +4842,66 @@ function exigirAcessoAdmin(req, res, next) {
     next();
   });
 }
+
+// Acesso para CRIAR EMPRESA: admin/vendedor logado OU um link de convite.
+// O convite tem escopo LIMITADO — só serve nesta rota, não dá acesso a
+// comissões nem a nada mais do /admin.
+function exigirAcessoCriarEmpresa(req, res, next) {
+  return limiteAdmin(req, res, async () => {
+    const ctx = await resolverAcessoAdmin(req);
+    if (ctx) { req.acesso = ctx; return next(); }
+    const auth = req.headers['authorization'] || '';
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (m) {
+      try {
+        const p = jwt.verify(m[1], JWT_SECRET);
+        if (p && p.tipo === 'convite-empresa' && p.convId) {
+          const snap = await CONVITES_COL().doc(p.convId).get();
+          if (!snap.exists) return res.status(401).json({ ok: false, erro: 'Convite inválido' });
+          const c = snap.data() || {};
+          if (c.usado) return res.status(410).json({ ok: false, erro: 'Este link de convite já foi usado. Peça um novo.' });
+          if (c.cancelado) return res.status(410).json({ ok: false, erro: 'Este link de convite foi cancelado.' });
+          req.acesso = { ehDono: false, ehConvite: true, convId: p.convId, vendedorId: p.vendedorId || c.vendedorId || null };
+          return next();
+        }
+      } catch (e) {}
+    }
+    return res.status(401).json({ ok: false, erro: 'Acesso negado' });
+  });
+}
+
+// Gera um LINK DE CONVITE para o cliente terminar o cadastro sozinho (sem chave).
+// Uso único, validade 7 dias, vinculado a quem gerou (vendedor leva a comissão).
+app.post('/admin/convites', exigirAcessoAdmin, async (req, res) => {
+  try {
+    const ehVendedor = !req.acesso.ehDono;
+    const vendedorId = ehVendedor
+      ? req.acesso.vendedorId
+      : ((req.body && req.body.vendedorComissao) || null);
+    const dias = 7;
+    const expiraEm = new Date(Date.now() + dias * 24 * 3600 * 1000).toISOString();
+    const ref = await CONVITES_COL().add({
+      criadoEm: new Date().toISOString(),
+      criadoPor: ehVendedor ? ('vendedor:' + req.acesso.vendedorId) : ('dono:' + (req.acesso.adminId || 'chave')),
+      vendedorId: vendedorId || null,
+      usado: false,
+      expiraEm
+    });
+    const token = jwt.sign(
+      { tipo: 'convite-empresa', convId: ref.id, vendedorId: vendedorId || null },
+      JWT_SECRET,
+      { expiresIn: dias + 'd' }
+    );
+    const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    res.json({
+      ok: true,
+      link: `${base}/admin/criar-empresa?convite=${encodeURIComponent(token)}`,
+      expiraEm, dias
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
 
 // Login do vendedor (e-mail + senha) → token de acesso limitado ao /admin.
 app.post('/admin/vendedor-login', limiteLogin, async (req, res) => {

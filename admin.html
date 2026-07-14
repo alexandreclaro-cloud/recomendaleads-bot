@@ -114,6 +114,20 @@
       <a class="btn btn-brand" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
     </div>
 
+    <div class="card" style="margin-bottom:18px; padding:18px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">🔗 Link de convite (o cliente se cadastra sozinho)</h2>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Gere um link e mande pro cliente. Ele preenche os dados da empresa dele e o cadastro já aparece aqui — sem precisar da sua chave. Vale <strong>7 dias</strong> e serve pra <strong>1 cadastro só</strong>.</p>
+      <button class="btn btn-brand" id="gerarConviteBtn" onclick="gerarConvite()"><i data-lucide="link"></i> Gerar link de convite</button>
+      <div id="conviteBox" style="display:none; margin-top:12px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="conviteLink" readonly onclick="this.select()" style="flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:0.82rem;">
+          <button class="btn" onclick="copiarConvite()"><i data-lucide="copy"></i> Copiar</button>
+          <a class="btn" id="conviteWpp" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Enviar no WhatsApp</a>
+        </div>
+        <p class="muted" style="font-size:0.78rem; margin:8px 0 0;" id="conviteInfo"></p>
+      </div>
+    </div>
+
     <div class="card dono-only" style="margin-bottom:18px; padding:16px 18px;">
       <h2 style="font-size:1rem; margin:0 0 4px;">🔑 Meu acesso (login fácil)</h2>
       <p class="muted" style="font-size:0.82rem; margin:0 0 12px;">Crie um e-mail e senha pra entrar sem digitar a chave longa. <span id="acessoAtual"></span></p>
@@ -214,6 +228,43 @@ async function adminFetch(url, options = {}) {
   return fetch(url, { ...options, headers: h });
 }
 function esc(s) { return (s || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+// ── Link de convite: o cliente termina o cadastro sozinho, sem a chave ──────
+async function gerarConvite() {
+  const btn = document.getElementById('gerarConviteBtn');
+  const box = document.getElementById('conviteBox');
+  const inp = document.getElementById('conviteLink');
+  const info = document.getElementById('conviteInfo');
+  const original = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Gerando...';
+  try {
+    const r = await adminFetch('/admin/convites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.erro || 'Falha ao gerar o link');
+    inp.value = d.link;
+    const msg = 'Oi! Segue o link pra você concluir o cadastro da sua empresa no RecomendaLeads:\n\n'
+      + d.link + '\n\nÉ rapidinho — no fim você já recebe seu login e senha de acesso.';
+    document.getElementById('conviteWpp').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+    const dt = d.expiraEm ? new Date(d.expiraEm).toLocaleDateString('pt-BR') : '';
+    info.textContent = 'Válido até ' + dt + ' · serve para 1 cadastro. Para outro cliente, gere um novo link.';
+    box.style.display = 'block';
+  } catch (e) {
+    alert('Não consegui gerar o link: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.innerHTML = original; icons();
+  }
+}
+async function copiarConvite() {
+  const inp = document.getElementById('conviteLink');
+  const info = document.getElementById('conviteInfo');
+  try { await navigator.clipboard.writeText(inp.value); }
+  catch (_) { inp.select(); try { document.execCommand('copy'); } catch (e) {} }
+  const antes = info.textContent;
+  info.textContent = '✅ Link copiado! Agora é só mandar pro cliente.';
+  setTimeout(() => { info.textContent = antes; }, 2000);
+}
 function fmtData(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleDateString('pt-BR'); } catch (e) { return '—'; } }
 
 // ---- Gate ----

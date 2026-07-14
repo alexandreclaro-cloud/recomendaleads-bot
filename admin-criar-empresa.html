@@ -220,24 +220,42 @@
 <script>
 const API_BASE = window.location.origin;
 
+// Link de convite (cliente terminando o cadastro sozinho): ?convite=TOKEN
+// Tem prioridade sobre o localStorage — o cliente não tem (nem precisa de) chave.
+const CONVITE = new URLSearchParams(window.location.search).get('convite') || '';
+const ehConvite = !!CONVITE;
+
 // Detecta quem está logado: dono (chave) ou vendedor (token).
-const STORED_KEY = localStorage.getItem('recomendaleads_admin_key') || '';
-const DONO_TOKEN = localStorage.getItem('recomendaleads_dono_token') || '';
-const VEND_TOKEN = localStorage.getItem('recomendaleads_vend_token') || '';
+const STORED_KEY = ehConvite ? '' : (localStorage.getItem('recomendaleads_admin_key') || '');
+const DONO_TOKEN = ehConvite ? '' : (localStorage.getItem('recomendaleads_dono_token') || '');
+const VEND_TOKEN = ehConvite ? '' : (localStorage.getItem('recomendaleads_vend_token') || '');
 const VEND_NOME = localStorage.getItem('recomendaleads_vend_nome') || '';
-const ehVendedor = !STORED_KEY && !DONO_TOKEN && !!VEND_TOKEN;
-const ehDonoToken = !STORED_KEY && !!DONO_TOKEN;
+const ehVendedor = !ehConvite && !STORED_KEY && !DONO_TOKEN && !!VEND_TOKEN;
+const ehDonoToken = !ehConvite && !STORED_KEY && !!DONO_TOKEN;
 
 (function ajustarPorAcesso() {
-  if (ehVendedor) {
-    document.getElementById('keyBlock').style.display = 'none';
-    document.getElementById('trialBlock').style.display = 'none';
-    document.getElementById('migrarBlock').style.display = 'none';
+  const esconder = (id) => { const e = document.getElementById(id); if (e) e.style.display = 'none'; };
+  if (ehConvite) {
+    // Modo cliente: sem chave e sem opções administrativas.
+    esconder('keyBlock');
+    esconder('trialBlock');
+    esconder('migrarBlock');
+    const b = document.getElementById('vendBanner');
+    if (b) {
+      b.style.display = 'block';
+      const n = document.getElementById('vendBannerNome');
+      if (n) n.textContent = 'você';
+      b.textContent = 'Bem-vindo! Preencha os dados da sua empresa para concluir o cadastro. No fim você recebe seu login e senha de acesso.';
+    }
+  } else if (ehVendedor) {
+    esconder('keyBlock');
+    esconder('trialBlock');
+    esconder('migrarBlock');
     document.getElementById('vendBanner').style.display = 'block';
     document.getElementById('vendBannerNome').textContent = VEND_NOME || 'você';
   } else if (ehDonoToken) {
     // Dono logado pelo login fácil: não precisa digitar a chave (mantém trial/migração).
-    document.getElementById('keyBlock').style.display = 'none';
+    esconder('keyBlock');
   } else if (STORED_KEY) {
     document.getElementById('adminKeyInput').value = STORED_KEY;
   }
@@ -284,8 +302,8 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     migrarConfigPrincipal
   };
 
-  if ((!ehVendedor && !ehDonoToken && !adminKey) || !(payload.razaoSocial || payload.nomeFantasia) || !payload.emailEmpresa || !senha) {
-    statusEl.textContent = (ehVendedor || ehDonoToken)
+  if ((!ehConvite && !ehVendedor && !ehDonoToken && !adminKey) || !(payload.razaoSocial || payload.nomeFantasia) || !payload.emailEmpresa || !senha) {
+    statusEl.textContent = (ehConvite || ehVendedor || ehDonoToken)
       ? 'Informe ao menos: nome da empresa, e-mail da empresa (login) e senha.'
       : 'Informe a chave, nome da empresa, e-mail da empresa (login) e senha.';
     statusEl.className = 'status err';
@@ -299,7 +317,8 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
 
   try {
     const headers = { 'Content-Type': 'application/json' };
-    if (ehVendedor) headers['Authorization'] = 'Bearer ' + VEND_TOKEN;
+    if (ehConvite) headers['Authorization'] = 'Bearer ' + CONVITE;
+    else if (ehVendedor) headers['Authorization'] = 'Bearer ' + VEND_TOKEN;
     else if (ehDonoToken) headers['Authorization'] = 'Bearer ' + DONO_TOKEN;
     else headers['X-Admin-Key'] = adminKey;
     const resp = await fetch(`${API_BASE}/admin/empresas`, {
