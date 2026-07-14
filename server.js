@@ -532,7 +532,12 @@ function aplicarNicho(empresa, nicho) {
   if (!empresa || !nicho) return empresa;
   const def = NICHOS_DEMO[nicho] || {};
   const over = (empresa.nichos && empresa.nichos[nicho]) || {};
-  return { ...empresa, ...def, ...over, id: empresa.id, nichos: empresa.nichos };
+  const merged = { ...empresa, ...def, ...over, id: empresa.id, nichos: empresa.nichos };
+  // No DEMO só existe o 1º prêmio — nunca pede "quer liberar o próximo prêmio".
+  if (Array.isArray(merged.faixasBonus) && merged.faixasBonus.length > 1) {
+    merged.faixasBonus = merged.faixasBonus.slice(0, 1);
+  }
+  return merged;
 }
 
 function respostaEhPositiva(texto) {
