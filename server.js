@@ -707,6 +707,11 @@ const EMPRESA_PADRAO = {
   // ===== Fluxo pós-presente (todos editáveis no painel, na sequência) =====
   // Opt-out (descadastro) — anti-ban: saída fácil desvia a denúncia.
   mensagemOptOut: 'Tudo bem! 🙏 Não vou mais te enviar mensagens. Se um dia mudar de ideia, é só chamar aqui. Obrigado(a)!',
+  // Mensagem de CONEXÃO enviada logo após o presente, ANTES do menu — dá um
+  // respiro e engaja (a pessoa responde) antes de perguntar o que ela quer fazer.
+  // Vazio = pula (manda o menu direto, como antes).
+  posMensagemConexao: 'E aí, gostou? 😍',
+  menuAposReacaoMin: 1, // se a pessoa não responder, manda o menu depois de X min
   posMenuPrincipal: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
   posLinkAgendamento: 'Perfeito! 😊 É só escolher o melhor horário pra você aqui:',
   posPerguntaPeriodo: `Perfeito! 😊 Vamos combinar sua visita.\n\nQual período fica melhor pra você?\n\n*1* — Manhã ☀️\n*2* — Tarde 🌤️\n*3* — Noite 🌙\n\n👇 _Digita o número aqui_ 👇`,
@@ -1906,9 +1911,42 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
     await sendText(telefone, orientacao);
   }
 
+  // Toque humano: reage ao presente e ESPERA a pessoa responder (ou X min) antes
+  // do menu — pra não encavalar o presente com a pergunta de escolha.
+  const conexao = empresa.posMensagemConexao ?? EMPRESA_PADRAO.posMensagemConexao;
+  if (conexao && conexao.trim()) {
+    await sendText(telefone, substituirVariaveis(conexao, variaveisRec(sessao, empresa)));
+    await saveSessaoRecomendado(telefone, { etapa: 'aguardando_reacao_presente' });
+    try { await agendarMenuAposReacao(telefone, empresa); } catch (e) { console.error('agendarMenuAposReacao:', e.message); }
+  } else {
+    // Sem mensagem de conexão: manda o menu direto (comportamento antigo).
+    await enviarMenuEFollowupRec(telefone, sessao, empresa);
+  }
+}
+
+// Manda o menu principal do recomendado + agenda o follow-up pós-presente.
+async function enviarMenuEFollowupRec(telefone, sessao, empresa) {
   const marcaTempo = new Date().toISOString();
   await enviarMenuPrincipalRec(telefone, sessao, marcaTempo);
   await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
+}
+
+// Agenda o menu pra depois da reação (caso a pessoa não responda ao "gostou?").
+async function agendarMenuAposReacao(telefone, empresa) {
+  const min = Math.max(1, parseInt(empresa.menuAposReacaoMin, 10) || EMPRESA_PADRAO.menuAposReacaoMin || 1);
+  const executarEm = new Date(Date.now() + min * 60000).toISOString();
+  await criarAgendamento({ tipo: 'menu_apos_reacao', executarEm, dados: { telefone } });
+}
+async function cancelarMenuAposReacao(telefone) {
+  try {
+    const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').where('tipo', '==', 'menu_apos_reacao').get();
+    const batch = db.batch(); let n = 0;
+    snap.forEach(doc => {
+      const d = doc.data();
+      if ((d.dados && d.dados.telefone) === telefone && (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) { batch.update(doc.ref, { status: 'cancelado' }); n++; }
+    });
+    if (n) await batch.commit();
+  } catch (e) { console.error('cancelarMenuAposReacao:', e.message); }
 }
 
 // Presente Recomendado com venda: quando o amigo indicado COMPRA (card movido
@@ -2365,6 +2403,14 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
     }
+    return true;
+  }
+
+  // A pessoa reagiu ao presente ("gostou?") → agora sim manda o menu de opções
+  // (e cancela o menu que estava agendado, pra não mandar duas vezes).
+  if (sessao.etapa === 'aguardando_reacao_presente') {
+    await cancelarMenuAposReacao(telefone);
+    await enviarMenuEFollowupRec(telefone, sessao, empresa);
     return true;
   }
 
@@ -5314,6 +5360,16 @@ async function processarAgendamentoInterno(agendamento) {
     if (await numeroEstaPausado(telefone)) return;
     const sessao = await getSessaoRecomendado(telefone);
     await sendText(telefone, substituirVariaveis(empresa.posConfirmacaoCheck || EMPRESA_PADRAO.posConfirmacaoCheck, variaveisRec(sessao, empresa)));
+    return;
+  }
+
+  // Menu do recomendado enviado com intervalo, caso ele não tenha reagido ao "gostou?".
+  if (agendamento.tipo === 'menu_apos_reacao') {
+    const { telefone } = agendamento.dados;
+    if (await numeroEstaPausado(telefone)) return;
+    const sessao = await getSessaoRecomendado(telefone);
+    if (!sessao || sessao.etapa !== 'aguardando_reacao_presente') return; // já respondeu / mudou de estado
+    await enviarMenuEFollowupRec(telefone, sessao, empresa);
     return;
   }
 
