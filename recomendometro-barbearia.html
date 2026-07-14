@@ -1139,7 +1139,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
         <div class="qsub">Seu Score, seu perfil e quanto você pode ganhar. Leva 10 segundos.</div>
       </div>
       <div class="field"><label>Seu nome</label><input id="g-nome" placeholder="Como te chamam"></div>
-      <div class="field"><label>WhatsApp</label><input id="g-wpp" inputmode="numeric" placeholder="(11) 90000-0000"></div>
+      <div class="field"><label>WhatsApp</label><input id="g-wpp" inputmode="numeric" maxlength="15" oninput="fmtWpp(this)" placeholder="(11) 90000-0000"></div>
       <div class="field"><label>E-mail</label><input id="g-email" type="email" placeholder="voce@email.com"></div>
       <button class="cta" onclick="verResultado()">🎯 Ver meu Score agora</button>
       <div class="safe">🔒 Seus dados são 100% seguros. Sem spam.</div>
@@ -1192,6 +1192,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
   var ans={}, order=['s-q0','s-q1','s-q2','s-q8','s-q4','s-q6','s-q9','s-q7','s-q5'], idx=0;
   function scrollQuiz(){var s=document.getElementById('formulario');if(!s)return;var h=document.querySelector('.header');var off=(h?h.offsetHeight:0)+12;var y=s.getBoundingClientRect().top+window.pageYOffset-off;window.scrollTo(0,y<0?0:y);}
+  window.fmtWpp=function(el){var d=el.value.replace(/\D/g,'').slice(0,11);if(d.length<=2){el.value=d;}else if(d.length<=6){el.value='('+d.slice(0,2)+') '+d.slice(2);}else if(d.length<=10){el.value='('+d.slice(0,2)+') '+d.slice(2,6)+'-'+d.slice(6);}else{el.value='('+d.slice(0,2)+') '+d.slice(2,7)+'-'+d.slice(7);}};
   var praises=['Boa! 👊','Isso! 🔥','Show! ✂️','Falta pouco 💪','Quase lá 🚀'];
 
   window.start=function(){
