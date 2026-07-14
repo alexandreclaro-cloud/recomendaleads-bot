@@ -1410,17 +1410,24 @@ const _numeroConectadoCache = {};
 async function getNumeroConectado(empresa) {
   const eid = empresaIdAtual();
   const cache = _numeroConectadoCache[eid];
-  if (cache && (Date.now() - cache.em) < 10 * 60 * 1000 && cache.numero) return cache.numero;
-  let numero = String((empresa && empresa.numeroWhatsapp) || '').replace(/\D/g, '') || null;
+  if (cache && (Date.now() - cache.em) < 60 * 1000 && cache.numero) return cache.numero;
+  const fallback = String((empresa && empresa.numeroWhatsapp) || '').replace(/\D/g, '') || null;
+  let numero = fallback;
   try {
     const cfg = zapiDaEmpresa(empresa);
     if (cfg && cfg.instanceId && cfg.token) {
-      const resp = await axios.get(`${zapiBaseUrl(cfg)}/device`, { headers: zapiHeaders(cfg), timeout: 5000 });
+      const resp = await axios.get(`${zapiBaseUrl(cfg)}/device`, { headers: zapiHeaders(cfg), timeout: 6000 });
       const d = resp.data || {};
-      const p = String(d.phone || d.numero || (d.device && d.device.phone) || (d.value && d.value.phone) || '').replace(/\D/g, '');
+      // Z-API pode devolver o número em vários campos, dependendo da versão.
+      const p = String(
+        d.phone || d.numero || d.number || d.connectedPhone || d.phoneNumber ||
+        (d.device && (d.device.phone || d.device.wid)) ||
+        (d.value && d.value.phone) || (d.info && d.info.phone) || ''
+      ).replace(/\D/g, '');
+      console.log(`[NUM-CONECTADO] ${eid} device=${JSON.stringify(d).slice(0,180)} → phone=${p || '(vazio)'} fallback=${fallback}`);
       if (p) numero = p;
     }
-  } catch (e) { /* mantém o fallback (número manual) */ }
+  } catch (e) { console.warn(`[NUM-CONECTADO] ${eid} falha no /device:`, e.message, '→ usando fallback', fallback); }
   if (numero) _numeroConectadoCache[eid] = { numero, em: Date.now() };
   return numero;
 }
