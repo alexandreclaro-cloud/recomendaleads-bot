@@ -2042,7 +2042,8 @@ function renderNichoPremios() {
   const cont = document.getElementById('nichoPremiosContainer');
   if (!cont) return;
   if (!nichoAtual) { cont.innerHTML = ''; return; }
-  const faixas = valorEfetivoNicho('faixasBonus') || [];
+  // No demo por nicho, só o 1º prêmio (mais simples pro prospect).
+  const faixas = (valorEfetivoNicho('faixasBonus') || []).slice(0, 1);
   const arqRec = valorEfetivoNicho('arquivoRecomendado') || '';
   const esc = v => String(v == null ? '' : v).replace(/"/g, '&quot;');
   let html = faixas.map((f, i) => `
