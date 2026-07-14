@@ -841,10 +841,10 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 </style>
 <style>
   .quiz-dark{
-    --bg:#100e0b; --bg2:#1a1611; --bg3:#241e18; --line:#38302680;
-    --gold:#e6ad50; --gold2:#f6c977; --red:#dd5647; --amber:#e8934a; --green:#46b872;
-    --text:#f4ede1; --muted:#a99d8b;
-    --bronze:#c67b3e; --prata:#c3cbd4; --ouro:#e6ad50; --diamante:#5fd3e2;
+    --bg:#fafaf8; --bg2:#ffffff; --bg3:#ece9e2; --line:#e4e1d8;
+    --gold:#a6862c; --gold2:#c9a84c; --red:#d1442f; --amber:#bd7a16; --green:#2f9e5f;
+    --text:#1f1c17; --muted:#857f6e;
+    --bronze:#c67b3e; --prata:#c3cbd4; --ouro:#c9a84c; --diamante:#3aa9ba;
     --maxw:460px;
   }
   .quiz-dark *{margin:0;padding:0;box-sizing:border-box}
@@ -875,11 +875,11 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   .opt{background:var(--bg2);border:1.5px solid var(--line);border-radius:16px;padding:18px 14px;cursor:pointer;text-align:left;color:var(--text);display:flex;flex-direction:column;gap:9px;min-height:104px;justify-content:center;transition:transform .12s,border-color .15s,background .15s;-webkit-tap-highlight-color:transparent}
   .opt.one{flex-direction:row;align-items:center;min-height:64px;gap:14px}
   .opt:active{transform:scale(.97)}
-  .opt:hover{border-color:#5a4c3a}
+  .opt:hover{border-color:#d8ceb5}
   .opt .em{font-size:30px;line-height:1}
   .opt.one .em{font-size:26px}
   .opt .lb{font-size:15px;font-weight:700;line-height:1.2}
-  .opt.sel{border-color:var(--gold);background:#2a2118;box-shadow:0 0 0 3px #e6ad5030}
+  .opt.sel{border-color:var(--gold);background:#faf4e6;box-shadow:0 0 0 3px #e6ad5030}
 
   /* feedback toast */
   .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);background:var(--gold);color:#221a10;font-weight:800;font-size:14px;padding:11px 20px;border-radius:99px;opacity:0;pointer-events:none;transition:.3s;z-index:20;box-shadow:0 10px 30px #0008}
@@ -915,7 +915,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   /* result */
   .res{padding:20px 0 44px}
   .ring{position:relative;width:196px;height:196px;margin:8px auto 4px;border-radius:50%;display:grid;place-items:center;
-        background:conic-gradient(var(--rc,var(--gold)) calc(var(--p,0)*1%), #2a231b 0);transition:background .1s}
+        background:conic-gradient(var(--rc,var(--gold)) calc(var(--p,0)*1%), #ece7dc 0);transition:background .1s}
   .ring::after{content:"";position:absolute;inset:13px;border-radius:50%;background:var(--bg2);z-index:1}
   .ring .in{position:relative;z-index:2;text-align:center}
   .ring .num{font-size:56px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;color:var(--rc,var(--gold))}
@@ -929,14 +929,14 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   .card h3{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
   .li{display:flex;gap:10px;align-items:flex-start;font-size:14.5px;line-height:1.4;padding:7px 0}
   .li .i{flex-shrink:0;font-size:16px;margin-top:1px}
-  .proj{background:linear-gradient(160deg,#2a2016,#1d1711);border:1px solid #6b4f2a}
+  .proj{background:linear-gradient(160deg,#fdf8ec,#fbf2d9);border:1px solid #e6cf96}
   .proj .lead{font-size:14px;color:var(--muted);line-height:1.55}
-  .proj .big{font-size:54px;font-weight:800;color:var(--gold2);font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:16px 0 6px;text-align:center;line-height:1;text-shadow:0 0 38px rgba(246,201,106,.42)}
+  .proj .big{font-size:54px;font-weight:800;color:var(--gold2);font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:16px 0 6px;text-align:center;line-height:1;text-shadow:none}
   .proj .foot{font-size:13px;color:var(--muted);text-align:center}
   .levels{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
   .lvl{text-align:center;padding:10px 4px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.03em}
   .lvl .e{font-size:19px;display:block;margin-bottom:4px}
-  .lvl.act{border-color:var(--gold);background:#2a2118;color:var(--text)}
+  .lvl.act{border-color:var(--gold);background:#faf4e6;color:var(--text)}
   .redo{display:block;text-align:center;color:var(--muted);font-size:13px;margin-top:22px;text-decoration:underline;cursor:pointer;background:none;border:none;width:100%}
   .badge-note{text-align:center;font-size:12px;color:#7d7259;margin:26px 0 4px}
 
@@ -981,8 +981,8 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
 </section>
 
-<!-- degrade: puxa a pagina clara pro preto do quiz -->
-<div style="height:80px;background:linear-gradient(#FAFAF8,#100e0b)"></div>
+<!-- separador leve (pagina clara do inicio ao fim) -->
+<div style="max-width:460px;margin:0 auto;padding:16px 18px 0"><div style="height:1px;background:#e4e1d8"></div></div>
 <section class="quiz-dark" id="formulario" style="scroll-margin-top:72px">
 <div class="wrap">
 
@@ -1128,7 +1128,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
       <div class="levels" id="levels"></div>
 
-      <div class="card" id="capCard" style="border-color:#7a4028"><h3>🪑 Capacidade da sua clínica</h3><div id="capText"></div></div>
+      <div class="card" id="capCard" style="border-color:#e8c9a0"><h3>🪑 Capacidade da sua clínica</h3><div id="capText"></div></div>
 
       <div class="card"><h3>💪 Pontos fortes</h3><div id="fortes"></div></div>
       <div class="card"><h3>⚠️ Pontos de atenção</h3><div id="atencao"></div></div>
@@ -1282,7 +1282,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     var capHtml;
     if(ocioso>=8){
       capHtml='Com <b style="color:var(--text)">'+cadLbl+(cadeiras>1?' cadeiras':' cadeira')+'</b> abertas <b style="color:var(--text)">8h por dia</b>, dava pra atender até <b style="color:var(--text)">~'+capacidade+' pacientes/dia</b>. Hoje você faz uns <b style="color:var(--text)">'+cd+'</b>.'
-        +'<div style="font-size:48px;font-weight:800;color:var(--red);margin:16px 0 6px;text-align:center;line-height:1;text-shadow:0 0 34px rgba(221,86,71,.42)">'+ocioso+'% ociosa</div>'
+        +'<div style="font-size:48px;font-weight:800;color:var(--red);margin:16px 0 6px;text-align:center;line-height:1;text-shadow:none">'+ocioso+'% ociosa</div>'
         +'<div style="color:var(--muted);font-size:13px;line-height:1.5;text-align:center">Cadeira parada = dinheiro parado. Cada paciente novo por <b>recomendação</b> enche esse espaço — sem gastar mais em anúncio.</div>';
     }else{
       capHtml='Você usa quase toda a sua capacidade (<b style="color:var(--text)">~'+capacidade+'/dia</b>) 🔥. Daqui, o crescimento vem de <b>ticket maior</b> ou mais <b>recomendação</b> pra manter a cadeira sempre cheia.';
