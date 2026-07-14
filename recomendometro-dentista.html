@@ -839,6 +839,109 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   }
   .rs-diag-destaque strong { color: var(--gold); font-style: normal; }
 </style>
+<style>
+  .quiz-dark{
+    --bg:#100e0b; --bg2:#1a1611; --bg3:#241e18; --line:#38302680;
+    --gold:#e6ad50; --gold2:#f6c977; --red:#dd5647; --amber:#e8934a; --green:#46b872;
+    --text:#f4ede1; --muted:#a99d8b;
+    --bronze:#c67b3e; --prata:#c3cbd4; --ouro:#e6ad50; --diamante:#5fd3e2;
+    --maxw:460px;
+  }
+  .quiz-dark *{margin:0;padding:0;box-sizing:border-box}
+  .quiz-dark{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;min-height:100vh;min-height:100dvh;position:relative;padding:0 18px}
+  .disp{font-weight:800;letter-spacing:-.02em;line-height:1.05;text-wrap:balance}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+
+  /* topbar / progress */
+  .top{position:sticky;top:0;z-index:5;background:linear-gradient(var(--bg),var(--bg) 70%,transparent);padding:16px 0 12px}
+  .brand{display:flex;align-items:center;gap:8px;justify-content:center;font-weight:800;letter-spacing:.02em;font-size:15px}
+  .brand b{color:var(--gold)}
+  .bar{height:7px;background:var(--bg3);border-radius:99px;margin-top:12px;overflow:hidden}
+  .bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:99px;transition:width .45s cubic-bezier(.4,0,.2,1)}
+  .stepn{font-size:11px;color:var(--muted);margin-top:7px;text-align:center;letter-spacing:.04em}
+
+  /* screens */
+  .screen{display:none;animation:in .45s cubic-bezier(.2,.7,.2,1)}
+  .screen.on{display:block}
+  @keyframes in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .qhead{padding:22px 0 18px}
+  .qkicker{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+  .qtitle{font-size:25px;font-weight:800;letter-spacing:-.02em;line-height:1.12}
+  .qsub{color:var(--muted);font-size:14px;margin-top:8px;line-height:1.5}
+
+  .opts{display:grid;grid-template-columns:1fr 1fr;gap:11px;padding-bottom:30px}
+  .opts.one{grid-template-columns:1fr}
+  .opt{background:var(--bg2);border:1.5px solid var(--line);border-radius:16px;padding:18px 14px;cursor:pointer;text-align:left;color:var(--text);display:flex;flex-direction:column;gap:9px;min-height:104px;justify-content:center;transition:transform .12s,border-color .15s,background .15s;-webkit-tap-highlight-color:transparent}
+  .opt.one{flex-direction:row;align-items:center;min-height:64px;gap:14px}
+  .opt:active{transform:scale(.97)}
+  .opt:hover{border-color:#5a4c3a}
+  .opt .em{font-size:30px;line-height:1}
+  .opt.one .em{font-size:26px}
+  .opt .lb{font-size:15px;font-weight:700;line-height:1.2}
+  .opt.sel{border-color:var(--gold);background:#2a2118;box-shadow:0 0 0 3px #e6ad5030}
+
+  /* feedback toast */
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);background:var(--gold);color:#221a10;font-weight:800;font-size:14px;padding:11px 20px;border-radius:99px;opacity:0;pointer-events:none;transition:.3s;z-index:20;box-shadow:0 10px 30px #0008}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* analysis */
+  .center{min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:22px;padding:40px 0}
+  .scissor{font-size:56px;animation:sway 1.4s ease-in-out infinite}
+  @keyframes sway{0%,100%{transform:rotate(-12deg)}50%{transform:rotate(12deg)}}
+  .checks{display:flex;flex-direction:column;gap:12px;width:100%;max-width:300px;text-align:left}
+  .chk{display:flex;align-items:center;gap:11px;font-size:15px;color:var(--muted);opacity:.35;transition:.4s}
+  .chk.done{opacity:1;color:var(--text)}
+  .chk .b{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-size:13px;flex-shrink:0;transition:.3s}
+  .chk.done .b{background:var(--green);border-color:var(--green);color:#08210f}
+  .abar{width:100%;max-width:300px;height:9px;background:var(--bg3);border-radius:99px;overflow:hidden}
+  .abar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--gold2));transition:width .3s linear}
+  .apct{font-weight:800;font-size:30px;font-variant-numeric:tabular-nums;color:var(--gold)}
+
+  /* gate */
+  .gate{padding:26px 0 40px}
+  .lock{font-size:40px;text-align:center}
+  .field{margin-top:14px}
+  .field label{display:block;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  .field input{width:100%;background:var(--bg2);border:1.5px solid var(--line);border-radius:13px;padding:15px 15px;color:var(--text);font-size:16px;outline:none;transition:border-color .15s}
+  .field input:focus{border-color:var(--gold)}
+  .cta{display:block;box-sizing:border-box;text-align:center;text-decoration:none;width:100%;border:none;border-radius:14px;padding:17px;font-size:16px;font-weight:800;cursor:pointer;margin-top:20px;background:linear-gradient(90deg,var(--gold),var(--gold2));color:#221a10;letter-spacing:.01em;transition:transform .12s;-webkit-tap-highlight-color:transparent}
+  .cta:active{transform:scale(.98)}
+  .cta.ghost{background:transparent;border:1.5px solid var(--line);color:var(--text)}
+  .cta.wpp{background:#25d366;color:#062b14}
+  .cta.red{background:var(--red);color:#fff}
+  .safe{text-align:center;color:var(--muted);font-size:12px;margin-top:12px}
+
+  /* result */
+  .res{padding:20px 0 44px}
+  .ring{position:relative;width:196px;height:196px;margin:8px auto 4px;border-radius:50%;display:grid;place-items:center;
+        background:conic-gradient(var(--rc,var(--gold)) calc(var(--p,0)*1%), #2a231b 0);transition:background .1s}
+  .ring::after{content:"";position:absolute;inset:13px;border-radius:50%;background:var(--bg2);z-index:1}
+  .ring .in{position:relative;z-index:2;text-align:center}
+  .ring .num{font-size:56px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;color:var(--rc,var(--gold))}
+  .ring .den{font-size:13px;color:var(--muted);letter-spacing:.05em;margin-top:2px}
+  .tier{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:14px;letter-spacing:.1em;text-transform:uppercase;padding:8px 16px;border-radius:99px;margin:6px auto 0;border:1.5px solid}
+  .profile{text-align:center;margin-top:16px}
+  .profile .t{font-size:23px;font-weight:800;letter-spacing:-.01em}
+  .profile .d{color:var(--muted);font-size:14px;margin-top:5px;line-height:1.5}
+
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:18px;margin-top:16px}
+  .card h3{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+  .li{display:flex;gap:10px;align-items:flex-start;font-size:14.5px;line-height:1.4;padding:7px 0}
+  .li .i{flex-shrink:0;font-size:16px;margin-top:1px}
+  .proj{background:linear-gradient(160deg,#2a2016,#1d1711);border:1px solid #6b4f2a}
+  .proj .lead{font-size:14px;color:var(--muted);line-height:1.55}
+  .proj .big{font-size:54px;font-weight:800;color:var(--gold2);font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:16px 0 6px;text-align:center;line-height:1;text-shadow:0 0 38px rgba(246,201,106,.42)}
+  .proj .foot{font-size:13px;color:var(--muted);text-align:center}
+  .levels{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+  .lvl{text-align:center;padding:10px 4px;border-radius:12px;background:var(--bg2);border:1px solid var(--line);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.03em}
+  .lvl .e{font-size:19px;display:block;margin-bottom:4px}
+  .lvl.act{border-color:var(--gold);background:#2a2118;color:var(--text)}
+  .redo{display:block;text-align:center;color:var(--muted);font-size:13px;margin-top:22px;text-decoration:underline;cursor:pointer;background:none;border:none;width:100%}
+  .badge-note{text-align:center;font-size:12px;color:#7d7259;margin:26px 0 4px}
+
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
 </head>
 <body>
 
@@ -876,441 +979,355 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
   </a>
 
-  <div class="stat-bar">
-    <div class="stat"><div class="num">30K+</div><div class="lbl">profissionais treinados</div></div>
-    <div class="stat"><div class="num">R$45M</div><div class="lbl">gerados pelo método</div></div>
-    <div class="stat"><div class="num">2 min</div><div class="lbl">para ver o resultado</div></div>
-  </div>
 </section>
 
-<!-- STRIP -->
-<div class="strip">
-  <div class="strip-inner">
-    <span>BOCA A BOCA SEM MÉTODO É SORTE</span><span class="sep"> · </span>
-    <span>CLIENTE SATISFEITO NÃO RECOMENDA SOZINHO</span><span class="sep"> · </span>
-    <span>SUA BASE DE CLIENTES É SEU ATIVO MAIS VALIOSO</span><span class="sep"> · </span>
-    <span>RECOMENDAÇÃO SEM PROCESSO NÃO ESCALA</span><span class="sep"> · </span>
-    <span>BOCA A BOCA SEM MÉTODO É SORTE</span><span class="sep"> · </span>
-    <span>CLIENTE SATISFEITO NÃO RECOMENDA SOZINHO</span><span class="sep"> · </span>
-    <span>SUA BASE DE CLIENTES É SEU ATIVO MAIS VALIOSO</span><span class="sep"> · </span>
-    <span>RECOMENDAÇÃO SEM PROCESSO NÃO ESCALA</span><span class="sep"> · </span>
+<!-- degrade: puxa a pagina clara pro preto do quiz -->
+<div style="height:80px;background:linear-gradient(#FAFAF8,#100e0b)"></div>
+<section class="quiz-dark" id="formulario" style="scroll-margin-top:72px">
+<div class="wrap">
+
+  <!-- TOP / progress -->
+  <div class="top" id="top" style="display:none">
+    <div class="brand"><span>🦷</span> Recomenda<b>Leads</b></div>
+    <div class="bar"><i id="pbar"></i></div>
+    <div class="stepn" id="stepn"></div>
   </div>
+
+  <!-- INTRO -->
+  <section class="screen on" id="s-intro">
+    <div class="center">
+      <div class="scissor">🦷</div>
+      <div>
+        <div class="eyebrow">Check-up gratuito · 1 minuto</div>
+        <h1 class="disp" style="font-size:34px;margin-top:12px">Qual é o <span style="color:var(--gold)">Score</span> da sua clínica?</h1>
+        <p class="qsub" style="max-width:340px;margin:14px auto 0">Responda 6 perguntinhas e saiba <b style="color:var(--gold2)">quanto de dinheiro</b> sua clínica deixa na mesa todo mês 💸 — e como virar uma clínica <b style="color:var(--green)">🚀 Escalando</b></p>
+      </div>
+      <button class="cta" style="max-width:320px" onclick="start()">Fazer meu check-up →</button>
+      <div class="safe">Sem enrolação. Só clicar. 🦷</div>
+    </div>
+  </section>
+
+  <!-- Q1 · vende por indicação -->
+  <section class="screen" id="s-q1">
+    <div class="qhead"><div class="qkicker">Pergunta 1 de 6</div>
+      <div class="qtitle">Você já vende por indicação?</div>
+      <div class="qsub">Recebe pacientes que chegam pela indicação de outros pacientes?</div></div>
+    <div class="opts" data-q="vende">
+      <button class="opt" onclick="pick(this,'vende','sim',0)"><span class="em">🙌</span><span class="lb">Sim, chega gente indicada</span></button>
+      <button class="opt" onclick="pick(this,'vende','nao',0)"><span class="em">😕</span><span class="lb">Quase nunca</span></button>
+    </div>
+  </section>
+
+  <!-- Q2 · agenda -->
+  <section class="screen" id="s-q2">
+    <div class="qhead"><div class="qkicker">Pergunta 2 de 6</div>
+      <div class="qtitle">Como está sua agenda hoje?</div></div>
+    <div class="opts" data-q="agenda">
+      <button class="opt" onclick="pick(this,'agenda','lotada',0)"><span class="em">🔥</span><span class="lb">Lotada, sem encaixe</span></button>
+      <button class="opt" onclick="pick(this,'agenda','boa',0)"><span class="em">🙂</span><span class="lb">Boa parte ocupada</span></button>
+      <button class="opt" onclick="pick(this,'agenda','vazia',0)"><span class="em">😕</span><span class="lb">Muitos horários vagos</span></button>
+      <button class="opt" onclick="pick(this,'agenda','fraca',0)"><span class="em">😰</span><span class="lb">Preciso de mais pacientes</span></button>
+    </div>
+  </section>
+
+  <!-- Q3 · programa -->
+  <section class="screen" id="s-q3">
+    <div class="qhead"><div class="qkicker">Pergunta 3 de 6</div>
+      <div class="qtitle">Você tem um programa estruturado de indicação de pacientes?</div>
+      <div class="qsub">Um processo que pede e organiza as indicações — não só o boca a boca solto</div></div>
+    <div class="opts" data-q="prog">
+      <button class="opt" onclick="pick(this,'prog','sim',0)"><span class="em">✅</span><span class="lb">Sim, tenho</span></button>
+      <button class="opt" onclick="pick(this,'prog','nao',0)"><span class="em">❌</span><span class="lb">Não tenho</span></button>
+    </div>
+  </section>
+
+  <!-- Q4 · pacientes/dia -->
+  <section class="screen" id="s-q4">
+    <div class="qhead"><div class="qkicker">Pergunta 4 de 6</div>
+      <div class="qtitle">Quantos pacientes você atende por dia?</div>
+      <div class="qsub">Na média de um dia normal</div></div>
+    <div class="opts" data-q="atend">
+      <button class="opt" onclick="pick(this,'atend',2,0)"><span class="em">🦷</span><span class="lb">1 a 3</span></button>
+      <button class="opt" onclick="pick(this,'atend',6,0)"><span class="em">🦷</span><span class="lb">5 a 8</span></button>
+      <button class="opt" onclick="pick(this,'atend',10,0)"><span class="em">🦷</span><span class="lb">8 a 12</span></button>
+      <button class="opt" onclick="pick(this,'atend',15,0)"><span class="em">🦷</span><span class="lb">12 a 18</span></button>
+    </div>
+  </section>
+
+  <!-- Q5 · cadeiras -->
+  <section class="screen" id="s-q5">
+    <div class="qhead"><div class="qkicker">Pergunta 5 de 6</div>
+      <div class="qtitle">Quantas cadeiras odontológicas tem na clínica?</div>
+      <div class="qsub">Conta todas — ocupadas ou não</div></div>
+    <div class="opts" data-q="cadeiras">
+      <button class="opt" onclick="pick(this,'cadeiras',1,0)"><span class="em">🪑</span><span class="lb">1</span></button>
+      <button class="opt" onclick="pick(this,'cadeiras',2,0)"><span class="em">🪑</span><span class="lb">2</span></button>
+      <button class="opt" onclick="pick(this,'cadeiras',3.5,0)"><span class="em">🪑</span><span class="lb">3 a 4</span></button>
+    </div>
+  </section>
+
+  <!-- Q6 · ticket -->
+  <section class="screen" id="s-q6">
+    <div class="qhead"><div class="qkicker">Pergunta 6 de 6</div>
+      <div class="qtitle">Qual seu ticket médio por paciente?</div>
+      <div class="qsub">Consulta + tratamento, na média</div></div>
+    <div class="opts" data-q="ticket">
+      <button class="opt" onclick="pick(this,'ticket',275,0)"><span class="em">💵</span><span class="lb">R$ 150 a 400</span></button>
+      <button class="opt" onclick="pick(this,'ticket',600,0)"><span class="em">💵</span><span class="lb">R$ 400 a 800</span></button>
+      <button class="opt" onclick="pick(this,'ticket',1150,0)"><span class="em">💰</span><span class="lb">R$ 800 a 1.500</span></button>
+      <button class="opt" onclick="pick(this,'ticket',2000,0)"><span class="em">👑</span><span class="lb">R$ 1.500 a 2.500</span></button>
+    </div>
+  </section>
+
+  <!-- ANALYSIS -->
+  <section class="screen" id="s-analise">
+    <div class="center">
+      <div class="scissor">🦷</div>
+      <div>
+        <div class="eyebrow">Analisando</div>
+        <h2 class="disp" style="font-size:24px;margin-top:10px">Montando o diagnóstico da sua clínica...</h2>
+      </div>
+      <div class="checks" id="checks">
+        <div class="chk" data-i="0"><span class="b">✓</span> Agenda e movimento</div>
+        <div class="chk" data-i="1"><span class="b">✓</span> Comportamento dos pacientes</div>
+        <div class="chk" data-i="2"><span class="b">✓</span> Potencial de indicação</div>
+        <div class="chk" data-i="3"><span class="b">✓</span> Receita que está escapando</div>
+      </div>
+      <div class="abar"><i id="abar"></i></div>
+      <div class="apct" id="apct">0%</div>
+    </div>
+  </section>
+
+  <!-- GATE -->
+  <section class="screen" id="s-gate">
+    <div class="gate">
+      <div class="lock">🔓</div>
+      <div class="qhead" style="text-align:center;padding-top:14px">
+        <div class="qkicker" style="color:var(--green)">Diagnóstico pronto!</div>
+        <div class="qtitle">Pra onde eu mando seu resultado?</div>
+        <div class="qsub">Seu Score, seu perfil e quanto você pode ganhar. Leva 10 segundos.</div>
+      </div>
+      <div class="field"><label>Seu nome</label><input id="g-nome" placeholder="Como te chamam"></div>
+      <div class="field"><label>WhatsApp</label><input id="g-wpp" inputmode="numeric" placeholder="(11) 90000-0000"></div>
+      <div class="field"><label>E-mail</label><input id="g-email" type="email" placeholder="voce@email.com"></div>
+      <button class="cta" onclick="verResultado()">🎯 Ver meu Score agora</button>
+      <div class="safe">🔒 Seus dados são 100% seguros. Sem spam.</div>
+    </div>
+  </section>
+
+  <!-- RESULT -->
+  <section class="screen" id="s-res">
+    <div class="res">
+      <div class="eyebrow" style="text-align:center">O Score da sua clínica</div>
+      <div class="ring" id="ring"><div class="in"><div class="num" id="scoreN">0</div><div class="den">de 100</div></div></div>
+      <div style="text-align:center"><span class="tier" id="tier"></span></div>
+      <div class="profile">
+        <div class="t" id="perfilT"></div>
+        <div class="d" id="perfilD"></div>
+      </div>
+
+      <div class="levels" id="levels"></div>
+
+      <div class="card" id="capCard" style="border-color:#7a4028"><h3>🪑 Capacidade da sua clínica</h3><div id="capText"></div></div>
+
+      <div class="card"><h3>💪 Pontos fortes</h3><div id="fortes"></div></div>
+      <div class="card"><h3>⚠️ Pontos de atenção</h3><div id="atencao"></div></div>
+
+      <div class="card proj">
+        <div class="lead" id="projLead"></div>
+        <div class="big" id="projBig">R$ 0</div>
+        <div class="foot">por mês, <b>ativando um programa completo de recomendação</b> — sem gastar mais em anúncio.</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:11px;margin-top:20px">
+        <a class="cta wpp" href="https://wa.me/5511920938390?text=Fiz%20o%20Check-up%20da%20minha%20cl%C3%ADnica%20e%20quero%20ativar%20um%20programa%20de%20recomenda%C3%A7%C3%A3o!" target="_blank" onclick="if(leadId)rpc('mark_wa_click',{p_lead_id:leadId}).catch(function(){});">💬 Quero ativar isso na minha clínica</a>
+        <a class="cta red" href="https://calendar.app.google/tzMa4HTYewwhLtxC6" target="_blank">📅 Agendar um diagnóstico gratuito</a>
+      </div>
+      <button class="redo" onclick="location.reload()">↻ Refazer o check-up</button>
+    </div>
+  </section>
+
 </div>
 
-<!-- DOR -->
-<section class="section">
-  <div class="container">
-    <div class="sec-label">O que está acontecendo agora</div>
-    <h2 class="sec-title">Você se identifica<br>com <span class="gold">algum desses cenários?</span></h2>
-    <p class="sec-body">A maioria dos negócios de clínica odontológica confia no boca a boca — mas quase nenhum tem um processo real para ativá-lo.</p>
-    <div class="pain-grid">
-      <div class="pain-card"><div class="pain-icon">📉</div><h3>Captação cara e demorada</h3><p>Lead de odontologia em tráfego pago é um dos mais caros do mercado. E a conversão é baixa porque o paciente desconfia.</p></div>
-      <div class="pain-card"><div class="pain-icon">🔇</div><h3>Paciente fiel que não indica</h3><p>Ele vem todo semestre, confia em você — mas nunca indicou ninguém. Nunca ninguém pediu pra ele fazer isso de forma estruturada.</p></div>
-      <div class="pain-card"><div class="pain-icon">💸</div><h3>Agenda com buracos</h3><p>Horários vagos que poderiam estar ocupados por indicações de quem já conhece e confia no seu trabalho.</p></div>
-      <div class="pain-card"><div class="pain-icon">🗂️</div><h3>Base de pacientes parada</h3><p>Você tem centenas de pacientes cadastrados que não voltam faz meses. Um programa de recomendação reativa esse ativo.</p></div>
-    </div>
-  </div>
+<div class="toast" id="toast"></div>
+  <p style="text-align:center;color:#8a7f6d;font-size:12px;line-height:1.6;padding:38px 18px 46px">© 2025 RecomendaLeads · X Mentor Comercial Ltda. · Todos os direitos reservados</p>
 </section>
-
-<div class="sep-line"></div>
-
-<!-- FORMULÁRIO -->
-<section class="form-section" id="formulario">
-  <div class="container">
-    <div class="form-header">
-      <div class="sec-label">Recomendômetro 🦷</div>
-      <h2 class="sec-title">Quanto você deixa<br>na mesa <span class="gold">todo mês?</span></h2>
-      <p class="sec-body">Preencha os dados do seu negócio e veja, em reais, o impacto de não ter um programa de recomendação.</p>
-    </div>
-
-    <div class="form-box" id="form-box">
-      <div class="form-grid">
-        <div class="fg">
-          <label>Pergunta 1 — Quantos clientes compram de você por dia?</label>
-          <span class="hint">Em média, quantas pessoas fecham uma compra por dia</span>
-          <input type="number" id="clientes-dia" placeholder="Ex: 8" min="1">
-          <span class="field-err">Informe um valor válido</span>
-        </div>
-
-        <div class="fg">
-          <label>Pergunta 3 — Qual o seu ticket médio?</label>
-          <span class="hint">Valor médio que cada cliente gasta numa compra</span>
-          <div class="prefix-wrap">
-            <span class="prefix">R$</span>
-            <input type="text" id="ticket" placeholder="0" inputmode="numeric" autocomplete="off">
-          </div>
-          <span class="field-err">Informe um valor válido</span>
-        </div>
-
-        <div class="fg">
-          <label>Pergunta 4 — Quantos dias você trabalha por mês?</label>
-          <span class="hint">Selecione sua escala de trabalho</span>
-          <select id="dias-mes">
-            <option value="" disabled selected>Selecione…</option>
-            <option value="22">Segunda a Sexta (≈ 22 dias)</option>
-            <option value="26">Segunda a Sábado (≈ 26 dias)</option>
-            <option value="30">Segunda a Domingo (≈ 30 dias)</option>
-          </select>
-          <span class="field-err">Selecione sua escala</span>
-        </div>
-
-        <div class="fg">
-          <label>Pergunta 5 — Você tem um programa completo de recomendação?</label>
-          <span class="hint">Um processo estruturado que pede e gerencia recomendações automaticamente</span>
-          <div class="radio-group">
-            <input class="radio-opt" type="radio" name="prog" id="prog-sim" value="sim">
-            <label class="radio-lbl" for="prog-sim"><span class="dot"></span>Sim, tenho</label>
-            <input class="radio-opt" type="radio" name="prog" id="prog-nao" value="nao">
-            <label class="radio-lbl" for="prog-nao"><span class="dot"></span>Não tenho</label>
-          </div>
-        </div>
-
-        <div class="fg">
-          <label>Pergunta 6 — Você já vende por indicação?</label>
-          <span class="hint">Mesmo que de forma informal, no boca a boca</span>
-          <div class="radio-group">
-            <input class="radio-opt" type="radio" name="base" id="base-sim" value="sim">
-            <label class="radio-lbl" for="base-sim"><span class="dot"></span>Sim, no boca a boca</label>
-            <input class="radio-opt" type="radio" name="base" id="base-nao" value="nao">
-            <label class="radio-lbl" for="base-nao"><span class="dot"></span>Não / quase nada</label>
-          </div>
-        </div>
-      </div>
-
-      <div class="lead-divider"><span>Liberar meu resultado</span></div>
-
-      <div class="lead-info">
-        <span class="ico">🔒</span>
-        <p>Para liberar seu diagnóstico completo, preciso saber com quem estou falando. <strong>Seus dados são 100% seguros</strong> — usados apenas para enviar insights personalizados.</p>
-      </div>
-
-      <div class="form-grid">
-        <div class="fg">
-          <label>Seu nome</label>
-          <input type="text" id="nome" placeholder="Nome completo">
-          <span class="field-err">Informe seu nome</span>
-        </div>
-        <div class="fg">
-          <label>WhatsApp</label>
-          <input type="tel" id="whatsapp" placeholder="(11) 99999-9999">
-          <span class="field-err">Informe um WhatsApp válido</span>
-        </div>
-        <div class="fg full">
-          <label>E-mail</label>
-          <input type="email" id="email" placeholder="seu@email.com">
-          <span class="field-err">Informe um e-mail válido</span>
-        </div>
-      </div>
-
-      <button class="btn-calc" onclick="calcular()">Ver quanto meu consultório perde →</button>
-      <p class="privacy">🔒 Privacidade garantida. Sem spam.</p>
-    </div>
-
-    <!-- RESULTADO -->
-    <div class="result-box" id="result-box">
-      <div class="res-headline">Diagnóstico pronto, <span id="res-nome">amigo</span></div>
-      <div class="res-sub">Veja o que os números revelam sobre o seu negócio</div>
-
-      <div class="res-cards">
-        <div class="res-card">
-          <div class="period">3 meses</div>
-          <div class="val" id="res-3m">—</div>
-          <div class="val-lbl">deixado na mesa</div>
-        </div>
-        <div class="res-card">
-          <div class="period">6 meses</div>
-          <div class="val" id="res-6m">—</div>
-          <div class="val-lbl">deixado na mesa</div>
-        </div>
-        <div class="res-card">
-          <div class="period">12 meses</div>
-          <div class="val" id="res-12m">—</div>
-          <div class="val-lbl">deixado na mesa</div>
-        </div>
-      </div>
-
-      <div class="res-main">
-        <div class="lbl">Com um programa completo de recomendação, você poderia ter</div>
-        <div class="big"><span>+</span> <span id="res-ganho">—</span></div>
-        <p id="res-texto">por mês a mais no faturamento — sem gastar um real a mais em anúncios.</p>
-      </div>
-
-      <div class="res-ctas">
-        <a href="https://wa.me/5511920938390?text=Fiz+o+Recoment%C3%B4metro+e+quero+saber+mais" target="_blank" class="btn-prim">
-          💬 Quero uma sessão estratégica
-        </a>
-        <a href="https://recomendaleads.com.br" target="_blank" class="btn-ghost-light">
-          ☐ ME MOSTRE COMO ISSO FUNCIONA →
-        </a>
-      </div>
-      <div class="refazer"><button onclick="refazer()">↻ Refazer o cálculo</button></div>
-    </div>
-  </div>
-</section>
-
-<!-- COMO FUNCIONA -->
-<section class="how-section">
-  <div class="container">
-    <div class="sec-label">Como funciona</div>
-    <h2 class="sec-title">Do boca a boca<br><span class="gold">ao processo escalável</span></h2>
-    <div class="how-grid">
-      <div class="how-step"><div class="step-n">01</div><h3>Diagnóstico</h3><p>O Recomendômetro mapeia o potencial do seu negócio e mostra em reais o que você está perdendo.</p></div>
-      <div class="how-step"><div class="step-n">02</div><h3>Método</h3><p>Aplicamos o Método Poder da Recomendação para que seus clientes virem promotores ativos.</p></div>
-      <div class="how-step"><div class="step-n">03</div><h3>Tecnologia</h3><p>O RecomendaLeads automatiza tudo via WhatsApp — rastreia cada recomendação em tempo real.</p></div>
-      <div class="how-step"><div class="step-n">04</div><h3>Resultado</h3><p>Faturamento previsível, custo de aquisição menor e clientes que chegam prontos para comprar.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- PROVA -->
-<section class="proof-section">
-  <div class="container">
-    <div class="sec-label">Quem já aplica</div>
-    <h2 class="sec-title">O que dizem quem colocou<br><span class="gold">o método em prática</span></h2>
-  </div>
-  <div style="overflow:hidden;">
-    <div class="proof-track">
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"Em 3 meses com o método, nossas recomendações aumentaram 4x. Hoje quase não precisamos de tráfego pago."</p><div class="proof-author">Gustavo P. <span>· Serviços</span></div></div>
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"Antes era boca a boca aleatório. Hoje tenho um processo, sei de onde veio cada cliente novo."</p><div class="proof-author">Carla M. <span>· Estética</span></div></div>
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"O Recomendômetro abriu meu olho. Eu estava deixando mais de R$ 40 mil por mês na mesa sem perceber."</p><div class="proof-author">André R. <span>· Saúde</span></div></div>
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"O cliente que chega por recomendação compra mais, negocia menos e ainda traz outros."</p><div class="proof-author">Fernanda S. <span>· Beleza</span></div></div>
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"Reduzi 60% do gasto com anúncios em 4 meses. As recomendações estruturadas cobriram tudo isso."</p><div class="proof-author">Rafael T. <span>· Varejo</span></div></div>
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"Em 3 meses com o método, nossas recomendações aumentaram 4x. Hoje quase não precisamos de tráfego pago."</p><div class="proof-author">Gustavo P. <span>· Serviços</span></div></div>
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"Antes era boca a boca aleatório. Hoje tenho um processo, sei de onde veio cada cliente novo."</p><div class="proof-author">Carla M. <span>· Estética</span></div></div>
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"O Recomendômetro abriu meu olho. Eu estava deixando mais de R$ 40 mil por mês na mesa sem perceber."</p><div class="proof-author">André R. <span>· Saúde</span></div></div>
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"O cliente que chega por recomendação compra mais, negocia menos e ainda traz outros."</p><div class="proof-author">Fernanda S. <span>· Beleza</span></div></div>
-      <div class="proof-card"><div class="proof-stars">★★★★★</div><p class="proof-text">"Reduzi 60% do gasto com anúncios em 4 meses. As recomendações estruturadas cobriram tudo isso."</p><div class="proof-author">Rafael T. <span>· Varejo</span></div></div>
-    </div>
-  </div>
-</section>
-
-<!-- FOOTER CTA -->
-<section class="footer-cta">
-  <div class="container">
-    <div class="sec-label">Pronto pra parar de deixar dinheiro na mesa?</div>
-    <h2 class="sec-title">Seu próximo cliente<br><span class="gold">já existe.</span><br>Você só precisa pedi-lo.</h2>
-    <p class="sec-body">Em menos de 2 minutos você descobre o número exato que está escondido no seu negócio.</p>
-    <a href="#formulario" class="btn-hero">
-      Fazer meu diagnóstico agora
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-    </a>
-  </div>
-</section>
-
-<footer>
-  <p>© 2025 RecomendaLeads · X Mentor Comercial Ltda. · Todos os direitos reservados</p>
-  <p style="margin-top:5px;">Método criado por Alexandre Claro · <a href="https://pdnvendas.com.br" style="color:var(--gold);text-decoration:none;">pdnvendas.com.br</a></p>
-</footer>
-
-<script>
-  function fmt(v) {
-    return v.toLocaleString('pt-BR', { style:'currency', currency:'BRL', minimumFractionDigits:0, maximumFractionDigits:0 }).replace(',00','');
-  }
-  // Contador animado (igual recomendometro): sobe de 0 até o valor
-  function animarNum(el, alvo){
-    var ini=0, t0=null, dur=1100;
-    function passo(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1); var val=Math.floor(ini+(alvo-ini)*(0.5-Math.cos(p*Math.PI)/2)); el.textContent=fmt(val); if(p<1)requestAnimationFrame(passo); }
-    requestAnimationFrame(passo);
-  }
-  function validate() {
-    let ok = true;
-    [['clientes-dia','num'],['dias-mes','sel'],['ticket','tick'],['nome','txt'],['whatsapp','txt'],['email','email']].forEach(([id,t]) => {
-      const el = document.getElementById(id);
-      const g = el.closest('.fg');
-      const v = el.value.trim();
-      let bad = !v;
-      if (t === 'num') bad = !v || parseFloat(v) <= 0;
-      if (t === 'tick') bad = getTicketValue() <= 0;
-      if (t === 'sel') bad = !v;
-      if (t === 'email' && v) bad = !v.includes('@');
-      if (bad) { g.classList.add('has-error'); ok = false; }
-      else { g.classList.remove('has-error'); }
-    });
-    return ok;
-  }
-  function calcular() {
-    if (!validate()) { document.getElementById('clientes-dia').closest('.fg').scrollIntoView({behavior:'smooth',block:'center'}); return; }
-    const cd = parseFloat(document.getElementById('clientes-dia').value);
-    const dm = parseFloat(document.getElementById('dias-mes').value);
-    const tk = getTicketValue();
-    const progSel = document.querySelector('input[name="prog"]:checked');
-    const baseSel = document.querySelector('input[name="base"]:checked');
-    if (!progSel || !baseSel) { alert('Responda as perguntas 5 e 6 antes de continuar.'); return; }
-    const temProg = progSel.value === 'sim';
-    const temBase = baseSel.value === 'sim';
-    const nome = document.getElementById('nome').value.split(' ')[0];
-    let taxa = 0.20;
-    if (temProg) taxa = 0.05;
-    else if (temBase) taxa = 0.13;
-    const fatMes = cd * tk * dm;
-    const perdaMes = fatMes * taxa;
-    const ganhoMes = fatMes * 0.25;
-    document.getElementById('res-nome').textContent = nome;
-    document.getElementById('res-3m').textContent = fmt(perdaMes * 3);
-    document.getElementById('res-6m').textContent = fmt(perdaMes * 6);
-    document.getElementById('res-12m').textContent = fmt(perdaMes * 12);
-    document.getElementById('res-ganho').textContent = fmt(ganhoMes);
-    document.getElementById('res-texto').textContent = 'por mês a mais no faturamento — sem gastar um real a mais em anúncios. Faturamento atual estimado: ' + fmt(fatMes) + '/mês.';
-    // Preencher tela fullscreen
-    document.getElementById('rs-nome').textContent = nome;
-    animarNum(document.getElementById('rs-12m'), perdaMes * 12);
-    document.getElementById('rs-3m').textContent = fmt(perdaMes * 3);
-    document.getElementById('rs-6m').textContent = fmt(perdaMes * 6);
-    document.getElementById('rs-mes').textContent = fmt(perdaMes);
-    document.getElementById('rs-ganho').textContent = fmt(ganhoMes);
-    animarNum(document.getElementById('rs-perda-titulo'), perdaMes * 12);
-    // Montar diagnóstico personalizado
-    const diagEl = document.getElementById('rs-diag-texto');
-    let diagHTML = '';
-    if (temProg) {
-      diagHTML = `
-        Você já tem um programa de recomendação — isso é ótimo e te coloca à frente de <strong>90% dos consultórios</strong>. Mas pelos números que você me trouxe, ainda há espaço para otimizar e <span class="highlight">dobrar os resultados</span> com automação e processo mais estruturado.
-        <div class="rs-diag-destaque">
-          💡 <strong>O próximo nível:</strong> sair de um programa manual para um processo automatizado que ativa cada paciente no momento certo — sem depender de lembrança ou sorte.
-        </div>`;
-    } else if (temBase) {
-      diagHTML = `
-        Pelo que você me disse, hoje você já tem <strong>indicação passiva</strong> — seu paciente às vezes recomenda, mas só quando lembra, quando alguém pergunta, quando a estrela alinha. <span class="highlight">Isso é sorte, não estratégia.</span>
-        <br><br>
-        A diferença entre <strong>Indicação Passiva</strong> e <strong>Recomendação Ativa</strong> é simples: na passiva você espera. Na ativa, você cria o momento certo para pedir — com a mensagem certa, na hora certa, para o paciente certo.
-        <div class="rs-diag-destaque">
-          💡 <strong>Recomendação Ativa é menos esforço e mais venda</strong> — sem depender de sorte. Um processo estruturado transforma cada atendimento numa oportunidade de crescimento.
-        </div>`;
-    } else {
-      diagHTML = `
-        Pelo que vi nas suas respostas, hoje você depende <strong>100% de indicação passiva</strong> — aquela que acontece quando o paciente lembra, quando alguém pergunta, quando a sorte aparece. <span class="highlight">Sem processo, sem previsibilidade.</span>
-        <br><br>
-        Se você tivesse um <strong>Programa de Recomendação estruturado e ativo</strong>, já teria uma melhora significativa nessa perda — porque cada paciente satisfeito viraria um promotor ativo do seu consultório, não apenas um cliente silencioso.
-        <br><br>
-        A diferença é clara: <strong>Indicação Passiva</strong> depende da sorte. <strong>Recomendação Ativa</strong> depende do processo.
-        <div class="rs-diag-destaque">
-          💡 <strong>Menos esforço, mais venda.</strong> Com o método certo, seus pacientes recomendam porque foram ativados no momento certo — não porque lembraram por acaso.
-        </div>`;
-    }
-    diagEl.innerHTML = diagHTML;
-
-    // Mostrar tela fullscreen
-    const rs = document.getElementById('result-screen');
-    rs.classList.add('visible');
-    rs.scrollTo(0,0);
-    document.body.style.overflow = 'hidden';
-  }
-  function refazer() {
-    document.getElementById('result-screen').classList.remove('visible');
-    document.body.style.overflow = '';
-    document.getElementById('formulario').scrollIntoView({behavior:'smooth'});
-  }
-  // Máscara ticket — digita número puro, exibe com ,00
-  const ticketEl = document.getElementById('ticket');
-  let ticketRaw = '';
-  ticketEl.addEventListener('keydown', function(e) {
-    if (e.key >= '0' && e.key <= '9') {
-      e.preventDefault();
-      ticketRaw += e.key;
-      this.value = parseInt(ticketRaw, 10).toLocaleString('pt-BR') + ',00';
-    } else if (e.key === 'Backspace') {
-      e.preventDefault();
-      ticketRaw = ticketRaw.slice(0, -1);
-      this.value = ticketRaw ? parseInt(ticketRaw, 10).toLocaleString('pt-BR') + ',00' : '';
-    }
-  });
-  ticketEl.addEventListener('paste', function(e) { e.preventDefault(); });
-  function getTicketValue() {
-    return parseFloat(ticketRaw) || 0;
-  }
-
-  document.getElementById('whatsapp').addEventListener('input', function() {
-    let v = this.value.replace(/\D/g,'').slice(0,11);
-    if (v.length > 2) v = '(' + v.slice(0,2) + ') ' + v.slice(2);
-    if (v.length > 10) v = v.slice(0,10) + '-' + v.slice(10);
-    this.value = v;
-  });
-</script>
-
-<!-- RESULT FULLSCREEN -->
-<div class="result-screen" id="result-screen">
-  <div class="rs-inner">
-    <div class="rs-tag">📊 Seu diagnóstico</div>
-    <p class="rs-greeting">Olá, <strong id="rs-nome" style="color:#fff"></strong> — aqui está o que os números revelam</p>
-    <h1 class="rs-title">Você está deixando<br><span id="rs-perda-titulo">R$ 0</span> por ano<br>na mesa.</h1>
-
-    <div class="rs-perda-box">
-      <div class="rs-perda-lbl">Perda estimada nos últimos 12 meses</div>
-      <div class="rs-perda-num" id="rs-12m">R$ 0</div>
-      <div class="rs-perda-sub">por não ter um programa de recomendação estruturado</div>
-    </div>
-
-    <div class="rs-cards">
-      <div class="rs-card">
-        <div class="per">3 meses</div>
-        <div class="val" id="rs-3m">—</div>
-        <div class="lbl">perdidos</div>
-      </div>
-      <div class="rs-card">
-        <div class="per">6 meses</div>
-        <div class="val" id="rs-6m">—</div>
-        <div class="lbl">perdidos</div>
-      </div>
-      <div class="rs-card">
-        <div class="per">por mês</div>
-        <div class="val" id="rs-mes">—</div>
-        <div class="lbl">vazando</div>
-      </div>
-    </div>
-
-    <div class="rs-ganho-box">
-      <div class="rs-ganho-lbl">Com um programa completo, você poderia ter</div>
-      <div class="rs-ganho-num">+ <span id="rs-ganho">R$ 0</span></div>
-      <div class="rs-ganho-sub">por mês a mais — sem gastar um real em tráfego pago</div>
-    </div>
-
-    <div class="rs-diagnostico">
-      <div class="rs-diag-label">🔍 Diagnóstico do seu negócio</div>
-      <div class="rs-diag-text" id="rs-diag-texto">
-        <!-- preenchido pelo JS -->
-      </div>
-    </div>
-
-        <a href="https://wa.me/5511920938390?text=Fiz%20o%20Recomend%C3%B4metro%20e%20quero%20falar%20com%20um%20atendente." target="_blank" class="rs-btn-main">
-      Falar com 1 atendente
-    </a>
-    <a href="https://calendar.app.google/tzMa4HTYewwhLtxC6" target="_blank" class="rs-btn-sec rs-mod-brand">
-      Agendar uma reunião agora
-    </a>
-    <button class="rs-refazer" onclick="refazer()">↻ Refazer o diagnóstico</button>
-  </div>
-</div>
-
-
-<!-- PROSPECTAI-CAPTURE: envia o lead pro CRM (nome+WhatsApp) e marca quando o lead clica no WhatsApp -->
 <script>
 (function(){
-  var BASE="https://buoaumgjjqtfavxfrwsz.supabase.co/rest/v1/rpc/";
-  var KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1b2F1bWdqanF0ZmF2eGZyd3N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNDk0OTksImV4cCI6MjA5ODYyNTQ5OX0.A6uUArucvd9fDU-kKuTPnl-aw69Aui_-MFZYSpxBlEM", CODE="4D8ECD2D", SRC="dentista";
-  var H={"Content-Type":"application/json","apikey":KEY,"Authorization":"Bearer "+KEY};
-  function rpc(fn,body){ return fetch(BASE+fn,{method:"POST",headers:H,body:JSON.stringify(body)}); }
-  var sent=false, leadId=null, orig=window.calcular;
-  if(typeof orig==="function"){
-    window.calcular=function(){
-      try{
-        var n=((document.getElementById("nome")||{}).value||"").trim();
-        var w=((document.getElementById("whatsapp")||{}).value||"").trim();
-        var e=((document.getElementById("email")||{}).value||"").trim();
-        if(!sent && n && w){
-          sent=true;
-          try{if(window.fbq)fbq("track","Lead");}catch(_){}
-          rpc("capture_lead",{p_code:CODE,p_name:n,p_phone:w,p_email:e||null,p_source:SRC,p_campaign:"funil-"+SRC})
-            .then(function(r){return r.json();}).then(function(id){ leadId=id; }).catch(function(){});
-        }
-      }catch(_){}
-      return orig.apply(this,arguments);
+  // === Integração produção (captura de lead + WhatsApp + Agenda) ===
+  var SB="https://buoaumgjjqtfavxfrwsz.supabase.co/rest/v1/rpc/";
+  var ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1b2F1bWdqanF0ZmF2eGZyd3N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNDk0OTksImV4cCI6MjA5ODYyNTQ5OX0.A6uUArucvd9fDU-kKuTPnl-aw69Aui_-MFZYSpxBlEM";
+  var CAP_CODE="4D8ECD2D", WA="5511920938390", CAL="https://calendar.app.google/tzMa4HTYewwhLtxC6", leadId=null;
+  function rpc(fn,body){ return fetch(SB+fn,{method:"POST",headers:{"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+ANON},body:JSON.stringify(body)}); }
+
+  var ans={}, order=['s-q1','s-q2','s-q3','s-q4','s-q5','s-q6'], idx=0;
+  var praises=['Boa! 🦷','Isso! 🔥','Show! ✨','Falta pouco 💪','Quase lá 🚀'];
+
+  function scrollQuiz(){var s=document.getElementById('formulario');if(!s)return;var h=document.querySelector('.header');var off=(h?h.offsetHeight:0)+12;var y=s.getBoundingClientRect().top+window.pageYOffset-off;window.scrollTo(0,y<0?0:y);}
+
+  window.start=function(){
+    document.getElementById('s-intro').classList.remove('on');
+    document.getElementById('top').style.display='block';
+    idx=0; showQ();
+  };
+  function showQ(){
+    order.forEach(id=>document.getElementById(id).classList.remove('on'));
+    document.getElementById(order[idx]).classList.add('on');
+    document.getElementById('pbar').style.width=((idx)/order.length*100)+'%';
+    document.getElementById('stepn').textContent='Pergunta '+(idx+1)+' de '+order.length;
+    var scr=document.getElementById(order[idx]); var k=scr.querySelector('.qkicker'); if(k)k.textContent='Pergunta '+(idx+1)+' de '+order.length;
+    scrollQuiz();
+  }
+  window.pick=function(el,key,val,pts){
+    ans[key]={val:val,pts:pts};
+    var box=el.parentNode; [].forEach.call(box.children,c=>c.classList.remove('sel')); el.classList.add('sel');
+    if(idx<order.length-1){ toast(praises[idx]||'Boa! 🦷'); }
+    setTimeout(function(){
+      idx++;
+      if(idx<order.length){ showQ(); }
+      else{ document.getElementById('pbar').style.width='100%'; runAnalise(); }
+    },300);
+  };
+  function toast(t){ var e=document.getElementById('toast'); e.textContent=t; e.classList.add('show'); clearTimeout(e._t); e._t=setTimeout(()=>e.classList.remove('show'),900); }
+
+  function runAnalise(){
+    order.forEach(id=>document.getElementById(id).classList.remove('on'));
+    document.getElementById('top').style.display='none';
+    document.getElementById('s-analise').classList.add('on'); scrollQuiz();
+    var chks=document.querySelectorAll('#checks .chk'), abar=document.getElementById('abar'), apct=document.getElementById('apct');
+    var p=0, k=0;
+    var iv=setInterval(function(){
+      p+=Math.random()*7+2; if(p>100)p=100;
+      abar.style.width=p+'%'; apct.textContent=Math.floor(p)+'%';
+      var target=Math.floor(p/25); for(;k<=target&&k<chks.length;k++){ chks[k].classList.add('done'); }
+      if(p>=100){ clearInterval(iv); setTimeout(gate,650); }
+    },140);
+  }
+  function gate(){ document.getElementById('s-analise').classList.remove('on'); document.getElementById('s-gate').classList.add('on'); scrollQuiz(); }
+
+  window.verResultado=function(){
+    var n=document.getElementById('g-nome').value.trim();
+    var w=document.getElementById('g-wpp').value.trim();
+    var e=document.getElementById('g-email').value.trim();
+    if(!n){ alert('Como te chamam? 🦷'); document.getElementById('g-nome').focus(); return; }
+    if(w.replace(/\D/g,'').length<10){ alert('Coloca seu WhatsApp com DDD 📱'); document.getElementById('g-wpp').focus(); return; }
+    // dispara o Pixel (Lead)
+    try{ if(window.fbq) fbq('track','Lead'); }catch(_){}
+    // mostra o resultado (render calcula e guarda o resumo legível em window.__quizResumo)
+    document.getElementById('s-gate').classList.remove('on'); document.getElementById('s-res').classList.add('on'); scrollQuiz();
+    render();
+    // manda o lead pro CRM com o resumo (Score, ociosidade, dinheiro na mesa, respostas)
+    rpc('capture_lead',{p_code:CAP_CODE,p_name:n,p_phone:w,p_email:e||null,p_source:'dentista',p_campaign:'funil-dentista',p_payload:(window.__quizResumo||ans)})
+      .then(function(r){return r.json();}).then(function(id){ leadId=id; }).catch(function(){});
+  };
+
+  function val(k){ return ans[k]&&ans[k].val; }
+
+  function render(){
+    var SC={agenda:{lotada:22,boa:15,vazia:8,fraca:4}};
+    var tkPts={275:6,600:12,1150:18,2000:24};
+    var vendePts=(val('vende')==='sim')?20:6;
+    var cd=val('atend')||6, tk=val('ticket')||600;
+    var dias=22, horas=8;               // assumidos (5 dias/semana, 8h/dia)
+    var clientesMes=Math.round(cd*dias);
+    // capacidade / ociosidade (cadeiras x horas, 1 atendimento por cadeira por hora)
+    var cadeiras=val('cadeiras')||2;
+    var capacidade=Math.round(cadeiras*horas);
+    var util=Math.max(0,Math.min(1, cd/capacidade));
+    var ocioso=Math.max(0,Math.min(92,Math.round((1-util)*100)));
+    // Score = saúde de indicação PUXADA pela ociosidade: cadeira vazia derruba o score
+    var saude=10+vendePts+(SC.agenda[val('agenda')]||0)+(tkPts[tk]||6)+(val('prog')==='sim'?28:0);
+    var score=Math.max(9,Math.min(97,Math.round(saude*(0.45+0.55*util))));
+    // PROJEÇÃO: pacientes atuais geram indicação (5 cada, 10% fecham), limitado pela cadeira ociosa
+    var ociososMes=Math.max(0,(capacidade-cd))*dias;
+    var porIndicacao=Math.round(clientesMes*5*0.10);
+    var novosMes=Math.max(1,Math.min(porIndicacao, ociososMes));
+    var potencial=novosMes*tk;
+    var cadLbl={1:'1',2:'2',3.5:'3 a 4'}[cadeiras]||cadeiras;
+
+    // tier
+    var tier,rc,perfilT,perfilD,lvlIdx;
+    if(score<=25){ tier=['🚨','EM RISCO',getcss('--red')]; rc='var(--red)'; perfilT='Sua clínica está em risco'; perfilD='Hoje você depende 100% da sorte pra encher a agenda. Sem um processo, cada mês é uma incerteza — mas dá pra virar esse jogo rápido.'; lvlIdx=0; }
+    else if(score<=50){ tier=['⚠️','SOBREVIVENDO',getcss('--amber')]; rc='var(--amber)'; perfilT='Você está sobrevivendo'; perfilD='Tá rodando, mas sem um processo de indicação você deixa MUITO dinheiro na mesa todo mês. É a hora de estruturar.'; lvlIdx=1; }
+    else if(score<=75){ tier=['✅','ESTÁVEL',getcss('--green')]; rc='var(--green)'; perfilT='Você está estável'; perfilD='Sua base é boa. Com um processo pra ativar quem já é seu paciente, você escala rápido — sem gastar mais em anúncio.'; lvlIdx=2; }
+    else { tier=['🚀','ESCALANDO',getcss('--gold2')]; rc='var(--gold2)'; perfilT='Você está escalando!'; perfilD='Sua clínica está acima da média. Bora blindar esse crescimento e transformar cada paciente numa máquina de indicação.'; lvlIdx=3; }
+
+    var ring=document.getElementById('ring'); ring.style.setProperty('--rc',rc);
+    var te=document.getElementById('tier'); te.textContent=tier[0]+' '+tier[1]; te.style.color=tier[2]; te.style.borderColor=tier[2];
+    document.getElementById('perfilT').textContent=perfilT;
+    document.getElementById('perfilD').textContent=perfilD;
+    document.querySelectorAll('.ring .num').forEach(e=>e.style.color=rc);
+
+    // níveis
+    var L=[['🚨','Em Risco','0–25'],['⚠️','Sobrevivendo','26–50'],['✅','Estável','51–75'],['🚀','Escalando','76+']];
+    document.getElementById('levels').innerHTML=L.map((l,i)=>'<div class="lvl'+(i===lvlIdx?' act':'')+'"><span class="e">'+l[0]+'</span>'+l[1]+'<br>'+l[2]+'</div>').join('');
+
+    // fortes
+    var fortes=['Seus pacientes confiam no seu trabalho — a base já existe'];
+    if(val('vende')==='sim') fortes.push('Você já recebe paciente por indicação — só falta escalar');
+    if(val('prog')==='sim') fortes.push('Você já tem um processo de recomendação — só falta potencializar');
+    if(tk>=1150) fortes.push('Seu ticket é alto — cada novo paciente vale muito');
+    if(val('agenda')==='lotada'||val('agenda')==='boa') fortes.push('Sua agenda tem movimento — matéria-prima pra indicação');
+    document.getElementById('fortes').innerHTML=fortes.map(t=>li('✅',t)).join('');
+
+    // atenção
+    var at=[];
+    if(val('prog')==='nao') at.push('Você NÃO tem um processo de recomendação estruturado — é o maior dinheiro escapando');
+    if(val('vende')==='nao') at.push('Quase nenhum paciente chega por indicação — dinheiro escapando todo dia');
+    at.push('Você depende demais do acaso pra trazer paciente novo');
+    at.push('Sem processo, cada paciente satisfeito é uma oportunidade perdida');
+    document.getElementById('atencao').innerHTML=at.map(t=>li('⚠️',t)).join('');
+
+    // capacidade / ociosidade
+    var capHtml;
+    if(ocioso>=8){
+      capHtml='Com <b style="color:var(--text)">'+cadLbl+(cadeiras>1?' cadeiras':' cadeira')+'</b> abertas <b style="color:var(--text)">8h por dia</b>, dava pra atender até <b style="color:var(--text)">~'+capacidade+' pacientes/dia</b>. Hoje você faz uns <b style="color:var(--text)">'+cd+'</b>.'
+        +'<div style="font-size:48px;font-weight:800;color:var(--red);margin:16px 0 6px;text-align:center;line-height:1;text-shadow:0 0 34px rgba(221,86,71,.42)">'+ocioso+'% ociosa</div>'
+        +'<div style="color:var(--muted);font-size:13px;line-height:1.5;text-align:center">Cadeira parada = dinheiro parado. Cada paciente novo por <b>indicação</b> enche esse espaço — sem gastar mais em anúncio.</div>';
+    }else{
+      capHtml='Você usa quase toda a sua capacidade (<b style="color:var(--text)">~'+capacidade+'/dia</b>) 🔥. Daqui, o crescimento vem de <b>ticket maior</b> ou mais <b>indicação</b> pra manter a cadeira sempre cheia.';
+      document.getElementById('capCard').style.borderColor='var(--line)';
+    }
+    document.getElementById('capText').innerHTML=capHtml;
+
+    // projeção
+    document.getElementById('projLead').innerHTML='Você atende <b style="color:var(--text)">'+clientesMes+' pacientes/mês</b> e tem <b style="color:var(--text)">'+ociososMes+' vagas ociosas</b>. Ativando indicação — cada paciente traz <b style="color:var(--text)">5</b> e <b style="color:var(--text)">10% fecham</b> — dá pra encher com <b style="color:var(--gold2)">+'+novosMes+' pacientes novos/mês</b>. No seu ticket, isso é:';
+    animar(document.getElementById('projBig'),potencial,true);
+
+    // ring + score animam
+    animRing(score,rc);
+
+    // resumo LEGÍVEL pro CRM (ProspectAI)
+    var agendaLbl={lotada:'Lotada, sem encaixe',boa:'Boa parte ocupada',vazia:'Muitos horários vagos',fraca:'Preciso de mais pacientes'}[val('agenda')]||'—';
+    var tkLbl={275:'R$ 150 a 400',600:'R$ 400 a 800',1150:'R$ 800 a 1.500',2000:'R$ 1.500 a 2.500'}[tk]||('R$ '+tk);
+    window.__quizResumo={
+      'Score':score+' · '+tier[1],
+      'Ociosidade':ocioso+'%',
+      'Dinheiro na mesa (mês)':'R$ '+Number(potencial).toLocaleString('pt-BR'),
+      'Ticket médio':tkLbl,
+      'Pacientes por dia':String(cd),
+      'Pacientes por mês (aprox)':String(clientesMes),
+      'Cadeiras':String(cadLbl),
+      'Já vende por indicação':val('vende')==='sim'?'Sim':'Não',
+      'Tem programa de indicação':val('prog')==='sim'?'Sim':'Não',
+      'Como está a agenda':agendaLbl
     };
   }
-  // Fase do lead: ao clicar pra ir pro WhatsApp, avisa o CRM (mark_wa_click)
-  document.addEventListener("click",function(ev){
-    var a=ev.target.closest?ev.target.closest('a[href*="wa.me"]'):null;
-    if(a && leadId){ rpc("mark_wa_click",{p_lead_id:leadId}).catch(function(){}); }
-  });
+  function li(ic,t){ return '<div class="li"><span class="i">'+ic+'</span><span>'+t+'</span></div>'; }
+  function getcss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+  function animRing(score,rc){
+    var n=document.getElementById('scoreN'), ring=document.getElementById('ring'), t0=null, dur=1400;
+    function step(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1); var e=1-Math.pow(1-p,3); var v=Math.round(e*score);
+      n.textContent=v; ring.style.setProperty('--p',(e*score)); if(p<1)requestAnimationFrame(step); }
+    requestAnimationFrame(step);
+  }
+  function animar(el,alvo,money){
+    var t0=null,dur=1400;
+    function step(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1); var e=1-Math.pow(1-p,3); var v=Math.round(e*alvo);
+      el.textContent=(money?'R$ ':'')+v.toLocaleString('pt-BR'); if(p<1)requestAnimationFrame(step); }
+    requestAnimationFrame(step);
+  }
 })();
 </script>
 </body>
