@@ -1007,13 +1007,13 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     </div>
   </section>
 
-  <!-- Q1 · vende por indicação -->
+  <!-- Q1 · recebe por recomendação -->
   <section class="screen" id="s-q1">
     <div class="qhead"><div class="qkicker">Pergunta 1 de 6</div>
-      <div class="qtitle">Você já vende por indicação?</div>
-      <div class="qsub">Recebe pacientes que chegam pela indicação de outros pacientes?</div></div>
+      <div class="qtitle">Você recebe pacientes por recomendação?</div>
+      <div class="qsub">Gente que chega porque outro paciente recomendou você?</div></div>
     <div class="opts" data-q="vende">
-      <button class="opt" onclick="pick(this,'vende','sim',0)"><span class="em">🙌</span><span class="lb">Sim, chega gente indicada</span></button>
+      <button class="opt" onclick="pick(this,'vende','sim',0)"><span class="em">🙌</span><span class="lb">Sim, chega gente recomendada</span></button>
       <button class="opt" onclick="pick(this,'vende','nao',0)"><span class="em">😕</span><span class="lb">Quase nunca</span></button>
     </div>
   </section>
@@ -1033,7 +1033,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   <!-- Q3 · programa -->
   <section class="screen" id="s-q3">
     <div class="qhead"><div class="qkicker">Pergunta 3 de 6</div>
-      <div class="qtitle">Você tem um programa estruturado de indicação de pacientes?</div>
+      <div class="qtitle">Você tem um programa estruturado de recomendação de pacientes?</div>
       <div class="qsub">Um processo que pede e organiza as indicações — não só o boca a boca solto</div></div>
     <div class="opts" data-q="prog">
       <button class="opt" onclick="pick(this,'prog','sim',0)"><span class="em">✅</span><span class="lb">Sim, tenho</span></button>
@@ -1090,7 +1090,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
       <div class="checks" id="checks">
         <div class="chk" data-i="0"><span class="b">✓</span> Agenda e movimento</div>
         <div class="chk" data-i="1"><span class="b">✓</span> Comportamento dos pacientes</div>
-        <div class="chk" data-i="2"><span class="b">✓</span> Potencial de indicação</div>
+        <div class="chk" data-i="2"><span class="b">✓</span> Potencial de recomendação</div>
         <div class="chk" data-i="3"><span class="b">✓</span> Receita que está escapando</div>
       </div>
       <div class="abar"><i id="abar"></i></div>
@@ -1235,10 +1235,10 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     var capacidade=Math.round(cadeiras*horas);
     var util=Math.max(0,Math.min(1, cd/capacidade));
     var ocioso=Math.max(0,Math.min(92,Math.round((1-util)*100)));
-    // Score = saúde de indicação PUXADA pela ociosidade: cadeira vazia derruba o score
+    // Score = saúde de recomendação PUXADA pela ociosidade: cadeira vazia derruba o score
     var saude=10+vendePts+(SC.agenda[val('agenda')]||0)+(tkPts[tk]||6)+(val('prog')==='sim'?28:0);
     var score=Math.max(9,Math.min(97,Math.round(saude*(0.45+0.55*util))));
-    // PROJEÇÃO: pacientes atuais geram indicação (5 cada, 10% fecham), limitado pela cadeira ociosa
+    // PROJEÇÃO: pacientes atuais geram recomendação (5 cada, 10% fecham), limitado pela cadeira ociosa
     var ociososMes=Math.max(0,(capacidade-cd))*dias;
     var porIndicacao=Math.round(clientesMes*5*0.10);
     var novosMes=Math.max(1,Math.min(porIndicacao, ociososMes));
@@ -1248,9 +1248,9 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     // tier
     var tier,rc,perfilT,perfilD,lvlIdx;
     if(score<=25){ tier=['🚨','EM RISCO',getcss('--red')]; rc='var(--red)'; perfilT='Sua clínica está em risco'; perfilD='Hoje você depende 100% da sorte pra encher a agenda. Sem um processo, cada mês é uma incerteza — mas dá pra virar esse jogo rápido.'; lvlIdx=0; }
-    else if(score<=50){ tier=['⚠️','SOBREVIVENDO',getcss('--amber')]; rc='var(--amber)'; perfilT='Você está sobrevivendo'; perfilD='Tá rodando, mas sem um processo de indicação você deixa MUITO dinheiro na mesa todo mês. É a hora de estruturar.'; lvlIdx=1; }
+    else if(score<=50){ tier=['⚠️','SOBREVIVENDO',getcss('--amber')]; rc='var(--amber)'; perfilT='Você está sobrevivendo'; perfilD='Tá rodando, mas sem um processo de recomendação você deixa MUITO dinheiro na mesa todo mês. É a hora de estruturar.'; lvlIdx=1; }
     else if(score<=75){ tier=['✅','ESTÁVEL',getcss('--green')]; rc='var(--green)'; perfilT='Você está estável'; perfilD='Sua base é boa. Com um processo pra ativar quem já é seu paciente, você escala rápido — sem gastar mais em anúncio.'; lvlIdx=2; }
-    else { tier=['🚀','ESCALANDO',getcss('--gold2')]; rc='var(--gold2)'; perfilT='Você está escalando!'; perfilD='Sua clínica está acima da média. Bora blindar esse crescimento e transformar cada paciente numa máquina de indicação.'; lvlIdx=3; }
+    else { tier=['🚀','ESCALANDO',getcss('--gold2')]; rc='var(--gold2)'; perfilT='Você está escalando!'; perfilD='Sua clínica está acima da média. Bora blindar esse crescimento e transformar cada paciente numa máquina de recomendação.'; lvlIdx=3; }
 
     var ring=document.getElementById('ring'); ring.style.setProperty('--rc',rc);
     var te=document.getElementById('tier'); te.textContent=tier[0]+' '+tier[1]; te.style.color=tier[2]; te.style.borderColor=tier[2];
@@ -1264,16 +1264,16 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
     // fortes
     var fortes=['Seus pacientes confiam no seu trabalho — a base já existe'];
-    if(val('vende')==='sim') fortes.push('Você já recebe paciente por indicação — só falta escalar');
+    if(val('vende')==='sim') fortes.push('Você já recebe paciente por recomendação — só falta escalar');
     if(val('prog')==='sim') fortes.push('Você já tem um processo de recomendação — só falta potencializar');
     if(tk>=1150) fortes.push('Seu ticket é alto — cada novo paciente vale muito');
-    if(val('agenda')==='lotada'||val('agenda')==='boa') fortes.push('Sua agenda tem movimento — matéria-prima pra indicação');
+    if(val('agenda')==='lotada'||val('agenda')==='boa') fortes.push('Sua agenda tem movimento — matéria-prima pra recomendação');
     document.getElementById('fortes').innerHTML=fortes.map(t=>li('✅',t)).join('');
 
     // atenção
     var at=[];
     if(val('prog')==='nao') at.push('Você NÃO tem um processo de recomendação estruturado — é o maior dinheiro escapando');
-    if(val('vende')==='nao') at.push('Quase nenhum paciente chega por indicação — dinheiro escapando todo dia');
+    if(val('vende')==='nao') at.push('Quase nenhum paciente chega por recomendação — dinheiro escapando todo dia');
     at.push('Você depende demais do acaso pra trazer paciente novo');
     at.push('Sem processo, cada paciente satisfeito é uma oportunidade perdida');
     document.getElementById('atencao').innerHTML=at.map(t=>li('⚠️',t)).join('');
@@ -1283,15 +1283,15 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     if(ocioso>=8){
       capHtml='Com <b style="color:var(--text)">'+cadLbl+(cadeiras>1?' cadeiras':' cadeira')+'</b> abertas <b style="color:var(--text)">8h por dia</b>, dava pra atender até <b style="color:var(--text)">~'+capacidade+' pacientes/dia</b>. Hoje você faz uns <b style="color:var(--text)">'+cd+'</b>.'
         +'<div style="font-size:48px;font-weight:800;color:var(--red);margin:16px 0 6px;text-align:center;line-height:1;text-shadow:0 0 34px rgba(221,86,71,.42)">'+ocioso+'% ociosa</div>'
-        +'<div style="color:var(--muted);font-size:13px;line-height:1.5;text-align:center">Cadeira parada = dinheiro parado. Cada paciente novo por <b>indicação</b> enche esse espaço — sem gastar mais em anúncio.</div>';
+        +'<div style="color:var(--muted);font-size:13px;line-height:1.5;text-align:center">Cadeira parada = dinheiro parado. Cada paciente novo por <b>recomendação</b> enche esse espaço — sem gastar mais em anúncio.</div>';
     }else{
-      capHtml='Você usa quase toda a sua capacidade (<b style="color:var(--text)">~'+capacidade+'/dia</b>) 🔥. Daqui, o crescimento vem de <b>ticket maior</b> ou mais <b>indicação</b> pra manter a cadeira sempre cheia.';
+      capHtml='Você usa quase toda a sua capacidade (<b style="color:var(--text)">~'+capacidade+'/dia</b>) 🔥. Daqui, o crescimento vem de <b>ticket maior</b> ou mais <b>recomendação</b> pra manter a cadeira sempre cheia.';
       document.getElementById('capCard').style.borderColor='var(--line)';
     }
     document.getElementById('capText').innerHTML=capHtml;
 
     // projeção
-    document.getElementById('projLead').innerHTML='Você atende <b style="color:var(--text)">'+clientesMes+' pacientes/mês</b> e tem <b style="color:var(--text)">'+ociososMes+' vagas ociosas</b>. Ativando indicação — cada paciente traz <b style="color:var(--text)">5</b> e <b style="color:var(--text)">10% fecham</b> — dá pra encher com <b style="color:var(--gold2)">+'+novosMes+' pacientes novos/mês</b>. No seu ticket, isso é:';
+    document.getElementById('projLead').innerHTML='Você atende <b style="color:var(--text)">'+clientesMes+' pacientes/mês</b> e tem <b style="color:var(--text)">'+ociososMes+' vagas ociosas</b>. Ativando recomendação — cada paciente traz <b style="color:var(--text)">5</b> e <b style="color:var(--text)">10% fecham</b> — dá pra encher com <b style="color:var(--gold2)">+'+novosMes+' pacientes novos/mês</b>. No seu ticket, isso é:';
     animar(document.getElementById('projBig'),potencial,true);
 
     // ring + score animam
@@ -1308,8 +1308,8 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
       'Pacientes por dia':String(cd),
       'Pacientes por mês (aprox)':String(clientesMes),
       'Cadeiras':String(cadLbl),
-      'Já vende por indicação':val('vende')==='sim'?'Sim':'Não',
-      'Tem programa de indicação':val('prog')==='sim'?'Sim':'Não',
+      'Já recebe por recomendação':val('vende')==='sim'?'Sim':'Não',
+      'Tem programa de recomendação':val('prog')==='sim'?'Sim':'Não',
       'Como está a agenda':agendaLbl
     };
   }
