@@ -1521,7 +1521,9 @@ function ehConfirmacaoDisparo(texto) {
   const t = (texto || '').toLowerCase().trim();
   // Negação primeiro: "ainda não avisei", "não pode" etc NÃO é confirmação.
   if (/\bn[ãa]o\b|ainda/.test(t)) return false;
-  return /pode mandar|pode enviar|pode chamar|pode sim|confirmo|avisei|mandei|encaminhei|^pode$|^sim$|^ok$|^prontinho$|^pronto$|^feito$/.test(t);
+  // "ok" solto NÃO conta (o cliente diz "ok"/"valeu" à toa e disparava sem querer).
+  // Ele confirma com o número 1 (tratado à parte) ou "pode mandar"/"já avisei".
+  return /pode mandar|pode enviar|pode chamar|pode sim|confirmo|avisei|mandei|encaminhei|^pode$|^sim$|^prontinho$|^pronto$|^feito$/.test(t);
 }
 async function agendarConfirmacaoDisparo(telefone, empresa, indice) {
   const cad = empresa.basicConfirmacaoCadencia || EMPRESA_PADRAO.basicConfirmacaoCadencia || [];
@@ -1629,7 +1631,9 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   // Agenda o follow-up do recomendador (só uma vez, no 1º prêmio completado):
   // ele já mandou recomendações, então começa a série de lembretes pra avisar
   // os amigos. Só agenda se o recurso estiver ligado no painel.
-  if (empresa.followupRecomendadorAtivo && !sessao.followupRecomendadorAgendado) {
+  // NÃO roda junto com o Basic+confirmação: os dois pedem "avise seus amigos"
+  // e encavalariam as mensagens (o Basic+confirmação já cobra isso com cadência).
+  if (empresa.followupRecomendadorAtivo && !sessao.followupRecomendadorAgendado && !empresa.basicConfirmarAntesDisparo) {
     sessao.followupRecomendadorAgendado = true;
     try { await agendarFollowupRecomendador(telefone, empresa, 0); } catch (e) { console.error('agendarFollowupRecomendador:', e.message); }
   }
