@@ -3343,9 +3343,6 @@ app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (
     const ehAssinatura = plano.tipo === 'assinatura';
     const session = await criarCheckoutSession({
       mode: ehAssinatura ? 'subscription' : 'payment',
-      // Parcelamento no cartão (planos à vista): cliente escolhe as parcelas.
-      // "Sem juros" pro cliente — a taxa fica com a gente (padrão do Brasil).
-      ...(ehAssinatura ? {} : { payment_method_options: { card: { installments: { enabled: true } } } }),
       customer: customerId,
       client_reference_id: empresa.id,
       metadata: { empresaId: empresa.id, plano: planoId },
@@ -3447,8 +3444,6 @@ app.post('/assinar/checkout', async (req, res) => {
     const meta = { tipo: 'signup', plano: planoId, ...(vendedor ? { vendedor } : {}) };
     const session = await criarCheckoutSession({
       mode: ehAssinatura ? 'subscription' : 'payment',
-      // Parcelamento no cartão (planos à vista) — sem juros pro cliente.
-      ...(ehAssinatura ? {} : { payment_method_options: { card: { installments: { enabled: true } } } }),
       metadata: meta,
       ...(ehAssinatura ? { subscription_data: { metadata: meta } } : { customer_creation: 'always' }),
       line_items: [{
