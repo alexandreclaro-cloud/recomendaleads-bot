@@ -3846,13 +3846,19 @@ app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, exigirMatriz, async (
     const config = req.empresaLogin.configuracao || {};
     const base = { ...EMPRESA_PADRAO, ...config };
     delete base.nichos; // não devolve os nichos dentro da base
+    // Número da demonstração = o número CONECTADO no Z-API (detectado sozinho),
+    // não mais um campo manual. Fallback pro que estava salvo, se a detecção falhar.
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa), oficial: oficialDaEmpresa(empresa) };
+    let numero = null;
+    try { await tenantContext.run(contexto, async () => { numero = await getNumeroConectado(empresa); }); } catch (e) {}
     res.json({
       ok: true,
       lista: listaNichos(config),
       nichos: config.nichos || {},
       defaults: NICHOS_DEMO,
       base,
-      numeroDemo: config.numeroDemo || ''
+      numeroDemo: numero || config.numeroDemo || ''
     });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

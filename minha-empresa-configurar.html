@@ -236,14 +236,7 @@
 
         <div class="card" style="margin-top:16px">
           <div class="block-title"><i data-lucide="link"></i> Links de demonstração</div>
-          <p class="sub">Envie o link da área ao cliente. Ao tocar, ele abre uma conversa com o robô já no modo daquela área.</p>
-          <label class="label">Número do WhatsApp onde o robô está ligado (o número da demonstração)</label>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            <input class="input" type="text" id="nichoNumeroInput" placeholder="Ex: 11940816872" style="max-width:240px;">
-            <button class="btn btn-secondary" id="salvarNumeroBtn">Salvar número</button>
-            <span class="status-msg" id="statusNumero"></span>
-          </div>
-          <div class="hint" style="margin-top:6px;">⚠️ É o número que <b>tem o robô</b> (o mesmo que você usa pra testar). <b>Não</b> é o número do vendedor nem do cliente. O link sempre aponta pra esse número.</div>
+          <p class="sub">Envie o link da área ao cliente. Ao tocar, ele abre uma conversa com o robô já no modo daquela área. O link usa <b>automaticamente</b> o número conectado no WhatsApp.</p>
           <div id="nichosLinks" style="margin-top:14px;"></div>
         </div>
       </section>
@@ -1920,7 +1913,6 @@ async function carregarNichos() {
     if (!nichoAtual || !nichosLista.some(n => n.slug === nichoAtual)) {
       nichoAtual = nichosLista.length ? nichosLista[0].slug : null;
     }
-    document.getElementById('nichoNumeroInput').value = data.numeroDemo || '';
     renderNichoTabs();
     renderNichoCampos();
     renderNichosLinks();
@@ -2114,8 +2106,9 @@ document.getElementById('salvarNichoBtn').addEventListener('click', async () => 
 
 function renderNichosLinks() {
   const cont = document.getElementById('nichosLinks');
-  const num = (document.getElementById('nichoNumeroInput').value || '').replace(/\D/g, '');
-  if (!num) { cont.innerHTML = '<p class="sub">Salve o número acima pra gerar os links.</p>'; return; }
+  // Número vem AUTOMÁTICO do WhatsApp conectado (backend detecta), sem campo manual.
+  const num = ((nichosData && nichosData.numeroDemo) || '').replace(/\D/g, '');
+  if (!num) { cont.innerHTML = '<p class="sub">⚠️ Conecte o WhatsApp (aba <b>WhatsApp</b>) pra gerar os links — eles usam o número conectado automaticamente.</p>'; return; }
   if (!nichosLista.length) { cont.innerHTML = '<p class="sub">Crie um mercado pra gerar os links.</p>'; return; }
   const num55 = num.startsWith('55') ? num : '55' + num;
   cont.innerHTML = nichosLista.map(n => {
@@ -2131,19 +2124,6 @@ function renderNichosLinks() {
     navigator.clipboard.writeText(b.dataset.link).then(() => { const t = b.textContent; b.textContent = 'Copiado!'; setTimeout(() => b.textContent = t, 1500); });
   }));
 }
-
-document.getElementById('salvarNumeroBtn').addEventListener('click', async () => {
-  const st = document.getElementById('statusNumero');
-  const numeroDemo = (document.getElementById('nichoNumeroInput').value || '').replace(/\D/g, '');
-  st.textContent = 'Salvando...'; st.className = 'status-msg';
-  try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos-numero`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numeroDemo }) });
-    const data = await resp.json();
-    if (resp.ok && data.ok) { st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; if (nichosData) nichosData.numeroDemo = data.numeroDemo; renderNichosLinks(); }
-    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
-  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
-  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
-});
 
 aplicarGating();
 icons();
