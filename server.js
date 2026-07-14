@@ -1407,8 +1407,24 @@ function modoRecAtual(empresa) {
 // link do Full sem pedir na mão (o robô já está ligado num número, o sistema sabe qual).
 // Cacheia em memória por empresa. Fallback: número salvo manualmente, se houver.
 const _numeroConectadoCache = {};
+// Guarda o número CONECTADO informado pelo webhook do Z-API (connectedPhone) —
+// escreve no Firestore só quando muda (evita gravar a cada mensagem).
+const _ultimoNumConectado = {};
+async function salvarNumeroConectado(empresaId, numero) {
+  if (!empresaId || !numero || _ultimoNumConectado[empresaId] === numero) return;
+  _ultimoNumConectado[empresaId] = numero;
+  _numeroConectadoCache[empresaId] = { numero, em: Date.now() };
+  try {
+    await EMPRESAS_COL().doc(empresaId).set({ configuracao: { numeroConectado: numero } }, { merge: true });
+    console.log(`[NUM-CONECTADO] salvo do webhook: ${empresaId} → ${numero}`);
+  } catch (e) { console.warn('salvarNumeroConectado:', e.message); }
+}
+
 async function getNumeroConectado(empresa) {
   const eid = empresaIdAtual();
+  // 1) Fonte MAIS confiável: número que o webhook do Z-API informou (connectedPhone).
+  const doWebhook = String((empresa && empresa.numeroConectado) || '').replace(/\D/g, '') || null;
+  if (doWebhook) return doWebhook;
   const cache = _numeroConectadoCache[eid];
   if (cache && (Date.now() - cache.em) < 60 * 1000 && cache.numero) return cache.numero;
   const fallback = String((empresa && empresa.numeroWhatsapp) || '').replace(/\D/g, '') || null;
@@ -2827,6 +2843,11 @@ async function comWebhook(req, res, empresaId) {
     console.warn(`[WEBHOOK] empresaId desconhecido: ${empresaId} — ignorando`);
     return res.sendStatus(200);
   }
+
+  // O Z-API manda o número conectado (connectedPhone) em toda mensagem — guarda
+  // pra usar no link de demonstração / Full sem depender do /device (que falha).
+  const numConectado = String((req.body && req.body.connectedPhone) || '').replace(/\D/g, '');
+  if (numConectado && empresa && empresa.id) { salvarNumeroConectado(empresa.id, numConectado); }
 
   // Anti-forja: o payload do Z-API traz o instanceId. Se vier e não bater com
   // a instância esperada da empresa, ignoramos (provável requisição forjada).
