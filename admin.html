@@ -229,6 +229,49 @@ async function adminFetch(url, options = {}) {
 }
 function esc(s) { return (s || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
+// Exclui um cliente e TODOS os dados dele. Irreversível — por isso a trava:
+// quem já tem leads (cliente de verdade) exige digitar o nome pra confirmar.
+async function excluirCliente(id) {
+  const e = (empresas || []).find(x => x.id === id) || {};
+  const nome = e.nome || e.email || 'este cliente';
+  const nLeads = e.leads || 0;
+
+  let confirmar = '';
+  if (nLeads > 0) {
+    const digitado = prompt(
+      `⚠️ ATENÇÃO: "${nome}" tem ${nLeads} lead(s).\n\n` +
+      `Excluir apaga a empresa e TODOS os dados dela (leads, conversas, agendamentos).\n` +
+      `Essa ação NÃO tem volta.\n\n` +
+      `Se tem certeza, digite o nome do cliente exatamente:\n${e.nome || ''}`
+    );
+    if (digitado === null) return;
+    confirmar = digitado.trim();
+  } else if (!confirm(`Excluir "${nome}" (${e.email || ''})?\n\nEssa ação não tem volta.`)) {
+    return;
+  }
+
+  const url = (c) => `${API_BASE}/admin/empresas/${id}` + (c ? `?confirmar=${encodeURIComponent(c)}` : '');
+  try {
+    let r = await adminFetch(url(confirmar), { method: 'DELETE' });
+    let d = await r.json();
+    // O servidor achou leads que o painel não sabia (contagem é best-effort): pede confirmação.
+    if (r.status === 428 && d.precisaConfirmar) {
+      const digitado = prompt(
+        `⚠️ "${d.nome}" tem leads cadastrados — é cliente de verdade.\n\n` +
+        `Excluir apaga TUDO e não tem volta.\n\n` +
+        `Se tem certeza, digite o nome exato:\n${d.nome}`
+      );
+      if (digitado === null) return;
+      r = await adminFetch(url(digitado.trim()), { method: 'DELETE' });
+      d = await r.json();
+    }
+    if (!r.ok || !d.ok) throw new Error(d.erro || 'Falha ao excluir');
+    const resp = await adminFetch(`${API_BASE}/admin/empresas`);
+    const data = await resp.json();
+    render(data.empresas || []);
+  } catch (err) { alert('Não consegui excluir: ' + err.message); }
+}
+
 // Valida (libera) um cadastro que veio pelo link do cliente e dispara o e-mail.
 async function validarCadastro(id) {
   const e = (empresas || []).find(x => x.id === id) || {};
@@ -546,11 +589,13 @@ function renderTabela() {
         ${e.pendenteAprovacao ? `<button class="btn btn-brand btn-mini" data-validar="${e.id}">✅ Validar</button>` : ''}
         <button class="btn btn-secondary btn-mini" data-edit="${e.id}"><i data-lucide="pencil" style="width:14px;height:14px"></i> Editar</button>
         <button class="btn btn-brand btn-mini" data-entrar="${e.id}">Entrar como</button>
+        ${modoVendedor() ? '' : `<button class="btn btn-mini" data-excluir="${e.id}" title="Excluir cliente" style="border-color:#FCA5A5;color:#B91C1C;background:#FEF2F2"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>`}
       </div></td>
     </tr>`).join('');
   tb.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => abrirEdicao(b.dataset.edit)));
   tb.querySelectorAll('[data-entrar]').forEach(b => b.addEventListener('click', () => entrarComo(b.dataset.entrar)));
   tb.querySelectorAll('[data-validar]').forEach(b => b.addEventListener('click', () => validarCadastro(b.dataset.validar)));
+  tb.querySelectorAll('[data-excluir]').forEach(b => b.addEventListener('click', () => excluirCliente(b.dataset.excluir)));
   icons();
 }
 

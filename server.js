@@ -4926,6 +4926,62 @@ app.get('/cliente/cadastro', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-criar-empresa.html'));
 });
 
+// Exclui uma empresa e TODOS os dados dela. IRREVERSÍVEL — só o dono.
+// Limpa também as coleções ligadas por empresaId, pra não deixar lixo órfão.
+app.delete('/admin/empresas/:id', exigirAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const ref = EMPRESAS_COL().doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    const nome = (snap.data() || {}).nome || '';
+
+    // Trava de segurança: se a empresa TEM leads, é cliente de verdade —
+    // exige confirmação com o nome exato. Fica no servidor de propósito
+    // (a contagem do painel é best-effort e pode falhar).
+    const temLeads = !(await LEADS_COL().where('empresaId', '==', id).limit(1).get()).empty;
+    if (temLeads) {
+      const confirmar = String((req.query && req.query.confirmar) || '');
+      if (confirmar.trim() !== nome.trim()) {
+        return res.status(428).json({
+          ok: false, precisaConfirmar: true, nome,
+          erro: 'Esta empresa tem leads. Para excluir, confirme digitando o nome exato.'
+        });
+      }
+    }
+
+    const cols = [
+      ['usuarios', USUARIOS_COL], ['leads', LEADS_COL], ['sessoes', SESSOES_COL],
+      ['agendamentos', AGENDAMENTOS_COL], ['mensagens_chat', MENSAGENS_CHAT_COL],
+      ['conversas', CONVERSAS_COL]
+    ];
+    const apagados = {};
+    for (const [rotulo, col] of cols) {
+      let total = 0;
+      try {
+        // apaga em lotes (limite do batch do Firestore é 500)
+        for (;;) {
+          const s = await col().where('empresaId', '==', id).limit(400).get();
+          if (s.empty) break;
+          const batch = db.batch();
+          s.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+          total += s.size;
+          if (s.size < 400) break;
+        }
+      } catch (e) {
+        console.error(`[excluir empresa ${id}] falha em ${rotulo}:`, e.message);
+      }
+      apagados[rotulo] = total;
+    }
+    await ref.delete();
+    console.log(`[excluir empresa] ${id} (${nome}) removida:`, JSON.stringify(apagados));
+    res.json({ ok: true, nome, apagados });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Valida (aprova) um cadastro que veio pelo link do cliente: libera o acesso
 // e só então dispara o e-mail de boas-vindas.
 app.post('/admin/empresas/:id/validar', exigirAdmin, async (req, res) => {
