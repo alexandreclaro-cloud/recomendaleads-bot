@@ -4652,10 +4652,11 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
     const ehVendedor = !req.acesso.ehDono;
 
     const {
-      // dados da empresa
-      razaoSocial, nomeFantasia, cnpj, enderecoEmpresa, emailEmpresa, telefoneEmpresa,
+      // dados da empresa (endereço completo fica só aqui)
+      razaoSocial, nomeFantasia, cnpj, cep, enderecoEmpresa, bairro, cidade, estado,
+      emailEmpresa, telefoneEmpresa,
       // dados do sócio
-      nomeSocio, cpfSocio, emailSocio, enderecoSocio, whatsappSocio,
+      nomeSocio, cpfSocio, emailSocio, whatsappSocio,
       // instância Z-API provisionada para o cliente (opcional)
       zapiInstanceId, zapiToken, zapiClientToken,
       // acesso / compatibilidade com a versão antiga
@@ -4710,13 +4711,16 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
       razaoSocial: razaoSocial || null,
       nomeFantasia: nomeFantasia || null,
       cnpj: cnpj || null,
+      cep: cep || null,
       enderecoEmpresa: enderecoEmpresa || null,
+      bairro: bairro || null,
+      cidade: cidade || null,
+      estado: estado || null,
       emailEmpresa: emailEmpresa || null,
       telefoneEmpresa: telefoneEmpresa || null,
       nomeSocio: nomeSocio || null,
       cpfSocio: cpfSocio || null,
       emailSocio: emailSocio || null,
-      enderecoSocio: enderecoSocio || null,
       whatsappSocio: whatsappSocio || null,
       ...(plano ? { plano: String(plano) } : {}),
       // Aceite do contrato (autocadastro): guarda quando e de onde veio.

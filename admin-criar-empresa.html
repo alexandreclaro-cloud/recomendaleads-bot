@@ -135,8 +135,25 @@
     <input type="text" id="nomeFantasiaInput" placeholder="Ex: RecomendaLeads">
     <label>CNPJ</label>
     <input type="text" id="cnpjInput" placeholder="00.000.000/0000-00">
-    <label>Endereço completo</label>
-    <input type="text" id="enderecoEmpresaInput" placeholder="Rua, nº, bairro, cidade/UF, CEP">
+    <label>CEP</label>
+    <input type="text" id="cepInput" inputmode="numeric" placeholder="00000-000">
+    <div class="hint" id="cepHint">Digite o CEP que o endereço é preenchido sozinho.</div>
+    <label>Endereço (rua e número)</label>
+    <input type="text" id="enderecoEmpresaInput" placeholder="Rua Exemplo, 123 — sala 4">
+    <label>Bairro</label>
+    <input type="text" id="bairroInput" placeholder="Centro">
+    <label>Cidade</label>
+    <input type="text" id="cidadeInput" placeholder="São Paulo">
+    <label>Estado</label>
+    <select id="estadoInput" style="width:100%;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:8px;font-size:0.95rem;background:#fff;">
+      <option value="">Selecione…</option>
+      <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option>
+      <option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option>
+      <option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option>
+      <option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+      <option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option>
+      <option>SE</option><option>TO</option>
+    </select>
     <label>E-mail da empresa (acesso ao sistema)</label>
     <input type="email" id="emailEmpresaInput" placeholder="contato@empresa.com">
     <div class="hint">Este é o <b>e-mail de login</b> do cliente.</div>
@@ -150,8 +167,6 @@
     <input type="text" id="cpfSocioInput" placeholder="000.000.000-00">
     <label>E-mail do sócio</label>
     <input type="email" id="emailSocioInput" placeholder="socio@empresa.com">
-    <label>Endereço</label>
-    <input type="text" id="enderecoSocioInput" placeholder="Endereço do sócio">
     <label>WhatsApp</label>
     <input type="text" id="whatsappSocioInput" placeholder="(11) 90000-0000">
 
@@ -315,7 +330,40 @@ function maskTel(el) {
   else if (d.length <= 10) el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
   else el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
 }
+function maskCEP(el) {
+  const d = el.value.replace(/\D/g, '').slice(0, 8);
+  el.value = d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d;
+}
+// Busca o endereço pelo CEP (ViaCEP) e preenche bairro/cidade/estado.
+async function buscarCep() {
+  const el = document.getElementById('cepInput');
+  const hint = document.getElementById('cepHint');
+  const cep = (el.value || '').replace(/\D/g, '');
+  if (cep.length !== 8) return;
+  hint.textContent = 'Buscando endereço...';
+  try {
+    const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+    const d = await r.json();
+    if (d.erro) { hint.textContent = 'CEP não encontrado — preencha o endereço à mão.'; return; }
+    const set = (id, v) => { const e = document.getElementById(id); if (e && v) e.value = v; };
+    set('bairroInput', d.bairro);
+    set('cidadeInput', d.localidade);
+    const uf = document.getElementById('estadoInput');
+    if (uf && d.uf) uf.value = d.uf;
+    const rua = document.getElementById('enderecoEmpresaInput');
+    if (rua && d.logradouro && !rua.value) { rua.value = d.logradouro + ', '; rua.focus(); }
+    hint.textContent = 'Endereço encontrado ✓ Confira e complete o número.';
+  } catch (e) {
+    hint.textContent = 'Não consegui buscar o CEP — preencha o endereço à mão.';
+  }
+}
+
 (function ligarMascaras() {
+  const cep = document.getElementById('cepInput');
+  if (cep) {
+    cep.addEventListener('input', () => { maskCEP(cep); if (cep.value.replace(/\D/g, '').length === 8) buscarCep(); });
+    cep.addEventListener('blur', buscarCep);
+  }
   const mapa = {
     cnpjInput: maskCNPJ, cpfSocioInput: maskCPF,
     telefoneEmpresaInput: maskTel, whatsappSocioInput: maskTel
@@ -357,13 +405,16 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     razaoSocial: val('razaoSocialInput'),
     nomeFantasia: val('nomeFantasiaInput'),
     cnpj: val('cnpjInput'),
+    cep: val('cepInput'),
     enderecoEmpresa: val('enderecoEmpresaInput'),
+    bairro: val('bairroInput'),
+    cidade: val('cidadeInput'),
+    estado: val('estadoInput'),
     emailEmpresa: val('emailEmpresaInput'),
     telefoneEmpresa: val('telefoneEmpresaInput'),
     nomeSocio: val('nomeSocioInput'),
     cpfSocio: val('cpfSocioInput'),
     emailSocio: val('emailSocioInput'),
-    enderecoSocio: val('enderecoSocioInput'),
     whatsappSocio: val('whatsappSocioInput'),
     zapiInstanceId: val('zapiInstanceInput'),
     zapiToken: val('zapiTokenInput'),
@@ -434,7 +485,7 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
       document.getElementById('resultadoWebhook').textContent = `${API_BASE}/webhook/${data.empresa.id}`;
       resultadoBox.classList.add('show');
 
-      ['razaoSocialInput','nomeFantasiaInput','cnpjInput','enderecoEmpresaInput','emailEmpresaInput','telefoneEmpresaInput','nomeSocioInput','cpfSocioInput','emailSocioInput','enderecoSocioInput','whatsappSocioInput','zapiInstanceInput','zapiTokenInput','zapiClientTokenInput'].forEach(id => { document.getElementById(id).value = ''; });
+      ['razaoSocialInput','nomeFantasiaInput','cnpjInput','cepInput','enderecoEmpresaInput','bairroInput','cidadeInput','estadoInput','emailEmpresaInput','telefoneEmpresaInput','nomeSocioInput','cpfSocioInput','emailSocioInput','whatsappSocioInput','zapiInstanceInput','zapiTokenInput','zapiClientTokenInput'].forEach(id => { document.getElementById(id).value = ''; });
       document.getElementById('senhaInput').value = '123mudar';
       document.getElementById('migrarConfigCheckbox').checked = false;
     } else {

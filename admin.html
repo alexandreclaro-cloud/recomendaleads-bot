@@ -582,9 +582,13 @@ function maskTel(el) {
   else if (d.length <= 10) el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
   else el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
 }
+function maskCEP(el) {
+  const d = el.value.replace(/\D/g, '').slice(0, 8);
+  el.value = d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d;
+}
 // Liga as máscaras nos campos do modal (e já formata o que veio salvo).
 function aplicarMascaras() {
-  const mapa = { e_cnpj: maskCNPJ, e_cpf: maskCPF, e_telEmp: maskTel, e_wpp: maskTel };
+  const mapa = { e_cnpj: maskCNPJ, e_cpf: maskCPF, e_telEmp: maskTel, e_wpp: maskTel, e_cep: maskCEP };
   Object.keys(mapa).forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -594,6 +598,11 @@ function aplicarMascaras() {
     if (id === 'e_cnpj') el.placeholder = '00.000.000/0000-00';
     if (id === 'e_cpf') el.placeholder = '000.000.000-00';
     if (id === 'e_telEmp' || id === 'e_wpp') el.placeholder = '(11) 90000-0000';
+  });
+  // UF sempre em maiúscula, 2 letras
+  const uf = document.getElementById('e_estado');
+  if (uf) uf.addEventListener('input', () => {
+    uf.value = uf.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2);
   });
 }
 function selectVendedorComissao(atual) {
@@ -618,7 +627,11 @@ function abrirEdicao(id) {
           ${inpL('e_razao','Razão social', c.razaoSocial)}
           ${inpL('e_fantasia','Nome fantasia', c.nomeFantasia)}
           ${inpL('e_cnpj','CNPJ', c.cnpj)}
-          ${inpL('e_endEmp','Endereço', c.enderecoEmpresa)}
+          ${inpL('e_cep','CEP', c.cep, '00000-000')}
+          ${inpL('e_endEmp','Endereço (rua e número)', c.enderecoEmpresa)}
+          ${inpL('e_bairro','Bairro', c.bairro)}
+          ${inpL('e_cidade','Cidade', c.cidade)}
+          ${inpL('e_estado','Estado (UF)', c.estado, 'SP')}
           ${inpL('e_emailEmp','E-mail da empresa', c.emailEmpresa)}
           ${inpL('e_telEmp','Telefone', c.telefoneEmpresa)}
         </div>
@@ -628,7 +641,6 @@ function abrirEdicao(id) {
           ${inpL('e_nomeSocio','Nome', c.nomeSocio)}
           ${inpL('e_cpf','CPF', c.cpfSocio)}
           ${inpL('e_emailSocio','E-mail', c.emailSocio)}
-          ${inpL('e_endSocio','Endereço', c.enderecoSocio)}
           ${inpL('e_wpp','WhatsApp', c.whatsappSocio)}
         </div>
 
@@ -722,9 +734,11 @@ async function salvar(id) {
     nome: v('e_nome'), email: v('e_login'),
     cadastro: {
       razaoSocial: v('e_razao'), nomeFantasia: v('e_fantasia'), cnpj: v('e_cnpj'),
-      enderecoEmpresa: v('e_endEmp'), emailEmpresa: v('e_emailEmp'), telefoneEmpresa: v('e_telEmp'),
+      cep: v('e_cep'), enderecoEmpresa: v('e_endEmp'), bairro: v('e_bairro'),
+      cidade: v('e_cidade'), estado: v('e_estado'),
+      emailEmpresa: v('e_emailEmp'), telefoneEmpresa: v('e_telEmp'),
       nomeSocio: v('e_nomeSocio'), cpfSocio: v('e_cpf'), emailSocio: v('e_emailSocio'),
-      enderecoSocio: v('e_endSocio'), whatsappSocio: v('e_wpp')
+      whatsappSocio: v('e_wpp')
     },
     plano: v('e_plano'), valorMensal: v('e_valor'), statusPagamento: document.getElementById('e_status').value, observacoes: v('e_obs'), vendedorComissao: v('e_vendedorComissao'),
     zapiInstanceId: v('e_inst'), zapiToken: v('e_tok'), zapiClientToken: v('e_ctok'), whatsappTipo: document.getElementById('e_whatsappTipo').value
