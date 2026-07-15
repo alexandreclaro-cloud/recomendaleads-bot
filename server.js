@@ -271,6 +271,8 @@ const EMPRESA_DOC = () => db.collection('config').doc('empresa');
 // (/cliente/cadastro?c=CHAVE); a chave existe só pra robô não achar a página.
 // Pode ser trocada no painel a qualquer momento.
 const CADASTRO_CLIENTE_DOC = () => db.collection('config').doc('cadastro_cliente');
+// Senha padrão do autocadastro (o cliente é obrigado a trocar no 1º login).
+const SENHA_PADRAO_AUTOCADASTRO = '123mudar';
 async function getChaveCadastroCliente() {
   const d = await CADASTRO_CLIENTE_DOC().get();
   if (d.exists && d.data() && d.data().chave) return d.data().chave;
@@ -4736,13 +4738,15 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
     }
 
     const ehLinkCliente = !!req.acesso.ehClienteLink;
-    const senhaHash = await bcrypt.hash(senha, 10);
+    // No autocadastro a senha é sempre a padrão (o cliente troca no 1º login).
+    // Forçado no servidor — não confia no que a página mandar.
+    const senhaFinal = ehLinkCliente ? SENHA_PADRAO_AUTOCADASTRO : senha;
+    const senhaHash = await bcrypt.hash(senhaFinal, 10);
     const ref = await EMPRESAS_COL().add({
       nome: nomeEmpresa,
       email: emailLogin,
       senhaHash,
-      // No autocadastro o cliente escolhe a própria senha (não é provisória).
-      senhaProvisoria: !ehLinkCliente,
+      senhaProvisoria: true,
       // Veio pelo link do cliente? Entra PENDENTE — o dono valida antes de liberar.
       ...(ehLinkCliente ? { pendenteAprovacao: true } : {}),
       cadastro,
@@ -4927,10 +4931,10 @@ app.post('/admin/empresas/:id/validar', exigirAdmin, async (req, res) => {
     if (!snap.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
     const e = snap.data() || {};
     if (!e.pendenteAprovacao) return res.json({ ok: true, jaAtivo: true });
-    // Não mexe na senha: o cliente já criou a dele no autocadastro.
     await ref.update({ pendenteAprovacao: false, validadoEm: new Date().toISOString() });
     res.json({ ok: true });
-    enviarBoasVindasCliente({ nomeEmpresa: e.nome, emailLogin: e.email, senha: null, req })
+    // Só cai aqui quem veio do autocadastro → a senha é a padrão (provisória).
+    enviarBoasVindasCliente({ nomeEmpresa: e.nome, emailLogin: e.email, senha: SENHA_PADRAO_AUTOCADASTRO, req })
       .catch(err => console.error('[EMAIL] boas-vindas (validar) falhou:', err.message));
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

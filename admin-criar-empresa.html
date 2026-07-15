@@ -155,10 +155,12 @@
     <label>WhatsApp</label>
     <input type="text" id="whatsappSocioInput" placeholder="(11) 90000-0000">
 
-    <div class="sec">Acesso</div>
-    <label>Senha provisória</label>
-    <input type="text" id="senhaInput" value="123mudar" placeholder="Senha provisória de primeiro acesso">
-    <div class="hint">Padrão: <b>123mudar</b>. O cliente será obrigado a definir a própria senha no primeiro login.</div>
+    <div id="acessoBlock">
+      <div class="sec">Acesso</div>
+      <label>Senha provisória</label>
+      <input type="text" id="senhaInput" value="123mudar" placeholder="Senha provisória de primeiro acesso">
+      <div class="hint">Padrão: <b>123mudar</b>. O cliente será obrigado a definir a própria senha no primeiro login.</div>
+    </div>
 
     <div id="trialBlock" style="display:none">
       <div class="sec">Cobrança</div>
@@ -263,20 +265,10 @@ const ehDonoToken = !ehConvite && !STORED_KEY && !!DONO_TOKEN;
     esconder('trialBlock');
     esconder('migrarBlock');
     esconder('blocoTecnico');
+    // A senha é a padrão (123mudar), definida no servidor — o cliente nem vê.
+    esconder('acessoBlock');
     const cb = document.getElementById('clienteBlock');
     if (cb) cb.style.display = 'block';
-    // O cliente cria a própria senha (não é provisória).
-    const s = document.getElementById('senhaInput');
-    if (s) {
-      s.value = ''; s.type = 'password'; s.placeholder = 'Crie uma senha (mín. 6 caracteres)';
-      const lbl = s.previousElementSibling;
-      if (lbl && lbl.tagName === 'LABEL') lbl.textContent = 'Sua senha';
-    }
-    document.querySelectorAll('.hint').forEach(h => {
-      if (h.textContent.indexOf('123mudar') >= 0) h.textContent = 'Essa será a sua senha de acesso ao painel.';
-    });
-    const secs = document.querySelectorAll('.sec');
-    secs.forEach(x => { if (x.textContent.trim() === 'Acesso') x.textContent = 'Crie seu acesso'; });
     const btn = document.getElementById('criarBtn');
     if (btn) btn.textContent = 'Concluir meu cadastro';
     const b = document.getElementById('vendBanner');
@@ -385,11 +377,6 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
   };
 
   if (ehConvite) {
-    if (String(senha || '').length < 6) {
-      statusEl.textContent = 'Crie uma senha com pelo menos 6 caracteres.';
-      statusEl.className = 'status err';
-      return;
-    }
     if (!payload.aceiteContrato) {
       statusEl.textContent = 'É preciso ler e aceitar o contrato para concluir o cadastro.';
       statusEl.className = 'status err';
