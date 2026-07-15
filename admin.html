@@ -114,17 +114,17 @@
       <a class="btn btn-brand" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
     </div>
 
-    <div class="card" style="margin-bottom:18px; padding:18px;">
-      <h2 style="font-size:1rem; margin:0 0 4px;">🔗 Link de convite (o cliente se cadastra sozinho)</h2>
-      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Gere um link e mande pro cliente. Ele preenche os dados da empresa dele e o cadastro já aparece aqui — sem precisar da sua chave. Vale <strong>7 dias</strong> e serve pra <strong>1 cadastro só</strong>.</p>
-      <button class="btn btn-brand" id="gerarConviteBtn" onclick="gerarConvite()"><i data-lucide="link"></i> Gerar link de convite</button>
-      <div id="conviteBox" style="display:none; margin-top:12px;">
+    <div class="card dono-only" style="margin-bottom:18px; padding:18px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">🔗 Link de autocadastro do cliente</h2>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Um link só, pra sempre. Mande pra qualquer cliente: ele preenche os dados da empresa, escolhe o plano e aceita o contrato. O cadastro entra como <strong>pendente</strong> e só libera quando <strong>você validar</strong> — aí ele recebe o e-mail de acesso.</p>
+      <div id="conviteBox" style="display:none;">
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <input id="conviteLink" readonly onclick="this.select()" style="flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:0.82rem;">
           <button class="btn" onclick="copiarConvite()"><i data-lucide="copy"></i> Copiar</button>
           <a class="btn" id="conviteWpp" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Enviar no WhatsApp</a>
         </div>
-        <p class="muted" style="font-size:0.78rem; margin:8px 0 0;" id="conviteInfo"></p>
+        <p class="muted" style="font-size:0.78rem; margin:8px 0 0;" id="conviteInfo">Guarde esse link. Se um dia ele vazar, gere um novo — o antigo para de funcionar na hora.</p>
+        <button class="btn btn-mini dono-only" style="margin-top:8px;" onclick="rotacionarLinkCliente()"><i data-lucide="refresh-cw"></i> Gerar link novo (invalida o atual)</button>
       </div>
     </div>
 
@@ -229,32 +229,49 @@ async function adminFetch(url, options = {}) {
 }
 function esc(s) { return (s || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
-// ── Link de convite: o cliente termina o cadastro sozinho, sem a chave ──────
-async function gerarConvite() {
-  const btn = document.getElementById('gerarConviteBtn');
-  const box = document.getElementById('conviteBox');
-  const inp = document.getElementById('conviteLink');
-  const info = document.getElementById('conviteInfo');
-  const original = btn.innerHTML;
-  btn.disabled = true; btn.textContent = 'Gerando...';
+// Valida (libera) um cadastro que veio pelo link do cliente e dispara o e-mail.
+async function validarCadastro(id) {
+  const e = (empresas || []).find(x => x.id === id) || {};
+  if (!confirm(`Validar o cadastro de "${e.nome || 'este cliente'}"?\n\nEle vai receber um e-mail de boas-vindas e o acesso será liberado.`)) return;
   try {
-    const r = await adminFetch('/admin/convites', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
-    });
+    const r = await adminFetch(`${API_BASE}/admin/empresas/${id}/validar`, { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.erro || 'Falha ao validar');
+    const resp = await adminFetch(`${API_BASE}/admin/empresas`);
+    const data = await resp.json();
+    render(data.empresas || []);
+    alert('✅ Cadastro validado! O cliente já recebeu o e-mail com o acesso.');
+  } catch (err) { alert('Não consegui validar: ' + err.message); }
+}
+
+// ── Link fixo de autocadastro do cliente ───────────────────────────────────
+function mostrarLinkCliente(link) {
+  document.getElementById('conviteLink').value = link;
+  const msg = 'Oi! Segue o link pra você fazer o cadastro da sua empresa no RecomendaLeads:\n\n'
+    + link + '\n\nÉ rapidinho. Assim que eu validar, você recebe um e-mail com o acesso.';
+  document.getElementById('conviteWpp').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+  document.getElementById('conviteBox').style.display = 'block';
+  icons();
+}
+async function carregarLinkCliente() {
+  try {
+    const r = await adminFetch('/admin/cadastro-cliente-link');
+    const d = await r.json();
+    if (r.ok && d.ok && d.link) mostrarLinkCliente(d.link);
+  } catch (e) { /* silencioso: não trava o painel */ }
+}
+async function rotacionarLinkCliente() {
+  if (!confirm('Gerar um link novo? O link atual para de funcionar imediatamente.')) return;
+  try {
+    const r = await adminFetch('/admin/cadastro-cliente-link/rotacionar', { method: 'POST' });
     const d = await r.json();
     if (!r.ok || !d.ok) throw new Error(d.erro || 'Falha ao gerar o link');
-    inp.value = d.link;
-    const msg = 'Oi! Segue o link pra você concluir o cadastro da sua empresa no RecomendaLeads:\n\n'
-      + d.link + '\n\nÉ rapidinho — no fim você já recebe seu login e senha de acesso.';
-    document.getElementById('conviteWpp').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
-    const dt = d.expiraEm ? new Date(d.expiraEm).toLocaleDateString('pt-BR') : '';
-    info.textContent = 'Válido até ' + dt + ' · serve para 1 cadastro. Para outro cliente, gere um novo link.';
-    box.style.display = 'block';
-  } catch (e) {
-    alert('Não consegui gerar o link: ' + e.message);
-  } finally {
-    btn.disabled = false; btn.innerHTML = original; icons();
-  }
+    mostrarLinkCliente(d.link);
+    const info = document.getElementById('conviteInfo');
+    const antes = info.textContent;
+    info.textContent = '✅ Link novo gerado. O antigo não funciona mais.';
+    setTimeout(() => { info.textContent = antes; }, 3000);
+  } catch (e) { alert('Não consegui gerar o link: ' + e.message); }
 }
 async function copiarConvite() {
   const inp = document.getElementById('conviteLink');
@@ -368,7 +385,7 @@ function mostrarApp() {
   }
   icons();
   carregarComissoes();
-  if (!vend) { carregarVendedores(); carregarMeuAcesso(); carregarAvisosEnviados(); }
+  if (!vend) { carregarVendedores(); carregarMeuAcesso(); carregarAvisosEnviados(); carregarLinkCliente(); }
 }
 
 async function carregarMeuAcesso() {
@@ -518,7 +535,7 @@ function renderTabela() {
   if (!lista.length) { tb.innerHTML = `<tr><td colspan="8" class="muted" style="padding:18px;">${empresas.length ? 'Nenhum cliente encontrado.' : 'Nenhum cliente cadastrado ainda.'}</td></tr>`; return; }
   tb.innerHTML = lista.map(e => `
     <tr>
-      <td><b>${esc(e.nome) || '—'}</b></td>
+      <td><b>${esc(e.nome) || '—'}</b>${e.pendenteAprovacao ? '<div style="margin-top:3px"><span class="pill off">⏳ Aguardando validação</span></div>' : ''}</td>
       <td>${esc(e.email) || '—'}</td>
       <td>${e.whatsappProvisionado ? '<span class="pill ok">Provisionado</span>' : '<span class="pill off">Pendente</span>'}</td>
       <td>${e.leads || 0}</td>
@@ -526,12 +543,14 @@ function renderTabela() {
       <td>${pagamentoPill(e.statusPagamento)}</td>
       <td>${fmtData(e.criadoEm)}</td>
       <td><div class="row-acoes">
+        ${e.pendenteAprovacao ? `<button class="btn btn-brand btn-mini" data-validar="${e.id}">✅ Validar</button>` : ''}
         <button class="btn btn-secondary btn-mini" data-edit="${e.id}"><i data-lucide="pencil" style="width:14px;height:14px"></i> Editar</button>
         <button class="btn btn-brand btn-mini" data-entrar="${e.id}">Entrar como</button>
       </div></td>
     </tr>`).join('');
   tb.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => abrirEdicao(b.dataset.edit)));
   tb.querySelectorAll('[data-entrar]').forEach(b => b.addEventListener('click', () => entrarComo(b.dataset.entrar)));
+  tb.querySelectorAll('[data-validar]').forEach(b => b.addEventListener('click', () => validarCadastro(b.dataset.validar)));
   icons();
 }
 

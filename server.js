@@ -11,6 +11,7 @@ const admin = require('firebase-admin');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const multer = require('multer');
 const baileys = require('./wa-baileys.js');
 const nodemailer = require('nodemailer');
@@ -36,7 +37,7 @@ app.use((req, res, next) => {
     res.header('Vary', 'Origin');
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Key');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Key, X-Cadastro-Key');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -266,6 +267,17 @@ if (serviceAccount) {
 const db = admin.apps.length ? admin.firestore() : null;
 
 const EMPRESA_DOC = () => db.collection('config').doc('empresa');
+// Chave do LINK FIXO de autocadastro do cliente. Link único e permanente
+// (/cliente/cadastro?c=CHAVE); a chave existe só pra robô não achar a página.
+// Pode ser trocada no painel a qualquer momento.
+const CADASTRO_CLIENTE_DOC = () => db.collection('config').doc('cadastro_cliente');
+async function getChaveCadastroCliente() {
+  const d = await CADASTRO_CLIENTE_DOC().get();
+  if (d.exists && d.data() && d.data().chave) return d.data().chave;
+  const chave = crypto.randomBytes(9).toString('base64url');
+  await CADASTRO_CLIENTE_DOC().set({ chave, criadoEm: new Date().toISOString() }, { merge: true });
+  return chave;
+}
 const SESSOES_COL = () => db.collection('sessoes');
 const LEADS_COL = () => db.collection('leads');
 const SESSOES_RECOMENDADO_COL = () => db.collection('sessoes_recomendado');
@@ -424,10 +436,6 @@ const COMISSAO_PCT = 20;
 const VENDEDORES_COL = () => db.collection('vendedores');
 // Contas de administrador (login fácil e-mail+senha; acesso total, igual à chave mestra).
 const ADMINS_COL = () => db.collection('admins');
-// Convites de cadastro: link que o cliente abre pra terminar o cadastro sozinho,
-// SEM chave de admin. Uso único e com validade. Doc:
-//   { criadoEm, criadoPor, vendedorId, usado, usadoEm, empresaId, expiraEm }
-const CONVITES_COL = () => db.collection('convites_empresa');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'okk', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'tabom',
@@ -3242,10 +3250,14 @@ app.post('/login', limiteLogin, async (req, res) => {
       if (!snapE.empty) {
         const d = snapE.docs[0];
         const e = d.data();
-        usuario = { id: null, empresaId: d.id, nome: e.nome, email: emailNorm, senhaHash: e.senhaHash, papel: 'gestor', senhaProvisoria: !!e.senhaProvisoria, ativo: true };
+        // Cadastro feito pelo link do cliente e ainda não validado pelo dono: sem acesso.
+        usuario = { id: null, empresaId: d.id, nome: e.nome, email: emailNorm, senhaHash: e.senhaHash, papel: 'gestor', senhaProvisoria: !!e.senhaProvisoria, ativo: !e.pendenteAprovacao, pendente: !!e.pendenteAprovacao };
       }
     }
 
+    if (usuario && usuario.pendente) {
+      return res.status(403).json({ ok: false, erro: 'Seu cadastro está em análise. Você receberá um e-mail assim que for liberado.' });
+    }
     if (!usuario || usuario.ativo === false) {
       return res.status(401).json({ ok: false, erro: 'Email ou senha incorretos' });
     }
@@ -4651,8 +4663,15 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
       // vendedor da comissão (informado pelo dono; vendedor é forçado abaixo)
       vendedorComissao,
       // modo de WhatsApp: 'baileys' (QR grátis) ou 'zapi' (padrão)
-      whatsappTipo
+      whatsappTipo,
+      // autocadastro do cliente: plano escolhido + aceite do contrato
+      plano, aceiteContrato
     } = req.body;
+
+    // No autocadastro pelo link, o aceite do contrato é obrigatório.
+    if (req.acesso.ehClienteLink && !aceiteContrato) {
+      return res.status(400).json({ ok: false, erro: 'É preciso ler e aceitar o contrato.' });
+    }
 
     // Vendedor logado: cliente sempre vinculado a ele; sem trial/migração.
     const vendedorVinc = ehVendedor ? req.acesso.vendedorId : (vendedorComissao || null);
@@ -4696,7 +4715,16 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
       cpfSocio: cpfSocio || null,
       emailSocio: emailSocio || null,
       enderecoSocio: enderecoSocio || null,
-      whatsappSocio: whatsappSocio || null
+      whatsappSocio: whatsappSocio || null,
+      ...(plano ? { plano: String(plano) } : {}),
+      // Aceite do contrato (autocadastro): guarda quando e de onde veio.
+      ...(req.acesso.ehClienteLink && aceiteContrato ? {
+        contrato: {
+          aceito: true,
+          aceitoEm: new Date().toISOString(),
+          ip: (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim()
+        }
+      } : {})
     };
 
     // Período gratuito (trial) opcional — só o dono concede.
@@ -4707,12 +4735,16 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
       assinatura = { status: 'trial', ciclo: 'trial', acessoAte: ate.toISOString(), atualizadoEm: new Date().toISOString() };
     }
 
+    const ehLinkCliente = !!req.acesso.ehClienteLink;
     const senhaHash = await bcrypt.hash(senha, 10);
     const ref = await EMPRESAS_COL().add({
       nome: nomeEmpresa,
       email: emailLogin,
       senhaHash,
-      senhaProvisoria: true,
+      // No autocadastro o cliente escolhe a própria senha (não é provisória).
+      senhaProvisoria: !ehLinkCliente,
+      // Veio pelo link do cliente? Entra PENDENTE — o dono valida antes de liberar.
+      ...(ehLinkCliente ? { pendenteAprovacao: true } : {}),
       cadastro,
       zapiInstanceId: zapiInstanceId ? String(zapiInstanceId).trim() : null,
       zapiToken: zapiToken ? String(zapiToken).trim() : null,
@@ -4724,18 +4756,11 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
       ...(assinatura ? { assinatura } : {})
     });
 
-    // Veio de um link de convite? Queima o convite (uso único).
-    if (req.acesso.ehConvite && req.acesso.convId) {
-      try {
-        await CONVITES_COL().doc(req.acesso.convId).update({
-          usado: true, usadoEm: new Date().toISOString(), empresaId: ref.id
-        });
-      } catch (e) { console.error('[convite] falha ao marcar como usado:', e.message); }
-    }
-    res.json({ ok: true, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, empresaTeste: !!_empresaTeste, trialDias: dias } });
+    res.json({ ok: true, pendente: ehLinkCliente, empresa: { id: ref.id, nome: nomeEmpresa, email: emailLogin, empresaTeste: !!_empresaTeste, trialDias: dias } });
 
-    // E-mail de boas-vindas (não bloqueia a resposta; ignora se não configurado)
-    if (!_empresaTeste) {
+    // E-mail de boas-vindas (não bloqueia a resposta; ignora se não configurado).
+    // No autocadastro NÃO manda agora: só quando o dono validar o cadastro.
+    if (!_empresaTeste && !ehLinkCliente) {
       enviarBoasVindasCliente({ nomeEmpresa, emailLogin, senha, req })
         .catch(e => console.error('[EMAIL] boas-vindas falhou:', e.message));
     }
@@ -4843,61 +4868,70 @@ function exigirAcessoAdmin(req, res, next) {
   });
 }
 
-// Acesso para CRIAR EMPRESA: admin/vendedor logado OU um link de convite.
-// O convite tem escopo LIMITADO — só serve nesta rota, não dá acesso a
-// comissões nem a nada mais do /admin.
+// Acesso para CRIAR EMPRESA: admin/vendedor logado OU o link fixo do cliente
+// (/cliente/cadastro?c=CHAVE). O link tem escopo LIMITADO — só vale nesta rota,
+// não dá acesso a comissões nem a nada mais do /admin, e o cadastro entra
+// PENDENTE (o dono valida antes de liberar o acesso).
 function exigirAcessoCriarEmpresa(req, res, next) {
   return limiteAdmin(req, res, async () => {
     const ctx = await resolverAcessoAdmin(req);
     if (ctx) { req.acesso = ctx; return next(); }
-    const auth = req.headers['authorization'] || '';
-    const m = auth.match(/^Bearer\s+(.+)$/i);
-    if (m) {
-      try {
-        const p = jwt.verify(m[1], JWT_SECRET);
-        if (p && p.tipo === 'convite-empresa' && p.convId) {
-          const snap = await CONVITES_COL().doc(p.convId).get();
-          if (!snap.exists) return res.status(401).json({ ok: false, erro: 'Convite inválido' });
-          const c = snap.data() || {};
-          if (c.usado) return res.status(410).json({ ok: false, erro: 'Este link de convite já foi usado. Peça um novo.' });
-          if (c.cancelado) return res.status(410).json({ ok: false, erro: 'Este link de convite foi cancelado.' });
-          req.acesso = { ehDono: false, ehConvite: true, convId: p.convId, vendedorId: p.vendedorId || c.vendedorId || null };
-          return next();
-        }
-      } catch (e) {}
+    const chave = String(req.headers['x-cadastro-key'] || '');
+    if (chave) {
+      const atual = await getChaveCadastroCliente();
+      // comparação em tempo constante
+      const a = Buffer.from(chave), b = Buffer.from(atual);
+      if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+        req.acesso = { ehDono: false, ehClienteLink: true, vendedorId: null };
+        return next();
+      }
     }
     return res.status(401).json({ ok: false, erro: 'Acesso negado' });
   });
 }
 
-// Gera um LINK DE CONVITE para o cliente terminar o cadastro sozinho (sem chave).
-// Uso único, validade 7 dias, vinculado a quem gerou (vendedor leva a comissão).
-app.post('/admin/convites', exigirAcessoAdmin, async (req, res) => {
+// Painel: pega o LINK FIXO de autocadastro do cliente (cria a chave na 1ª vez).
+app.get('/admin/cadastro-cliente-link', exigirAcessoAdmin, async (req, res) => {
   try {
-    const ehVendedor = !req.acesso.ehDono;
-    const vendedorId = ehVendedor
-      ? req.acesso.vendedorId
-      : ((req.body && req.body.vendedorComissao) || null);
-    const dias = 7;
-    const expiraEm = new Date(Date.now() + dias * 24 * 3600 * 1000).toISOString();
-    const ref = await CONVITES_COL().add({
-      criadoEm: new Date().toISOString(),
-      criadoPor: ehVendedor ? ('vendedor:' + req.acesso.vendedorId) : ('dono:' + (req.acesso.adminId || 'chave')),
-      vendedorId: vendedorId || null,
-      usado: false,
-      expiraEm
-    });
-    const token = jwt.sign(
-      { tipo: 'convite-empresa', convId: ref.id, vendedorId: vendedorId || null },
-      JWT_SECRET,
-      { expiresIn: dias + 'd' }
-    );
+    const chave = await getChaveCadastroCliente();
     const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
-    res.json({
-      ok: true,
-      link: `${base}/admin/criar-empresa?convite=${encodeURIComponent(token)}`,
-      expiraEm, dias
-    });
+    res.json({ ok: true, link: `${base}/cliente/cadastro?c=${encodeURIComponent(chave)}` });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Troca a chave (invalida o link antigo) — use se o link vazar.
+app.post('/admin/cadastro-cliente-link/rotacionar', exigirAdmin, async (req, res) => {
+  try {
+    const chave = crypto.randomBytes(9).toString('base64url');
+    await CADASTRO_CLIENTE_DOC().set({ chave, criadoEm: new Date().toISOString() }, { merge: true });
+    const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    res.json({ ok: true, link: `${base}/cliente/cadastro?c=${encodeURIComponent(chave)}` });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Página pública de autocadastro do cliente (link fixo compartilhado pelo dono).
+app.get('/cliente/cadastro', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin-criar-empresa.html'));
+});
+
+// Valida (aprova) um cadastro que veio pelo link do cliente: libera o acesso
+// e só então dispara o e-mail de boas-vindas.
+app.post('/admin/empresas/:id/validar', exigirAdmin, async (req, res) => {
+  try {
+    const ref = EMPRESAS_COL().doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    const e = snap.data() || {};
+    if (!e.pendenteAprovacao) return res.json({ ok: true, jaAtivo: true });
+    // Não mexe na senha: o cliente já criou a dele no autocadastro.
+    await ref.update({ pendenteAprovacao: false, validadoEm: new Date().toISOString() });
+    res.json({ ok: true });
+    enviarBoasVindasCliente({ nomeEmpresa: e.nome, emailLogin: e.email, senha: null, req })
+      .catch(err => console.error('[EMAIL] boas-vindas (validar) falhou:', err.message));
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -5146,6 +5180,8 @@ app.get('/admin/empresas', exigirAdmin, async (req, res) => {
         email: data.email || null,
         criadoEm: data.criadoEm || null,
         senhaProvisoria: !!data.senhaProvisoria,
+        // Autocadastro pelo link do cliente aguardando validação do dono.
+        pendenteAprovacao: !!data.pendenteAprovacao,
         cadastro: data.cadastro || null,
         plano: data.plano || null,
         statusPagamento: data.statusPagamento || null,

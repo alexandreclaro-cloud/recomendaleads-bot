@@ -204,6 +204,36 @@
 
     </div><!-- /blocoTecnico -->
 
+    <!-- Só no autocadastro do cliente (link fixo) -->
+    <div id="clienteBlock" style="display:none">
+      <div class="sec">Plano</div>
+      <label>Plano após o período gratuito</label>
+      <select id="planoSelect" style="width:100%;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:8px;font-size:0.95rem;">
+        <option value="mensal">Mensal — R$ 297/mês</option>
+        <option value="trimestral">Trimestral — R$ 267/mês (economia de 10%)</option>
+        <option value="anual">Anual — R$ 237/mês (economia de 20%)</option>
+      </select>
+      <div class="hint">Você começa no período gratuito. A cobrança só entra depois dele, no plano escolhido — e você pode trocar quando quiser.</div>
+
+      <div class="sec">Contrato</div>
+      <div style="border:1px solid var(--line,#ccc);border-radius:8px;padding:12px;max-height:150px;overflow-y:auto;font-size:0.82rem;line-height:1.5;background:#fafafa;color:#444" id="contratoTexto">
+        <b>Contrato de prestação de serviço — RecomendaLeads</b><br><br>
+        1. A RecomendaLeads disponibiliza uma plataforma de programa de recomendação, incluindo automação de mensagens
+        via WhatsApp, painel de gestão e acompanhamento de resultados.<br>
+        2. O período gratuito é uma cortesia; ao final dele, a cobrança do plano escolhido passa a valer, salvo cancelamento.<br>
+        3. Não há fidelidade: o cancelamento pode ser solicitado a qualquer momento, encerrando cobranças futuras.<br>
+        4. O CONTRATANTE é responsável pelos dados que cadastrar e pelo uso adequado da ferramenta, respeitando a
+        legislação vigente (inclusive LGPD) e as regras das plataformas de mensageria.<br>
+        5. A RecomendaLeads não se responsabiliza por bloqueios aplicados por terceiros (ex.: WhatsApp) decorrentes de
+        uso em desacordo com as regras dessas plataformas.<br>
+        6. Os dados do CONTRATANTE são tratados conforme a LGPD e usados apenas para a prestação do serviço.
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-weight:400;cursor:pointer">
+        <input type="checkbox" id="aceiteContrato" style="width:auto;margin-top:3px">
+        <span>Li e <b>aceito o contrato</b> de prestação de serviço.</span>
+      </label>
+    </div>
+
     <button id="criarBtn">Cadastrar empresa</button>
     <div class="status" id="statusMsg"></div>
 
@@ -220,10 +250,10 @@
 <script>
 const API_BASE = window.location.origin;
 
-// Link de convite (cliente terminando o cadastro sozinho): ?convite=TOKEN
-// Tem prioridade sobre o localStorage — o cliente não tem (nem precisa de) chave.
-const CONVITE = new URLSearchParams(window.location.search).get('convite') || '';
-const ehConvite = !!CONVITE;
+// Link fixo de autocadastro do cliente: /cliente/cadastro?c=CHAVE
+// Tem prioridade sobre o localStorage — o cliente não tem (nem precisa de) chave de admin.
+const CAD_KEY = new URLSearchParams(window.location.search).get('c') || '';
+const ehConvite = !!CAD_KEY;
 
 // Detecta quem está logado: dono (chave) ou vendedor (token).
 const STORED_KEY = ehConvite ? '' : (localStorage.getItem('recomendaleads_admin_key') || '');
@@ -240,12 +270,27 @@ const ehDonoToken = !ehConvite && !STORED_KEY && !!DONO_TOKEN;
     esconder('keyBlock');
     esconder('trialBlock');
     esconder('migrarBlock');
+    esconder('blocoTecnico');
+    const cb = document.getElementById('clienteBlock');
+    if (cb) cb.style.display = 'block';
+    // O cliente cria a própria senha (não é provisória).
+    const s = document.getElementById('senhaInput');
+    if (s) {
+      s.value = ''; s.type = 'password'; s.placeholder = 'Crie uma senha (mín. 6 caracteres)';
+      const lbl = s.previousElementSibling;
+      if (lbl && lbl.tagName === 'LABEL') lbl.textContent = 'Sua senha';
+    }
+    document.querySelectorAll('.hint').forEach(h => {
+      if (h.textContent.indexOf('123mudar') >= 0) h.textContent = 'Essa será a sua senha de acesso ao painel.';
+    });
+    const secs = document.querySelectorAll('.sec');
+    secs.forEach(x => { if (x.textContent.trim() === 'Acesso') x.textContent = 'Crie seu acesso'; });
+    const btn = document.getElementById('criarBtn');
+    if (btn) btn.textContent = 'Concluir meu cadastro';
     const b = document.getElementById('vendBanner');
     if (b) {
       b.style.display = 'block';
-      const n = document.getElementById('vendBannerNome');
-      if (n) n.textContent = 'você';
-      b.textContent = 'Bem-vindo! Preencha os dados da sua empresa para concluir o cadastro. No fim você recebe seu login e senha de acesso.';
+      b.textContent = 'Bem-vindo! Preencha os dados da sua empresa para concluir o cadastro. Ele passa por uma validação rápida e você recebe um e-mail assim que for liberado.';
     }
   } else if (ehVendedor) {
     esconder('keyBlock');
@@ -340,8 +385,26 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     zapiToken: val('zapiTokenInput'),
     zapiClientToken: val('zapiClientTokenInput'),
     senha,
-    migrarConfigPrincipal
+    migrarConfigPrincipal,
+    // Autocadastro do cliente: plano escolhido + aceite do contrato
+    ...(ehConvite ? {
+      plano: (document.getElementById('planoSelect') || {}).value || null,
+      aceiteContrato: !!(document.getElementById('aceiteContrato') || {}).checked
+    } : {})
   };
+
+  if (ehConvite) {
+    if (String(senha || '').length < 6) {
+      statusEl.textContent = 'Crie uma senha com pelo menos 6 caracteres.';
+      statusEl.className = 'status err';
+      return;
+    }
+    if (!payload.aceiteContrato) {
+      statusEl.textContent = 'É preciso ler e aceitar o contrato para concluir o cadastro.';
+      statusEl.className = 'status err';
+      return;
+    }
+  }
 
   if ((!ehConvite && !ehVendedor && !ehDonoToken && !adminKey) || !(payload.razaoSocial || payload.nomeFantasia) || !payload.emailEmpresa || !senha) {
     statusEl.textContent = (ehConvite || ehVendedor || ehDonoToken)
@@ -358,7 +421,7 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
 
   try {
     const headers = { 'Content-Type': 'application/json' };
-    if (ehConvite) headers['Authorization'] = 'Bearer ' + CONVITE;
+    if (ehConvite) headers['X-Cadastro-Key'] = CAD_KEY;
     else if (ehVendedor) headers['Authorization'] = 'Bearer ' + VEND_TOKEN;
     else if (ehDonoToken) headers['Authorization'] = 'Bearer ' + DONO_TOKEN;
     else headers['X-Admin-Key'] = adminKey;
@@ -371,6 +434,22 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
 
     if (resp.ok && data.ok) {
       statusEl.textContent = '';
+      // Autocadastro do cliente: não mostra senha/webhook — avisa que está em análise.
+      if (ehConvite || data.pendente) {
+        const card = document.querySelector('.card');
+        card.innerHTML =
+          '<div style="text-align:center;padding:14px 4px">'
+          + '<div style="font-size:2.6rem;line-height:1">✅</div>'
+          + '<h2 style="margin:10px 0 8px;font-size:1.15rem">Cadastro enviado!</h2>'
+          + '<p style="margin:0;font-size:0.92rem;line-height:1.6;color:#555">'
+          + 'Recebemos os dados da <b>' + (data.empresa.nome || 'sua empresa') + '</b>.<br><br>'
+          + 'Seu cadastro está <b>em análise</b>. Assim que for liberado, você recebe um e-mail em<br>'
+          + '<b>' + (data.empresa.email || '') + '</b> com o passo a passo de acesso.<br><br>'
+          + '<span style="color:#888;font-size:0.85rem">Pode fechar esta página. 👋</span>'
+          + '</p></div>';
+        window.scrollTo(0, 0);
+        return;
+      }
       document.getElementById('resultadoNome').textContent = data.empresa.nome;
       document.getElementById('resultadoEmail').textContent = data.empresa.email;
       document.getElementById('resultadoSenha').textContent = senha;
