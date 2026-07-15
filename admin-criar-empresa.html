@@ -261,6 +261,47 @@ const ehDonoToken = !ehConvite && !STORED_KEY && !!DONO_TOKEN;
   }
 })();
 
+// ── Máscaras: CNPJ 00.000.000/0000-00 · CPF 000.000.000-00 · Tel (11) 90000-0000 ──
+function maskCNPJ(el) {
+  const d = el.value.replace(/\D/g, '').slice(0, 14);
+  let v = d;
+  if (d.length > 2) v = d.slice(0, 2) + '.' + d.slice(2);
+  if (d.length > 5) v = d.slice(0, 2) + '.' + d.slice(2, 5) + '.' + d.slice(5);
+  if (d.length > 8) v = d.slice(0, 2) + '.' + d.slice(2, 5) + '.' + d.slice(5, 8) + '/' + d.slice(8);
+  if (d.length > 12) v = d.slice(0, 2) + '.' + d.slice(2, 5) + '.' + d.slice(5, 8) + '/' + d.slice(8, 12) + '-' + d.slice(12);
+  el.value = v;
+}
+function maskCPF(el) {
+  const d = el.value.replace(/\D/g, '').slice(0, 11);
+  let v = d;
+  if (d.length > 3) v = d.slice(0, 3) + '.' + d.slice(3);
+  if (d.length > 6) v = d.slice(0, 3) + '.' + d.slice(3, 6) + '.' + d.slice(6);
+  if (d.length > 9) v = d.slice(0, 3) + '.' + d.slice(3, 6) + '.' + d.slice(6, 9) + '-' + d.slice(9);
+  el.value = v;
+}
+function maskTel(el) {
+  const d = el.value.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) el.value = d;
+  else if (d.length <= 6) el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2);
+  else if (d.length <= 10) el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
+  else el.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
+}
+(function ligarMascaras() {
+  const mapa = {
+    cnpjInput: maskCNPJ, cpfSocioInput: maskCPF,
+    telefoneEmpresaInput: maskTel, whatsappSocioInput: maskTel
+  };
+  Object.keys(mapa).forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const fn = mapa[id];
+    el.setAttribute('inputmode', 'numeric');
+    el.addEventListener('input', () => fn(el));
+  });
+  const tel = document.getElementById('telefoneEmpresaInput');
+  if (tel) tel.placeholder = '(11) 90000-0000';
+})();
+
 document.getElementById('trialSelect').addEventListener('change', function () {
   document.getElementById('trialCustom').style.display = this.value === 'custom' ? 'block' : 'none';
 });
