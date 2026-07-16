@@ -1000,7 +1000,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
       <div>
         <div class="eyebrow">Check-up gratuito · 1 minuto</div>
         <h1 class="disp" style="font-size:34px;margin-top:12px">Qual é o <span style="color:var(--gold)">Score</span> da sua clínica?</h1>
-        <p class="qsub" style="max-width:340px;margin:14px auto 0">Responda 6 perguntinhas e saiba <b style="color:var(--gold2)">quanto de dinheiro</b> sua clínica deixa na mesa todo mês 💸 — e como virar uma clínica <b style="color:var(--green)">🚀 Escalando</b></p>
+        <p class="qsub" style="max-width:340px;margin:14px auto 0">Responda 4 perguntinhas e saiba <b style="color:var(--gold2)">quanto de dinheiro</b> sua clínica deixa na mesa todo mês 💸 — e como virar uma clínica <b style="color:var(--green)">🚀 Escalando</b></p>
       </div>
       <button class="cta" style="max-width:320px" onclick="start()">Fazer meu check-up →</button>
       <div class="safe">Sem enrolação. Só clicar. 🦷</div>
@@ -1020,7 +1020,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
   <!-- Q2 · agenda -->
   <section class="screen" id="s-q2">
-    <div class="qhead"><div class="qkicker">Pergunta 2 de 6</div>
+    <div class="qhead"><div class="qkicker">Pergunta 1 de 4</div>
       <div class="qtitle">Como está sua agenda hoje?</div></div>
     <div class="opts" data-q="agenda">
       <button class="opt" onclick="pick(this,'agenda','lotada',0)"><span class="em">🔥</span><span class="lb">Lotada, sem encaixe</span></button>
@@ -1043,7 +1043,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
   <!-- Q4 · pacientes/dia -->
   <section class="screen" id="s-q4">
-    <div class="qhead"><div class="qkicker">Pergunta 4 de 6</div>
+    <div class="qhead"><div class="qkicker">Pergunta 2 de 4</div>
       <div class="qtitle">Quantos pacientes você atende por dia?</div>
       <div class="qsub">Na média de um dia normal</div></div>
     <div class="opts" data-q="atend">
@@ -1056,7 +1056,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
   <!-- Q5 · cadeiras -->
   <section class="screen" id="s-q5">
-    <div class="qhead"><div class="qkicker">Pergunta 5 de 6</div>
+    <div class="qhead"><div class="qkicker">Pergunta 3 de 4</div>
       <div class="qtitle">Quantas cadeiras odontológicas tem na clínica?</div>
       <div class="qsub">Conta todas — ocupadas ou não</div></div>
     <div class="opts" data-q="cadeiras">
@@ -1068,7 +1068,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
   <!-- Q6 · ticket -->
   <section class="screen" id="s-q6">
-    <div class="qhead"><div class="qkicker">Pergunta 6 de 6</div>
+    <div class="qhead"><div class="qkicker">Pergunta 4 de 4</div>
       <div class="qtitle">Qual seu ticket médio por paciente?</div>
       <div class="qsub">Consulta + tratamento, na média</div></div>
     <div class="opts" data-q="ticket">
@@ -1160,7 +1160,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   var CAP_CODE="4D8ECD2D", WA="5511920938390", CAL="https://calendar.app.google/tzMa4HTYewwhLtxC6", leadId=null;
   function rpc(fn,body){ return fetch(SB+fn,{method:"POST",headers:{"Content-Type":"application/json","apikey":ANON,"Authorization":"Bearer "+ANON},body:JSON.stringify(body)}); }
 
-  var ans={}, order=['s-q1','s-q2','s-q3','s-q4','s-q5','s-q6'], idx=0;
+  var ans={}, order=['s-q2','s-q4','s-q5','s-q6'], idx=0;
   var praises=['Boa! 🦷','Isso! 🔥','Show! ✨','Falta pouco 💪','Quase lá 🚀'];
 
   function scrollQuiz(){var s=document.getElementById('formulario');if(!s)return;var h=document.querySelector('.header');var off=(h?h.offsetHeight:0)+12;var y=s.getBoundingClientRect().top+window.pageYOffset-off;window.scrollTo(0,y<0?0:y);}
