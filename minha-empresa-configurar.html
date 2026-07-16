@@ -1137,7 +1137,7 @@ function pararPollQr() { if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTi
 function mostrarAreaWhats(qual) {
   document.getElementById('conectadoArea').style.display = qual === 'conectado' ? 'block' : 'none';
   document.getElementById('naoProvisionadoArea').style.display = qual === 'naoprov' ? 'block' : 'none';
-  document.getElementById('qrArea').style.display = qual === 'qr' ? 'block' : 'none';
+  document.getElementById('qrArea').style.display = 'none'; // QR de leitura removido
 }
 
 function setBadgeWhats(conectado) {
@@ -1294,12 +1294,9 @@ async function atualizarEstadoWhats() {
     if (data.conectado) { setBadgeWhats(true); mostrarAreaWhats('conectado'); pararPollQr(); return; }
     // Sem instância própria e não conectado → número gerido pela equipe (sem QR).
     if (!data.provisionado) { setBadgeWhats(false); mostrarAreaWhats('naoprov'); pararPollQr(); return; }
-    setBadgeWhats(false); mostrarAreaWhats('qr');
-    const naAbaWhats = document.getElementById('view-whatsapp').classList.contains('active');
-    if (naAbaWhats) {
-      await carregarQr();
-      if (!qrPollTimer) qrPollTimer = setInterval(atualizarEstadoWhats, 5000);
-    }
+    // QR de leitura removido (não usamos mais): a conexão é feita colando o
+    // endereço da instância na "Configuração avançada (Z-API)". Aqui só o status.
+    setBadgeWhats(false); mostrarAreaWhats(''); pararPollQr();
   } catch (err) {}
 }
 
