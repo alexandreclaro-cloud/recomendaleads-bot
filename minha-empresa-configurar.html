@@ -458,6 +458,7 @@
           <p class="sub">Conecte o número que o Agente I.A. vai usar para falar com seus clientes.</p>
 
           <span id="whatsappStatus" class="badge badge-danger">Verificando conexão...</span>
+          <div id="whatsappStatusHint" class="hint" style="margin-top:8px; display:none; color:var(--danger,#dc2626);"></div>
 
           <!-- Conexão grátis (QR, sem Z-API) -->
           <div id="baileysBox" style="margin-top:16px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:14px;">
@@ -1290,6 +1291,8 @@ async function atualizarEstadoWhats() {
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/status`);
     const data = await resp.json();
+    const hint = document.getElementById('whatsappStatusHint');
+    if (hint) hint.style.display = 'none';
     // Conexão real primeiro: número global conectado (PDN) aparece como conectado.
     if (data.conectado) { setBadgeWhats(true); mostrarAreaWhats('conectado'); pararPollQr(); return; }
     // Sem instância própria e não conectado → número gerido pela equipe (sem QR).
@@ -1297,6 +1300,11 @@ async function atualizarEstadoWhats() {
     // QR de leitura removido (não usamos mais): a conexão é feita colando o
     // endereço da instância na "Configuração avançada (Z-API)". Aqui só o status.
     setBadgeWhats(false); mostrarAreaWhats(''); pararPollQr();
+    // Se o erro do Z-API for sobre o Client-Token, avisa (é a causa mais comum).
+    if (hint && /client.?token|null not allowed/i.test(data.erro || '')) {
+      hint.innerHTML = '🔑 <b>Falta o Client-Token.</b> No Z-API → <b>Segurança</b> → copie o "Token de segurança da conta" e cole no campo <b>Client-Token</b> (na Configuração avançada) → Salvar WhatsApp.';
+      hint.style.display = 'block';
+    }
   } catch (err) {}
 }
 
