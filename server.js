@@ -1239,12 +1239,36 @@ async function iniciarConversa(telefone) {
   await sendText(telefone, substituirVariaveis(empresa.mensagemPedeNome || EMPRESA_PADRAO.mensagemPedeNome, { empresa: empresa.nome }));
 }
 
+// Inicia a coleta de contatos (usado após o vendedor, OU direto após o nome
+// quando a empresa não tem vendedores cadastrados).
+async function iniciarColetaContatos(telefone, sessao, empresa) {
+  sessao.etapa = 'coletando_contatos';
+  sessao.indiceFaixaAtual = 0;
+  sessao.contatosFaixaAtual = [];
+  await saveSessao(telefone, sessao);
+  const primeiraFaixa = faixasAtivas(empresa)[0];
+  const varsCliente = { nomeRecomendado: (sessao.clienteNome || '').split(' ')[0], empresa: empresa.nome, premio: primeiraFaixa.premio, quantidade: primeiraFaixa.quantidade };
+  if (modoRecAtual(empresa) === 'full') {
+    await sendText(telefone, substituirVariaveis(empresa.fullMensagemAvisoInicial || EMPRESA_PADRAO.fullMensagemAvisoInicial, varsCliente));
+  }
+  await sendText(telefone, substituirVariaveis(empresa.mensagemPedeContatos || EMPRESA_PADRAO.mensagemPedeContatos, varsCliente));
+  await sendText(telefone, substituirVariaveis(empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta, varsCliente));
+}
+
 async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   const empresa = await getEmpresa();
   const sessao = await getSessao(telefone);
 
   if (sessao.etapa === 'aguardando_nome') {
     sessao.clienteNome = (texto || '').trim();
+
+    // Sem vendedores cadastrados: pula "quem te atendeu?" e vai direto pros contatos.
+    if (!empresa.vendedores || empresa.vendedores.length === 0) {
+      sessao.vendedorNome = null;
+      await iniciarColetaContatos(telefone, sessao, empresa);
+      return;
+    }
+
     sessao.etapa = 'aguardando_vendedor';
     await saveSessao(telefone, sessao);
 
@@ -1271,19 +1295,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     }
 
     sessao.vendedorNome = vendedor;
-    sessao.etapa = 'coletando_contatos';
-    sessao.indiceFaixaAtual = 0;
-    sessao.contatosFaixaAtual = [];
-    await saveSessao(telefone, sessao);
-
-    const primeiraFaixa = faixasAtivas(empresa)[0];
-    const varsCliente = { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome, premio: primeiraFaixa.premio, quantidade: primeiraFaixa.quantidade };
-    // Modo Full: explica as 2 fases só agora, na hora de pedir os contatos (segue a lógica nome → vendedor → contatos).
-    if (modoRecAtual(empresa) === 'full') {
-      await sendText(telefone, substituirVariaveis(empresa.fullMensagemAvisoInicial || EMPRESA_PADRAO.fullMensagemAvisoInicial, varsCliente));
-    }
-    await sendText(telefone, substituirVariaveis(empresa.mensagemPedeContatos || EMPRESA_PADRAO.mensagemPedeContatos, varsCliente));
-    await sendText(telefone, substituirVariaveis(empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta, varsCliente));
+    await iniciarColetaContatos(telefone, sessao, empresa);
     return;
   }
 
