@@ -398,29 +398,37 @@
         </div>
 
         <div class="card" style="margin-top:16px" id="basicConfirmCard">
-          <div class="block-title"><i data-lucide="shield-check"></i> Basic: disparar só após confirmação</div>
-          <p class="sub">Opção do modo <b>Basic</b>: em vez de chamar os amigos na hora, o robô <b>segura</b> e só dispara depois que o cliente confirmar que avisou (menos denúncia = menos ban). <span style="color:var(--text-dim)">No Full não se aplica.</span></p>
-          <label style="display:flex; align-items:center; gap:10px; margin:14px 0; cursor:pointer;">
-            <input type="checkbox" id="basicConfirmAtivo" style="width:18px;height:18px;">
-            <span style="font-weight:600;">Ativar: só disparar depois que o cliente confirmar</span>
-          </label>
-          <p class="sub" style="margin-bottom:8px;">Variáveis: <b>{cliente}</b>, <b>{empresa}</b>. O cliente responde por um <b>menu</b>: <b>1</b> já avisei → dispara · <b>2</b> ainda não → espera · <b>3</b> me manda um texto pronto.</p>
-          <label class="label">Mensagem pedindo a confirmação — com o menu 1/2/3 <span style="font-weight:400;color:var(--text-dim)">(logo após o presente)</span></label>
-          <textarea class="textarea" id="basicConfirmMsg" rows="5"></textarea>
-          <label class="label" style="margin-top:14px;">Opção 3 — texto pronto pro cliente encaminhar pros amigos</label>
-          <textarea class="textarea" id="basicTextoPronto" rows="3"></textarea>
-          <label class="label" style="margin-top:14px;">Opção 2 — resposta quando o cliente diz que "ainda não" avisou</label>
-          <textarea class="textarea" id="basicAindaNao" rows="3"></textarea>
-          <label class="label" style="margin-top:16px;">Lembretes de confirmação <span style="font-weight:400;color:var(--text-dim)">(o robô insiste até o cliente confirmar — você define quantos, o tempo e o texto)</span></label>
-          <div id="basicCadContainer"></div>
-          <button class="btn btn-secondary" id="addLembreteBtn" type="button" style="margin-top:4px;">➕ Adicionar lembrete</button>
-          <label class="label" style="margin-top:16px;">Se o cliente nunca confirmar (após todos os lembretes):</label>
-          <select class="input" id="basicSemConf" style="max-width:340px;">
-            <option value="nao_envia">Não disparar 🛡️ (mais seguro)</option>
-            <option value="envia">Disparar mesmo assim</option>
+          <div class="block-title"><i data-lucide="bell-ring"></i> Avisar os amigos</div>
+          <p class="sub">Como o robô faz o cliente <b>avisar os amigos</b> que vão ser chamados (menos denúncia = menos ban). Escolha <b>um</b> jeito — não precisa dos dois. Variáveis: <b>{cliente}</b>, <b>{empresa}</b>.</p>
+          <label class="label">Como funciona</label>
+          <select class="input" id="avisarModo" style="max-width:560px;">
+            <option value="off">Desligado — não pede pro cliente avisar</option>
+            <option value="segurar">🛡️ Segurar o disparo até o cliente confirmar (mais anti-ban)</option>
+            <option value="lembrar">🔔 Disparar na hora e depois lembrar o cliente</option>
           </select>
+          <div class="hint" id="avisarModoHint" style="margin-top:6px;"></div>
+
+          <div id="avisarTextos" style="margin-top:14px;">
+            <p class="sub" style="margin-bottom:8px;">O cliente responde por um <b>menu</b>: <b>1</b> já avisei · <b>2</b> ainda não · <b>3</b> me manda um texto pronto.</p>
+            <label class="label">Mensagem com o menu 1/2/3 <span style="font-weight:400;color:var(--text-dim)">(logo após o presente)</span></label>
+            <textarea class="textarea" id="basicConfirmMsg" rows="5"></textarea>
+            <label class="label" style="margin-top:14px;">Opção 3 — texto pronto pro cliente encaminhar pros amigos</label>
+            <textarea class="textarea" id="basicTextoPronto" rows="3"></textarea>
+            <label class="label" style="margin-top:14px;">Opção 2 — resposta quando o cliente diz que "ainda não" avisou</label>
+            <textarea class="textarea" id="basicAindaNao" rows="3"></textarea>
+            <label class="label" style="margin-top:16px;">Lembretes <span style="font-weight:400;color:var(--text-dim)">(o robô insiste até o cliente responder — você define quantos, o tempo e o texto)</span></label>
+            <div id="basicCadContainer"></div>
+            <button class="btn btn-secondary" id="addLembreteBtn" type="button" style="margin-top:4px;">➕ Adicionar lembrete</button>
+            <div id="avisarSegurarExtra">
+              <label class="label" style="margin-top:16px;">Se o cliente nunca confirmar (após todos os lembretes):</label>
+              <select class="input" id="basicSemConf" style="max-width:340px;">
+                <option value="nao_envia">Não disparar 🛡️ (mais seguro)</option>
+                <option value="envia">Disparar mesmo assim</option>
+              </select>
+            </div>
+          </div>
           <div class="row-save">
-            <button class="btn btn-action" id="salvarBasicConfBtn">Salvar confirmação</button>
+            <button class="btn btn-action" id="salvarBasicConfBtn">Salvar</button>
             <span class="status-msg" id="statusBasicConf"></span>
           </div>
         </div>
@@ -1653,16 +1661,31 @@ function syncBasicCadFromDom() {
     texto: row.querySelector('.bc-txt').value
   }));
 }
+function aplicarAvisarModoUI() {
+  const modo = document.getElementById('avisarModo').value;
+  document.getElementById('avisarTextos').style.display = modo === 'off' ? 'none' : 'block';
+  document.getElementById('avisarSegurarExtra').style.display = modo === 'segurar' ? 'block' : 'none';
+  const h = document.getElementById('avisarModoHint');
+  h.innerHTML = modo === 'segurar'
+    ? '🛡️ O robô NÃO chama os amigos até o cliente responder <b>1 (já avisei)</b>. Mais seguro contra ban.'
+    : (modo === 'lembrar'
+        ? '🔔 O robô chama os amigos <b>na hora</b> e depois manda os lembretes pro cliente avisar.'
+        : 'Desligado: o robô não pede pro cliente avisar os amigos.');
+}
 function carregarBasicConf() {
   const c = configuracaoAtual || {};
-  document.getElementById('basicConfirmAtivo').checked = !!c.basicConfirmarAntesDisparo;
-  document.getElementById('basicConfirmMsg').value = c.basicConfirmMensagem || '';
-  document.getElementById('basicTextoPronto').value = c.basicTextoPronto || '';
-  document.getElementById('basicAindaNao').value = c.basicAindaNao || '';
+  const modo = c.basicConfirmarAntesDisparo ? 'segurar' : (c.followupRecomendadorAtivo ? 'lembrar' : 'off');
+  document.getElementById('avisarModo').value = modo;
+  // Textos: usa os do Basic; se vazio, cai nos do Follow-up (eram os mesmos).
+  document.getElementById('basicConfirmMsg').value = c.basicConfirmMensagem || c.followupRecomendadorMensagem || '';
+  document.getElementById('basicTextoPronto').value = c.basicTextoPronto || c.followupTextoPronto || '';
+  document.getElementById('basicAindaNao').value = c.basicAindaNao || c.followupAindaNao || '';
   document.getElementById('basicSemConf').value = c.basicSemConfirmacao || 'nao_envia';
-  basicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || []));
+  basicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || c.cadenciaFollowupRecomendador || []));
   renderBasicCad();
+  aplicarAvisarModoUI();
 }
+document.getElementById('avisarModo').addEventListener('change', aplicarAvisarModoUI);
 document.getElementById('addLembreteBtn').addEventListener('click', () => {
   syncBasicCadFromDom();
   basicCad.push({ esperaMin: 1440, texto: 'Oi {cliente}! 😊 Assim que avisar seus amigos, responde *1* (já avisei) que eu chamo eles 🎁' });
@@ -1671,12 +1694,24 @@ document.getElementById('addLembreteBtn').addEventListener('click', () => {
 document.getElementById('salvarBasicConfBtn').addEventListener('click', async () => {
   syncBasicCadFromDom();
   const st = document.getElementById('statusBasicConf');
+  const modo = document.getElementById('avisarModo').value;
+  const msg = document.getElementById('basicConfirmMsg').value;
+  const textoPronto = document.getElementById('basicTextoPronto').value;
+  const aindaNao = document.getElementById('basicAindaNao').value;
+  const cad = basicCad.filter(x => x.texto && x.texto.trim());
+  // Modo escolhido → liga o flag certo (só um roda). Textos gravam nos DOIS
+  // conjuntos (Basic e Follow-up) pra funcionar em qualquer modo.
   const body = {
-    basicConfirmarAntesDisparo: document.getElementById('basicConfirmAtivo').checked,
-    basicConfirmMensagem: document.getElementById('basicConfirmMsg').value,
-    basicTextoPronto: document.getElementById('basicTextoPronto').value,
-    basicAindaNao: document.getElementById('basicAindaNao').value,
-    basicConfirmacaoCadencia: basicCad.filter(x => x.texto && x.texto.trim()),
+    basicConfirmarAntesDisparo: modo === 'segurar',
+    followupRecomendadorAtivo: modo === 'lembrar',
+    basicConfirmMensagem: msg,
+    followupRecomendadorMensagem: msg,
+    basicTextoPronto: textoPronto,
+    followupTextoPronto: textoPronto,
+    basicAindaNao: aindaNao,
+    followupAindaNao: aindaNao,
+    basicConfirmacaoCadencia: cad,
+    cadenciaFollowupRecomendador: cad,
     basicSemConfirmacao: document.getElementById('basicSemConf').value
   };
   st.textContent = 'Salvando...'; st.className = 'status-msg';
