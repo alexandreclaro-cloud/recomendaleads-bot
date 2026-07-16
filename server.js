@@ -656,6 +656,9 @@ const EMPRESA_PADRAO = {
   // Evita encavalar essa pergunta com o aviso de "avise seus amigos" (o cliente
   // respondia "ok" e o robô achava que era "sim" pra próxima faixa).
   intervaloProximaFaixaMin: 1,
+  // Espera (min) depois do "muito obrigado" antes de mandar o menu "avisar os amigos"
+  // (1/2/3), pra dar tempo do cliente realmente avisar as amigas que recomendou.
+  avisarConfirmDelayMin: 2,
   // Número de WhatsApp da empresa (só dígitos) — usado pra montar o link que o
   // cliente encaminha no modo Full (o amigo toca e chama ESTE número).
   numeroWhatsapp: '',
@@ -1386,8 +1389,9 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
       await saveSessao(telefone, sessao);
       await sendText(telefone, 'Sem problemas! Muito obrigado(a) por participar e por confiar na gente 🙏');
       // Basic com confirmação: o cliente parou aqui → pede a confirmação (menu 1/2/3)
-      // pra disparar os contatos que ficaram segurados.
-      if (empresa.basicConfirmarAntesDisparo) await pedirConfirmacaoDisparoBasic(telefone, sessao, empresa);
+      // pra disparar os contatos que ficaram segurados — mas com uma espera pra dar
+      // tempo dele avisar as amigas antes (não vir grudado no "muito obrigado").
+      if (empresa.basicConfirmarAntesDisparo) await agendarPedirConfirmacaoBasic(telefone, sessao, empresa);
     }
     return;
   }
@@ -1612,6 +1616,16 @@ async function pedirConfirmacaoDisparoBasic(telefone, sessao, empresa) {
   await sendText(telefone, substituirVariaveis(empresa.basicConfirmMensagem || EMPRESA_PADRAO.basicConfirmMensagem, varsC));
   try { await agendarConfirmacaoDisparo(telefone, empresa, 0); } catch (e) { console.error('agendarConfirmacaoDisparo:', e.message); }
 }
+// Espera alguns minutos (avisarConfirmDelayMin, padrão 2) depois do "muito obrigado"
+// antes de mandar o menu "avisar os amigos" (1/2/3), pra não vir grudado e dar tempo
+// do cliente realmente avisar as amigas que recomendou.
+async function agendarPedirConfirmacaoBasic(telefone, sessao, empresa) {
+  const min = Math.max(1, parseInt(empresa.avisarConfirmDelayMin, 10) || EMPRESA_PADRAO.avisarConfirmDelayMin || 2);
+  sessao.aguardandoIntervaloConfirmacao = true;
+  await saveSessao(telefone, sessao);
+  const executarEm = new Date(Date.now() + min * 60000).toISOString();
+  await criarAgendamento({ tipo: 'pedir_confirmacao_basic', executarEm, dados: { telefone } });
+}
 // Agenda (com intervalo) a pergunta "quer liberar o próximo prêmio?", pra não
 // encavalar com a mensagem anterior (o "combinado?" de avisar os amigos).
 async function agendarPerguntaProximaFaixa(telefone, empresa) {
@@ -1711,8 +1725,10 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     sessao.faixaFinal = faixa;
     await saveSessao(telefone, sessao);
     await sendText(telefone, 'Muito obrigado(a) por participar e por confiar na gente! 🙏');
-    // Basic com confirmação: agora sim pede a confirmação (menu 1/2/3) pra disparar os contatos segurados.
-    if (gated) await pedirConfirmacaoDisparoBasic(telefone, sessao, empresa);
+    // Basic com confirmação: agora sim pede a confirmação (menu 1/2/3) pra disparar os
+    // contatos segurados — mas com uma espera (avisarConfirmDelayMin, padrão 2 min) pra
+    // não vir grudado no "muito obrigado" e dar tempo do cliente avisar as amigas.
+    if (gated) await agendarPedirConfirmacaoBasic(telefone, sessao, empresa);
   } else {
     // Monta a pergunta do próximo prêmio, mas NÃO envia agora — agenda com intervalo
     // (≥1 min) pra não encavalar com o aviso anterior de avisar os amigos.
@@ -5691,6 +5707,19 @@ async function processarAgendamentoInterno(agendamento) {
     if (!sessao || sessao.etapa !== 'aguardando_intervalo_proxima_faixa') return; // cliente já mudou de estado
     await sendText(telefone, sessao.proximaFaixaPergunta || 'Quer liberar o próximo prêmio? 😊');
     await saveSessao(telefone, { etapa: 'aguardando_autorizacao_proxima_faixa' });
+    return;
+  }
+
+  // Basic com confirmação: passou a espera depois do "muito obrigado" → agora manda o
+  // menu "avisar os amigos" (1/2/3), dando tempo do cliente ter avisado as amigas.
+  if (agendamento.tipo === 'pedir_confirmacao_basic') {
+    const { telefone } = agendamento.dados;
+    if (await numeroEstaPausado(telefone)) return;
+    const snap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
+    const sessao = snap.exists ? snap.data() : null;
+    if (!sessao || !sessao.aguardandoIntervaloConfirmacao || sessao.aguardandoConfirmacaoDisparo) return;
+    sessao.aguardandoIntervaloConfirmacao = false;
+    await pedirConfirmacaoDisparoBasic(telefone, sessao, empresa);
     return;
   }
 
