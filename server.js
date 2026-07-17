@@ -1423,9 +1423,14 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   }
 
   if (sessao.etapa === 'finalizado') {
+    // Enquanto o cliente está na fase de "avisar os amigos" (a espera de ~2 min ANTES
+    // do menu 1/2/3, e o próprio menu aguardando resposta), a IA de atendimento NÃO
+    // responde — senão um "belesa"/"ok" solto vira um "oi, como posso ajudar?" doido no
+    // meio do fluxo. Ela só entra quando essa confirmação já acabou.
+    const naConfirmacaoAvisar = sessao.aguardandoConfirmacaoDisparo || sessao.aguardandoIntervaloConfirmacao;
     // Conversa já terminou. Se o atendimento pós-fluxo estiver ligado, tenta
     // responder dúvidas do cliente (endereço, horário, etc.) com as infos do negócio.
-    if (empresa.infoAtendimentoAtivo && texto) {
+    if (empresa.infoAtendimentoAtivo && texto && !naConfirmacaoAvisar) {
       const resposta = await responderPerguntaNegocio(texto, empresa);
       if (resposta) await sendText(telefone, resposta);
     }
