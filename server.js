@@ -1557,7 +1557,7 @@ async function finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDest
 
 // Agenda o disparo escalonado (anti-rajada) pros recomendados. Reutilizável:
 // chamado na hora (Basic normal) ou depois da confirmação (Basic com confirmação).
-async function dispararRecomendados(nomeRecomendador, vendedorNome, contatos, empresa) {
+async function dispararRecomendados(nomeRecomendador, vendedorNome, contatos, empresa, telefoneRecomendador) {
   const baseMs = Math.max(0, empresa.tempoEsperaConversaoMin || 0) * 60 * 1000;
   const gapMinMs = Math.max(0, (empresa.recomendadoGapMinMin != null ? empresa.recomendadoGapMinMin : 3)) * 60 * 1000;
   const gapMaxMs = Math.max(gapMinMs, (empresa.recomendadoGapMaxMin != null ? empresa.recomendadoGapMaxMin : 8) * 60 * 1000);
@@ -1577,7 +1577,7 @@ async function dispararRecomendados(nomeRecomendador, vendedorNome, contatos, em
         snapPendentes.forEach(doc => { if (doc.data().dados?.contato?.telefone === contato.telefone) batch.update(doc.ref, { status: 'cancelado' }); });
         await batch.commit();
       }
-      await criarAgendamento({ tipo: 'iniciar_conversa_recomendado', executarEm, dados: { contato, nomeRecomendador, vendedorNome } });
+      await criarAgendamento({ tipo: 'iniciar_conversa_recomendado', executarEm, dados: { contato, nomeRecomendador, vendedorNome, telefoneRecomendador } });
       offsetMs += gapMinMs + Math.random() * (gapMaxMs - gapMinMs);
     } catch (err) { console.error('Erro ao agendar recomendado:', err.message); }
   }
@@ -1690,20 +1690,9 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     }));
   }
 
-  for (const contato of contatosDestaFaixa) {
-    try {
-      await criarLead({
-        nomeRecomendado: contato.nome,
-        telefoneRecomendado: contato.telefone,
-        nomeRecomendador: sessao.clienteNome,
-        telefoneRecomendador: telefone,
-        vendedor: sessao.vendedorNome,
-        empresaId: empresaIdAtual()
-      });
-    } catch (err) {
-      console.error('Erro ao criar lead no CRM:', err.message);
-    }
-  }
+  // OBS: o lead (card no CRM) NÃO é criado aqui. Ele nasce só quando o robô
+  // realmente manda a mensagem pro amigo (em iniciarConversaRecomendado), pra o
+  // card não aparecer enquanto ainda estamos conversando com o recomendador.
 
   // Agenda o follow-up do recomendador (só uma vez, no 1º prêmio completado):
   // ele já mandou recomendações, então começa a série de lembretes pra avisar
@@ -1754,7 +1743,7 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   // Disparo pros recomendados: no Basic normal, sai agora (escalonado/anti-rajada).
   // No Basic-com-confirmação, NÃO sai agora — só depois do cliente confirmar.
   if (!gated) {
-    await dispararRecomendados(sessao.clienteNome, sessao.vendedorNome, contatosDestaFaixa, empresa);
+    await dispararRecomendados(sessao.clienteNome, sessao.vendedorNome, contatosDestaFaixa, empresa, telefone);
   }
 
   console.log(`[FAIXA FINALIZADA] ${sessao.clienteNome} via ${sessao.vendedorNome} — ${contatosDestaFaixa.length} contatos${gated ? ' (segurando p/ confirmação)' : ''}, ${excedente.length} excedentes pendentes`);
@@ -1914,7 +1903,7 @@ function escolherSaudacaoRecomendado(empresa) {
   return opcoes[Math.floor(Math.random() * opcoes.length)];
 }
 
-async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa) {
+async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa, telefoneRecomendador) {
   if (!contato.telefone) {
     console.log(`[AVISO] Contato "${contato.nome}" sem telefone válido — não foi possível iniciar conversa.`);
     return;
@@ -1961,6 +1950,21 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
   });
 
   await agendarProximoFollowup(contato.telefone, empresa, marcaTempo, 0);
+
+  // Só AGORA cria o card no CRM (coluna "Recebeu Mensagem") — o amigo recebeu a
+  // mensagem de fato. Antes o card nascia quando o cliente completava a faixa, o que
+  // fazia o card aparecer enquanto o robô ainda conversava com o recomendador.
+  try {
+    await criarLead({
+      nomeRecomendado: contato.nome,
+      telefoneRecomendado: contato.telefone,
+      nomeRecomendador: nomeRecomendador,
+      telefoneRecomendador: telefoneRecomendador || null,
+      vendedor: vendedorNome,
+      empresaId: empresaIdAtual()
+    });
+  } catch (err) { console.error('Erro ao criar lead no CRM (recomendado):', err.message); }
+
   console.log(`[ROTEIRO RECOMENDADO INICIADO] ${contato.nome} (${contato.telefone})`);
 }
 
@@ -2819,7 +2823,7 @@ async function tratarWebhook(req, res) {
       }
       // 1 / "já avisei" / "pode mandar" → dispara agora os recomendados segurados
       if (primeiro === '1' || ehConfirmacaoDisparo(texto)) {
-        await dispararRecomendados(s.clienteNome, s.vendedorNome, s.contatosPendentesDisparo || [], empresaC);
+        await dispararRecomendados(s.clienteNome, s.vendedorNome, s.contatosPendentesDisparo || [], empresaC, telefone);
         await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
         await cancelarConfirmacoesDisparo(telefone);
         await sendText(telefone, 'Perfeito! 🙌 Já estou avisando seus amigos. Muito obrigado(a)!');
@@ -5623,7 +5627,7 @@ async function processarAgendamentoInterno(agendamento) {
   }
 
   if (agendamento.tipo === 'iniciar_conversa_recomendado') {
-    const { contato, nomeRecomendador, vendedorNome } = agendamento.dados;
+    const { contato, nomeRecomendador, vendedorNome, telefoneRecomendador } = agendamento.dados;
 
     // ✅ CORREÇÃO: verifica se o número está pausado antes de iniciar
     // Se stop1 foi enviado após o agendamento ser criado, não inicia a conversa
@@ -5632,7 +5636,7 @@ async function processarAgendamentoInterno(agendamento) {
       return;
     }
 
-    await iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa);
+    await iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNome, empresa, telefoneRecomendador);
     return;
   }
 
@@ -5745,7 +5749,7 @@ async function processarAgendamentoInterno(agendamento) {
     } else {
       // Esgotou os lembretes sem confirmação. Segue a política escolhida.
       if (empresa.basicSemConfirmacao === 'envia') {
-        await dispararRecomendados(sessao.clienteNome, sessao.vendedorNome, sessao.contatosPendentesDisparo || [], empresa);
+        await dispararRecomendados(sessao.clienteNome, sessao.vendedorNome, sessao.contatosPendentesDisparo || [], empresa, telefone);
         console.log(`[BASIC-CONFIRM] ${telefone} não confirmou — disparando mesmo assim (política 'envia')`);
       } else {
         console.log(`[BASIC-CONFIRM] ${telefone} não confirmou — NÃO disparado (política 'nao_envia')`);
