@@ -911,10 +911,7 @@
           <textarea id="faqComoFuncionaInput" rows="2"></textarea>
           <label>Resposta — Qual a validade</label>
           <textarea id="faqValidadeInput" rows="2"></textarea>
-          <label>Resposta — Onde fica a empresa (endereço)</label>
-          <input type="text" id="enderecoEmpresaInput" placeholder="Ex: Rua X, 123 — Centro, São Paulo">
-          <label>Resposta — Horários de atendimento</label>
-          <input type="text" id="horariosEmpresaInput" placeholder="Ex: Seg a Sex, 9h às 18h">
+          <p style="color:var(--text-dim);font-size:.85rem;margin:10px 0 0;background:var(--brand-soft,#eff4ff);border-radius:8px;padding:10px 12px;">📍 <b>Endereço</b> e 🕒 <b>Horários</b> agora ficam num lugar só: <b>Informações do negócio</b> (no painel). O robô e a I.A. puxam tudo de lá.</p>
           <label>Mensagem ao "Falar com um atendente" (pausa o Agente I.A.)</label>
           <textarea id="posAtendenteInput" rows="2"></textarea>
 
@@ -1703,8 +1700,6 @@ async function carregarConfiguracao() {
     document.getElementById('posMenuDuvidasInput').value = configuracaoAtual.posMenuDuvidas || '';
     document.getElementById('faqComoFuncionaInput').value = configuracaoAtual.faqComoFunciona || '';
     document.getElementById('faqValidadeInput').value = configuracaoAtual.faqValidade || '';
-    document.getElementById('enderecoEmpresaInput').value = configuracaoAtual.enderecoEmpresa || '';
-    document.getElementById('horariosEmpresaInput').value = configuracaoAtual.horariosEmpresa || '';
     document.getElementById('posAtendenteInput').value = configuracaoAtual.posAtendente || '';
 
     renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
@@ -1981,8 +1976,6 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const posMenuDuvidas = document.getElementById('posMenuDuvidasInput').value.trim() || null;
   const faqComoFunciona = document.getElementById('faqComoFuncionaInput').value.trim() || null;
   const faqValidade = document.getElementById('faqValidadeInput').value.trim() || null;
-  const enderecoEmpresa = document.getElementById('enderecoEmpresaInput').value.trim() || null;
-  const horariosEmpresa = document.getElementById('horariosEmpresaInput').value.trim() || null;
   const posAtendente = document.getElementById('posAtendenteInput').value.trim() || null;
 
   btn.disabled = true;
@@ -1997,7 +1990,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         cadenciaFollowupRecomendado,
-        faqComoFunciona, faqValidade, enderecoEmpresa, horariosEmpresa, posAtendente
+        faqComoFunciona, faqValidade, posAtendente
       })
     });
     const data = await resp.json();

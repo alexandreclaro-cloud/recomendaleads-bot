@@ -2308,8 +2308,10 @@ async function responderDuvidaRec(telefone, opcao, empresa) {
   let resposta;
   if (opcao === 1) resposta = substituirVariaveis(empresa.faqComoFunciona || EMPRESA_PADRAO.faqComoFunciona, vars);
   else if (opcao === 2) resposta = substituirVariaveis(empresa.faqValidade || EMPRESA_PADRAO.faqValidade, vars);
-  else if (opcao === 3) resposta = empresa.enderecoEmpresa ? `Estamos em: ${empresa.enderecoEmpresa} 📍` : 'Um atendente já te passa o endereço certinho 😊';
-  else if (opcao === 4) resposta = empresa.horariosEmpresa ? `Nosso atendimento: ${empresa.horariosEmpresa} 🕒` : 'Um atendente já te passa os horários 😊';
+  // Endereço e horário saem de "Informações do negócio" (fonte única). Fallback pros
+  // campos antigos (enderecoEmpresa/horariosEmpresa) pra não perder dados já cadastrados.
+  else if (opcao === 3) { const end = empresa.infoEndereco || empresa.enderecoEmpresa; resposta = end ? `Estamos em: ${end} 📍` : 'Um atendente já te passa o endereço certinho 😊'; }
+  else if (opcao === 4) { const hor = empresa.infoHorario || empresa.horariosEmpresa; resposta = hor ? `Nosso atendimento: ${hor} 🕒` : 'Um atendente já te passa os horários 😊'; }
   else return false;
   await sendText(telefone, resposta);
   await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona\n*2* — Validade\n*3* — Endereço\n*4* — Horários\n*5* — Falar com atendente\n\nOu responda *0* se estiver tudo certo 👍`);
