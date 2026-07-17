@@ -873,6 +873,16 @@
           <textarea id="posPerguntaPeriodoInput" rows="6"></textarea>
           <label>Pergunta do dia (o cabeçalho — os dias entram automático)</label>
           <textarea id="posPerguntaDiaInput" rows="2"></textarea>
+          <label>Dias que você NÃO atende (não aparecem no agendamento)</label>
+          <div id="diasFechadosBox" style="display:flex;gap:16px;flex-wrap:wrap;margin:4px 0 8px;">
+            <label style="font-weight:400;display:flex;align-items:center;gap:5px;"><input type="checkbox" class="dia-fechado" value="0"> Domingo</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:5px;"><input type="checkbox" class="dia-fechado" value="1"> Segunda</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:5px;"><input type="checkbox" class="dia-fechado" value="2"> Terça</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:5px;"><input type="checkbox" class="dia-fechado" value="3"> Quarta</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:5px;"><input type="checkbox" class="dia-fechado" value="4"> Quinta</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:5px;"><input type="checkbox" class="dia-fechado" value="5"> Sexta</label>
+            <label style="font-weight:400;display:flex;align-items:center;gap:5px;"><input type="checkbox" class="dia-fechado" value="6"> Sábado</label>
+          </div>
           <label>Confirmação do agendamento (use {dia} e {periodo})</label>
           <textarea id="posConfirmacaoInput" rows="5"></textarea>
           <label>Checagem ~3 min depois ("conseguiu confirmar?")</label>
@@ -1671,6 +1681,8 @@ async function carregarConfiguracao() {
     document.getElementById('posLinkAgendamentoInput').value = configuracaoAtual.posLinkAgendamento || '';
     document.getElementById('posPerguntaPeriodoInput').value = configuracaoAtual.posPerguntaPeriodo || '';
     document.getElementById('posPerguntaDiaInput').value = configuracaoAtual.posPerguntaDia || '';
+    const diasFechados = Array.isArray(configuracaoAtual.diasFechados) ? configuracaoAtual.diasFechados.map(Number) : [];
+    document.querySelectorAll('.dia-fechado').forEach(cb => { cb.checked = diasFechados.includes(Number(cb.value)); });
     document.getElementById('posConfirmacaoInput').value = configuracaoAtual.posConfirmacaoAgendamento || '';
     document.getElementById('posConfirmacaoCheckInput').value = configuracaoAtual.posConfirmacaoCheck || '';
     document.getElementById('posMenuDepoisInput').value = configuracaoAtual.posMenuDepois || '';
@@ -1957,6 +1969,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const posLinkAgendamento = document.getElementById('posLinkAgendamentoInput').value.trim() || null;
   const posPerguntaPeriodo = document.getElementById('posPerguntaPeriodoInput').value.trim() || null;
   const posPerguntaDia = document.getElementById('posPerguntaDiaInput').value.trim() || null;
+  const diasFechados = [...document.querySelectorAll('.dia-fechado')].filter(cb => cb.checked).map(cb => Number(cb.value));
   const posConfirmacaoAgendamento = document.getElementById('posConfirmacaoInput').value.trim() || null;
   const posConfirmacaoCheck = document.getElementById('posConfirmacaoCheckInput').value.trim() || null;
   const posMenuDepois = document.getElementById('posMenuDepoisInput').value.trim() || null;
@@ -1981,7 +1994,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
       method: 'POST',
       body: JSON.stringify({
         mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
-        posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia,
+        posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         cadenciaFollowupRecomendado,
         faqComoFunciona, faqValidade, enderecoEmpresa, horariosEmpresa, posAtendente

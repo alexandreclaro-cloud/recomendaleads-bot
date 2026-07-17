@@ -742,6 +742,9 @@ const EMPRESA_PADRAO = {
   posLinkAgendamento: 'Perfeito! 😊 É só escolher o melhor horário pra você aqui:',
   posPerguntaPeriodo: `Perfeito! 😊 Vamos combinar sua visita.\n\nQual período fica melhor pra você?\n\n*1* — Manhã ☀️\n*2* — Tarde 🌤️\n*3* — Noite 🌙\n\n👇 _Digita o número aqui_ 👇`,
   posPerguntaDia: 'Ótimo! Agora escolha o melhor dia 📅',
+  // Dias da semana que a empresa NÃO atende (0=domingo, 1=segunda ... 6=sábado).
+  // Esses dias não aparecem na lista de agendamento. Padrão: atende todos.
+  diasFechados: [],
   posConfirmacaoAgendamento: `🎉 *Tudo certo!*\n\nSua visita foi reservada:\n📅 {dia} — período da {periodo}\n\nNossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`,
   posConfirmacaoCheck: 'Oi {nomeRecomendado}! 😊 Conseguiu confirmar seu agendamento? Se ficou alguma dúvida, é só me chamar aqui 👍',
   posMenuDepois: `Sem problemas! 😊 Seu presente continua reservado pra você.\n\nComo prefere fazer?\n\n🟢 *1* — Deixar uma data reservada\n🟡 *2* — Receber um lembrete depois\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
@@ -2132,19 +2135,24 @@ async function enviarPerguntaPeriodoRec(telefone, empresa, fluxo) {
   await saveSessaoRecomendado(telefone, { etapa: 'agendar_periodo', fluxoAgendamento: fluxo || 'agora', ultimaMensagemEm: new Date().toISOString() });
 }
 
-function gerarOpcoesDias() {
+function gerarOpcoesDias(empresa) {
   const semana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  // Dias da semana (0=domingo ... 6=sábado) que a empresa NÃO atende — não entram na lista.
+  const fechados = new Set(Array.isArray(empresa && empresa.diasFechados) ? empresa.diasFechados.map(Number) : []);
+  if (fechados.size >= 7) fechados.clear(); // marcou todos? ignora, pra não sobrar lista vazia
   const dias = [];
-  for (let i = 1; i <= 5; i++) {
+  // Pega os próximos 5 dias que a empresa ATENDE (pula os fechados). Trava: até 30 dias à frente.
+  for (let i = 1; dias.length < 5 && i <= 30; i++) {
     const d = new Date(); d.setDate(d.getDate() + i);
-    dias.push({ idx: i, label: `${semana[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}` });
+    if (fechados.has(d.getDay())) continue;
+    dias.push({ idx: dias.length + 1, label: `${semana[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}` });
   }
   return dias;
 }
 
 async function enviarPerguntaDiaRec(telefone) {
   const empresa = await getEmpresa();
-  const dias = gerarOpcoesDias();
+  const dias = gerarOpcoesDias(empresa);
   const linhas = dias.map(d => `*${d.idx}* — ${d.label}`).join('\n');
   const header = (empresa.posPerguntaDia || EMPRESA_PADRAO.posPerguntaDia);
   await sendText(telefone, `${header}\n\n${linhas}\n\n👇 _Digita o número aqui_ 👇`);
@@ -2548,7 +2556,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   // ---- AGENDAR: dia ----
   if (sessao.etapa === 'agendar_dia') {
     const op = extrairOpcao(texto);
-    const dias = sessao.diasOpcoes || gerarOpcoesDias();
+    const dias = sessao.diasOpcoes || gerarOpcoesDias(empresa);
     const dia = dias.find(d => d.idx === op);
     if (dia) {
       await finalizarAgendamentoRec(telefone, sessao, empresa, sessao.periodoEscolhido || 'combinado', dia.label);
