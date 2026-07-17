@@ -884,6 +884,16 @@
           <label>Mensagem de "receber lembrete depois"</label>
           <textarea id="posLembreteInput" rows="2"></textarea>
 
+          <label>⏰ Chamar de novo quem escolheu "receber depois" (manda 1 lembrete e para)</label>
+          <div style="display:flex; gap:8px; align-items:center; margin:6px 0 6px; flex-wrap:wrap;">
+            <span style="font-weight:600;">Depois de</span>
+            <input type="number" step="1" min="0" id="reFollowupVal" style="max-width:110px;" placeholder="ex: 1">
+            <select id="reFollowupUni" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias" selected>dias</option></select>
+            <span style="color:var(--text-dim);font-size:.82rem;">que ele escolheu "depois"</span>
+          </div>
+          <textarea id="reFollowupTexto" rows="2" placeholder="Mensagem do lembrete que o robô manda depois..."></textarea>
+          <p style="color:var(--text-dim);font-size:.82rem;margin:4px 0 0;">Deixe o tempo <b>vazio</b> pra não mandar lembrete nenhum. Variáveis: {nomeRecomendado}, {empresa}, {premio}.</p>
+
           <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">4) Se escolher "Tenho uma dúvida"</p>
           <label>Menu de dúvidas</label>
           <textarea id="posMenuDuvidasInput" rows="6"></textarea>
@@ -1665,6 +1675,19 @@ async function carregarConfiguracao() {
     document.getElementById('posConfirmacaoCheckInput').value = configuracaoAtual.posConfirmacaoCheck || '';
     document.getElementById('posMenuDepoisInput').value = configuracaoAtual.posMenuDepois || '';
     document.getElementById('posLembreteInput').value = configuracaoAtual.posLembrete || '';
+    // "Chamar de novo" quem pediu lembrete depois (1 lembrete). Mostra o que está
+    // salvo; se nunca foi salvo, mostra o padrão que o robô usa hoje (1 dia).
+    const reCad = (configuracaoAtual.cadenciaFollowupRecomendado || [])[0];
+    if (reCad) {
+      const reU = minParaUnidade(reCad.esperaMin);
+      document.getElementById('reFollowupVal').value = reU.valor;
+      document.getElementById('reFollowupUni').value = reU.unidade;
+      document.getElementById('reFollowupTexto').value = reCad.texto || '';
+    } else if (!Array.isArray(configuracaoAtual.cadenciaFollowupRecomendado)) {
+      document.getElementById('reFollowupVal').value = 1;
+      document.getElementById('reFollowupUni').value = 'dias';
+      document.getElementById('reFollowupTexto').value = 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?';
+    }
     document.getElementById('posMenuDuvidasInput').value = configuracaoAtual.posMenuDuvidas || '';
     document.getElementById('faqComoFuncionaInput').value = configuracaoAtual.faqComoFunciona || '';
     document.getElementById('faqValidadeInput').value = configuracaoAtual.faqValidade || '';
@@ -1938,6 +1961,10 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const posConfirmacaoCheck = document.getElementById('posConfirmacaoCheckInput').value.trim() || null;
   const posMenuDepois = document.getElementById('posMenuDepoisInput').value.trim() || null;
   const posLembrete = document.getElementById('posLembreteInput').value.trim() || null;
+  // "Chamar de novo" quem pediu lembrete depois: 1 lembrete. Sem tempo ou sem texto = não manda.
+  const reEspera = unidadeParaMin(document.getElementById('reFollowupVal').value, document.getElementById('reFollowupUni').value);
+  const reTexto = document.getElementById('reFollowupTexto').value.trim();
+  const cadenciaFollowupRecomendado = (reEspera && reTexto) ? [{ esperaMin: reEspera, texto: reTexto }] : [];
   const posMenuDuvidas = document.getElementById('posMenuDuvidasInput').value.trim() || null;
   const faqComoFunciona = document.getElementById('faqComoFuncionaInput').value.trim() || null;
   const faqValidade = document.getElementById('faqValidadeInput').value.trim() || null;
@@ -1956,6 +1983,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
         mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
+        cadenciaFollowupRecomendado,
         faqComoFunciona, faqValidade, enderecoEmpresa, horariosEmpresa, posAtendente
       })
     });

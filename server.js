@@ -713,9 +713,10 @@ const EMPRESA_PADRAO = {
   infoEmail: '',
   infoOutras: '',
 
+  // "Chamar de novo" quem escolheu "receber lembrete depois": 1 lembrete e para.
+  // Editável no CRM (Conversa do Recomendado). Vazio = não manda nenhum.
   cadenciaFollowupRecomendado: [
-    { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' },
-    { esperaMin: 4320, texto: 'Olá, tudo bem? O presente segue reservado no seu nome 🎁 Se tiver interesse, é só me avisar que te envio. Caso não, sem problema 😊' }
+    { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' }
   ],
   tempoEsperaConversaoMin: 60,
   tempoFollowupMin: 30,
