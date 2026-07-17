@@ -414,6 +414,9 @@
             <textarea class="textarea" id="basicConfirmMsg" rows="5"></textarea>
             <label class="label" style="margin-top:14px;">Opção 3 — texto pronto pro cliente encaminhar pros amigos</label>
             <textarea class="textarea" id="basicTextoPronto" rows="3"></textarea>
+            <label class="label" style="margin-top:14px;">Opção 3 — frase logo depois do textinho (o próximo passo)</label>
+            <textarea class="textarea" id="basicTextoProntoConfirma" rows="2"></textarea>
+            <div class="hint">Vai logo em seguida do textinho, pra o cliente já saber o que fazer (ex.: encaminhar e te avisar). Pode escrever "amigas" ou "amigos" conforme seu público.</div>
             <label class="label" style="margin-top:14px;">Opção 2 — resposta quando o cliente diz que "ainda não" avisou</label>
             <textarea class="textarea" id="basicAindaNao" rows="3"></textarea>
             <label class="label" style="margin-top:16px;">Lembretes <span style="font-weight:400;color:var(--text-dim)">(o robô insiste até o cliente responder — você define quantos, o tempo e o texto)</span></label>
@@ -1684,6 +1687,7 @@ function carregarBasicConf() {
   // Textos: usa os do Basic; se vazio, cai nos do Follow-up (eram os mesmos).
   document.getElementById('basicConfirmMsg').value = c.basicConfirmMensagem || c.followupRecomendadorMensagem || '';
   document.getElementById('basicTextoPronto').value = c.basicTextoPronto || c.followupTextoPronto || '';
+  document.getElementById('basicTextoProntoConfirma').value = c.basicTextoProntoConfirma || '';
   document.getElementById('basicAindaNao').value = c.basicAindaNao || c.followupAindaNao || '';
   document.getElementById('basicSemConf').value = c.basicSemConfirmacao || 'nao_envia';
   basicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || c.cadenciaFollowupRecomendador || []));
@@ -1702,6 +1706,7 @@ document.getElementById('salvarBasicConfBtn').addEventListener('click', async ()
   const modo = document.getElementById('avisarModo').value;
   const msg = document.getElementById('basicConfirmMsg').value;
   const textoPronto = document.getElementById('basicTextoPronto').value;
+  const textoProntoConfirma = document.getElementById('basicTextoProntoConfirma').value;
   const aindaNao = document.getElementById('basicAindaNao').value;
   const cad = basicCad.filter(x => x.texto && x.texto.trim());
   // Modo escolhido → liga o flag certo (só um roda). Textos gravam nos DOIS
@@ -1713,6 +1718,7 @@ document.getElementById('salvarBasicConfBtn').addEventListener('click', async ()
     followupRecomendadorMensagem: msg,
     basicTextoPronto: textoPronto,
     followupTextoPronto: textoPronto,
+    basicTextoProntoConfirma: textoProntoConfirma,
     basicAindaNao: aindaNao,
     followupAindaNao: aindaNao,
     basicConfirmacaoCadencia: cad,

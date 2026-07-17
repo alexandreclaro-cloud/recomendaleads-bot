@@ -646,7 +646,7 @@ const EMPRESA_PADRAO = {
   basicTextoPronto: 'Oi! 😊 Acabei de te recomendar pra {empresa} e você vai ganhar um presente 🎁 Eles vão te mandar uma mensagem por aqui — é só responder que garante o seu!',
   // Frase que vai LOGO DEPOIS do textinho (opção 3), pra o cliente já saber o próximo
   // passo (responder 1) sem ter que esperar o 1º lembrete.
-  basicTextoProntoConfirma: 'Prontinho! 📩 Assim que você encaminhar pros seus amigos, me responde *1* aqui que eu já chamo eles 🎁',
+  basicTextoProntoConfirma: 'Encaminha este textinho acima pros seus amigos 💜\nAssim que enviar, me avisa aqui tá? 😊',
   // Opção 2 do menu: resposta quando o cliente diz que ainda NÃO avisou (segue aguardando).
   basicAindaNao: 'Tranquilo, {cliente}! 😊 Sem pressa. Assim que avisar seus amigos, é só me responder *1* (ou "pode mandar") que eu chamo eles na hora 🎁',
   basicConfirmacaoCadencia: [
@@ -1589,7 +1589,7 @@ function ehConfirmacaoDisparo(texto) {
   if (/\bn[ãa]o\b|ainda/.test(t)) return false;
   // "ok" solto NÃO conta (o cliente diz "ok"/"valeu" à toa e disparava sem querer).
   // Ele confirma com o número 1 (tratado à parte) ou "pode mandar"/"já avisei".
-  return /pode mandar|pode enviar|pode chamar|pode sim|confirmo|avisei|mandei|encaminhei|^pode$|^sim$|^prontinho$|^pronto$|^feito$/.test(t);
+  return /pode mandar|pode enviar|pode chamar|pode sim|confirmo|avisei|mandei|enviei|enviado|encaminhei|encaminhado|^pode$|^sim$|^prontinho$|^pronto$|^feito$/.test(t);
 }
 async function agendarConfirmacaoDisparo(telefone, empresa, indice) {
   const cad = empresa.basicConfirmacaoCadencia || EMPRESA_PADRAO.basicConfirmacaoCadencia || [];
