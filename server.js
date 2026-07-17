@@ -2135,10 +2135,48 @@ async function enviarPerguntaPeriodoRec(telefone, empresa, fluxo) {
   await saveSessaoRecomendado(telefone, { etapa: 'agendar_periodo', fluxoAgendamento: fluxo || 'agora', ultimaMensagemEm: new Date().toISOString() });
 }
 
-function gerarOpcoesDias(empresa) {
+// Cache da inferência de dias fechados por horário (não chama a IA toda vez —
+// só quando o texto do horário muda). empresaId -> { chave, dias }.
+const _diasFechadosCache = {};
+
+// Lê o HORÁRIO cadastrado nas Informações do negócio e pede pra IA dizer quais dias
+// da semana a empresa NÃO abre (ex.: "Seg a Sáb 9h-18h" → domingo fechado). O resultado
+// é somado aos dias marcados na mão (diasFechados). Se não houver horário ou IA, volta [].
+async function inferirDiasFechadosPorHorario(empresa) {
+  const horario = ((empresa && (empresa.infoHorario || empresa.horariosEmpresa)) || '').trim();
+  if (!horario || !ANTHROPIC_API_KEY) return [];
+  const eid = (empresa && empresa.id) || empresaIdAtual();
+  const chave = horario.toLowerCase();
+  const cache = _diasFechadosCache[eid];
+  if (cache && cache.chave === chave) return cache.dias;
+  try {
+    const resp = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: ANTHROPIC_MODEL,
+      max_tokens: 60,
+      temperature: 0,
+      system: 'Você recebe o horário de funcionamento de um negócio e responde APENAS um array JSON com os números dos dias da semana em que o negócio está FECHADO (0=domingo, 1=segunda, 2=terça, 3=quarta, 4=quinta, 5=sexta, 6=sábado). Se o horário não deixar claro que um dia está fechado, NÃO inclua esse dia. Se abrir todos os dias, responda []. Responda só o array, sem nenhum outro texto.',
+      messages: [{ role: 'user', content: horario }]
+    }, { headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, timeout: 6000 });
+    const txt = (resp.data?.content?.[0]?.text || '').trim();
+    const m = txt.match(/\[[^\]]*\]/);
+    let dias = [];
+    if (m) { try { dias = JSON.parse(m[0]).map(Number).filter(n => n >= 0 && n <= 6); } catch (_) {} }
+    _diasFechadosCache[eid] = { chave, dias };
+    return dias;
+  } catch (e) {
+    console.error('inferirDiasFechadosPorHorario:', e.message);
+    return [];
+  }
+}
+
+function gerarOpcoesDias(empresa, fechadosExtra) {
   const semana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
   // Dias da semana (0=domingo ... 6=sábado) que a empresa NÃO atende — não entram na lista.
-  const fechados = new Set(Array.isArray(empresa && empresa.diasFechados) ? empresa.diasFechados.map(Number) : []);
+  // Junta os marcados na mão (diasFechados) com os que a IA inferiu do horário (fechadosExtra).
+  const fechados = new Set([
+    ...(Array.isArray(empresa && empresa.diasFechados) ? empresa.diasFechados.map(Number) : []),
+    ...(Array.isArray(fechadosExtra) ? fechadosExtra.map(Number) : [])
+  ]);
   if (fechados.size >= 7) fechados.clear(); // marcou todos? ignora, pra não sobrar lista vazia
   const dias = [];
   // Pega os próximos 5 dias que a empresa ATENDE (pula os fechados). Trava: até 30 dias à frente.
@@ -2152,7 +2190,9 @@ function gerarOpcoesDias(empresa) {
 
 async function enviarPerguntaDiaRec(telefone) {
   const empresa = await getEmpresa();
-  const dias = gerarOpcoesDias(empresa);
+  // A IA confere no horário cadastrado quais dias a empresa não abre (ex.: domingo).
+  const auto = await inferirDiasFechadosPorHorario(empresa);
+  const dias = gerarOpcoesDias(empresa, auto);
   const linhas = dias.map(d => `*${d.idx}* — ${d.label}`).join('\n');
   const header = (empresa.posPerguntaDia || EMPRESA_PADRAO.posPerguntaDia);
   await sendText(telefone, `${header}\n\n${linhas}\n\n👇 _Digita o número aqui_ 👇`);
