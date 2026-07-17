@@ -289,6 +289,36 @@ const NUMEROS_PAUSADOS_COL = () => db.collection('numeros_pausados');
 // Caixa de entrada: cada mensagem trocada + um resumo por conversa
 const MENSAGENS_CHAT_COL = () => db.collection('mensagens_chat');
 const CONVERSAS_COL = () => db.collection('conversas');
+// Pipeline do CLIENTE (recomendador): acompanha quem iniciou (leu o QR), deu o nome
+// e recomendou. Separado dos leads (recomendados) pra não mexer em métricas/export.
+const CLIENTES_PIPELINE_COL = () => db.collection('clientes_pipeline');
+
+// Cria/atualiza o card do cliente no pipeline (só avança de estágio, nunca volta).
+// etapa: 'iniciou' -> 'deu_nome' -> 'recomendou'.
+const _RANK_CLI_ETAPA = { iniciou: 1, deu_nome: 2, recomendou: 3 };
+async function upsertClientePipeline(telefone, nome, etapa) {
+  if (!db || !telefone) return;
+  try {
+    const empresaId = empresaIdAtual();
+    const docId = `${empresaId}__${soDigitosTel(telefone)}`;
+    const ref = CLIENTES_PIPELINE_COL().doc(docId);
+    const snap = await ref.get();
+    const agora = new Date().toISOString();
+    const atual = snap.exists ? snap.data() : null;
+    // Nunca retrocede o estágio (ex.: uma nova recomendação não volta pra 'iniciou').
+    const rankNovo = _RANK_CLI_ETAPA[etapa] || 1;
+    const rankAtual = atual ? (_RANK_CLI_ETAPA[atual.etapa] || 0) : 0;
+    const etapaFinal = rankNovo >= rankAtual ? etapa : atual.etapa;
+    await ref.set({
+      empresaId,
+      telefone: soDigitosTel(telefone),
+      nome: (nome && nome.trim()) ? nome.trim() : (atual && atual.nome) || null,
+      etapa: etapaFinal,
+      criadoEm: (atual && atual.criadoEm) || agora,
+      atualizadoEm: agora
+    }, { merge: true });
+  } catch (e) { console.error('upsertClientePipeline:', e.message); }
+}
 
 // Grava uma mensagem (recebida ou enviada) no histórico da conversa e atualiza
 // o resumo da conversa. Usado para a caixa de entrada do WhatsApp.
@@ -1247,6 +1277,8 @@ function faixasAtivas(empresa) {
 async function iniciarConversa(telefone) {
   const empresa = await getEmpresa();
   await getSessao(telefone);
+  // Pipeline do cliente: entrou (leu o QR / mandou o gatilho).
+  await upsertClientePipeline(telefone, null, 'iniciou');
   await sendText(telefone, substituirVariaveis(empresa.mensagemAgradecimento, { empresa: empresa.nome }));
   // Pergunta o nome primeiro; no modo Full, a explicação das 2 fases vem DEPOIS
   // que o cliente responde o nome (ver handler 'aguardando_nome') — mais natural.
@@ -1275,6 +1307,8 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 
   if (sessao.etapa === 'aguardando_nome') {
     sessao.clienteNome = (texto || '').trim();
+    // Pipeline do cliente: deu o nome.
+    await upsertClientePipeline(telefone, sessao.clienteNome, 'deu_nome');
 
     // Sem vendedores cadastrados: pula "quem te atendeu?" e vai direto pros contatos.
     if (!empresa.vendedores || empresa.vendedores.length === 0) {
@@ -1671,6 +1705,8 @@ async function cancelarConfirmacoesEnvioFull(telefone) {
 }
 
 async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFaixa, excedente) {
+  // Pipeline do cliente: recomendou (completou uma faixa de recomendações).
+  await upsertClientePipeline(telefone, sessao.clienteNome, 'recomendou');
   // MODO FULL: caminho próprio (inbound) — segura presente e não dispara pros amigos.
   if (modoRecAtual(empresa) === 'full') {
     await finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDestaFaixa);
@@ -4627,6 +4663,19 @@ app.get('/minha-leads', exigirLoginEmpresa, async (req, res) => {
   try {
     const leads = await getLeadsPorEmpresa(req.empresaLogin.id);
     res.json({ ok: true, leads });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Pipeline do CLIENTE (recomendador): quem iniciou (leu o QR), deu o nome e recomendou.
+app.get('/minha-clientes-pipeline', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const snap = await CLIENTES_PIPELINE_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const clientes = [];
+    snap.forEach(doc => clientes.push({ id: doc.id, ...doc.data() }));
+    clientes.sort((a, b) => new Date(b.atualizadoEm || b.criadoEm || 0) - new Date(a.atualizadoEm || a.criadoEm || 0));
+    res.json({ ok: true, clientes });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

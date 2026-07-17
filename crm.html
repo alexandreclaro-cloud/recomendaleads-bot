@@ -1196,6 +1196,14 @@ document.querySelectorAll('.subtab-btn').forEach(btn => {
 // ============================================================
 let leads = [];
 let etapas = [];
+let clientesPipeline = [];
+// Colunas FIXAS do pipeline do CLIENTE (recomendador) — entram no início do Kanban.
+// Ids começam com 'cli_' pra o drag-drop dos recomendados ignorá-las.
+const CLI_ETAPAS = [
+  { id: 'cli_iniciou', nome: '🚪 Iniciou (leu o QR)' },
+  { id: 'cli_deu_nome', nome: '✍️ Deu o nome' },
+  { id: 'cli_recomendou', nome: '✅ Recomendou' }
+];
 
 const ETAPAS_PADRAO = [
   { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
@@ -1210,17 +1218,20 @@ async function carregarLeads() {
   const loadMsg = document.getElementById('loadMsg');
   const board = document.getElementById('board');
   try {
-    const [respLeads, respConfig] = await Promise.all([
+    const [respLeads, respConfig, respCli] = await Promise.all([
       fetchAutenticado(`${API_BASE}/minha-leads`),
-      fetchAutenticado(`${API_BASE}/minha-config`)
+      fetchAutenticado(`${API_BASE}/minha-config`),
+      fetchAutenticado(`${API_BASE}/minha-clientes-pipeline`)
     ]);
 
     const dataLeads = await respLeads.json();
     const dataConfig = await respConfig.json();
+    let dataCli = { ok: false }; try { dataCli = await respCli.json(); } catch (_) {}
 
     if (!respLeads.ok || !dataLeads.ok) throw new Error(dataLeads.erro || 'Falha ao carregar leads');
 
     leads = dataLeads.leads;
+    clientesPipeline = (dataCli && dataCli.ok && Array.isArray(dataCli.clientes)) ? dataCli.clientes : [];
     etapas = (dataConfig.ok && dataConfig.empresa.etapasKanban && dataConfig.empresa.etapasKanban.length > 0)
       ? dataConfig.empresa.etapasKanban
       : ETAPAS_PADRAO;
@@ -1313,6 +1324,22 @@ document.getElementById('baixarRecomendadosBtn') && document.getElementById('bai
 function montarColunas() {
   const board = document.getElementById('board');
   board.innerHTML = '';
+
+  // Colunas do CLIENTE (recomendador) — funil de quem iniciou até recomendar.
+  CLI_ETAPAS.forEach(etapa => {
+    const col = document.createElement('div');
+    col.className = 'column column-cliente';
+    col.dataset.etapa = etapa.id;
+    col.style.background = 'var(--brand-soft, #eff4ff)';
+    col.innerHTML = `
+      <div class="column-head">
+        <h3>${etapa.nome}</h3>
+        <span class="column-count" data-countfor="${etapa.id}">0</span>
+      </div>
+      <div class="column-body" data-coletapa="${etapa.id}"></div>
+    `;
+    board.appendChild(col);
+  });
 
   etapas.forEach(etapa => {
     const col = document.createElement('div');
@@ -1459,6 +1486,38 @@ function renderBoard() {
         abrirModalLead(lead.id);
       });
 
+      col.appendChild(card);
+    });
+  });
+
+  renderClientesPipeline();
+}
+
+// Renderiza os cards do CLIENTE (recomendador) nas 3 colunas fixas do funil.
+function renderClientesPipeline() {
+  const termo = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
+  const mapa = { iniciou: 'cli_iniciou', deu_nome: 'cli_deu_nome', recomendou: 'cli_recomendou' };
+  let lista = clientesPipeline || [];
+  if (termo) lista = lista.filter(c => (c.nome || '').toLowerCase().includes(termo) || (c.telefone || '').includes(termo));
+  CLI_ETAPAS.forEach(etapa => {
+    const col = document.querySelector(`[data-coletapa="${etapa.id}"]`);
+    if (!col) return;
+    const doFunil = lista.filter(c => (mapa[c.etapa] || 'cli_iniciou') === etapa.id);
+    const countEl = document.querySelector(`[data-countfor="${etapa.id}"]`);
+    if (countEl) countEl.textContent = doFunil.length;
+    col.innerHTML = '';
+    if (doFunil.length === 0) { col.innerHTML = '<div class="empty-col">Ninguém aqui</div>'; return; }
+    doFunil.forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'lead-card';
+      card.innerHTML = `
+        <div class="nome">${esc(c.nome) || 'Sem nome ainda'}</div>
+        <div class="card-info">
+          <div><span class="ci-label">Telefone:</span> ${esc(c.telefone) || '—'}</div>
+        </div>
+        <div class="meta">
+          <span class="data-tag">📅 ${rotuloDataCard(c.atualizadoEm || c.criadoEm)}</span>
+        </div>`;
       col.appendChild(card);
     });
   });
@@ -1610,6 +1669,8 @@ const boardEl = document.getElementById('board');
 boardEl.addEventListener('dragover', (e) => {
   const col = e.target.closest('.column-body');
   if (!col) return;
+  // Colunas do funil do cliente não recebem cards de recomendado.
+  if ((col.dataset.coletapa || '').startsWith('cli_')) return;
   e.preventDefault();
   col.classList.add('drag-over');
 });
@@ -1630,6 +1691,8 @@ boardEl.addEventListener('drop', async (e) => {
 
   const id = dragging.dataset.id;
   const novaEtapa = col.dataset.coletapa;
+  // Não deixa soltar recomendado nas colunas do funil do cliente.
+  if ((novaEtapa || '').startsWith('cli_')) return;
 
   const lead = leads.find(l => l.id === id);
   if (!lead || lead.etapa === novaEtapa) return;
