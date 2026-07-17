@@ -1691,6 +1691,16 @@ function carregarBasicConf() {
   document.getElementById('basicAindaNao').value = c.basicAindaNao || c.followupAindaNao || '';
   document.getElementById('basicSemConf').value = c.basicSemConfirmacao || 'nao_envia';
   basicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || c.cadenciaFollowupRecomendador || []));
+  // Se a empresa ainda não tem lembretes salvos, mostra 3 padrão já preenchidos
+  // (o mesmo que o robô usa por padrão) — assim os campos aparecem em TODA conta
+  // pra o dono configurar o tempo, em vez de vir vazio.
+  if (!basicCad.length) {
+    basicCad = [
+      { esperaMin: 120, texto: 'Oi {cliente}! 😊 Conseguiu avisar seus amigos? Quando estiver tudo certo, responde *1* (já avisei) que eu chamo eles 🎁' },
+      { esperaMin: 1440, texto: 'Oi {cliente}! Seus amigos ainda estão te esperando 🎁 Avisa eles e responde *1* (já avisei).' },
+      { esperaMin: 4320, texto: 'Oi {cliente}! Última lembrança 🙌 É só avisar os amigos e responder *1* (já avisei) que eu libero os presentes deles.' }
+    ];
+  }
   renderBasicCad();
   aplicarAvisarModoUI();
 }
