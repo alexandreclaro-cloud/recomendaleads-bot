@@ -627,6 +627,7 @@
   <div class="download-bar" style="display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px;">
     <button type="button" class="periodo-btn" id="baixarClientesBtn">⬇️ Baixar clientes (.csv)</button>
     <button type="button" class="periodo-btn" id="baixarRecomendadosBtn">⬇️ Baixar recomendados (.csv)</button>
+    <button type="button" class="periodo-btn" id="backfillFunilBtn" title="Cria os cards do funil a partir das conversas que já existem">🔄 Preencher funil com quem já existe</button>
   </div>
 
   <div id="loadMsg" class="load-msg">Carregando leads...</div>
@@ -1320,6 +1321,18 @@ function baixarClientesCSV() {
 }
 document.getElementById('baixarClientesBtn') && document.getElementById('baixarClientesBtn').addEventListener('click', baixarClientesCSV);
 document.getElementById('baixarRecomendadosBtn') && document.getElementById('baixarRecomendadosBtn').addEventListener('click', baixarRecomendadosCSV);
+document.getElementById('backfillFunilBtn') && document.getElementById('backfillFunilBtn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (!confirm('Vou olhar as conversas que já existem e criar os cards do funil (Iniciou / Deu o nome / Recomendou). Não mexe em conversas nem em leads. Continuar?')) return;
+  const txt = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Preenchendo...';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/backfill`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { alert(`Pronto! ${data.criados} card(s) criado(s) e ${data.atualizados} atualizado(s) no funil.`); await carregarLeads(); }
+    else alert('Erro: ' + (data.erro || 'falha ao preencher o funil'));
+  } catch (err) { alert('Erro de conexão ao preencher o funil.'); }
+  finally { btn.disabled = false; btn.textContent = txt; }
+});
 
 function montarColunas() {
   const board = document.getElementById('board');

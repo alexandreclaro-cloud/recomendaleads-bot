@@ -4681,6 +4681,59 @@ app.get('/minha-clientes-pipeline', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Backfill: cria os cards do funil do cliente a partir das conversas (sessões) que já
+// existem, pra o funil não ficar vazio com quem começou ANTES da função existir.
+app.post('/minha-clientes-pipeline/backfill', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const empresaId = req.empresaLogin.id;
+    const ehPadrao = empresaId === EMPRESA_ID_PDN;
+    const prefix = `${empresaId}__`;
+
+    // Quem já recomendou alguém (tem recomendado atribuído a ele).
+    const leadsSnap = await LEADS_COL().where('empresaId', '==', empresaId).get();
+    const recomendaram = new Set();
+    leadsSnap.forEach(d => { const t = soDigitosTel(d.data().telefoneRecomendador); if (t) recomendaram.add(t); });
+
+    // Cards já existentes (pra não rebaixar estágio de quem já está no funil).
+    const cliSnap = await CLIENTES_PIPELINE_COL().where('empresaId', '==', empresaId).get();
+    const jaTem = new Map();
+    cliSnap.forEach(d => { const x = d.data(); jaTem.set(soDigitosTel(x.telefone), x.etapa); });
+
+    const rank = { iniciou: 1, deu_nome: 2, recomendou: 3 };
+    const sessSnap = await SESSOES_COL().get();
+    let batch = db.batch(); let n = 0, criados = 0, atualizados = 0;
+    for (const doc of sessSnap.docs) {
+      const id = doc.id;
+      let telefone;
+      if (ehPadrao) { if (id.includes('__')) continue; telefone = id; }
+      else { if (!id.startsWith(prefix)) continue; telefone = id.slice(prefix.length); }
+      const tel = soDigitosTel(telefone);
+      if (!tel) continue;
+      const s = doc.data();
+      let etapa;
+      if (recomendaram.has(tel) || s.etapa === 'finalizado') etapa = 'recomendou';
+      else if (s.clienteNome && s.clienteNome.trim()) etapa = 'deu_nome';
+      else etapa = 'iniciou';
+      const etapaAtual = jaTem.get(tel);
+      if (etapaAtual && (rank[etapaAtual] || 0) >= (rank[etapa] || 1)) continue; // já igual/mais avançado
+      const payload = {
+        empresaId, telefone: tel, etapa,
+        criadoEm: s.criadoEm || new Date().toISOString(),
+        atualizadoEm: new Date().toISOString()
+      };
+      if (s.clienteNome && s.clienteNome.trim()) payload.nome = s.clienteNome.trim();
+      batch.set(CLIENTES_PIPELINE_COL().doc(`${empresaId}__${tel}`), payload, { merge: true });
+      if (etapaAtual) atualizados++; else criados++;
+      if (++n >= 400) { await batch.commit(); batch = db.batch(); n = 0; }
+    }
+    if (n > 0) await batch.commit();
+    console.log(`[BACKFILL FUNIL] empresa ${empresaId} — ${criados} criados, ${atualizados} atualizados`);
+    res.json({ ok: true, criados, atualizados });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Zerar TODOS os leads da empresa logada (ex.: limpar testes antes de ir ao ar).
 // Só gestor. Apaga somente os leads DESTA empresa (isolado por empresaId).
 app.post('/minha-leads/zerar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
