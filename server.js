@@ -607,6 +607,10 @@ const EMPRESA_PADRAO = {
   arquivoRecomendado: null,
   linkRecomendado: null,
   textoRecomendado: null,
+  // Presente precisa de agendamento? true = serviço/visita (fluxo de menu + agendar).
+  // false = entrega direta (físico/ebook): entrega e só manda a mensagem de fechamento.
+  presentePrecisaAgendamento: true,
+  mensagemFechamentoEntrega: 'Prontinho, seu presente é seu! 🎁 Aproveite bastante 😊 Qualquer dúvida, é só me chamar aqui.',
   // Presente Recomendado com venda — enviado ao RECOMENDADOR quando o amigo
   // que ele indicou COMPRA (card arrastado para a coluna "Comprou" no CRM).
   premioVenda: 'Um presente especial por recomendar alguém que comprou com a gente',
@@ -1995,6 +1999,15 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
   if (empresa.textoRecomendado && empresa.textoRecomendado.trim()) {
     const orientacao = substituirVariaveis(empresa.textoRecomendado, { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' });
     await sendText(telefone, orientacao);
+  }
+
+  // Entrega direta (presente físico/ebook): não tem o que agendar. Depois de entregar
+  // o presente, só manda uma mensagem de fechamento e encerra (sem menu 1/2/3).
+  if (empresa.presentePrecisaAgendamento === false) {
+    const fecho = empresa.mensagemFechamentoEntrega ?? EMPRESA_PADRAO.mensagemFechamentoEntrega;
+    if (fecho && fecho.trim()) await sendText(telefone, substituirVariaveis(fecho, { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' }));
+    await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
+    return;
   }
 
   // Toque humano: reage ao presente e ESPERA a pessoa responder (ou X min) antes

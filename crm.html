@@ -984,6 +984,17 @@
           <input type="text" id="linkRecomendadoInput" placeholder="https://...">
           <label>Texto de orientação</label>
           <textarea id="textoRecomendadoInput" rows="3" placeholder="Mensagem enviada logo após o presente (opcional)"></textarea>
+
+          <label style="display:flex; align-items:center; gap:10px; margin:16px 0 4px; cursor:pointer;">
+            <input type="checkbox" id="entregaDiretaInput" style="width:18px;height:18px;">
+            <span style="font-weight:600;">🎁 Entrega direta (presente físico ou ebook) — sem agendamento</span>
+          </label>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 8px;">Marque quando o presente <b>não precisa marcar visita/horário</b>. O robô entrega o presente e manda só a mensagem de fechamento abaixo (sem o menu de agendar). Desmarcado = fluxo normal com agendamento.</p>
+          <div id="fechamentoEntregaBox">
+            <label>Mensagem de fechamento (só no modo entrega direta)</label>
+            <textarea id="mensagemFechamentoEntregaInput" rows="2" placeholder="Ex: Prontinho, seu presente é seu! 🎁 Aproveite bastante 😊 Qualquer dúvida, é só me chamar."></textarea>
+          </div>
+
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarPresenteRecomendadoBtn">Salvar presente do recomendado</button>
             <span class="config-status-msg" id="statusPresenteRecomendado"></span>
@@ -1692,6 +1703,9 @@ async function carregarConfiguracao() {
     document.getElementById('arquivoRecomendadoInput').value = configuracaoAtual.arquivoRecomendado || '';
     document.getElementById('linkRecomendadoInput').value = configuracaoAtual.linkRecomendado || '';
     document.getElementById('textoRecomendadoInput').value = configuracaoAtual.textoRecomendado || '';
+    document.getElementById('entregaDiretaInput').checked = configuracaoAtual.presentePrecisaAgendamento === false;
+    document.getElementById('mensagemFechamentoEntregaInput').value = configuracaoAtual.mensagemFechamentoEntrega || '';
+    aplicarEntregaDiretaUI();
     document.getElementById('mensagemVendaInput').value = configuracaoAtual.mensagemVenda || '';
     document.getElementById('premioVendaInput').value = configuracaoAtual.premioVenda || '';
     document.getElementById('arquivoVendaInput').value = configuracaoAtual.arquivoVenda || '';
@@ -1872,6 +1886,11 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000); }
 });
 
+function aplicarEntregaDiretaUI() {
+  const on = document.getElementById('entregaDiretaInput').checked;
+  document.getElementById('fechamentoEntregaBox').style.display = on ? 'block' : 'none';
+}
+document.getElementById('entregaDiretaInput').addEventListener('change', aplicarEntregaDiretaUI);
 document.getElementById('salvarPresenteRecomendadoBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarPresenteRecomendadoBtn');
   const statusEl = document.getElementById('statusPresenteRecomendado');
@@ -1879,11 +1898,13 @@ document.getElementById('salvarPresenteRecomendadoBtn').addEventListener('click'
   const arquivoRecomendado = document.getElementById('arquivoRecomendadoInput').value.trim() || null;
   const linkRecomendado = document.getElementById('linkRecomendadoInput').value.trim() || null;
   const textoRecomendado = document.getElementById('textoRecomendadoInput').value.trim() || null;
+  const presentePrecisaAgendamento = !document.getElementById('entregaDiretaInput').checked;
+  const mensagemFechamentoEntrega = document.getElementById('mensagemFechamentoEntregaInput').value.trim() || null;
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ premioRecomendado, arquivoRecomendado, linkRecomendado, textoRecomendado })
+      body: JSON.stringify({ premioRecomendado, arquivoRecomendado, linkRecomendado, textoRecomendado, presentePrecisaAgendamento, mensagemFechamentoEntrega })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
