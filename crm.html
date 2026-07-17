@@ -1705,7 +1705,6 @@ async function carregarConfiguracao() {
     document.getElementById('textoRecomendadoInput').value = configuracaoAtual.textoRecomendado || '';
     document.getElementById('entregaDiretaInput').checked = configuracaoAtual.presentePrecisaAgendamento === false;
     document.getElementById('mensagemFechamentoEntregaInput').value = configuracaoAtual.mensagemFechamentoEntrega || '';
-    aplicarEntregaDiretaUI();
     document.getElementById('mensagemVendaInput').value = configuracaoAtual.mensagemVenda || '';
     document.getElementById('premioVendaInput').value = configuracaoAtual.premioVenda || '';
     document.getElementById('arquivoVendaInput').value = configuracaoAtual.arquivoVenda || '';
@@ -1886,11 +1885,6 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000); }
 });
 
-function aplicarEntregaDiretaUI() {
-  const on = document.getElementById('entregaDiretaInput').checked;
-  document.getElementById('fechamentoEntregaBox').style.display = on ? 'block' : 'none';
-}
-document.getElementById('entregaDiretaInput').addEventListener('change', aplicarEntregaDiretaUI);
 document.getElementById('salvarPresenteRecomendadoBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarPresenteRecomendadoBtn');
   const statusEl = document.getElementById('statusPresenteRecomendado');
