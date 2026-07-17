@@ -664,11 +664,53 @@
         <button class="subtab-btn" data-subtab="followupCliente" style="display:none">Lembrete p/ cliente avisar amigos</button>
         <button class="subtab-btn" data-subtab="premioCliente">Presente Cliente</button>
         <button class="subtab-btn" data-subtab="recomendado">Conversa do Recomendado</button>
+        <button class="subtab-btn" data-subtab="infoNegocio">ℹ️ Informações do negócio</button>
         <button class="subtab-btn" data-subtab="faixas">Presente Recomendado</button>
         <button class="subtab-btn" data-subtab="venda">Presente Cliente com venda</button>
         <button class="subtab-btn" data-subtab="cadencia">Insistência (amigo não respondeu)</button>
         <button class="subtab-btn" data-subtab="marketing">📅 Agenda de Marketing</button>
         <button class="subtab-btn" data-subtab="etapas">Etapas do Pipeline</button>
+      </div>
+
+      <!-- Sub-aba: Informações do negócio (fonte única — IA e sistema puxam daqui) -->
+      <div class="subtab-panel" id="subtabInfoNegocio">
+        <div class="config-card">
+          <h2>ℹ️ Informações do negócio</h2>
+          <p style="font-size:0.85rem; color:var(--text-dim); margin:0 0 14px;">
+            É a <b>fonte única</b> de dados da empresa. O robô e a I.A. puxam tudo daqui: respostas de dúvidas (endereço, horário, site...), e o horário também define os <b>dias de agendamento</b> (ex.: se não abre domingo, o robô não oferece). A I.A. só responde com o que está aqui — <b>não inventa</b>. 🤖
+          </p>
+          <label style="display:flex; align-items:center; gap:10px; margin:6px 0 14px; cursor:pointer;">
+            <input type="checkbox" id="infoAtivo" style="width:18px; height:18px;">
+            <span style="font-weight:600;">Ativar respostas automáticas da I.A. (dúvidas livres do cliente)</span>
+          </label>
+          <label>📍 Endereço</label>
+          <textarea id="infoEndereco" rows="2" placeholder="Rua, número, bairro, cidade..."></textarea>
+          <label>🕒 Horário de funcionamento</label>
+          <textarea id="infoHorario" rows="2" placeholder="Ex: Seg a Sex 9h às 19h, Sáb 9h às 13h"></textarea>
+          <label>🌐 Site</label>
+          <input type="text" id="infoSite" placeholder="https://...">
+          <label>📸 Instagram</label>
+          <input type="text" id="infoInstagram" placeholder="@seuinstagram">
+          <label>📞 Telefone / WhatsApp</label>
+          <input type="text" id="infoTelefone" placeholder="(11) 99999-9999">
+          <label>✉️ E-mail</label>
+          <input type="text" id="infoEmail" placeholder="contato@empresa.com">
+          <label>➕ Outras informações (qualquer coisa que o cliente possa perguntar)</label>
+          <textarea id="infoOutras" rows="4" placeholder="Ex: formas de pagamento, estacionamento, serviços que oferece, política de agendamento, se atende por ordem de chegada..."></textarea>
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarInfoBtn">Salvar informações</button>
+            <span class="config-status-msg" id="statusInfo"></span>
+          </div>
+          <div style="border-top:1px solid var(--border); margin-top:18px; padding-top:16px;">
+            <h2 style="margin:0 0 4px;">🧪 Testar uma pergunta</h2>
+            <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">Digite uma pergunta como um cliente faria e veja o que o robô responderia. <b>Salve antes.</b></p>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              <input type="text" id="infoTestePergunta" placeholder="Ex: qual o endereço de vocês?" style="flex:1; min-width:240px;">
+              <button class="config-save-btn" id="infoTesteBtn" style="background:var(--text-dim);">Testar</button>
+            </div>
+            <div id="infoTesteResposta" style="margin-top:12px;"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Sub-aba: Etapas do Pipeline -->
@@ -1120,6 +1162,7 @@ const MAPA_SUBTABS = {
   followupCliente: 'subtabFollowupCliente',
   premioCliente: 'subtabPremioCliente',
   recomendado: 'subtabRecomendado',
+  infoNegocio: 'subtabInfoNegocio',
   faixas: 'subtabFaixas',
   venda: 'subtabVenda',
   marketing: 'subtabMarketing',
@@ -1680,6 +1723,9 @@ async function carregarConfiguracao() {
     document.getElementById('posPerguntaDiaInput').value = configuracaoAtual.posPerguntaDia || '';
     const diasFechados = Array.isArray(configuracaoAtual.diasFechados) ? configuracaoAtual.diasFechados.map(Number) : [];
     document.querySelectorAll('.dia-fechado').forEach(cb => { cb.checked = diasFechados.includes(Number(cb.value)); });
+    // Informações do negócio (fonte única)
+    document.getElementById('infoAtivo').checked = !!configuracaoAtual.infoAtendimentoAtivo;
+    ['Endereco','Horario','Site','Instagram','Telefone','Email','Outras'].forEach(k => { const el = document.getElementById('info'+k); if (el) el.value = configuracaoAtual['info'+k] || ''; });
     document.getElementById('posConfirmacaoInput').value = configuracaoAtual.posConfirmacaoAgendamento || '';
     document.getElementById('posConfirmacaoCheckInput').value = configuracaoAtual.posConfirmacaoCheck || '';
     document.getElementById('posMenuDepoisInput').value = configuracaoAtual.posMenuDepois || '';
@@ -2010,6 +2056,34 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
     btn.disabled = false;
     setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
   }
+});
+
+// ===== Informações do negócio (fonte única) =====
+document.getElementById('salvarInfoBtn').addEventListener('click', async () => {
+  const st = document.getElementById('statusInfo');
+  const body = { infoAtendimentoAtivo: document.getElementById('infoAtivo').checked };
+  ['Endereco','Horario','Site','Instagram','Telefone','Email','Outras'].forEach(k => { body['info'+k] = document.getElementById('info'+k).value; });
+  st.textContent = 'Salvando...'; st.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); st.textContent = '✅ Salvo!'; st.className = 'config-status-msg ok'; }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'config-status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'config-status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'config-status-msg'; }, 4000); }
+});
+document.getElementById('infoTesteBtn').addEventListener('click', async () => {
+  const cont = document.getElementById('infoTesteResposta');
+  const pergunta = document.getElementById('infoTestePergunta').value.trim();
+  if (!pergunta) return;
+  cont.innerHTML = '<span style="color:var(--text-dim)">🤖 Pensando...</span>';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-info/teste`, { method: 'POST', body: JSON.stringify({ pergunta }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      cont.innerHTML = '<div style="background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:12px;padding:12px 14px;white-space:pre-wrap;">🤖 ' + String(data.resposta || '').replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</div>';
+    } else { cont.innerHTML = '<span class="config-status-msg err">❌ ' + (data.erro || 'Erro') + '</span>'; }
+  } catch (e) { cont.innerHTML = '<span class="config-status-msg err">❌ Erro de conexão</span>'; }
 });
 
 // ===== Cadência =====
