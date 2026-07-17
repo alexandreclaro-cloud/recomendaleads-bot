@@ -644,6 +644,9 @@ const EMPRESA_PADRAO = {
   basicConfirmMensagem: 'Falta só um passo pra eu chamar seus amigos! 🙌 Dá um alô rápido avisando que a {empresa} vai entrar em contato com eles.\n\n1️⃣ Já avisei → pode chamar eles\n2️⃣ Ainda não avisei\n3️⃣ Me manda um textinho pronto pra eu encaminhar\n\n👇 _Digita o número aqui_ 👇',
   // Opção 3 do menu: texto pronto que o robô manda pro cliente ENCAMINHAR pros amigos (avisar antes).
   basicTextoPronto: 'Oi! 😊 Acabei de te recomendar pra {empresa} e você vai ganhar um presente 🎁 Eles vão te mandar uma mensagem por aqui — é só responder que garante o seu!',
+  // Frase que vai LOGO DEPOIS do textinho (opção 3), pra o cliente já saber o próximo
+  // passo (responder 1) sem ter que esperar o 1º lembrete.
+  basicTextoProntoConfirma: 'Prontinho! 📩 Assim que você encaminhar pros seus amigos, me responde *1* aqui que eu já chamo eles 🎁',
   // Opção 2 do menu: resposta quando o cliente diz que ainda NÃO avisou (segue aguardando).
   basicAindaNao: 'Tranquilo, {cliente}! 😊 Sem pressa. Assim que avisar seus amigos, é só me responder *1* (ou "pode mandar") que eu chamo eles na hora 🎁',
   basicConfirmacaoCadencia: [
@@ -2804,6 +2807,8 @@ async function tratarWebhook(req, res) {
       // 3 → manda o texto pronto pro cliente encaminhar (continua aguardando)
       if (primeiro === '3' || /textinho|texto pronto|manda o texto|manda um texto|modelo/.test(t)) {
         await sendText(telefone, substituirVariaveis(empresaC.basicTextoPronto || EMPRESA_PADRAO.basicTextoPronto, varsC));
+        // Logo em seguida, avisa o próximo passo (responder 1) pra não ficar no vácuo até o 1º lembrete.
+        await sendText(telefone, substituirVariaveis(empresaC.basicTextoProntoConfirma || EMPRESA_PADRAO.basicTextoProntoConfirma, varsC));
         return res.sendStatus(200);
       }
       // 2 → ainda não avisou (continua aguardando; os lembretes seguem)
