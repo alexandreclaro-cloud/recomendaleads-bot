@@ -296,7 +296,7 @@ const CLIENTES_PIPELINE_COL = () => db.collection('clientes_pipeline');
 // Cria/atualiza o card do cliente no pipeline (só avança de estágio, nunca volta).
 // etapa: 'iniciou' -> 'deu_nome' -> 'recomendou'.
 const _RANK_CLI_ETAPA = { iniciou: 1, deu_nome: 2, recomendou: 3 };
-async function upsertClientePipeline(telefone, nome, etapa) {
+async function upsertClientePipeline(telefone, nome, etapa, contatos) {
   if (!db || !telefone) return;
   try {
     const empresaId = empresaIdAtual();
@@ -309,14 +309,23 @@ async function upsertClientePipeline(telefone, nome, etapa) {
     const rankNovo = _RANK_CLI_ETAPA[etapa] || 1;
     const rankAtual = atual ? (_RANK_CLI_ETAPA[atual.etapa] || 0) : 0;
     const etapaFinal = rankNovo >= rankAtual ? etapa : atual.etapa;
-    await ref.set({
+    const payload = {
       empresaId,
       telefone: soDigitosTel(telefone),
       nome: (nome && nome.trim()) ? nome.trim() : (atual && atual.nome) || null,
       etapa: etapaFinal,
       criadoEm: (atual && atual.criadoEm) || agora,
       atualizadoEm: agora
-    }, { merge: true });
+    };
+    // Guarda a lista COMPLETA de amigos recomendados (nome+telefone) — pra o CRM mostrar
+    // todos, inclusive os que ainda não foram disparados (ainda na fila anti-ban).
+    if (Array.isArray(contatos) && contatos.length) {
+      const mapa = {};
+      (atual && Array.isArray(atual.recomendados) ? atual.recomendados : []).forEach(r => { const t = soDigitosTel(r.telefone); if (t) mapa[t] = { nome: r.nome || '', telefone: t }; });
+      contatos.forEach(c => { const t = soDigitosTel(c.telefone); if (t) mapa[t] = { nome: c.nome || (mapa[t] && mapa[t].nome) || '', telefone: t }; });
+      payload.recomendados = Object.values(mapa);
+    }
+    await ref.set(payload, { merge: true });
   } catch (e) { console.error('upsertClientePipeline:', e.message); }
 }
 
@@ -1783,8 +1792,9 @@ async function cancelarConfirmacoesEnvioFull(telefone) {
 }
 
 async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFaixa, excedente) {
-  // Pipeline do cliente: recomendou (completou uma faixa de recomendações).
-  await upsertClientePipeline(telefone, sessao.clienteNome, 'recomendou');
+  // Pipeline do cliente: recomendou (completou uma faixa) — guarda a lista completa
+  // de amigos indicados (sessao.contatos) pra o CRM mostrar todos, mesmo os pendentes.
+  await upsertClientePipeline(telefone, sessao.clienteNome, 'recomendou', sessao.contatos || contatosDestaFaixa);
   // MODO FULL: caminho próprio (inbound) — segura presente e não dispara pros amigos.
   if (modoRecAtual(empresa) === 'full') {
     await finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDestaFaixa);

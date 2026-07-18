@@ -1539,7 +1539,7 @@ function renderClientesPipeline() {
     doFunil.forEach(c => {
       const card = document.createElement('div');
       card.className = 'lead-card';
-      const amigos = recomendadosDoCliente(c.telefone);
+      const amigos = recomendadosDoCliente(c);
       const qtd = amigos.length;
       card.style.cursor = 'pointer';
       card.innerHTML = `
@@ -1589,16 +1589,29 @@ function ultimaComCard(telefone, fallbackIso) {
   if (!iso) return '';
   return `${rotuloDataCard(iso)} ${horaCard(iso)}`.trim();
 }
-// Amigos que um cliente (recomendador) indicou — por telefone.
-function recomendadosDoCliente(telefoneCliente) {
-  const dc = String(telefoneCliente || '').replace(/\D/g, '');
-  if (!dc) return [];
-  return (leads || []).filter(l => {
+// Amigos que um cliente (recomendador) indicou. Retorna a lista COMPLETA (guardada no
+// card) unida com os leads. Cada item: { nome, telefone, lead } — lead=null = ainda não
+// foi disparado (na fila anti-ban), então "ainda não recebeu".
+function recomendadosDoCliente(cliente) {
+  const dc = String((cliente && cliente.telefone) || '').replace(/\D/g, '');
+  const leadsDele = dc ? (leads || []).filter(l => {
     const dr = String(l.telefoneRecomendador || '').replace(/\D/g, '');
     if (!dr) return false;
     const n = Math.min(dc.length, dr.length);
     return n >= 8 && dc.slice(-n) === dr.slice(-n);
+  }) : [];
+  const leadPorTel = {};
+  leadsDele.forEach(l => { const t = String(l.telefoneRecomendado || '').replace(/\D/g, ''); if (t) leadPorTel[t] = l; });
+  const mapa = {};
+  (Array.isArray(cliente && cliente.recomendados) ? cliente.recomendados : []).forEach(r => {
+    const t = String(r.telefone || '').replace(/\D/g, '');
+    if (t) mapa[t] = { nome: r.nome || (leadPorTel[t] && leadPorTel[t].nomeRecomendado) || '', telefone: t, lead: leadPorTel[t] || null };
   });
+  leadsDele.forEach(l => {
+    const t = String(l.telefoneRecomendado || '').replace(/\D/g, '');
+    if (t && !mapa[t]) mapa[t] = { nome: l.nomeRecomendado || '', telefone: t, lead: l };
+  });
+  return Object.values(mapa);
 }
 
 function nomeEtapa(etapaId) {
@@ -1675,14 +1688,17 @@ function abrirModalLead(leadId) {
 
 // Modal: lista os amigos que um cliente (recomendador) indicou.
 function abrirRecomendadosDoCliente(cliente) {
-  const amigos = recomendadosDoCliente(cliente.telefone);
+  const amigos = recomendadosDoCliente(cliente);
   const modalContainer = document.getElementById('modalContainer');
-  const linhas = amigos.length ? amigos.map(l => {
-    const tel = (l.telefoneRecomendado || '').replace(/\D/g, '');
+  const linhas = amigos.length ? amigos.map(a => {
+    const tel = (a.telefone || '').replace(/\D/g, '');
     const wa = tel ? ` · <a href="https://wa.me/${tel}" target="_blank" style="color:var(--brand,#2563eb)">WhatsApp</a>` : '';
+    const status = a.lead
+      ? `<span style="color:var(--text-dim)">— ${esc(nomeEtapa(a.lead.etapa))} · 🕒 ${esc(ultimaComCard(tel, a.lead.criadoEm))}</span>`
+      : `<span style="color:var(--danger-dark,#b91c1c);font-weight:600">— ⏳ ainda não recebeu (na fila)</span>`;
     return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
-      <b>${esc(l.nomeRecomendado) || 'Sem nome'}</b> <span style="color:var(--text-dim);font-size:.82rem">— ${esc(nomeEtapa(l.etapa))}</span><br>
-      <small style="color:var(--text-dim)">📱 ${esc(l.telefoneRecomendado || '—')}${wa} · 🕒 ${esc(ultimaComCard(l.telefoneRecomendado, l.criadoEm))}</small>
+      <b>${esc(a.nome) || 'Sem nome'}</b> <span style="font-size:.82rem">${status}</span><br>
+      <small style="color:var(--text-dim)">📱 ${esc(a.telefone || '—')}${wa}</small>
     </div>`;
   }).join('') : '<div style="padding:12px 0;color:var(--text-dim)">Ainda não recomendou ninguém (ou os disparos ainda não saíram).</div>';
   modalContainer.innerHTML = `
