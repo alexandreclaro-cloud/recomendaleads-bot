@@ -4004,6 +4004,23 @@ app.patch('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res
   }
 });
 
+// Dispara uma mensagem de TESTE pro número do atendente, pra confirmar que chega.
+app.post('/minha-atendente/testar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const numero = String((req.body && req.body.numero) || '').replace(/\D/g, '');
+    if (numero.length < 10) return res.status(400).json({ ok: false, erro: 'Número inválido — use DDD + número.' });
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+    const enviado = await tenantContext.run(contexto, async () => {
+      return await enviarSemLog(numero, `🔔 *Teste do RecomendaLeads*\n\nSe você recebeu esta mensagem, o *aviso de atendimento está funcionando!* ✅\n\nÉ assim que você vai ser avisado quando um cliente pedir pra falar com um atendente.`);
+    });
+    if (enviado) return res.json({ ok: true });
+    res.status(502).json({ ok: false, erro: 'Não consegui enviar. Confira se o WhatsApp da empresa está conectado e se o número está certo.' });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.delete('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     if (req.usuario && req.usuario.id === req.params.id) {

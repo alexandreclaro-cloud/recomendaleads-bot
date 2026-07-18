@@ -959,8 +959,11 @@
           <label>Mensagem ao "Falar com um atendente" (pausa o Agente I.A.)</label>
           <textarea id="posAtendenteInput" rows="2"></textarea>
           <label>🔔 Avisar atendente no WhatsApp (número com DDD)</label>
-          <input type="text" id="numeroAtendenteInput" placeholder="Ex: 11999998888">
-          <p style="font-size:0.8rem; color:var(--text-dim); margin:4px 0 0;">Quando alguém pede pra falar com um atendente, o robô manda um aviso nesse número. <b>Deixe vazio pra não avisar por WhatsApp</b> (o alerta piscando no painel Conversas acontece de qualquer jeito).</p>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <input type="text" id="numeroAtendenteInput" placeholder="Ex: 11999998888" style="flex:1; min-width:200px;">
+            <button type="button" class="config-save-btn" id="testarAvisoBtn" style="background:var(--text-dim);">📤 Testar</button>
+          </div>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:4px 0 0;">Quando alguém pede pra falar com um atendente, o robô manda um aviso nesse número. Clica em <b>📤 Testar</b> pra receber uma mensagem de teste na hora. <b>Deixe vazio pra não avisar por WhatsApp</b> (o alerta piscando no painel Conversas acontece de qualquer jeito). Obs.: se tiver um <b>⭐ atendente oficial</b> na Equipe, o aviso vai pra ele.</p>
 
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar conversa do recomendado</button>
@@ -2181,6 +2184,21 @@ document.getElementById('infoTesteBtn').addEventListener('click', async () => {
       cont.innerHTML = '<div style="background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:12px;padding:12px 14px;white-space:pre-wrap;">🤖 ' + String(data.resposta || '').replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</div>';
     } else { cont.innerHTML = '<span class="config-status-msg err">❌ ' + (data.erro || 'Erro') + '</span>'; }
   } catch (e) { cont.innerHTML = '<span class="config-status-msg err">❌ Erro de conexão</span>'; }
+});
+
+// ===== Testar aviso do atendente =====
+document.getElementById('testarAvisoBtn') && document.getElementById('testarAvisoBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('testarAvisoBtn');
+  const numero = (document.getElementById('numeroAtendenteInput').value || '').replace(/\D/g, '');
+  if (numero.length < 10) return alert('Preencha o número (com DDD) antes de testar.');
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = '📤 Enviando...';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-atendente/testar`, { method: 'POST', body: JSON.stringify({ numero }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) alert('✅ Mensagem de teste enviada! Confira o WhatsApp ' + numero);
+    else alert('❌ ' + (data.erro || 'Não consegui enviar o teste.'));
+  } catch (e) { alert('❌ Erro de conexão.'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
 });
 
 // ===== Cadência =====
