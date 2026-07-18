@@ -789,6 +789,9 @@ const EMPRESA_PADRAO = {
   enderecoEmpresa: '',
   horariosEmpresa: '',
   posAtendente: 'Claro! 😊 Já estou chamando um atendente pra falar com você por aqui. É só aguardar um pouquinho.',
+  // Número (só dígitos, com DDD) que RECEBE o aviso quando alguém pede atendimento
+  // humano. Vazio = não avisa por WhatsApp (o alerta visual no painel sempre acontece).
+  numeroAtendente: '',
   linkAgendamento: '',
 
   etapasKanban: [
@@ -1033,6 +1036,37 @@ async function sendText(phone, message) {
     const e = err.response?.data ? JSON.stringify(err.response.data) : err.message;
     console.error('Erro ao enviar texto:', e);
     return { ok: false, via: 'zapi', erro: e };
+  }
+}
+
+// Envia uma mensagem SEM registrar no inbox (Conversas) — usado pra avisos internos
+// (ex.: alertar o atendente), pra não criar uma "conversa" com o número do atendente.
+async function enviarSemLog(phone, message) {
+  try {
+    if (tipoWppAtual() === 'oficial') {
+      const cfg = oficialAtual();
+      await axios.post(metaMessagesUrl(cfg), { messaging_product: 'whatsapp', to: soDigitos(phone), type: 'text', text: { body: message } }, { headers: metaHeaders(cfg) });
+      return true;
+    }
+    if (tipoWppAtual() === 'baileys') { await baileys.enviarTexto(empresaIdAtual(), phone, message); return true; }
+    const cfg = zapiAtual();
+    await axios.post(`${zapiBaseUrl(cfg)}/send-text`, { phone, message }, { headers: zapiHeaders(cfg) });
+    return true;
+  } catch (e) { console.error('enviarSemLog:', e.response?.data ? JSON.stringify(e.response.data) : e.message); return false; }
+}
+
+// Quando alguém pede atendimento humano: marca a conversa (aviso visual no painel)
+// e dispara um WhatsApp pro número do atendente cadastrado (se houver).
+async function avisarAtendente(telefone, nomePessoa, empresa) {
+  try {
+    await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`)
+      .set({ precisaAtendente: true, precisaAtendenteEm: new Date().toISOString() }, { merge: true });
+  } catch (e) { /* best-effort */ }
+  const numAt = soDigitosTel(empresa && empresa.numeroAtendente);
+  if (numAt) {
+    const nome = (nomePessoa || '').split(' ')[0] || 'Um cliente';
+    const msg = `🔔 *Atendimento humano solicitado*\n\n${nome} pediu pra falar com um atendente${empresa.nome ? ` na ${empresa.nome}` : ''}.\n\nAbra as *Conversas* no RecomendaLeads pra responder. 👉`;
+    await enviarSemLog(numAt, msg);
   }
 }
 
@@ -2673,6 +2707,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     if (op === 5) {
       await pausarNumero(telefone);
       await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
+      await avisarAtendente(telefone, sessao.nomeRecomendado, empresa);
       await sendText(telefone, substituirVariaveis(empresa.posAtendente || EMPRESA_PADRAO.posAtendente, variaveisRec(sessao, empresa)));
       await saveSessaoRecomendado(telefone, { etapa: 'finalizado_atendente' });
       return true;
@@ -4556,8 +4591,8 @@ app.get('/minha-conversas/:telefone/mensagens', exigirLoginEmpresa, async (req, 
     const mensagens = [];
     snap.forEach(d => mensagens.push({ id: d.id, ...d.data() }));
     mensagens.sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
-    // marca como lida
-    await CONVERSAS_COL().doc(chave).set({ naoLidas: 0 }, { merge: true }).catch(() => {});
+    // marca como lida e tira o alerta de "precisa atendente" (o atendente abriu)
+    await CONVERSAS_COL().doc(chave).set({ naoLidas: 0, precisaAtendente: false }, { merge: true }).catch(() => {});
     const pausado = await CONVERSAS_COL().doc(chave).get()
       .then(d => d.exists && d.data().botPausado) .catch(() => false);
     res.json({ ok: true, mensagens, botPausado: !!pausado });

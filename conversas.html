@@ -25,6 +25,9 @@
   .conv-meta .nome small { color: var(--text-faint); font-weight: 400; font-size: 0.72rem; white-space: nowrap; }
   .conv-meta .prev { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .badge-naolida { background: var(--success); color: #fff; font-size: 0.68rem; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
+  .badge-atendente { background: #DC2626; color: #fff; font-size: 0.62rem; font-weight: 700; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
+  .conv-item.precisa-atendente { background: #FEF2F2; animation: piscaAtend 1.1s ease-in-out infinite; }
+  @keyframes piscaAtend { 0%,100% { background: #FEF2F2; } 50% { background: #FEE2E2; } }
 
   .chat { flex: 1; display: flex; flex-direction: column; background: var(--surface-2); min-width: 0; }
   .chat-empty { flex: 1; display: grid; place-items: center; color: var(--text-dim); font-size: 0.9rem; text-align: center; padding: 20px; }
@@ -118,6 +121,35 @@ function horaCurta(iso) {
 }
 function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
+let _atendentesAlertados = new Set();
+let _tituloOriginal = document.title;
+let _flashTitulo = null;
+// Bip curto via Web Audio (sem arquivo externo — passa no CSP).
+function tocarBipAtendente() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+    o.start(); o.stop(ctx.currentTime + 0.45);
+  } catch (e) {}
+}
+function atualizarAlertaAtendente() {
+  const pendentes = conversas.filter(c => c.precisaAtendente);
+  const novos = pendentes.filter(c => !_atendentesAlertados.has(c.telefone));
+  if (novos.length) tocarBipAtendente();
+  _atendentesAlertados = new Set(pendentes.map(c => c.telefone));
+  if (pendentes.length && !_flashTitulo) {
+    _flashTitulo = setInterval(() => {
+      document.title = document.title.startsWith('🔔') ? _tituloOriginal : `🔔 ${pendentes.length} atendimento(s)!`;
+    }, 1000);
+  } else if (!pendentes.length && _flashTitulo) {
+    clearInterval(_flashTitulo); _flashTitulo = null; document.title = _tituloOriginal;
+  }
+}
 async function carregarConversas() {
   try {
     const resp = await fetchAut(`${API_BASE}/minha-conversas`);
@@ -125,6 +157,7 @@ async function carregarConversas() {
     if (!data.ok) return;
     conversas = data.conversas || [];
     renderConversas();
+    atualizarAlertaAtendente();
   } catch (e) {}
 }
 
@@ -134,14 +167,16 @@ function renderConversas() {
     !termo || (c.nome || '').toLowerCase().includes(termo) || (c.telefone || '').includes(termo));
   const cont = document.getElementById('convItems');
   if (!lista.length) { cont.innerHTML = '<div class="chat-empty" style="padding:30px">Nenhuma conversa ainda.</div>'; return; }
+  // Quem pediu atendimento humano vai pro TOPO da lista.
+  lista.sort((a, b) => (b.precisaAtendente ? 1 : 0) - (a.precisaAtendente ? 1 : 0));
   cont.innerHTML = lista.map(c => `
-    <div class="conv-item ${c.telefone === atual ? 'active' : ''}" data-tel="${esc(c.telefone)}" data-nome="${esc(c.nome || '')}">
+    <div class="conv-item ${c.telefone === atual ? 'active' : ''} ${c.precisaAtendente ? 'precisa-atendente' : ''}" data-tel="${esc(c.telefone)}" data-nome="${esc(c.nome || '')}">
       <div class="conv-av">${inicial(c.nome || c.telefone)}</div>
       <div class="conv-meta">
         <div class="nome">${esc(c.nome || c.telefone)} <small>${horaCurta(c.ultimaEm)}</small></div>
         <div class="prev">${c.ultimaDirecao === 'out' ? 'Você: ' : ''}${esc(c.ultimaMensagem || '')}</div>
       </div>
-      ${c.naoLidas ? `<span class="badge-naolida">${c.naoLidas}</span>` : ''}
+      ${c.precisaAtendente ? '<span class="badge-atendente">🔔 atende</span>' : (c.naoLidas ? `<span class="badge-naolida">${c.naoLidas}</span>` : '')}
     </div>`).join('');
   cont.querySelectorAll('.conv-item').forEach(el => {
     el.addEventListener('click', () => abrirConversa(el.dataset.tel, el.dataset.nome));

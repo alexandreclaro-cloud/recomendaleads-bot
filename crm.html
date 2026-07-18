@@ -958,6 +958,9 @@
           <p style="color:var(--text-dim);font-size:.85rem;margin:10px 0 0;background:var(--brand-soft,#eff4ff);border-radius:8px;padding:10px 12px;">📍 <b>Endereço</b> e 🕒 <b>Horários</b> agora ficam num lugar só: <b>Informações do negócio</b> (no painel). O robô e a I.A. puxam tudo de lá.</p>
           <label>Mensagem ao "Falar com um atendente" (pausa o Agente I.A.)</label>
           <textarea id="posAtendenteInput" rows="2"></textarea>
+          <label>🔔 Avisar atendente no WhatsApp (número com DDD)</label>
+          <input type="text" id="numeroAtendenteInput" placeholder="Ex: 11999998888">
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:4px 0 0;">Quando alguém pede pra falar com um atendente, o robô manda um aviso nesse número. <b>Deixe vazio pra não avisar por WhatsApp</b> (o alerta piscando no painel Conversas acontece de qualquer jeito).</p>
 
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar conversa do recomendado</button>
@@ -1837,6 +1840,7 @@ async function carregarConfiguracao() {
     document.getElementById('faqComoFuncionaInput').value = configuracaoAtual.faqComoFunciona || '';
     document.getElementById('faqValidadeInput').value = configuracaoAtual.faqValidade || '';
     document.getElementById('posAtendenteInput').value = configuracaoAtual.posAtendente || '';
+    document.getElementById('numeroAtendenteInput').value = configuracaoAtual.numeroAtendente || '';
 
     renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
     renderFaixas(configuracaoAtual.faixasBonus || []);
@@ -2115,6 +2119,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const faqComoFunciona = document.getElementById('faqComoFuncionaInput').value.trim() || null;
   const faqValidade = document.getElementById('faqValidadeInput').value.trim() || null;
   const posAtendente = document.getElementById('posAtendenteInput').value.trim() || null;
+  const numeroAtendente = (document.getElementById('numeroAtendenteInput').value || '').replace(/\D/g, '') || null;
 
   btn.disabled = true;
   statusEl.textContent = 'Salvando...';
@@ -2128,7 +2133,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         cadenciaFollowupRecomendado,
-        faqComoFunciona, faqValidade, posAtendente
+        faqComoFunciona, faqValidade, posAtendente, numeroAtendente
       })
     });
     const data = await resp.json();
