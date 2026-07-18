@@ -1205,6 +1205,7 @@ document.querySelectorAll('.subtab-btn').forEach(btn => {
 let leads = [];
 let etapas = [];
 let clientesPipeline = [];
+let ultimaComMap = {}; // telefone(dígitos) → ISO da última mensagem da conversa
 // Colunas FIXAS do pipeline do CLIENTE (recomendador) — entram no início do Kanban.
 // Ids começam com 'cli_' pra o drag-drop dos recomendados ignorá-las.
 const CLI_ETAPAS = [
@@ -1226,20 +1227,28 @@ async function carregarLeads() {
   const loadMsg = document.getElementById('loadMsg');
   const board = document.getElementById('board');
   try {
-    const [respLeads, respConfig, respCli] = await Promise.all([
+    const [respLeads, respConfig, respCli, respConv] = await Promise.all([
       fetchAutenticado(`${API_BASE}/minha-leads`),
       fetchAutenticado(`${API_BASE}/minha-config`),
-      fetchAutenticado(`${API_BASE}/minha-clientes-pipeline`)
+      fetchAutenticado(`${API_BASE}/minha-clientes-pipeline`),
+      fetchAutenticado(`${API_BASE}/minha-conversas`)
     ]);
 
     const dataLeads = await respLeads.json();
     const dataConfig = await respConfig.json();
     let dataCli = { ok: false }; try { dataCli = await respCli.json(); } catch (_) {}
+    let dataConv = { ok: false }; try { dataConv = await respConv.json(); } catch (_) {}
 
     if (!respLeads.ok || !dataLeads.ok) throw new Error(dataLeads.erro || 'Falha ao carregar leads');
 
     leads = dataLeads.leads;
     clientesPipeline = (dataCli && dataCli.ok && Array.isArray(dataCli.clientes)) ? dataCli.clientes : [];
+    // Mapa telefone(dígitos) → horário da última mensagem (pra mostrar no card).
+    ultimaComMap = {};
+    (dataConv && dataConv.ok && Array.isArray(dataConv.conversas) ? dataConv.conversas : []).forEach(c => {
+      const d = String(c.telefone || '').replace(/\D/g, '');
+      if (d && c.ultimaEm) ultimaComMap[d] = c.ultimaEm;
+    });
     etapas = (dataConfig.ok && dataConfig.empresa.etapasKanban && dataConfig.empresa.etapasKanban.length > 0)
       ? dataConfig.empresa.etapasKanban
       : ETAPAS_PADRAO;
@@ -1488,7 +1497,7 @@ function renderBoard() {
         </div>
         <div class="meta">
           <span class="vendedor-tag">${esc(lead.vendedor) || 'Sem vendedor'}</span>
-          <span class="data-tag">📅 ${rotuloDataCard(lead.criadoEm)}</span>
+          <span class="data-tag">🕒 ${esc(ultimaComCard(lead.telefoneRecomendado, lead.criadoEm))}</span>
         </div>
         ${lead.valorCompra != null ? `<div class="valor-compra" style="margin-top:8px; font-weight:700; color:var(--success, #1d9e75);">💰 ${fmtBRL(lead.valorCompra)}</div>` : ''}
       `;
@@ -1530,14 +1539,19 @@ function renderClientesPipeline() {
     doFunil.forEach(c => {
       const card = document.createElement('div');
       card.className = 'lead-card';
+      const amigos = recomendadosDoCliente(c.telefone);
+      const qtd = amigos.length;
+      card.style.cursor = 'pointer';
       card.innerHTML = `
         <div class="nome">${esc(c.nome) || 'Sem nome ainda'}</div>
         <div class="card-info">
           <div><span class="ci-label">Telefone:</span> ${esc(c.telefone) || '—'}</div>
+          ${qtd ? `<div><span class="ci-label">Recomendou:</span> <b>${qtd}</b> amigo(s) — <span style="color:var(--brand,#2563eb)">clique pra ver</span></div>` : ''}
         </div>
         <div class="meta">
-          <span class="data-tag">📅 ${rotuloDataCard(c.atualizadoEm || c.criadoEm)}</span>
+          <span class="data-tag">🕒 ${esc(ultimaComCard(c.telefone, c.atualizadoEm || c.criadoEm))}</span>
         </div>`;
+      card.addEventListener('click', () => abrirRecomendadosDoCliente(c));
       col.appendChild(card);
     });
   });
@@ -1559,6 +1573,32 @@ function rotuloDataCard(isoString) {
   if (diffDias === 0) return 'Hoje';
   if (diffDias === 1) return 'Ontem';
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+// Só a hora (HH:MM) de um ISO.
+function horaCard(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (isNaN(d)) return '';
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+// "Última comunicação" de um telefone: usa o horário da última mensagem da conversa;
+// se não houver, cai no timestamp do próprio card.
+function ultimaComCard(telefone, fallbackIso) {
+  const d = String(telefone || '').replace(/\D/g, '');
+  const iso = (d && ultimaComMap[d]) || fallbackIso;
+  if (!iso) return '';
+  return `${rotuloDataCard(iso)} ${horaCard(iso)}`.trim();
+}
+// Amigos que um cliente (recomendador) indicou — por telefone.
+function recomendadosDoCliente(telefoneCliente) {
+  const dc = String(telefoneCliente || '').replace(/\D/g, '');
+  if (!dc) return [];
+  return (leads || []).filter(l => {
+    const dr = String(l.telefoneRecomendador || '').replace(/\D/g, '');
+    if (!dr) return false;
+    const n = Math.min(dc.length, dr.length);
+    return n >= 8 && dc.slice(-n) === dr.slice(-n);
+  });
 }
 
 function nomeEtapa(etapaId) {
@@ -1631,6 +1671,33 @@ function abrirModalLead(leadId) {
   });
   document.getElementById('modalSalvarBtn').addEventListener('click', () => salvarVendedorModal(leadId));
   document.getElementById('modalExcluirBtn').addEventListener('click', () => excluirLeadModal(leadId));
+}
+
+// Modal: lista os amigos que um cliente (recomendador) indicou.
+function abrirRecomendadosDoCliente(cliente) {
+  const amigos = recomendadosDoCliente(cliente.telefone);
+  const modalContainer = document.getElementById('modalContainer');
+  const linhas = amigos.length ? amigos.map(l => {
+    const tel = (l.telefoneRecomendado || '').replace(/\D/g, '');
+    const wa = tel ? ` · <a href="https://wa.me/${tel}" target="_blank" style="color:var(--brand,#2563eb)">WhatsApp</a>` : '';
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <b>${esc(l.nomeRecomendado) || 'Sem nome'}</b> <span style="color:var(--text-dim);font-size:.82rem">— ${esc(nomeEtapa(l.etapa))}</span><br>
+      <small style="color:var(--text-dim)">📱 ${esc(l.telefoneRecomendado || '—')}${wa} · 🕒 ${esc(ultimaComCard(l.telefoneRecomendado, l.criadoEm))}</small>
+    </div>`;
+  }).join('') : '<div style="padding:12px 0;color:var(--text-dim)">Ainda não recomendou ninguém (ou os disparos ainda não saíram).</div>';
+  modalContainer.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h2>Recomendados de ${esc(cliente.nome) || 'este cliente'}</h2>
+          <button class="modal-close" id="modalCloseBtn">✕</button>
+        </div>
+        <div style="padding:2px 0 8px;color:var(--text-dim);font-size:.85rem"><b>${amigos.length}</b> recomendado(s) · 📱 ${esc(cliente.telefone || '')}</div>
+        <div style="max-height:60vh;overflow:auto">${linhas}</div>
+      </div>
+    </div>`;
+  document.getElementById('modalCloseBtn').addEventListener('click', fecharModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') fecharModal(); });
 }
 
 async function excluirLeadModal(leadId) {
