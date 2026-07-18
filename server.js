@@ -1311,13 +1311,13 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     await upsertClientePipeline(telefone, sessao.clienteNome, 'deu_nome');
 
     const temVendedores = empresa.vendedores && empresa.vendedores.length > 0;
-    const umVendedorSo = temVendedores && empresa.vendedores.length === 1;
     const perguntaVend = (empresa.mensagemPedeVendedor || '').trim();
-    // Pula "quem te atendeu?" quando: (a) não há vendedores; OU (b) a frase está VAZIA e
-    // há no máximo 1 vendedor (aí o robô usa esse vendedor sozinho pra se apresentar).
-    // Com VÁRIOS vendedores, a pergunta importa pra atribuição → segue perguntando.
-    if (!temVendedores || (!perguntaVend && umVendedorSo)) {
-      sessao.vendedorNome = umVendedorSo ? empresa.vendedores[0] : null;
+    // Pula "quem te atendeu?" quando não há vendedores OU a frase está VAZIA (o dono
+    // escolheu não perguntar — ex.: só tem recepcionista). Nesse caso o robô usa o
+    // 1º vendedor cadastrado pra se apresentar ao recomendado. Se a frase estiver
+    // preenchida, pergunta normalmente (com a lista de vendedores).
+    if (!temVendedores || !perguntaVend) {
+      sessao.vendedorNome = temVendedores ? empresa.vendedores[0] : null;
       await iniciarColetaContatos(telefone, sessao, empresa);
       return;
     }
