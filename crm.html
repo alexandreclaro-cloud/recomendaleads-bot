@@ -1669,6 +1669,7 @@ function abrirModalLead(leadId) {
           <div class="modal-historico">${historicoHtml}</div>
         </div>
         <div class="modal-actions">
+          ${telLimpo ? `<a class="wa-btn" href="/conversas?tel=${telLimpo}" target="_blank" style="background:var(--brand,#2563eb);color:#fff;">💬 Ver mensagem</a>` : ''}
           ${waLink ? `<a class="wa-btn" href="${waLink}" target="_blank">Abrir WhatsApp</a>` : ''}
           <button class="save-vendedor-btn" id="modalSalvarBtn">Salvar vendedor</button>
           <button class="save-vendedor-btn" id="modalExcluirBtn" style="background:#dc2626;">🗑️ Excluir este lead</button>
