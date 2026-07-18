@@ -1307,7 +1307,7 @@ async function atualizarEstadoWhats() {
     if (hint && data.erro) {
       const errTxt = String(data.erro).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
       if (/client.?token/i.test(data.erro)) {
-        hint.innerHTML = '🔑 A Z-API pediu o <b>Client-Token</b>. Se a <b>Segurança da conta</b> estiver LIGADA no Z-API, cole o token; se estiver <b>desligada</b>, refaça o "Preencher automático" (o Token da instância pode estar errado).';
+        hint.innerHTML = `🔑 A Z-API pediu o <b>Client-Token</b>. Se a <b>Segurança da conta</b> estiver LIGADA no Z-API, cole o token; se estiver <b>desligada</b>, refaça o "Preencher automático" (o Token da instância pode estar errado).<br><span style="font-weight:400;opacity:.8;">Resposta da Z-API: "${errTxt}"</span>`;
       } else {
         hint.innerHTML = `⚠️ Não consegui confirmar a conexão. A Z-API respondeu: "<b>${errTxt}</b>". Confira o Instance ID e o Token (use o "Preencher automático" de novo) e salve.`;
       }
