@@ -93,7 +93,7 @@
         <div class="conv-av" id="chatAv">?</div>
         <div class="info"><b id="chatNome">—</b><small id="chatTel">—</small></div>
         <span class="bot-flag on" id="botFlag">Agente I.A. ativo</span>
-        <button class="btn btn-secondary" id="pausarBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Pausar Agente I.A.</button>
+        <button class="btn btn-secondary" id="pausarBtn" style="display:none;padding:8px 12px;font-size:0.8rem">🙋 Assumir (sou eu)</button>
         <button class="btn btn-secondary" id="devolverBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Devolver ao Agente I.A.</button>
         <button class="btn btn-ghost" id="resetarBtn" title="Zerar este contato: apaga a conversa e reinicia a pessoa do zero (mantém os leads no CRM)" style="padding:8px 12px;font-size:0.8rem;color:#c0392b">Resetar</button>
       </div>
@@ -187,6 +187,7 @@ function renderConversas() {
       <div class="conv-meta">
         <div class="nome">${esc(c.nome || c.telefone)} <small>${horaCurta(c.ultimaEm)}</small></div>
         <div class="prev">${c.ultimaDirecao === 'out' ? 'Você: ' : ''}${esc(c.ultimaMensagem || '')}</div>
+        ${c.atendenteNome ? `<div class="prev" style="color:var(--action-dark);font-weight:600;font-size:0.72rem;">🙋 Atendendo: ${esc(c.atendenteNome)}</div>` : ''}
       </div>
       ${c.precisaAtendente ? '<span class="badge-atendente">🔔 atende</span>' : (c.naoLidas ? `<span class="badge-naolida">${c.naoLidas}</span>` : '')}
     </div>`).join('');
@@ -220,7 +221,8 @@ async function carregarMensagens(scroll) {
     const devolver = document.getElementById('devolverBtn');
     const pausar = document.getElementById('pausarBtn');
     if (botPausadoAtual) {
-      flag.textContent = 'Você assumiu'; flag.className = 'bot-flag off';
+      flag.textContent = data.atendenteNome ? `🙋 ${data.atendenteNome}` : 'Você assumiu';
+      flag.className = 'bot-flag off';
       devolver.style.display = 'inline-flex';
       pausar.style.display = 'none';
     } else {

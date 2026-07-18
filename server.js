@@ -4629,9 +4629,8 @@ app.get('/minha-conversas/:telefone/mensagens', exigirLoginEmpresa, async (req, 
     mensagens.sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
     // marca como lida e tira o alerta de "precisa atendente" (o atendente abriu)
     await CONVERSAS_COL().doc(chave).set({ naoLidas: 0, precisaAtendente: false }, { merge: true }).catch(() => {});
-    const pausado = await CONVERSAS_COL().doc(chave).get()
-      .then(d => d.exists && d.data().botPausado) .catch(() => false);
-    res.json({ ok: true, mensagens, botPausado: !!pausado });
+    const conv = await CONVERSAS_COL().doc(chave).get().then(d => d.exists ? d.data() : {}).catch(() => ({}));
+    res.json({ ok: true, mensagens, botPausado: !!conv.botPausado, atendenteNome: conv.atendenteNome || null });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -4650,7 +4649,8 @@ app.post('/minha-conversas/:telefone/enviar', exigirLoginEmpresa, async (req, re
       await pausarNumero(telefone);      // assume o atendimento: bot para nesse contato
       await sendText(telefone, mensagem); // envia e já registra a mensagem
     });
-    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true }, { merge: true });
+    const nomeAt = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -4664,7 +4664,7 @@ app.post('/minha-conversas/:telefone/devolver', exigirLoginEmpresa, async (req, 
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
     await tenantContext.run(contexto, async () => { await despausarNumero(telefone); });
-    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: false }, { merge: true });
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: false, atendenteNome: null, atendenteEm: null }, { merge: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -4678,8 +4678,9 @@ app.post('/minha-conversas/:telefone/pausar', exigirLoginEmpresa, async (req, re
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
     await tenantContext.run(contexto, async () => { await pausarNumero(telefone); });
-    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true }, { merge: true });
-    res.json({ ok: true });
+    const nomeAt = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
+    res.json({ ok: true, atendenteNome: nomeAt });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
