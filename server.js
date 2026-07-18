@@ -1040,7 +1040,7 @@ async function sendText(phone, message) {
     // const d = delaysHumanos(phone, message);
     // if (d) { body.delayTyping = d.delayTyping; if (d.delayMessage > 0) body.delayMessage = d.delayMessage; }
     await axios.post(`${zapiBaseUrl(cfg)}/send-text`, body, { headers: zapiHeaders(cfg) });
-    console.log(`[ENVIADO] para ${phone}: ${message.slice(0, 60)}...`);
+    console.log(`[ENVIADO via instância ${cfg.instanceId}] empresa=${empresaIdAtual()} para ${phone}: ${message.slice(0, 40)}...`);
     registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
     return { ok: true, via: 'zapi' };
   } catch (err) {
