@@ -1010,6 +1010,35 @@ function delaysHumanos(phone, message) {
   return { delayTyping: typingSeg, delayMessage: delayMessageSeg };
 }
 
+// Cache de números já resolvidos (não bater no Z-API a cada envio).
+const _numeroCanonicoCache = new Map();
+
+// Resolve o número CANÔNICO do WhatsApp via Z-API — corrige o "9º dígito" do Brasil.
+// Chats NOVOS (recomendados) usam o número que o CLIENTE digitou/compartilhou, que pode
+// não bater com o formato registrado no WhatsApp (com/sem o 9). Nesse caso a Z-API aceita
+// (200) mas NÃO entrega. Aqui perguntamos ao WhatsApp qual é o número certo antes de enviar.
+// Best-effort: se a consulta falhar, devolve os dígitos originais (comportamento de antes).
+async function resolverNumeroZapi(cfg, phone) {
+  const digitos = soDigitos(phone);
+  if (!digitos) return digitos;
+  if (_numeroCanonicoCache.has(digitos)) return _numeroCanonicoCache.get(digitos);
+  const base = zapiBaseUrl(cfg);
+  const headers = zapiHeaders(cfg);
+  for (const rota of [`/phone-exists/${digitos}`, `/contacts/iswhatsapp/${digitos}`]) {
+    try {
+      const resp = await axios.get(`${base}${rota}`, { headers, timeout: 8000 });
+      const d = resp.data || {};
+      const canonico = soDigitos(d.outputPhone || d.phone || '');
+      if (canonico) {
+        _numeroCanonicoCache.set(digitos, canonico);
+        if (canonico !== digitos) console.log(`[9dig] corrigido ${digitos} -> ${canonico}`);
+        return canonico;
+      }
+    } catch (e) { /* tenta a próxima rota ou cai no fallback */ }
+  }
+  return digitos; // não cacheia falha -> tenta resolver de novo no próximo envio
+}
+
 async function sendText(phone, message) {
   if (tipoWppAtual() === 'baileys') {
     try {
@@ -1033,14 +1062,15 @@ async function sendText(phone, message) {
   }
   try {
     const cfg = zapiAtual();
-    const body = { phone: soDigitos(phone), message };
+    const destino = await resolverNumeroZapi(cfg, phone);
+    const body = { phone: destino, message };
     // Humanização (delayTyping/delayMessage) DESLIGADA temporariamente: suspeita de que
     // a Z-API está aceitando mas NÃO entregando mensagens com delay. Envio direto, igual
     // ao que funciona (aviso do atendente). Reativar depois de confirmar a causa.
     // const d = delaysHumanos(phone, message);
     // if (d) { body.delayTyping = d.delayTyping; if (d.delayMessage > 0) body.delayMessage = d.delayMessage; }
     await axios.post(`${zapiBaseUrl(cfg)}/send-text`, body, { headers: zapiHeaders(cfg) });
-    console.log(`[ENVIADO via instância ${cfg.instanceId}] empresa=${empresaIdAtual()} para ${phone}: ${message.slice(0, 40)}...`);
+    console.log(`[ENVIADO via instância ${cfg.instanceId}] empresa=${empresaIdAtual()} para ${destino}${destino !== soDigitos(phone) ? ` (era ${soDigitos(phone)})` : ''}: ${message.slice(0, 40)}...`);
     registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
     return { ok: true, via: 'zapi' };
   } catch (err) {
