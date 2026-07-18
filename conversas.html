@@ -6,8 +6,8 @@
 <title>Conversas — RecomendaLeads</title>
 <link rel="stylesheet" href="/theme.css">
 <style>
-  body { height: 100vh; overflow: hidden; }
-  .inbox { display: flex; height: 100vh; }
+  body { height: 100vh; height: 100dvh; overflow: hidden; }
+  .inbox { display: flex; height: 100vh; height: 100dvh; }
 
   .conv-list { width: 360px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
   .conv-top { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
@@ -56,6 +56,18 @@
     .conv-list.hide-mobile { display: none; }
     .chat.show-mobile { display: flex; }
     .chat { display: none; }
+    /* Botão voltar sempre visível no celular (não depende de JS). */
+    #voltarMobile { display: inline-flex !important; }
+    /* Cabeçalho do chat: deixa quebrar linha e compacta os botões. */
+    .chat-head { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    .chat-head .info b { font-size: 0.9rem; }
+    .chat-head .btn { padding: 7px 10px !important; font-size: 0.76rem !important; }
+    .bot-flag { font-size: 0.68rem; }
+    /* Bolhas ocupam mais largura no celular. */
+    .bubble { max-width: 85%; }
+    .msgs { padding: 14px 12px; }
+    .composer { padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+    .composer input { font-size: 16px; }  /* evita zoom automático do iOS ao focar */
   }
 </style>
 </head>
