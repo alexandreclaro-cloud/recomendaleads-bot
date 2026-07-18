@@ -1033,10 +1033,12 @@ async function sendText(phone, message) {
   }
   try {
     const cfg = zapiAtual();
-    const body = { phone, message };
-    // Humanização: "digitando..." + respiro entre mensagens (offloadado pra Z-API).
-    const d = delaysHumanos(phone, message);
-    if (d) { body.delayTyping = d.delayTyping; if (d.delayMessage > 0) body.delayMessage = d.delayMessage; }
+    const body = { phone: soDigitos(phone), message };
+    // Humanização (delayTyping/delayMessage) DESLIGADA temporariamente: suspeita de que
+    // a Z-API está aceitando mas NÃO entregando mensagens com delay. Envio direto, igual
+    // ao que funciona (aviso do atendente). Reativar depois de confirmar a causa.
+    // const d = delaysHumanos(phone, message);
+    // if (d) { body.delayTyping = d.delayTyping; if (d.delayMessage > 0) body.delayMessage = d.delayMessage; }
     await axios.post(`${zapiBaseUrl(cfg)}/send-text`, body, { headers: zapiHeaders(cfg) });
     console.log(`[ENVIADO] para ${phone}: ${message.slice(0, 60)}...`);
     registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
