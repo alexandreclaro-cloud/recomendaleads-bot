@@ -1077,7 +1077,9 @@ async function avisarAtendente(telefone, nomePessoa, empresa) {
   const numAt = await getNumeroAvisoAtendente(empresa);
   if (numAt) {
     const nome = (nomePessoa || '').split(' ')[0] || 'Um cliente';
-    const msg = `🔔 *Atendimento humano solicitado*\n\n${nome} pediu pra falar com um atendente${empresa.nome ? ` na ${empresa.nome}` : ''}.\n\nAbra as *Conversas* no RecomendaLeads pra responder. 👉`;
+    const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
+    const link = `${base}/conversas?tel=${encodeURIComponent(soDigitosTel(telefone))}`;
+    const msg = `🔔 *Atendimento humano solicitado*\n\n${nome} pediu pra falar com um atendente${empresa.nome ? ` na ${empresa.nome}` : ''}.\n\n👉 Responda pelo sistema (abre direto na conversa):\n${link}`;
     await enviarSemLog(numAt, msg);
   }
 }

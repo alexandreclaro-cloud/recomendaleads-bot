@@ -170,7 +170,22 @@ async function carregarConversas() {
     conversas = data.conversas || [];
     renderConversas();
     atualizarAlertaAtendente();
+    abrirPelaURL();
   } catch (e) {}
+}
+// Abre direto a conversa quando o link do aviso traz ?tel=NUMERO (do WhatsApp do atendente).
+let _autoAbriu = false;
+function abrirPelaURL() {
+  if (_autoAbriu) return;
+  const telParam = (new URLSearchParams(window.location.search).get('tel') || '').replace(/\D/g, '');
+  if (!telParam) return;
+  const alvo = conversas.find(c => {
+    const d = String(c.telefone || '').replace(/\D/g, '');
+    if (!d || d.length < 8) return false;
+    const n = Math.min(d.length, telParam.length);
+    return n >= 8 && d.slice(-n) === telParam.slice(-n);
+  });
+  if (alvo) { _autoAbriu = true; abrirConversa(alvo.telefone, alvo.nome || ''); }
 }
 
 function renderConversas() {
