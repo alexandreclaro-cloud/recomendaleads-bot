@@ -1070,6 +1070,24 @@ async function avisarAtendente(telefone, nomePessoa, empresa) {
   }
 }
 
+// Detecta pedido de atendente humano por frase natural, em qualquer momento.
+function pedeAtendente(texto) {
+  const t = (texto || '').toLowerCase().trim();
+  if (!t) return false;
+  if (/n[ãa]o (quero|precisa)/.test(t)) return false; // "não quero atendente"
+  return /\batendente\b|recepcionista|\bhumano\b|falar com (uma |um |a )?(pessoa|algu[ée]m|atendente|recepcionista|humano|gente)|algu[ée]m (pode )?me (ajud|atend)|quero falar com (uma |um )?(pessoa|algu[ée]m|gente)|atendimento humano|me transfere|chama (um|uma) (atendente|pessoa)/.test(t);
+}
+
+// Transfere a conversa pra um humano: pausa o bot, avisa o atendente (visual + WhatsApp)
+// e manda a mensagem de "já estou chamando um atendente". Serve pra qualquer fluxo.
+async function transferirParaAtendente(telefone, nome, empresa) {
+  await pausarNumero(telefone);
+  await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
+  await avisarAtendente(telefone, nome, empresa);
+  const prim = (nome || '').split(' ')[0] || 'você';
+  await sendText(telefone, substituirVariaveis(empresa.posAtendente || EMPRESA_PADRAO.posAtendente, { nomeRecomendado: prim, recomendado: prim, empresa: empresa.nome }));
+}
+
 async function sendImage(phone, imageUrl, caption) {
   if (tipoWppAtual() === 'baileys') {
     try {
@@ -1511,8 +1529,15 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     // Conversa já terminou. Se o atendimento pós-fluxo estiver ligado, tenta
     // responder dúvidas do cliente (endereço, horário, etc.) com as infos do negócio.
     if (empresa.infoAtendimentoAtivo && texto && !naConfirmacaoAvisar) {
-      const resposta = await responderPerguntaNegocio(texto, empresa);
-      if (resposta) await sendText(telefone, resposta);
+      let resposta = await responderPerguntaNegocio(texto, empresa);
+      // A IA sinaliza com ##TRANSFERIR## quando não consegue responder → chama humano.
+      if (resposta && /##TRANSFERIR##/.test(resposta)) {
+        resposta = resposta.replace(/##TRANSFERIR##/g, '').trim();
+        if (resposta) await sendText(telefone, resposta);
+        await transferirParaAtendente(telefone, sessao.clienteNome, empresa);
+      } else if (resposta) {
+        await sendText(telefone, resposta);
+      }
     }
     return;
   }
@@ -2517,9 +2542,9 @@ ${infos}
 
 Regras:
 - Use SOMENTE os dados acima. NUNCA invente endereço, horário, preço, ou qualquer dado que não esteja listado.
-- Se o cliente perguntar algo que NÃO está nas informações, responda breve e gentil dizendo que vai verificar e a equipe retorna em seguida. Nunca invente.
-- Se for só um "oi", agradecimento ou conversa fiada, responda cordialmente e se coloque à disposição.
-- No máximo 2-3 frases curtas. Sem markdown, sem títulos.`;
+- Se o cliente perguntar algo que NÃO está nas informações (ou pedir algo que exige um humano), responda breve e gentil dizendo que vai *transferir pra uma atendente* que já vai ajudar, e TERMINE sua resposta com o marcador ##TRANSFERIR## (o sistema vai chamar um humano de verdade). Nunca invente.
+- Se for só um "oi", agradecimento ou conversa fiada, responda cordialmente e se coloque à disposição (NÃO use ##TRANSFERIR## nesses casos).
+- No máximo 2-3 frases curtas. Sem markdown, sem títulos (o marcador ##TRANSFERIR##, quando usado, não conta como markdown).`;
 
   try {
     const resp = await axios.post('https://api.anthropic.com/v1/messages', {
@@ -2928,6 +2953,17 @@ async function tratarWebhook(req, res) {
     const recomendadoAtivo = sessaoRecomendado
       && sessaoRecomendado.etapa
       && !['finalizado', 'finalizado_negativo', 'finalizado_atendente'].includes(sessaoRecomendado.etapa);
+
+    // Pedido de ATENDENTE por frase natural ("atendente", "recepcionista", "humano",
+    // "alguém pode me ajudar"...), em qualquer momento — desde que haja uma conversa
+    // com o robô (cliente ou recomendado). Transfere pro humano na hora.
+    if (pedeAtendente(texto) && !ehGatilhoInicial && (sessaoExiste || sessaoRecomendado)) {
+      const empresaAt = await getEmpresa();
+      const nomePessoa = (sessaoExiste && sessaoExistenteSnap.data().clienteNome)
+        || (sessaoRecomendado && sessaoRecomendado.nomeRecomendado) || '';
+      await transferirParaAtendente(telefone, nomePessoa, empresaAt);
+      return res.sendStatus(200);
+    }
 
     // ---- Demonstração por nicho ----
     // O nicho vem no código do link (novo teste) ou fica guardado na sessão
