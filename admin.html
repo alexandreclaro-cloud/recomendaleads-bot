@@ -194,6 +194,8 @@
       <a class="btn btn-brand" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
     </div>
 
+    <div id="alertaConexao" class="dono-only" style="margin-bottom:14px;"></div>
+
     <div class="card dono-only" style="padding:0;overflow:auto;">
       <table>
         <thead>
@@ -580,7 +582,7 @@ function renderTabela() {
     <tr>
       <td><b>${esc(e.nome) || '—'}</b>${e.pendenteAprovacao ? '<div style="margin-top:3px"><span class="pill off">⏳ Aguardando validação</span></div>' : ''}</td>
       <td>${esc(e.email) || '—'}</td>
-      <td>${e.whatsappProvisionado ? '<span class="pill ok">Provisionado</span>' : '<span class="pill off">Pendente</span>'}</td>
+      <td>${statusWhatsappPill(e)}</td>
       <td>${e.leads || 0}</td>
       <td>${esc(e.plano) || '—'}</td>
       <td>${pagamentoPill(e.statusPagamento)}</td>
@@ -596,7 +598,40 @@ function renderTabela() {
   tb.querySelectorAll('[data-entrar]').forEach(b => b.addEventListener('click', () => entrarComo(b.dataset.entrar)));
   tb.querySelectorAll('[data-validar]').forEach(b => b.addEventListener('click', () => validarCadastro(b.dataset.validar)));
   tb.querySelectorAll('[data-excluir]').forEach(b => b.addEventListener('click', () => excluirCliente(b.dataset.excluir)));
+  renderAlertaConexao();
   icons();
+}
+
+// "há X" a partir de uma data ISO.
+function tempoDesde(iso) {
+  if (!iso) return '';
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h}h`;
+  return `há ${Math.round(h / 24)}d`;
+}
+// Pill de status do WhatsApp por empresa (usa o monitor de conexão).
+function statusWhatsappPill(e) {
+  if (!e.whatsappProvisionado) return '<span class="pill off">Pendente</span>';
+  if (e.whatsappTipo === 'oficial') return '<span class="pill ok">Oficial ✅</span>';
+  const m = e.whatsappMonitor;
+  if (!m || m.conectado == null) return '<span class="pill">Provisionado</span>';
+  if (m.conectado) return '<span class="pill ok">🟢 Conectado</span>';
+  const desde = m.caiuEm ? ` ${tempoDesde(m.caiuEm)}` : '';
+  return `<span class="pill" style="background:#FEE2E2;color:#B91C1C;border-color:#FCA5A5">🔴 Caiu${desde}</span>`;
+}
+// Banner de alerta no topo quando algum cliente Z-API está offline.
+function renderAlertaConexao() {
+  const box = document.getElementById('alertaConexao');
+  if (!box) return;
+  const caidos = (empresas || []).filter(e => e.whatsappProvisionado && e.whatsappTipo !== 'oficial' && e.whatsappMonitor && e.whatsappMonitor.conectado === false);
+  if (!caidos.length) { box.innerHTML = ''; return; }
+  const nomes = caidos.map(e => `<b>${esc(e.nome) || 'Cliente'}</b>${e.whatsappMonitor.caiuEm ? ` <span style="opacity:.75">(${tempoDesde(e.whatsappMonitor.caiuEm)})</span>` : ''}`).join(' · ');
+  box.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;border-radius:12px;padding:12px 16px;font-size:0.92rem;">
+    🔴 <b>${caidos.length} cliente(s) com WhatsApp CAÍDO</b> — precisa reconectar: ${nomes}
+  </div>`;
 }
 
 function inp(id, val, ph) { return `<div class="campo"><input class="input" id="${id}" value="${esc(val)}" placeholder="${ph || ''}"></div>`; }

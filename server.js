@@ -5463,6 +5463,8 @@ app.get('/admin/empresas', exigirAdmin, async (req, res) => {
         zapiToken: data.zapiToken || null,
         zapiClientToken: data.zapiClientToken || null,
         whatsappProvisionado: !!(data.zapiInstanceId && data.zapiToken),
+        whatsappMonitor: data.whatsappMonitor || null,
+        whatsappTipo: data.whatsappTipo || 'zapi',
         assinatura: data.assinatura || null,
         leads: 0
       });
@@ -6083,6 +6085,48 @@ function iniciarExecutorAgendamentos() {
 }
 
 // ============================================================
+// MONITOR DE CONEXÃO — checa periodicamente se o WhatsApp (Z-API) de cada
+// empresa está conectado e MARCA quando cai, pra o dono ver no /admin sem
+// precisar abrir o painel de cada cliente.
+// ============================================================
+async function checarConexaoZapi(empresa) {
+  const cfg = zapiDaEmpresa(empresa);
+  if (!cfg || !cfg.instanceId || !cfg.token) return null; // sem instância própria
+  try {
+    const resp = await axios.get(`${zapiBaseUrl(cfg)}/status`, { headers: zapiHeaders(cfg), timeout: 8000 });
+    const d = resp.data || {};
+    return !!(d.connected || d.smartphoneConnected);
+  } catch (e) { return false; }
+}
+async function monitorarConexoes() {
+  if (!db) return;
+  try {
+    const snap = await EMPRESAS_COL().get();
+    for (const doc of snap.docs) {
+      const empresa = { id: doc.id, ...doc.data() };
+      // Só monitora quem tem instância Z-API PRÓPRIA (número em preparação/global fica de fora).
+      if (!empresa.zapiInstanceId || !empresa.zapiToken || empresa.whatsappTipo === 'oficial') continue;
+      const conectado = await checarConexaoZapi(empresa);
+      if (conectado === null) continue;
+      const agora = new Date().toISOString();
+      const mon = empresa.whatsappMonitor || {};
+      const eraConectado = mon.conectado !== false; // sem histórico = tratado como estava ok
+      const patch = { conectado, checadoEm: agora };
+      if (!conectado && eraConectado) {
+        patch.caiuEm = agora; // acabou de cair — guarda o momento
+        console.warn(`[MONITOR] WhatsApp CAIU — ${empresa.nome || empresa.id} (${empresa.id})`);
+      }
+      if (conectado) patch.caiuEm = null; // voltou
+      await EMPRESAS_COL().doc(empresa.id).set({ whatsappMonitor: patch }, { merge: true });
+    }
+  } catch (e) { console.error('[MONITOR] erro:', e.message); }
+}
+function iniciarMonitorConexoes() {
+  setTimeout(monitorarConexoes, 30000); // 1ª checagem 30s após subir
+  setInterval(monitorarConexoes, 5 * 60 * 1000).unref?.(); // depois, de 5 em 5 min
+}
+
+// ============================================================
 // INICIALIZAÇÃO DO SERVIDOR
 // ============================================================
 
@@ -6093,6 +6137,8 @@ app.listen(PORT, () => {
   console.log(`Firestore inicializado: ${db ? 'SIM' : 'NÃO — verifique FIREBASE_SERVICE_ACCOUNT'}`);
   migrarUsuariosGestores();
   iniciarExecutorAgendamentos();
+  iniciarMonitorConexoes();
+  console.log('Monitor de conexão iniciado (checagem a cada 5 min)');
   // Agenda de Marketing: checa de hora em hora quem está no ciclo de reenvio.
   setInterval(processarAgendaMarketing, 60 * 60 * 1000).unref?.();
   processarAgendaMarketing();
