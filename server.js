@@ -1310,9 +1310,14 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     // Pipeline do cliente: deu o nome.
     await upsertClientePipeline(telefone, sessao.clienteNome, 'deu_nome');
 
-    // Sem vendedores cadastrados: pula "quem te atendeu?" e vai direto pros contatos.
-    if (!empresa.vendedores || empresa.vendedores.length === 0) {
-      sessao.vendedorNome = null;
+    const temVendedores = empresa.vendedores && empresa.vendedores.length > 0;
+    const umVendedorSo = temVendedores && empresa.vendedores.length === 1;
+    const perguntaVend = (empresa.mensagemPedeVendedor || '').trim();
+    // Pula "quem te atendeu?" quando: (a) não há vendedores; OU (b) a frase está VAZIA e
+    // há no máximo 1 vendedor (aí o robô usa esse vendedor sozinho pra se apresentar).
+    // Com VÁRIOS vendedores, a pergunta importa pra atribuição → segue perguntando.
+    if (!temVendedores || (!perguntaVend && umVendedorSo)) {
+      sessao.vendedorNome = umVendedorSo ? empresa.vendedores[0] : null;
       await iniciarColetaContatos(telefone, sessao, empresa);
       return;
     }
@@ -1321,7 +1326,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     await saveSessao(telefone, sessao);
 
     const listaVendedores = empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
-    const perguntaVendedor = substituirVariaveis(empresa.mensagemPedeVendedor || EMPRESA_PADRAO.mensagemPedeVendedor, { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome });
+    const perguntaVendedor = substituirVariaveis(perguntaVend || EMPRESA_PADRAO.mensagemPedeVendedor, { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome });
     await sendText(telefone, `${perguntaVendedor}\n\n${listaVendedores}\n\n👇 _Digita o número aqui_ 👇`);
     return;
   }
