@@ -1303,9 +1303,14 @@ async function atualizarEstadoWhats() {
     // QR de leitura removido (não usamos mais): a conexão é feita colando o
     // endereço da instância na "Configuração avançada (Z-API)". Aqui só o status.
     setBadgeWhats(false); mostrarAreaWhats(''); pararPollQr();
-    // Se o erro do Z-API for sobre o Client-Token, avisa (é a causa mais comum).
-    if (hint && /client.?token|null not allowed/i.test(data.erro || '')) {
-      hint.innerHTML = '🔑 <b>Falta o Client-Token.</b> No Z-API → <b>Segurança</b> → copie o "Token de segurança da conta" e cole no campo <b>Client-Token</b> (na Configuração avançada) → Salvar WhatsApp.';
+    // Mostra o erro REAL da Z-API pra ajudar a diagnosticar (em vez de chutar).
+    if (hint && data.erro) {
+      const errTxt = String(data.erro).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+      if (/client.?token/i.test(data.erro)) {
+        hint.innerHTML = '🔑 A Z-API pediu o <b>Client-Token</b>. Se a <b>Segurança da conta</b> estiver LIGADA no Z-API, cole o token; se estiver <b>desligada</b>, refaça o "Preencher automático" (o Token da instância pode estar errado).';
+      } else {
+        hint.innerHTML = `⚠️ Não consegui confirmar a conexão. A Z-API respondeu: "<b>${errTxt}</b>". Confira o Instance ID e o Token (use o "Preencher automático" de novo) e salve.`;
+      }
       hint.style.display = 'block';
     }
   } catch (err) {}
