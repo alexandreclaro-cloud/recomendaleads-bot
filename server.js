@@ -1055,14 +1055,26 @@ async function enviarSemLog(phone, message) {
   } catch (e) { console.error('enviarSemLog:', e.response?.data ? JSON.stringify(e.response.data) : e.message); return false; }
 }
 
+// Número que recebe o aviso: 1º o ATENDENTE OFICIAL cadastrado na Equipe (com telefone);
+// se não houver, cai no número digitado no CRM (numeroAtendente).
+async function getNumeroAvisoAtendente(empresa) {
+  const eid = (empresa && empresa.id) || empresaIdAtual();
+  try {
+    const snap = await USUARIOS_COL().where('empresaId', '==', eid).get();
+    const oficial = snap.docs.map(d => d.data()).find(u => u.atendenteOficial && u.telefone);
+    if (oficial && oficial.telefone) return soDigitosTel(oficial.telefone);
+  } catch (e) { /* best-effort */ }
+  return soDigitosTel(empresa && empresa.numeroAtendente);
+}
+
 // Quando alguém pede atendimento humano: marca a conversa (aviso visual no painel)
-// e dispara um WhatsApp pro número do atendente cadastrado (se houver).
+// e dispara um WhatsApp pro atendente OFICIAL (ou número do CRM, se não houver oficial).
 async function avisarAtendente(telefone, nomePessoa, empresa) {
   try {
     await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`)
       .set({ precisaAtendente: true, precisaAtendenteEm: new Date().toISOString() }, { merge: true });
   } catch (e) { /* best-effort */ }
-  const numAt = soDigitosTel(empresa && empresa.numeroAtendente);
+  const numAt = await getNumeroAvisoAtendente(empresa);
   if (numAt) {
     const nome = (nomePessoa || '').split(' ')[0] || 'Um cliente';
     const msg = `🔔 *Atendimento humano solicitado*\n\n${nome} pediu pra falar com um atendente${empresa.nome ? ` na ${empresa.nome}` : ''}.\n\nAbra as *Conversas* no RecomendaLeads pra responder. 👉`;
@@ -3887,6 +3899,13 @@ async function contarGestoresAtivos(empresaId) {
   const snap = await USUARIOS_COL().where('empresaId', '==', empresaId).get();
   return snap.docs.filter(d => d.data().papel === 'gestor' && d.data().ativo !== false).length;
 }
+// Garante que só UM usuário da empresa seja o atendente oficial (desmarca os outros).
+async function desmarcarOutrosOficiais(empresaId, exceptoId) {
+  const snap = await USUARIOS_COL().where('empresaId', '==', empresaId).get();
+  const batch = db.batch(); let n = 0;
+  snap.docs.forEach(d => { if (d.id !== exceptoId && d.data().atendenteOficial) { batch.update(d.ref, { atendenteOficial: false }); n++; } });
+  if (n) await batch.commit();
+}
 
 app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
@@ -3898,6 +3917,8 @@ app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
         nome: u.nome,
         email: u.email,
         papel: u.papel,
+        telefone: u.telefone || '',
+        atendenteOficial: !!u.atendenteOficial,
         ativo: u.ativo !== false,
         souEu: !!(req.usuario && req.usuario.id === d.id)
       };
@@ -3910,7 +3931,7 @@ app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
 
 app.post('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
-    const { nome, email, senha, papel } = req.body;
+    const { nome, email, senha, papel, telefone, atendenteOficial } = req.body;
     if (!nome || !email || !senha) {
       return res.status(400).json({ ok: false, erro: 'Informe nome, email e senha' });
     }
@@ -3923,6 +3944,7 @@ app.post('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => 
     if (!existe.empty) {
       return res.status(409).json({ ok: false, erro: 'Já existe um usuário com esse email' });
     }
+    const tel = String(telefone || '').replace(/\D/g, '');
     const senhaHash = await bcrypt.hash(String(senha), 10);
     const ref = await USUARIOS_COL().add({
       empresaId: req.empresaLogin.id,
@@ -3930,10 +3952,13 @@ app.post('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => 
       email: emailNorm,
       senhaHash,
       papel: papelFinal,
+      telefone: tel,
+      atendenteOficial: !!atendenteOficial,
       senhaProvisoria: true,
       ativo: true,
       criadoEm: new Date().toISOString()
     });
+    if (atendenteOficial) await desmarcarOutrosOficiais(req.empresaLogin.id, ref.id);
     res.json({ ok: true, id: ref.id });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -3948,9 +3973,11 @@ app.patch('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res
       return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
     }
     const alvo = doc.data();
-    const { nome, papel, novaSenha } = req.body;
+    const { nome, papel, novaSenha, telefone, atendenteOficial } = req.body;
     const update = {};
     if (nome) update.nome = String(nome).trim();
+    if (telefone !== undefined) update.telefone = String(telefone || '').replace(/\D/g, '');
+    if (atendenteOficial !== undefined) update.atendenteOficial = !!atendenteOficial;
     if (papel === 'gestor' || papel === 'atendente') {
       // Não permitir rebaixar o último gestor da empresa.
       if (alvo.papel === 'gestor' && papel !== 'gestor' && (await contarGestoresAtivos(req.empresaLogin.id)) <= 1) {
@@ -3969,6 +3996,8 @@ app.patch('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res
       return res.status(400).json({ ok: false, erro: 'Nada para atualizar' });
     }
     await ref.set(update, { merge: true });
+    // Só um oficial por empresa: se marcou este, desmarca os outros.
+    if (update.atendenteOficial) await desmarcarOutrosOficiais(req.empresaLogin.id, req.params.id);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

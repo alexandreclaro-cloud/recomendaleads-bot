@@ -607,8 +607,16 @@
                 <option value="gestor">Gestor (acesso total)</option>
               </select>
             </div>
+            <div>
+              <label class="label">WhatsApp (com DDD)</label>
+              <input class="input" type="text" id="novoUserTelefone" placeholder="Ex: 11999998888">
+            </div>
           </div>
-          <div class="hint">A senha inicial é provisória — o usuário define a própria no primeiro acesso.</div>
+          <label style="display:flex;align-items:center;gap:9px;margin:10px 0 2px;cursor:pointer;">
+            <input type="checkbox" id="novoUserOficial" style="width:17px;height:17px;">
+            <span style="font-weight:600;">⭐ Atendente oficial (recebe os avisos de atendimento no WhatsApp)</span>
+          </label>
+          <div class="hint">Só <b>um</b> pode ser o oficial. Quando alguém pede atendente, o aviso vai pro WhatsApp dele. A senha inicial é provisória — o usuário define a própria no primeiro acesso.</div>
           <div class="row-save">
             <button class="btn btn-action" id="addUserBtn">Adicionar usuário</button>
             <span class="status-msg" id="statusEquipe"></span>
@@ -1426,14 +1434,17 @@ async function carregarEquipe() {
       const badge = u.papel === 'gestor'
         ? '<span class="badge badge-success">Gestor</span>'
         : '<span class="badge">Atendente</span>';
+      const selo = u.atendenteOficial ? ' <span class="badge" style="background:#FEF3C7;color:#92400E">⭐ Atendente oficial</span>' : '';
       const eu = u.souEu ? ' <small style="color:var(--text-dim)">(você)</small>' : '';
+      const tel = u.telefone ? `<br><small style="color:var(--text-dim)">📱 ${escapeHtml(u.telefone)}</small>` : '';
+      const btnOficial = u.atendenteOficial ? '' : `<button class="btn btn-secondary" data-acao="oficial" data-id="${u.id}" data-tel="${escapeHtml(u.telefone || '')}" style="padding:6px 10px;font-size:0.78rem">⭐ Tornar oficial</button>`;
       const acoes = u.souEu ? '' : `
         <button class="btn btn-secondary" data-acao="papel" data-id="${u.id}" data-papel="${u.papel}" style="padding:6px 10px;font-size:0.78rem">${u.papel === 'gestor' ? 'Tornar atendente' : 'Tornar gestor'}</button>
         <button class="btn btn-secondary" data-acao="senha" data-id="${u.id}" style="padding:6px 10px;font-size:0.78rem">Resetar senha</button>
         <button class="btn btn-secondary" data-acao="remover" data-id="${u.id}" data-nome="${escapeHtml(u.nome)}" style="padding:6px 10px;font-size:0.78rem;color:var(--error)">Remover</button>`;
       return `<div class="user-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)">
-        <div><b>${escapeHtml(u.nome)}</b>${eu} ${badge}<br><small style="color:var(--text-dim)">${escapeHtml(u.email)}</small></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${acoes}</div>
+        <div><b>${escapeHtml(u.nome)}</b>${eu} ${badge}${selo}<br><small style="color:var(--text-dim)">${escapeHtml(u.email)}</small>${tel}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btnOficial}${acoes}</div>
       </div>`;
     }).join('');
     wrap.querySelectorAll('button[data-acao]').forEach(b => b.addEventListener('click', acaoEquipe));
@@ -1465,6 +1476,17 @@ async function acaoEquipe(e) {
       const resp = await fetchAutenticado(`${API_BASE}/minha-equipe/${id}`, { method: 'DELETE' });
       const data = await resp.json();
       if (!resp.ok || !data.ok) return alert(data.erro || 'Não foi possível remover.');
+    } else if (acao === 'oficial') {
+      let tel = btn.dataset.tel || '';
+      if (!tel) {
+        tel = prompt('WhatsApp (com DDD) desse atendente — é pra onde vai o aviso quando alguém pedir atendimento:');
+        if (tel == null) return;
+        tel = tel.replace(/\D/g, '');
+        if (tel.length < 10) return alert('Número inválido — use DDD + número (ex: 11999998888).');
+      }
+      const resp = await fetchAutenticado(`${API_BASE}/minha-equipe/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ atendenteOficial: true, telefone: tel }) });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) return alert(data.erro || 'Não foi possível marcar como oficial.');
     }
     carregarEquipe();
   } catch (err) { alert('Erro de conexão.'); }
@@ -1477,16 +1499,20 @@ if (addUserBtn) addUserBtn.addEventListener('click', async () => {
   const email = document.getElementById('novoUserEmail').value.trim();
   const senha = document.getElementById('novoUserSenha').value;
   const papel = document.getElementById('novoUserPapel').value;
+  const telefone = (document.getElementById('novoUserTelefone').value || '').replace(/\D/g, '');
+  const atendenteOficial = document.getElementById('novoUserOficial').checked;
   statusEl.textContent = ''; statusEl.className = 'status-msg';
   if (!nome || !email || !senha) { statusEl.textContent = '❌ Preencha nome, email e senha'; statusEl.className = 'status-msg err'; return; }
   if (senha.length < 6) { statusEl.textContent = '❌ Senha mínima de 6 caracteres'; statusEl.className = 'status-msg err'; return; }
+  if (atendenteOficial && telefone.length < 10) { statusEl.textContent = '❌ Pro atendente oficial, preencha o WhatsApp (com DDD)'; statusEl.className = 'status-msg err'; return; }
   addUserBtn.disabled = true; statusEl.textContent = 'Salvando...';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-equipe`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome, email, senha, papel }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-equipe`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome, email, senha, papel, telefone, atendenteOficial }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       statusEl.textContent = '✅ Usuário criado!'; statusEl.className = 'status-msg ok';
       document.getElementById('novoUserNome').value = ''; document.getElementById('novoUserEmail').value = ''; document.getElementById('novoUserSenha').value = '';
+      document.getElementById('novoUserTelefone').value = ''; document.getElementById('novoUserOficial').checked = false;
       carregarEquipe();
     } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao criar usuário'); statusEl.className = 'status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
