@@ -1365,10 +1365,16 @@ document.getElementById('preencherZapiUrlBtn').addEventListener('click', () => {
 document.getElementById('salvarWhatsappBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarWhatsappBtn');
   const statusEl = document.getElementById('statusWhatsapp');
-  const zapiInstanceId = document.getElementById('zapiInstanceInput').value.trim();
-  const zapiToken = document.getElementById('zapiTokenInput').value.trim();
+  let zapiInstanceId = document.getElementById('zapiInstanceInput').value.trim();
+  let zapiToken = document.getElementById('zapiTokenInput').value.trim();
   const zapiClientToken = document.getElementById('zapiClientTokenInput').value.trim();
-  if (!zapiInstanceId || !zapiToken) { statusEl.textContent = '❌ Preencha Instance ID e Token'; statusEl.className = 'status-msg err'; return; }
+  // Rede de segurança: se algum campo estiver vazio mas o usuário colou a URL "Jeito fácil",
+  // extrai o Instance ID e o Token de lá (evita o erro "preencha Instance ID e Token").
+  if (!zapiInstanceId || !zapiToken) {
+    const urlM = (document.getElementById('zapiUrlInput').value || '').match(/instances\/([^\/\s?#]+)\/token\/([^\/\s?#]+)/i);
+    if (urlM) { zapiInstanceId = zapiInstanceId || urlM[1]; zapiToken = zapiToken || urlM[2]; }
+  }
+  if (!zapiInstanceId || !zapiToken) { statusEl.textContent = '❌ Preencha o Instance ID e o Token (ou cole a URL da instância no "Jeito fácil" e clique em Preencher automático)'; statusEl.className = 'status-msg err'; return; }
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zapiInstanceId, zapiToken, zapiClientToken }) });
