@@ -507,6 +507,7 @@
               <button class="btn btn-action" id="testeEntregaBtn" type="button">Testar entrega</button>
             </div>
             <pre id="testeEntregaResultado" style="display:none; margin-top:10px; background:#0F172A; color:#E2E8F0; padding:12px; border-radius:8px; font-size:0.78rem; white-space:pre-wrap; word-break:break-word; overflow-x:auto;"></pre>
+            <div class="hint" style="margin-top:8px;">💡 Pra ver o <b>motivo real da entrega</b>, na Z-API configure o webhook <b>"Ao enviar" (DeliveryCallback)</b> com a <b>mesma URL</b> do webhook "Ao receber" (a que aparece em "Configuração avançada" abaixo). Aí o erro do WhatsApp aparece aqui no teste.</div>
           </div>
 
           <!-- Não provisionado ainda -->
@@ -1311,12 +1312,23 @@ document.getElementById('testeEntregaBtn').addEventListener('click', async () =>
     if (x.aceitou && temWpp === 'NÃO') veredito = '⚠️ A Z-API ACEITOU, mas este número NÃO tem WhatsApp segundo a checagem → por isso não chega.';
     else if (x.aceitou) veredito = '✅ A Z-API ACEITOU o envio. Se mesmo assim NÃO chegar no WhatsApp, o problema é a ENTREGA (instância/WhatsApp), não o nosso sistema.';
     else veredito = '❌ A Z-API RECUSOU o envio (veja o erro abaixo) → é aqui que está o problema.';
+    let blocoEntrega;
+    if (x.deliveryCallback) {
+      const err = x.deliveryCallback.error;
+      blocoEntrega = '\n\n━━━ RETORNO DE ENTREGA (DeliveryCallback) ━━━\n' +
+        (err ? '❌ ERRO DO WHATSAPP: ' + (typeof err === 'string' ? err : JSON.stringify(err)) + '\n\n' : '✅ Sem campo de erro — o WhatsApp aceitou a entrega.\n\n') +
+        JSON.stringify(x.deliveryCallback, null, 2);
+    } else {
+      blocoEntrega = '\n\n━━━ RETORNO DE ENTREGA ━━━\n⚠️ Nenhum retorno recebido em 10s. Confira se o webhook "Ao enviar" está configurado na Z-API apontando pra este sistema (veja instruções abaixo do teste).';
+    }
     out.textContent = veredito + '\n\n' +
       'Instância usada: ' + (x.instanceId || '?') + '\n' +
       'Número digitado: ' + (x.numeroOriginal || '?') + '\n' +
       'Número enviado:  ' + (x.numeroEnviado || '?') + (x.corrigido ? '  (corrigido pelo 9º dígito)' : '') + '\n' +
       'Tem WhatsApp?    ' + temWpp + '\n' +
-      'HTTP: ' + (x.httpStatus != null ? x.httpStatus : '?') + '\n\n' +
+      'HTTP: ' + (x.httpStatus != null ? x.httpStatus : '?') + '\n' +
+      'messageId: ' + (x.messageId || '?') +
+      blocoEntrega + '\n\n' +
       'Checagem do número:\n' + JSON.stringify(x.checagem || {}, null, 2) + '\n\n' +
       'Resposta da Z-API ao enviar:\n' + JSON.stringify(x.zapiResposta || {}, null, 2);
   } catch (e) { out.textContent = 'Erro de conexão.'; }

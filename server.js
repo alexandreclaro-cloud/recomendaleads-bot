@@ -1013,6 +1013,17 @@ function delaysHumanos(phone, message) {
 // Cache de números já resolvidos (não bater no Z-API a cada envio).
 const _numeroCanonicoCache = new Map();
 
+// Buffer em memória dos últimos callbacks de STATUS/ENTREGA da Z-API (webhook "Ao
+// enviar" / DeliveryCallback). Guarda por messageId pra o "Teste de entrega" mostrar
+// na tela o motivo REAL de não entregar (campo error), sem precisar ler log.
+const _statusCallbacks = new Map(); // messageIdUPPER -> { recebidoEm, body }
+function guardarStatusCallback(body) {
+  const mid = body.messageId || body.id || (Array.isArray(body.ids) && body.ids[0]);
+  if (!mid) return;
+  _statusCallbacks.set(String(mid).toUpperCase(), { recebidoEm: Date.now(), body });
+  if (_statusCallbacks.size > 300) { const k = _statusCallbacks.keys().next().value; _statusCallbacks.delete(k); }
+}
+
 // Resolve o número CANÔNICO do WhatsApp via Z-API — corrige o "9º dígito" do Brasil.
 // Chats NOVOS (recomendados) usam o número que o CLIENTE digitou/compartilhou, que pode
 // não bater com o formato registrado no WhatsApp (com/sem o 9). Nesse caso a Z-API aceita
@@ -3133,7 +3144,8 @@ async function comWebhook(req, res, empresaId) {
   const ehStatus = (b.type && /MessageStatus|DeliveryCallback/i.test(b.type)) ||
     (typeof b.status === 'string' && /^(SENT|RECEIVED|READ|PLAYED|DELIVERY|VIEWED)$/i.test(b.status) && !b.text && !b.image && !b.audio && !b.contact);
   if (ehStatus) {
-    console.log(`[ZSTATUS] status=${b.status || b.type} phone=${b.phone || ''} ids=${JSON.stringify(b.ids || b.messageId || b.id || '')}`);
+    guardarStatusCallback(b);
+    console.log(`[ZSTATUS] status=${b.status || b.type} phone=${b.phone || ''} messageId=${b.messageId || b.id || ''} error=${b.error ? JSON.stringify(b.error) : '(sem erro)'} body=${JSON.stringify(b).slice(0, 400)}`);
     return res.sendStatus(200);
   }
 
@@ -4107,6 +4119,18 @@ app.post('/minha-entrega/testar', exigirLoginEmpresa, exigirGestor, async (req, 
         out.httpStatus = r.status; out.zapiResposta = r.data; out.aceitou = true;
       } catch (e) {
         out.httpStatus = e.response?.status || 0; out.zapiResposta = e.response?.data || e.message; out.aceitou = false;
+      }
+      // Espera o callback "Ao enviar" (DeliveryCallback) chegar, pra mostrar na tela o
+      // motivo REAL da (não) entrega. Só funciona se o webhook "Ao enviar" estiver
+      // configurado na Z-API apontando pro nosso /webhook. Espera até ~10s.
+      const mid = String((out.zapiResposta && (out.zapiResposta.messageId || out.zapiResposta.id)) || '').toUpperCase();
+      out.messageId = mid;
+      if (mid) {
+        for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const cb = _statusCallbacks.get(mid);
+          if (cb) { out.deliveryCallback = cb.body; break; }
+        }
       }
       return out;
     });
