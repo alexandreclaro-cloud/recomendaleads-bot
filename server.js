@@ -6043,6 +6043,14 @@ async function processarAgendamentoInterno(agendamento) {
   if (agendamento.tipo === 'iniciar_conversa_recomendado') {
     const { contato, nomeRecomendador, vendedorNome, telefoneRecomendador } = agendamento.dados;
 
+    // 🛡️ Trava anti-ban: se a empresa está no modo FULL (inbound/seguro), NUNCA
+    // dispara pros amigos — nem disparos antigos que ficaram na fila do modo Basic.
+    // No Full o amigo é quem chama; disparo frio é o gatilho do shadow ban.
+    if (modoRecAtual(empresa) === 'full') {
+      console.log(`[DISPARO BLOQUEADO] empresa em modo Full — disparo frio pra ${contato.telefone} não enviado (inbound only)`);
+      return;
+    }
+
     // ✅ CORREÇÃO: verifica se o número está pausado antes de iniciar
     // Se stop1 foi enviado após o agendamento ser criado, não inicia a conversa
     if (contato.telefone && await numeroEstaPausado(contato.telefone)) {
