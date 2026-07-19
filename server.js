@@ -1069,8 +1069,8 @@ async function sendText(phone, message) {
     // ao que funciona (aviso do atendente). Reativar depois de confirmar a causa.
     // const d = delaysHumanos(phone, message);
     // if (d) { body.delayTyping = d.delayTyping; if (d.delayMessage > 0) body.delayMessage = d.delayMessage; }
-    await axios.post(`${zapiBaseUrl(cfg)}/send-text`, body, { headers: zapiHeaders(cfg) });
-    console.log(`[ENVIADO via instância ${cfg.instanceId}] empresa=${empresaIdAtual()} para ${destino}${destino !== soDigitos(phone) ? ` (era ${soDigitos(phone)})` : ''}: ${message.slice(0, 40)}...`);
+    const respZ = await axios.post(`${zapiBaseUrl(cfg)}/send-text`, body, { headers: zapiHeaders(cfg) });
+    console.log(`[ENVIADO via instância ${cfg.instanceId}] empresa=${empresaIdAtual()} para ${destino}${destino !== soDigitos(phone) ? ` (era ${soDigitos(phone)})` : ''}: ${message.slice(0, 40)}... resp=${JSON.stringify(respZ.data || {}).slice(0, 200)}`);
     registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
     return { ok: true, via: 'zapi' };
   } catch (err) {
@@ -3125,6 +3125,18 @@ async function tratarWebhook(req, res) {
 //   - /webhook/:empresaId → empresa específica (cada instância Z-API aponta
 //                            pra sua própria URL)
 async function comWebhook(req, res, empresaId) {
+  // Callback de STATUS de mensagem (SENT/RECEIVED/READ/DELIVERY) — não é mensagem de
+  // cliente; só logamos pra diagnóstico de ENTREGA e respondemos 200. Se um recomendado
+  // ficar preso em SENT e nunca chegar em RECEIVED/DELIVERY, é o WhatsApp barrando a
+  // entrega (não a nossa saída). Ver [[anti-ban]] / [[modelo-inbound-recomendacao]].
+  const b = req.body || {};
+  const ehStatus = (b.type && /MessageStatus|DeliveryCallback/i.test(b.type)) ||
+    (typeof b.status === 'string' && /^(SENT|RECEIVED|READ|PLAYED|DELIVERY|VIEWED)$/i.test(b.status) && !b.text && !b.image && !b.audio && !b.contact);
+  if (ehStatus) {
+    console.log(`[ZSTATUS] status=${b.status || b.type} phone=${b.phone || ''} ids=${JSON.stringify(b.ids || b.messageId || b.id || '')}`);
+    return res.sendStatus(200);
+  }
+
   let empresa = null;
   try {
     empresa = empresaId ? await getEmpresaById(empresaId) : await getEmpresa();
