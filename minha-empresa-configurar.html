@@ -498,6 +498,17 @@
             <p class="sub">✅ Seu WhatsApp está <b>conectado</b> e pronto para enviar mensagens.</p>
           </div>
 
+          <!-- Teste de entrega (diagnóstico) -->
+          <div style="margin-top:16px; background:#FFF7ED; border:1px solid #FDBA74; border-radius:12px; padding:14px;">
+            <div style="font-weight:700; margin-bottom:4px;">🧪 Teste de entrega</div>
+            <p class="sub" style="margin:0 0 10px;">Manda uma mensagem de teste pelo <b>caminho real</b> do robô e mostra <b>exatamente</b> o que a Z-API respondeu. Use um número <b>seu</b> (que você possa conferir se chegou).</p>
+            <div class="row-save" style="align-items:center;">
+              <input class="input" type="text" id="testeEntregaTel" placeholder="Número com DDD (ex: 11999998888)" style="flex:1; min-width:200px;">
+              <button class="btn btn-action" id="testeEntregaBtn" type="button">Testar entrega</button>
+            </div>
+            <pre id="testeEntregaResultado" style="display:none; margin-top:10px; background:#0F172A; color:#E2E8F0; padding:12px; border-radius:8px; font-size:0.78rem; white-space:pre-wrap; word-break:break-word; overflow-x:auto;"></pre>
+          </div>
+
           <!-- Não provisionado ainda -->
           <div id="naoProvisionadoArea" style="margin-top:16px; display:none;">
             <p class="sub">Seu número está sendo preparado pela nossa equipe. Assim que ficar pronto, o QR Code aparece aqui para você escanear. 😊</p>
@@ -1281,6 +1292,35 @@ document.getElementById('baileysTesteBtn').addEventListener('click', async () =>
       res.innerHTML = '<span style="color:#DC2626">❌ Falhou (' + (d.etapa || '?') + '): ' + (d.erro || 'erro') + '</span>' + (d.status ? '<br><span style="color:#64748B;font-size:0.76rem">status: ' + d.status + (d.jid ? ' · jid: ' + d.jid : '') + '</span>' : '');
     }
   } catch (e) { res.innerHTML = '<span style="color:#DC2626">Erro de conexão.</span>'; }
+});
+
+document.getElementById('testeEntregaBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('testeEntregaBtn');
+  const tel = document.getElementById('testeEntregaTel').value.replace(/\D/g, '');
+  const out = document.getElementById('testeEntregaResultado');
+  if (tel.length < 10) { out.style.display = 'block'; out.textContent = 'Informe um número com DDD (ex: 11999998888).'; return; }
+  btn.disabled = true; const rotulo = btn.textContent; btn.textContent = 'Testando...';
+  out.style.display = 'block'; out.textContent = 'Enviando pelo caminho real do robô...';
+  try {
+    const r = await fetchAutenticado(`${API_BASE}/minha-entrega/testar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numero: tel }) });
+    const d = await r.json();
+    if (!d.ok) { out.textContent = '❌ ' + (d.erro || 'Falhou'); return; }
+    const x = d.resultado || {};
+    const temWpp = x.checagem && (x.checagem.exists === true) ? 'SIM' : (x.checagem && x.checagem.exists === false ? 'NÃO' : 'desconhecido');
+    let veredito;
+    if (x.aceitou && temWpp === 'NÃO') veredito = '⚠️ A Z-API ACEITOU, mas este número NÃO tem WhatsApp segundo a checagem → por isso não chega.';
+    else if (x.aceitou) veredito = '✅ A Z-API ACEITOU o envio. Se mesmo assim NÃO chegar no WhatsApp, o problema é a ENTREGA (instância/WhatsApp), não o nosso sistema.';
+    else veredito = '❌ A Z-API RECUSOU o envio (veja o erro abaixo) → é aqui que está o problema.';
+    out.textContent = veredito + '\n\n' +
+      'Instância usada: ' + (x.instanceId || '?') + '\n' +
+      'Número digitado: ' + (x.numeroOriginal || '?') + '\n' +
+      'Número enviado:  ' + (x.numeroEnviado || '?') + (x.corrigido ? '  (corrigido pelo 9º dígito)' : '') + '\n' +
+      'Tem WhatsApp?    ' + temWpp + '\n' +
+      'HTTP: ' + (x.httpStatus != null ? x.httpStatus : '?') + '\n\n' +
+      'Checagem do número:\n' + JSON.stringify(x.checagem || {}, null, 2) + '\n\n' +
+      'Resposta da Z-API ao enviar:\n' + JSON.stringify(x.zapiResposta || {}, null, 2);
+  } catch (e) { out.textContent = 'Erro de conexão.'; }
+  finally { btn.disabled = false; btn.textContent = rotulo; }
 });
 
 document.getElementById('baileysDesconectarBtn').addEventListener('click', async () => {

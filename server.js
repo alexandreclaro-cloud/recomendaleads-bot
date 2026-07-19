@@ -4077,6 +4077,45 @@ app.post('/minha-atendente/testar', exigirLoginEmpresa, exigirGestor, async (req
   }
 });
 
+// DIAGNÓSTICO DE ENTREGA — envia pelo caminho REAL (Z-API send-text) e devolve a
+// resposta CRUA da Z-API, a instância usada, se o número tem WhatsApp e o formato
+// canônico. Serve pra ver a VERDADE na tela quando "sai do sistema mas não chega".
+app.post('/minha-entrega/testar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const numero = String((req.body && req.body.numero) || '').replace(/\D/g, '');
+    if (numero.length < 10) return res.status(400).json({ ok: false, erro: 'Número inválido — use DDD + número (com o 55 se quiser).' });
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+    const resultado = await tenantContext.run(contexto, async () => {
+      const cfg = zapiAtual();
+      const out = { instanceId: (cfg && cfg.instanceId) || null, numeroOriginal: numero };
+      // 1) O número tem WhatsApp? Qual o formato canônico?
+      for (const rota of [`/phone-exists/${numero}`, `/contacts/iswhatsapp/${numero}`]) {
+        try {
+          const chk = await axios.get(`${zapiBaseUrl(cfg)}${rota}`, { headers: zapiHeaders(cfg), timeout: 8000 });
+          out.checagem = chk.data; break;
+        } catch (e) { out.checagem = { erroChecagem: e.response?.status || e.message }; }
+      }
+      const canonico = await resolverNumeroZapi(cfg, numero);
+      out.numeroEnviado = canonico;
+      out.corrigido = canonico !== numero;
+      // 2) Envia DE VERDADE e captura a resposta crua da Z-API.
+      try {
+        const r = await axios.post(`${zapiBaseUrl(cfg)}/send-text`,
+          { phone: canonico, message: `🧪 Teste de entrega RecomendaLeads — ${new Date().toLocaleTimeString('pt-BR')}` },
+          { headers: zapiHeaders(cfg) });
+        out.httpStatus = r.status; out.zapiResposta = r.data; out.aceitou = true;
+      } catch (e) {
+        out.httpStatus = e.response?.status || 0; out.zapiResposta = e.response?.data || e.message; out.aceitou = false;
+      }
+      return out;
+    });
+    res.json({ ok: true, resultado });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.delete('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     if (req.usuario && req.usuario.id === req.params.id) {
