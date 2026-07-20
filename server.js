@@ -524,22 +524,41 @@ function querRecomendarMais(texto) {
 // ============================================================
 // Cada nicho tem um nome e um conjunto PADRÃO de textos (ponto de partida). Na
 // Etapa 2 esses textos ficam editáveis no painel e sobrescrevem estes defaults.
+// Cada nicho é AUTOSSUFICIENTE no demo: além da saudação, tem o PRÊMIO de exemplo
+// próprio (sem imagem/link) e a mensagem final — pra NADA vazar da config real da
+// empresa (ex.: o presente/mentoria do dono). `aplicarNicho` sobrepõe estes campos.
 const NICHOS_DEMO = {
   barbearia: {
     nome: 'Barbearia',
-    mensagemAgradecimento: 'Olá! 💈 Bem-vindo(a) à demonstração do RecomendaLeads para *Barbearias*. Obrigado por testar! Vou te mostrar como seus clientes recomendam amigos e todos ganham. 🙏'
+    mensagemAgradecimento: 'Olá! 💈 Bem-vindo(a) à demonstração do RecomendaLeads para *Barbearias*. Obrigado por testar! Vou te mostrar como seus clientes recomendam amigos e todos ganham. 🙏',
+    faixasBonus: [{ quantidade: 1, premio: '🎁 *Exemplo de presente:* um combo Corte + Barba de cortesia no seu retorno! 💈', arquivo: null, link: null, texto: '_(É só um exemplo — na sua barbearia você define o prêmio real: desconto, brinde, combo...)_' }],
+    premioRecomendado: 'um Corte + Barba com desconto especial, cortesia de quem te indicou 💈',
+    arquivoRecomendado: null, linkRecomendado: null,
+    mensagemValidarAmigo: 'Viu como é simples? 😉 É exatamente assim que sua barbearia transforma um cliente em vários. Quer ativar isso no seu negócio?'
   },
   cabeleireiro: {
     nome: 'Cabeleireiro',
-    mensagemAgradecimento: 'Olá! 💇 Bem-vindo(a) à demonstração do RecomendaLeads para *Cabeleireiros e Salões*. Obrigado por testar! Vou te mostrar como seus clientes recomendam amigos e todos ganham. 🙏'
+    mensagemAgradecimento: 'Olá! 💇 Bem-vindo(a) à demonstração do RecomendaLeads para *Cabeleireiros e Salões*. Obrigado por testar! Vou te mostrar como seus clientes recomendam amigos e todos ganham. 🙏',
+    faixasBonus: [{ quantidade: 1, premio: '🎁 *Exemplo de presente:* uma escova ou hidratação de cortesia! 💇', arquivo: null, link: null, texto: '_(É só um exemplo — no seu salão você escolhe o prêmio: desconto, tratamento, brinde...)_' }],
+    premioRecomendado: 'um serviço com desconto especial, cortesia de quem te indicou 💇',
+    arquivoRecomendado: null, linkRecomendado: null,
+    mensagemValidarAmigo: 'Viu como é simples? 😉 É assim que seu salão faz cada cliente trazer amigas novas. Quer ativar no seu negócio?'
   },
   dentista: {
     nome: 'Dentista',
-    mensagemAgradecimento: 'Olá! 🦷 Bem-vindo(a) à demonstração do RecomendaLeads para *Dentistas e Clínicas Odontológicas*. Obrigado por testar! Vou te mostrar como seus pacientes recomendam amigos e todos ganham. 🙏'
+    mensagemAgradecimento: 'Olá! 🦷 Bem-vindo(a) à demonstração do RecomendaLeads para *Dentistas e Clínicas Odontológicas*. Obrigado por testar! Vou te mostrar como seus pacientes recomendam amigos e todos ganham. 🙏',
+    faixasBonus: [{ quantidade: 1, premio: '🎁 *Exemplo de presente:* uma limpeza (profilaxia) de cortesia! 🦷', arquivo: null, link: null, texto: '_(É só um exemplo — na sua clínica você define o prêmio: avaliação, desconto, clareamento...)_' }],
+    premioRecomendado: 'uma avaliação com condição especial, cortesia de quem te indicou 🦷',
+    arquivoRecomendado: null, linkRecomendado: null,
+    mensagemValidarAmigo: 'Viu como é simples? 😉 É assim que sua clínica transforma pacientes em novas indicações. Quer ativar no seu consultório?'
   },
   estetica: {
     nome: 'Clínica de Estética',
-    mensagemAgradecimento: 'Olá! ✨ Bem-vindo(a) à demonstração do RecomendaLeads para *Clínicas de Estética*. Obrigado por testar! Vou te mostrar como suas clientes recomendam amigas e todas ganham. 🙏'
+    mensagemAgradecimento: 'Olá! ✨ Bem-vindo(a) à demonstração do RecomendaLeads para *Clínicas de Estética*. Obrigado por testar! Vou te mostrar como suas clientes recomendam amigas e todas ganham. 🙏',
+    faixasBonus: [{ quantidade: 1, premio: '🎁 *Exemplo de presente:* uma sessão de limpeza de pele de cortesia! ✨', arquivo: null, link: null, texto: '_(É só um exemplo — na sua clínica você escolhe o prêmio: sessão, desconto, kit...)_' }],
+    premioRecomendado: 'uma sessão com condição especial, cortesia de quem te indicou ✨',
+    arquivoRecomendado: null, linkRecomendado: null,
+    mensagemValidarAmigo: 'Viu como é simples? 😉 É assim que sua clínica faz cada cliente trazer amigas. Quer ativar no seu negócio?'
   }
 };
 
