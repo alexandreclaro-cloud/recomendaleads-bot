@@ -477,6 +477,9 @@ const COMISSAO_PCT = 20;
 const VENDEDORES_COL = () => db.collection('vendedores');
 // Contas de administrador (login fácil e-mail+senha; acesso total, igual à chave mestra).
 const ADMINS_COL = () => db.collection('admins');
+// Vouchers emitidos (controle de uso único): cada presente entregue ganha um
+// código numérico exclusivo por empresa, com validade e marcação de uso.
+const VOUCHERS_EMITIDOS_COL = () => db.collection('vouchers_emitidos');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'okk', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'tabom',
@@ -663,6 +666,11 @@ const EMPRESA_PADRAO = {
   ],
   premioRecomendado: 'Desconto de 10% na primeira compra, cortesia de quem te recomendou',
   arquivoRecomendado: null,
+  // Controle de voucher (uso único): quando ligado, cada presente entregue
+  // ganha um código numérico exclusivo com validade. O dono confere/marca como
+  // usado na tela /resgatar-voucher, evitando reuso do mesmo voucher.
+  voucherControle: false,
+  voucherValidadeDias: 30,
   linkRecomendado: null,
   textoRecomendado: null,
   // Presente precisa de agendamento? true = serviço/visita (fluxo de menu + agendar).
@@ -3161,7 +3169,13 @@ async function comWebhook(req, res, empresaId) {
   // entrega (não a nossa saída). Ver [[anti-ban]] / [[modelo-inbound-recomendacao]].
   const b = req.body || {};
   const ehStatus = (b.type && /MessageStatus|DeliveryCallback/i.test(b.type)) ||
-    (typeof b.status === 'string' && /^(SENT|RECEIVED|READ|PLAYED|DELIVERY|VIEWED)$/i.test(b.status) && !b.text && !b.image && !b.audio && !b.contact);
+    (typeof b.status === 'string' && /^(SENT|RECEIVED|READ|PLAYED|DELIVERY|VIEWED)$/i.test(b.status)
+      && !b.text && !b.image && !b.audio
+      // NÃO tratar como status se tem QUALQUER conteúdo de mensagem. O Z-API manda
+      // `status: RECEIVED` até em mensagem real; o que distingue é ter conteúdo.
+      // Contato único vem em `contact`; VÁRIOS contatos (agenda) vêm em `contactArray`
+      // — faltava checar o plural, então multi-contato caía aqui e era descartado.
+      && !b.contact && !b.contactArray && !b.document && !b.video && !b.location && !b.sticker);
   if (ehStatus) {
     guardarStatusCallback(b);
     console.log(`[ZSTATUS] status=${b.status || b.type} phone=${b.phone || ''} messageId=${b.messageId || b.id || ''} error=${b.error ? JSON.stringify(b.error) : '(sem erro)'} body=${JSON.stringify(b).slice(0, 400)}`);
