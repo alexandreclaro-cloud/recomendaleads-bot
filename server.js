@@ -1621,7 +1621,7 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
     const naConfirmacaoAvisar = sessao.aguardandoConfirmacaoDisparo || sessao.aguardandoIntervaloConfirmacao;
     // Conversa já terminou. Se o atendimento pós-fluxo estiver ligado, tenta
     // responder dúvidas do cliente (endereço, horário, etc.) com as infos do negócio.
-    if (empresa.infoAtendimentoAtivo && texto && !naConfirmacaoAvisar) {
+    if (empresa.infoAtendimentoAtivo && texto && !naConfirmacaoAvisar && !ehFechamentoConversa(texto)) {
       let resposta = await responderPerguntaNegocio(texto, empresa);
       // A IA sinaliza com ##TRANSFERIR## quando não consegue responder → chama humano.
       if (resposta && /##TRANSFERIR##/.test(resposta)) {
@@ -2624,6 +2624,36 @@ function respostaInfoPorPalavraChave(pergunta, empresa) {
 
 // Gera a resposta pra uma pergunta do cliente usando as infos cadastradas.
 // Devolve o texto a enviar, ou null se não houver o que responder.
+// Depois do fluxo terminado ('finalizado'), um "ok"/"valeu"/"obrigado" solto NÃO deve
+// acionar a IA de atendimento — senão ela responde "fico à disposição, como posso ajudar?"
+// fora de contexto (a conversa já foi encerrada). Só PERGUNTA de verdade aciona a IA.
+function ehFechamentoConversa(texto) {
+  let t = (texto || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  t = t.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t) return true;              // só emoji / vazio → não responde
+  if (t.length > 35) return false;  // texto longo → provável pergunta, deixa a IA responder
+  const FECHAMENTOS = new Set([
+    'ok', 'okk', 'okey', 'okay', 'oki', 'blz', 'beleza', 'valeu', 'vlw', 'vlws', 'obrigado',
+    'obrigada', 'obg', 'obgd', 'brigado', 'brigada', 'ta', 'ta bom', 'ta bem', 'ta certo',
+    'tudo bem', 'tudo certo', 'tudo joia', 'perfeito', 'show', 'showw', 'otimo', 'otima', 'massa',
+    'combinado', 'fechado', 'fechou', 'isso', 'isso mesmo', 'certo', 'entendi', 'entendido',
+    'de nada', 'imagina', 'maravilha', 'top', 'joia', 'uhum', 'aham', 'sim', 'legal', 'bacana',
+    'boa', 'bom', 'ok obrigado', 'ok obrigada', 'valeu obrigado', 'muito obrigado', 'muito obrigada',
+    'tks', 'thanks', 'obrigadao', 'ss', 'ata', 'ah ta', 'ah bom'
+  ]);
+  if (FECHAMENTOS.has(t)) return true;
+  // Frases curtas formadas SÓ por palavras de fechamento (ex.: "ok valeu", "muito obrigado mesmo").
+  const PALAVRAS_OK = new Set([
+    'ok', 'okk', 'blz', 'beleza', 'valeu', 'vlw', 'obrigado', 'obrigada', 'obg', 'brigado',
+    'brigada', 'ta', 'tudo', 'bem', 'certo', 'perfeito', 'show', 'otimo', 'massa', 'muito', 'sim',
+    'isso', 'mesmo', 'entendi', 'de', 'nada', 'imagina', 'maravilha', 'top', 'joia', 'legal',
+    'bacana', 'boa', 'bom', 'tks', 'thanks', 'combinado', 'fechado', 'fechou'
+  ]);
+  const palavras = t.split(' ').filter(Boolean);
+  if (palavras.length >= 1 && palavras.length <= 4 && palavras.every(p => PALAVRAS_OK.has(p))) return true;
+  return false;
+}
+
 async function responderPerguntaNegocio(pergunta, empresa) {
   const infos = infosNegocioDisponiveis(empresa);
   if (!infos) return null; // nada cadastrado — não responde
