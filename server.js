@@ -4688,18 +4688,28 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) =
 app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const { oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado } = req.body;
-    if (!oficialPhoneId || !oficialToken || !oficialVerifyToken) {
-      return res.status(400).json({ ok: false, erro: 'Informe Phone Number ID, Token e Verify Token' });
+
+    // Campos "já salvos" (Token, Verify Token) podem vir VAZIOS do painel — ele mostra
+    // "já salvo — preencha para trocar". Nesse caso, MANTÉM o valor gravado em vez de
+    // exigir re-colar. Assim dá pra mudar só o nome do template (ou o WABA) sem precisar
+    // colar de novo o token permanente. Mesma ideia pro WABA e o template (não apaga se vier vazio).
+    const snapAtual = await EMPRESAS_COL().doc(req.empresaLogin.id).get();
+    const atual = snapAtual.exists ? snapAtual.data() : {};
+    const tokenFinal = (oficialToken && String(oficialToken).trim()) || atual.oficialToken || '';
+    const verifyFinal = (oficialVerifyToken && String(oficialVerifyToken).trim()) || atual.oficialVerifyToken || '';
+
+    if (!oficialPhoneId || !tokenFinal || !verifyFinal) {
+      return res.status(400).json({ ok: false, erro: 'Informe Phone Number ID, Token e Verify Token (Token e Verify Token podem ficar em branco se já estiverem salvos).' });
     }
 
     // Ao cadastrar credenciais oficiais, a empresa passa a operar em modo 'oficial'.
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({
       whatsappTipo: 'oficial',
       oficialPhoneId: String(oficialPhoneId).trim(),
-      oficialToken: String(oficialToken).trim(),
-      oficialVerifyToken: String(oficialVerifyToken).trim(),
-      oficialWabaId: oficialWabaId ? String(oficialWabaId).trim() : null,
-      oficialTemplateRecomendado: oficialTemplateRecomendado ? String(oficialTemplateRecomendado).trim() : null
+      oficialToken: tokenFinal,
+      oficialVerifyToken: verifyFinal,
+      oficialWabaId: (oficialWabaId && String(oficialWabaId).trim()) || atual.oficialWabaId || null,
+      oficialTemplateRecomendado: (oficialTemplateRecomendado && String(oficialTemplateRecomendado).trim()) || atual.oficialTemplateRecomendado || null
     }, { merge: true });
 
     // Encerra o Baileys (se houver) pra não brigar pelo número.
