@@ -504,6 +504,10 @@ const ADMINS_COL = () => db.collection('admins');
 // Vouchers emitidos (controle de uso único): cada presente entregue ganha um
 // código numérico exclusivo por empresa, com validade e marcação de uso.
 const VOUCHERS_EMITIDOS_COL = () => db.collection('vouchers_emitidos');
+// Pré-pago: extrato de créditos (recarga via Pix, lançada pelo admin) e débitos
+// (cada mensagem oficial enviada). Doc: { empresaId, tipo:'credito'|'debito',
+//   valorCentavos, saldoDepois, motivo, categoria, em, por }.
+const TRANSACOES_COL = () => db.collection('transacoes_prepago');
 
 const PALAVRAS_POSITIVAS = [
   'sim', 'pode', 'posso', 'claro', 'ok', 'okay', 'okk', 'manda', 'pode falar', 'pode sim', 'com certeza sim', 'ta bom', 'tá bom', 'tabom',
@@ -895,7 +899,12 @@ async function getEmpresaById(empresaId) {
     oficialToken: data.oficialToken || null,
     oficialVerifyToken: data.oficialVerifyToken || null,
     oficialWabaId: data.oficialWabaId || null,
-    oficialTemplateRecomendado: data.oficialTemplateRecomendado || null
+    oficialTemplateRecomendado: data.oficialTemplateRecomendado || null,
+    // Pré-pago (só cobra quando prepagoAtivo = true).
+    prepagoAtivo: !!data.prepagoAtivo,
+    saldoCentavos: data.saldoCentavos || 0,
+    precoMktCentavos: data.precoMktCentavos != null ? data.precoMktCentavos : PRECO_MKT_PADRAO,
+    precoUtilCentavos: data.precoUtilCentavos != null ? data.precoUtilCentavos : PRECO_UTIL_PADRAO
   };
 }
 
@@ -1287,8 +1296,18 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
 // chamador então segue com o envio de texto normal — Baileys/Z-API).
 async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR') {
   if (tipoWppAtual() !== 'oficial') return false;
+  const cfg = oficialAtual();
+  const empresaId = empresaIdAtual();
+  // Pré-pago: descobre a categoria (marketing/utility) e DEBITA antes de enviar.
+  // Sem saldo → bloqueia (não envia). Empresa sem prepagoAtivo passa livre.
+  const info = await getTemplateInfo(cfg, templateName);
+  const categoria = (info && info.categoria) || 'marketing';
+  const cobranca = await cobrarEnvioOficial(empresaId, categoria);
+  if (!cobranca.permitido) {
+    console.warn(`[PREPAGO] envio BLOQUEADO por saldo insuficiente — empresa=${empresaId} template=${templateName} (precisa ${cobranca.valorCentavos}c, saldo ${cobranca.saldoDepois}c)`);
+    return false;
+  }
   try {
-    const cfg = oficialAtual();
     const components = bodyParams.length
       ? [{ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) }]
       : [];
@@ -1297,10 +1316,14 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
       template: { name: templateName, language: { code: lang }, components }
     }, { headers: metaHeaders(cfg) });
     console.log(`[TEMPLATE ENVIADO/oficial] ${templateName} → ${phone}`);
-    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `[template: ${templateName}]` });
+    registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: `[template: ${templateName}]` });
     return true;
   } catch (err) {
     console.error('Erro ao enviar template (Oficial):', err.response?.data || err.message);
+    // Estorna a cobrança se o envio falhou (não cobra mensagem que não saiu).
+    if (cobranca.valorCentavos > 0) {
+      try { await creditarSaldo(empresaId, cobranca.valorCentavos, `Estorno — envio falhou (${templateName})`); } catch (e) {}
+    }
     return false;
   }
 }
@@ -1673,12 +1696,15 @@ function modoRecAtual(empresa) {
 // pra mandar EXATAMENTE essa quantidade de parâmetros (a Meta rejeita se sobrar
 // ou faltar). Assim o dono pode criar template com 1, 2 ou 3 variáveis à vontade.
 // Cacheia por (waba, template) por 1h. Null = não conseguiu descobrir.
-const _templateVarCountCache = {};
-async function getTemplateVarCount(oficial, templateName) {
+// Busca o template aprovado na Meta e devolve { n: nº de variáveis, categoria:
+// 'marketing'|'utility'|'authentication' }. Usado pra (1) mandar a qtd certa de
+// parâmetros e (2) precificar o disparo no pré-pago. Cacheia por (waba, template) 1h.
+const _templateInfoCache = {};
+async function getTemplateInfo(oficial, templateName) {
   if (!oficial || !oficial.wabaId || !oficial.token || !templateName) return null;
   const key = oficial.wabaId + '|' + templateName;
-  const cache = _templateVarCountCache[key];
-  if (cache && (Date.now() - cache.em) < 60 * 60 * 1000) return cache.n;
+  const cache = _templateInfoCache[key];
+  if (cache && (Date.now() - cache.em) < 60 * 60 * 1000) return cache.info;
   try {
     const resp = await axios.get(
       `https://graph.facebook.com/${META_GRAPH_VERSION}/${oficial.wabaId}/message_templates`,
@@ -1691,13 +1717,95 @@ async function getTemplateVarCount(oficial, templateName) {
     const txt = (body && body.text) || '';
     const nums = (txt.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map(m => parseInt(m.replace(/\D/g, ''), 10));
     const n = nums.length ? Math.max(...nums) : 0;
-    _templateVarCountCache[key] = { n, em: Date.now() };
-    console.log(`[TEMPLATE-VARS] ${templateName} tem ${n} variável(is)`);
-    return n;
+    const categoria = String(tpl.category || 'MARKETING').toLowerCase();
+    const info = { n, categoria };
+    _templateInfoCache[key] = { info, em: Date.now() };
+    console.log(`[TEMPLATE-INFO] ${templateName}: ${n} variável(is), categoria=${categoria}`);
+    return info;
   } catch (e) {
-    console.warn('[TEMPLATE-VARS] falha ao contar variáveis:', e.response ? JSON.stringify(e.response.data).slice(0, 160) : e.message);
+    console.warn('[TEMPLATE-INFO] falha ao buscar template:', e.response ? JSON.stringify(e.response.data).slice(0, 160) : e.message);
     return null;
   }
+}
+// Compat: só o nº de variáveis (usado pra fatiar os parâmetros do disparo).
+async function getTemplateVarCount(oficial, templateName) {
+  const info = await getTemplateInfo(oficial, templateName);
+  return info ? info.n : null;
+}
+
+// ============================================================
+// PRÉ-PAGO — saldo por empresa, débito por mensagem oficial, bloqueio no zero
+// ============================================================
+// Modelo: o dono (Alexandre) pluga o número oficial DELE pra clientes que ainda
+// não têm Meta própria. Cada mensagem paga (template) desconta do saldo pré-pago
+// da empresa. Cliente paga Pix → admin lança o saldo → o sistema debita sozinho.
+// Só vale pra empresas com `prepagoAtivo` = true (as que têm Meta própria pagam
+// direto a Meta e NÃO entram nessa cobrança).
+const PRECO_MKT_PADRAO = 35;   // R$0,35 por mensagem de Marketing
+const PRECO_UTIL_PADRAO = 5;   // R$0,05 por mensagem de Utility
+
+function precoDaCategoria(empresa, categoria) {
+  if (categoria === 'utility') return (empresa && empresa.precoUtilCentavos != null) ? empresa.precoUtilCentavos : PRECO_UTIL_PADRAO;
+  // marketing (e qualquer outra) usa o preço de marketing (mais caro, seguro).
+  return (empresa && empresa.precoMktCentavos != null) ? empresa.precoMktCentavos : PRECO_MKT_PADRAO;
+}
+
+// Debita o custo de UM envio oficial, de forma atômica. Retorna:
+//   { permitido, valorCentavos, saldoDepois, semSaldo?, semCobranca?, gratis? }
+// - categoria 'servico' (texto livre na janela 24h) = grátis, sempre permitido.
+// - empresa sem prepagoAtivo = não cobra, sempre permitido.
+// - saldo insuficiente = permitido:false (bloqueia o envio).
+async function cobrarEnvioOficial(empresaId, categoria) {
+  if (!empresaId || !db) return { permitido: true, valorCentavos: 0, semCobranca: true };
+  if (categoria === 'servico') return { permitido: true, valorCentavos: 0, gratis: true };
+  const ref = EMPRESAS_COL().doc(empresaId);
+  try {
+    const resultado = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const d = snap.exists ? snap.data() : {};
+      if (!d.prepagoAtivo) return { permitido: true, valorCentavos: 0, semCobranca: true };
+      const preco = precoDaCategoria(d, categoria);
+      const saldo = d.saldoCentavos || 0;
+      if (saldo < preco) return { permitido: false, valorCentavos: preco, saldoDepois: saldo, semSaldo: true };
+      const novo = saldo - preco;
+      tx.update(ref, { saldoCentavos: novo });
+      return { permitido: true, valorCentavos: preco, saldoDepois: novo };
+    });
+    if (resultado.permitido && resultado.valorCentavos > 0) {
+      try {
+        await TRANSACOES_COL().add({
+          empresaId, tipo: 'debito', valorCentavos: resultado.valorCentavos,
+          saldoDepois: resultado.saldoDepois, categoria, motivo: `Mensagem oficial (${categoria})`,
+          em: new Date().toISOString()
+        });
+      } catch (e) { console.warn('[PREPAGO] falha ao logar débito:', e.message); }
+    }
+    return resultado;
+  } catch (e) {
+    // Em falha de infra NÃO bloqueia (evita travar envio por erro do Firestore); loga.
+    console.error('[PREPAGO] erro na cobrança:', e.message);
+    return { permitido: true, valorCentavos: 0, erro: e.message, semCobranca: true };
+  }
+}
+
+// Credita saldo (recarga via Pix lançada pelo admin, ou ESTORNO de envio que falhou).
+async function creditarSaldo(empresaId, valorCentavos, motivo, por) {
+  if (!empresaId || !valorCentavos || valorCentavos <= 0 || !db) return null;
+  const ref = EMPRESAS_COL().doc(empresaId);
+  const novo = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const saldo = (snap.exists && snap.data().saldoCentavos) || 0;
+    const n = saldo + valorCentavos;
+    tx.update(ref, { saldoCentavos: n });
+    return n;
+  });
+  try {
+    await TRANSACOES_COL().add({
+      empresaId, tipo: 'credito', valorCentavos, saldoDepois: novo,
+      motivo: motivo || 'Recarga', por: por || null, em: new Date().toISOString()
+    });
+  } catch (e) { console.warn('[PREPAGO] falha ao logar crédito:', e.message); }
+  return novo;
 }
 
 // Descobre AUTOMATICAMENTE o número do WhatsApp conectado (Z-API) — pra montar o
@@ -6027,6 +6135,10 @@ app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
     ['plano', 'statusPagamento', 'valorMensal', 'observacoes', 'zapiInstanceId', 'zapiToken', 'zapiClientToken', 'vendedorComissao', 'whatsappTipo'].forEach(k => {
       if (b[k] !== undefined) upd[k] = (b[k] === '' ? null : b[k]);
     });
+    // Pré-pago: liga/desliga a cobrança e ajusta os preços (em centavos).
+    if (b.prepagoAtivo !== undefined) upd.prepagoAtivo = !!b.prepagoAtivo;
+    if (b.precoMktCentavos !== undefined && b.precoMktCentavos !== '') upd.precoMktCentavos = Math.max(0, parseInt(b.precoMktCentavos, 10) || 0);
+    if (b.precoUtilCentavos !== undefined && b.precoUtilCentavos !== '') upd.precoUtilCentavos = Math.max(0, parseInt(b.precoUtilCentavos, 10) || 0);
     if (b.nome !== undefined && String(b.nome).trim()) {
       upd.nome = String(b.nome).trim();
       // mantém o nome de exibição usado nas mensagens em sincronia
@@ -6042,6 +6154,141 @@ app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
+});
+
+// ============================================================
+// PRÉ-PAGO — endpoints (admin lança recarga / vê extrato; cliente vê saldo)
+// ============================================================
+
+// Extrato + saldo de uma empresa (admin). Últimas 50 transações.
+app.get('/admin/empresas/:id/prepago', exigirAdmin, async (req, res) => {
+  try {
+    const doc = await EMPRESAS_COL().doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    const d = doc.data();
+    let extrato = [];
+    try {
+      const snap = await TRANSACOES_COL().where('empresaId', '==', req.params.id).get();
+      extrato = snap.docs.map(x => x.data()).sort((a, b) => String(b.em).localeCompare(String(a.em))).slice(0, 50);
+    } catch (e) { console.warn('[PREPAGO] extrato admin:', e.message); }
+    res.json({
+      ok: true,
+      prepagoAtivo: !!d.prepagoAtivo,
+      saldoCentavos: d.saldoCentavos || 0,
+      precoMktCentavos: d.precoMktCentavos != null ? d.precoMktCentavos : PRECO_MKT_PADRAO,
+      precoUtilCentavos: d.precoUtilCentavos != null ? d.precoUtilCentavos : PRECO_UTIL_PADRAO,
+      extrato
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Lança recarga (crédito) numa empresa — depois que o cliente pagou o Pix.
+// Body: { valorCentavos } OU { valorReais } (aceita "50", "50,00", "50.00").
+app.post('/admin/empresas/:id/recarga', exigirAdmin, async (req, res) => {
+  try {
+    const doc = await EMPRESAS_COL().doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    let centavos = 0;
+    if (req.body && req.body.valorCentavos != null) centavos = parseInt(req.body.valorCentavos, 10) || 0;
+    else if (req.body && req.body.valorReais != null) {
+      centavos = Math.round(parseFloat(String(req.body.valorReais).replace(/\./g, '').replace(',', '.')) * 100) || 0;
+    }
+    if (centavos <= 0) return res.status(400).json({ ok: false, erro: 'Informe um valor de recarga maior que zero.' });
+    const motivo = (req.body && String(req.body.motivo || '').trim()) || 'Recarga (Pix)';
+    const novoSaldo = await creditarSaldo(req.params.id, centavos, motivo, (req.usuario && req.usuario.email) || 'admin');
+    res.json({ ok: true, saldoCentavos: novoSaldo });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Saldo + extrato da PRÓPRIA empresa logada (cliente vê o quanto gastou/tem).
+app.get('/minha-saldo', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const doc = await EMPRESAS_COL().doc(req.empresaLogin.id).get();
+    const d = doc.exists ? doc.data() : {};
+    let extrato = [];
+    try {
+      const snap = await TRANSACOES_COL().where('empresaId', '==', req.empresaLogin.id).get();
+      extrato = snap.docs.map(x => x.data()).sort((a, b) => String(b.em).localeCompare(String(a.em))).slice(0, 50);
+    } catch (e) { console.warn('[PREPAGO] extrato cliente:', e.message); }
+    res.json({
+      ok: true,
+      prepagoAtivo: !!d.prepagoAtivo,
+      saldoCentavos: d.saldoCentavos || 0,
+      precoMktCentavos: d.precoMktCentavos != null ? d.precoMktCentavos : PRECO_MKT_PADRAO,
+      precoUtilCentavos: d.precoUtilCentavos != null ? d.precoUtilCentavos : PRECO_UTIL_PADRAO,
+      extrato
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
+// DISPARO EM MASSA (campanha) — manda um template pra uma LISTA (modo oficial)
+// ============================================================
+// Roda em BACKGROUND (não trava o HTTP). Cada envio passa pelo sendTemplate, que
+// cobra do pré-pago e BLOQUEIA quando o saldo acaba. Progresso via /status.
+const _disparoStatus = {};
+app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') {
+      return res.status(400).json({ ok: false, erro: 'O disparo em massa só funciona no modo API Oficial da Meta.' });
+    }
+    const template = String((req.body && req.body.template) || '').trim();
+    if (!template) return res.status(400).json({ ok: false, erro: 'Informe o nome do template aprovado na Meta.' });
+    let contatos = Array.isArray(req.body && req.body.contatos) ? req.body.contatos : [];
+    contatos = contatos.map(c => ({
+      telefone: soDigitos((c && (c.telefone || c.tel)) || ''),
+      params: Array.isArray(c && c.params) ? c.params.map(x => String(x == null ? '' : x)) : []
+    })).filter(c => c.telefone.length >= 10);
+    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Nenhum contato válido — cada linha precisa de telefone com DDD.' });
+    if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Máximo de 1000 contatos por disparo.' });
+    const rodando = _disparoStatus[empresa.id];
+    if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
+
+    const status = { total: contatos.length, enviados: 0, bloqueados: 0, falhas: 0, optout: 0, terminado: false, semSaldo: false, template, em: new Date().toISOString() };
+    _disparoStatus[empresa.id] = status;
+    res.json({ ok: true, total: contatos.length });
+
+    // Background: dispara com um pequeno intervalo entre mensagens (anti-flood).
+    (async () => {
+      const oficial = oficialDaEmpresa(empresa);
+      for (const c of contatos) {
+        try {
+          if (await estaDescadastrado(c.telefone)) { status.optout++; continue; }
+          let ok = false;
+          await tenantContext.run({ empresa, empresaId: empresa.id, oficial }, async () => {
+            ok = await sendTemplate(c.telefone, template, c.params);
+          });
+          if (ok) { status.enviados++; }
+          else {
+            // Distingue "sem saldo" (para tudo) de falha pontual (segue).
+            const snap = await EMPRESAS_COL().doc(empresa.id).get();
+            const d = snap.exists ? snap.data() : {};
+            const preco = precoDaCategoria(d, 'marketing');
+            if (d.prepagoAtivo && (d.saldoCentavos || 0) < preco) { status.semSaldo = true; break; }
+            status.falhas++;
+          }
+        } catch (e) { status.falhas++; }
+        await new Promise(r => setTimeout(r, 350));
+      }
+      const processados = status.enviados + status.falhas + status.optout + status.bloqueados;
+      if (status.semSaldo && processados < status.total) status.bloqueados += (status.total - processados);
+      status.terminado = true; status.fimEm = new Date().toISOString();
+      console.log(`[DISPARO] empresa=${empresa.id} enviados=${status.enviados} bloqueados=${status.bloqueados} falhas=${status.falhas} optout=${status.optout}`);
+    })().catch(e => { status.terminado = true; console.error('[DISPARO] erro no loop:', e.message); });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.get('/minha-disparo/status', exigirLoginEmpresa, (req, res) => {
+  res.json({ ok: true, status: _disparoStatus[req.empresaLogin.id] || null });
 });
 
 // ============================================================
