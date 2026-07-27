@@ -1193,6 +1193,9 @@ async function carregarWhatsapp() {
       document.getElementById('oficialWabaIdInput').value = cfg.oficialWabaId || '';
       document.getElementById('oficialTokenInput').placeholder = cfg.temOficialToken ? '•••••• (já salvo — preencha para trocar)' : 'Token permanente do app da Meta';
       document.getElementById('oficialVerifyTokenInput').placeholder = cfg.temOficialVerifyToken ? '•••••• (já salvo — preencha para trocar)' : 'Ex: recomendaleads-2026';
+      // Guarda se Token/Verify JÁ estão salvos — assim o "Salvar" não exige recolar.
+      oficialTemToken = !!cfg.temOficialToken;
+      oficialTemVerify = !!cfg.temOficialVerifyToken;
       document.getElementById('oficialTemplateInput').value = cfg.oficialTemplateRecomendado || '';
       document.getElementById('oficialWebhookUrlText').textContent = cfg.oficialWebhookUrl || '—';
     }
@@ -1211,6 +1214,8 @@ async function carregarWhatsapp() {
 
 let baileysOn = false;
 let modoBaileys = false;
+let oficialTemToken = false;
+let oficialTemVerify = false;
 let baileysPollTimer = null;
 function pararPollBaileys() { if (baileysPollTimer) { clearInterval(baileysPollTimer); baileysPollTimer = null; } }
 
@@ -1471,7 +1476,10 @@ document.getElementById('salvarOficialBtn').addEventListener('click', async () =
   const oficialVerifyToken = document.getElementById('oficialVerifyTokenInput').value.trim();
   const oficialWabaId = document.getElementById('oficialWabaIdInput').value.trim();
   const oficialTemplateRecomendado = document.getElementById('oficialTemplateInput').value.trim();
-  if (!oficialPhoneId || !oficialToken || !oficialVerifyToken) { statusEl.textContent = '❌ Preencha Phone Number ID, Token e Verify Token'; statusEl.className = 'status-msg err'; return; }
+  // Token e Verify podem ficar EM BRANCO se já estiverem salvos (o backend mantém o valor).
+  if (!oficialPhoneId) { statusEl.textContent = '❌ Preencha o Phone Number ID'; statusEl.className = 'status-msg err'; return; }
+  if (!oficialToken && !oficialTemToken) { statusEl.textContent = '❌ Preencha o Token de acesso'; statusEl.className = 'status-msg err'; return; }
+  if (!oficialVerifyToken && !oficialTemVerify) { statusEl.textContent = '❌ Preencha o Verify Token'; statusEl.className = 'status-msg err'; return; }
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/oficial`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado }) });
