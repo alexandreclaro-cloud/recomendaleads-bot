@@ -647,6 +647,17 @@
           <input class="input" id="disparoTemplate" type="text" placeholder="ex: poder_network_corretores" style="max-width:420px;">
           <div class="hint">Tem que ser um template <b>Ativo</b> na sua conta da Meta. As variáveis vão na ordem das colunas abaixo.</div>
 
+          <div style="margin-top:12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;">
+            <div style="font-size:0.9rem;font-weight:600;margin-bottom:4px;">🧪 Testar antes (recomendado)</div>
+            <div class="hint" style="margin:0 0 8px;">Manda o template pro <b>seu</b> número pra você conferir <b>antes</b> de disparar pra lista. Não queima a base.</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <input class="input" id="disparoTesteTel" type="text" placeholder="Seu número com DDD (ex: 11999998888)" style="max-width:280px;">
+              <button type="button" class="btn btn-secondary" id="disparoTesteBtn">Enviar teste pra mim</button>
+              <span class="status-msg" id="disparoTesteStatus"></span>
+            </div>
+            <pre id="disparoTesteResultado" style="display:none;white-space:pre-wrap;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:8px;font-size:0.76rem;max-height:220px;overflow:auto;"></pre>
+          </div>
+
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:14px;">
             <label class="label" style="margin:0;">Lista de contatos</label>
             <button type="button" id="baixarModeloBtn" class="btn btn-secondary" style="padding:6px 12px;font-size:0.82rem;">📥 Baixar modelo (CSV)</button>
@@ -966,6 +977,30 @@ function baixarModeloDisparo() {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+async function testarTemplateDisparo() {
+  const st = document.getElementById('disparoTesteStatus');
+  const out = document.getElementById('disparoTesteResultado');
+  const template = document.getElementById('disparoTemplate').value.trim();
+  const tel = document.getElementById('disparoTesteTel').value.replace(/\D/g, '');
+  if (!template) { st.textContent = '❌ Preencha o nome do template acima primeiro.'; st.className = 'status-msg err'; return; }
+  if (tel.length < 10) { st.textContent = '❌ Informe seu número com DDD.'; st.className = 'status-msg err'; return; }
+  const btn = document.getElementById('disparoTesteBtn');
+  btn.disabled = true; st.textContent = 'Enviando teste...'; st.className = 'status-msg';
+  try {
+    const r = await fetchAutenticado(`${API_BASE}/minha-entrega/testar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numero: tel, template }) });
+    const d = await r.json();
+    const x = (d && d.resultado) || {};
+    if (x.aceitou) { st.textContent = '✅ Meta aceitou! Confere se chegou no seu WhatsApp.'; st.className = 'status-msg ok'; }
+    else { st.textContent = '❌ A Meta recusou — veja o motivo abaixo.'; st.className = 'status-msg err'; }
+    out.style.display = 'block';
+    out.textContent = (x.aceitou ? '✅ ACEITO PELA META' : '❌ RECUSADO') +
+      '\nTemplate: ' + (x.template || template) +
+      '\nHTTP: ' + (x.httpStatus != null ? x.httpStatus : '?') +
+      '\n\nResposta da Meta:\n' + JSON.stringify(x.zapiResposta || d, null, 2);
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { btn.disabled = false; }
+}
+
 (function wireDisparo() {
   const btn = document.getElementById('disparoBtn');
   if (btn) btn.addEventListener('click', dispararCampanha);
@@ -973,6 +1008,8 @@ function baixarModeloDisparo() {
   if (lista) lista.addEventListener('input', atualizarResumoDisparo);
   const modelo = document.getElementById('baixarModeloBtn');
   if (modelo) modelo.addEventListener('click', baixarModeloDisparo);
+  const teste = document.getElementById('disparoTesteBtn');
+  if (teste) teste.addEventListener('click', testarTemplateDisparo);
 })();
 
 async function carregarConfiguracao() {

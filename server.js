@@ -4371,7 +4371,9 @@ app.post('/minha-entrega/testar', exigirLoginEmpresa, exigirGestor, async (req, 
       const oficial = oficialDaEmpresa(empresa);
       const out = { canal: 'oficial', numeroOriginal: numero, numeroEnviado: soDigitos(numero), phoneId: oficial && oficial.phoneId };
       if (!oficial) return res.json({ ok: true, resultado: { ...out, aceitou: false, zapiResposta: 'Credenciais oficiais não configuradas (Phone Number ID + Token).' } });
-      const tpl = empresa.oficialTemplateRecomendado;
+      // Aceita um template específico no body (ex.: testar o template do disparo);
+      // senão usa o template do recomendado configurado.
+      const tpl = (req.body && req.body.template && String(req.body.template).trim()) || empresa.oficialTemplateRecomendado;
       let payload;
       if (tpl) {
         let nVars = await getTemplateVarCount(oficial, tpl);
