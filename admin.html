@@ -614,8 +614,10 @@ function tempoDesde(iso) {
 }
 // Pill de status do WhatsApp por empresa (usa o monitor de conexão).
 function statusWhatsappPill(e) {
-  if (!e.whatsappProvisionado) return '<span class="pill off">Pendente</span>';
+  // Oficial primeiro: empresa no modo oficial NÃO tem Z-API (e nem precisa),
+  // então não pode cair no "Pendente" por falta de credencial Z-API.
   if (e.whatsappTipo === 'oficial') return '<span class="pill ok">Oficial ✅</span>';
+  if (!e.whatsappProvisionado) return '<span class="pill off">Pendente</span>';
   const m = e.whatsappMonitor;
   if (!m || m.conectado == null) return '<span class="pill">Provisionado</span>';
   if (m.conectado) return '<span class="pill ok">🟢 Conectado</span>';
