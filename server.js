@@ -1669,6 +1669,37 @@ function modoRecAtual(empresa) {
   return (m === 'full' || m === 'official') ? 'full' : 'basic';
 }
 
+// Conta quantas variáveis ({{1}}, {{2}}...) o corpo do template aprovado tem —
+// pra mandar EXATAMENTE essa quantidade de parâmetros (a Meta rejeita se sobrar
+// ou faltar). Assim o dono pode criar template com 1, 2 ou 3 variáveis à vontade.
+// Cacheia por (waba, template) por 1h. Null = não conseguiu descobrir.
+const _templateVarCountCache = {};
+async function getTemplateVarCount(oficial, templateName) {
+  if (!oficial || !oficial.wabaId || !oficial.token || !templateName) return null;
+  const key = oficial.wabaId + '|' + templateName;
+  const cache = _templateVarCountCache[key];
+  if (cache && (Date.now() - cache.em) < 60 * 60 * 1000) return cache.n;
+  try {
+    const resp = await axios.get(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${oficial.wabaId}/message_templates`,
+      { params: { name: templateName }, headers: { Authorization: `Bearer ${oficial.token}` }, timeout: 6000 }
+    );
+    const arr = (resp.data && resp.data.data) || [];
+    const tpl = arr.find(t => t.name === templateName) || arr[0];
+    if (!tpl) return null;
+    const body = (tpl.components || []).find(c => String(c.type || '').toUpperCase() === 'BODY');
+    const txt = (body && body.text) || '';
+    const nums = (txt.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map(m => parseInt(m.replace(/\D/g, ''), 10));
+    const n = nums.length ? Math.max(...nums) : 0;
+    _templateVarCountCache[key] = { n, em: Date.now() };
+    console.log(`[TEMPLATE-VARS] ${templateName} tem ${n} variável(is)`);
+    return n;
+  } catch (e) {
+    console.warn('[TEMPLATE-VARS] falha ao contar variáveis:', e.response ? JSON.stringify(e.response.data).slice(0, 160) : e.message);
+    return null;
+  }
+}
+
 // Descobre AUTOMATICAMENTE o número do WhatsApp conectado (Z-API) — pra montar o
 // link do Full sem pedir na mão (o robô já está ligado num número, o sistema sabe qual).
 // Cacheia em memória por empresa. Fallback: número salvo manualmente, se houver.
@@ -2171,8 +2202,14 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
   // Fora do modo oficial (ou sem template configurado) segue como hoje.
   if (tipoWppAtual() === 'oficial' && empresa.oficialTemplateRecomendado) {
     const nomeVendedor = (vendedorNome && String(vendedorNome).trim()) || empresa.nome;
-    const enviou = await sendTemplate(contato.telefone, empresa.oficialTemplateRecomendado,
-      [primeiroNomeRecomendado, nomeRecomendador.split(' ')[0], nomeVendedor]);
+    // Ordem fixa dos parâmetros: {{1}} recomendado, {{2}} recomendador, {{3}} vendedor.
+    const todosParams = [primeiroNomeRecomendado, nomeRecomendador.split(' ')[0], nomeVendedor];
+    // Manda só quantas variáveis o template REALMENTE tem (evita erro de contagem
+    // na Meta). Se não der pra descobrir, cai no padrão de 3 (comportamento antigo).
+    let nVars = await getTemplateVarCount(oficialDaEmpresa(empresa), empresa.oficialTemplateRecomendado);
+    if (nVars === null || nVars === undefined) nVars = 3;
+    const params = todosParams.slice(0, Math.min(nVars, todosParams.length));
+    const enviou = await sendTemplate(contato.telefone, empresa.oficialTemplateRecomendado, params);
     if (!enviou) await sendText(contato.telefone, mensagemInicial);
   } else {
     await sendText(contato.telefone, mensagemInicial);
