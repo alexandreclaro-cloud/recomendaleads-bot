@@ -1660,12 +1660,12 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   }
 }
 
-// Modo de recomendação vigente: 'full' se a empresa escolheu OU está na API
-// Oficial (compliant); senão 'basic' (padrão, comportamento atual).
+// Modo de recomendação vigente: respeita a escolha do painel (Basic/Full).
+// Na API Oficial NÃO há risco de ban (envio compliant via template aprovado),
+// então o Basic (alcance rápido — o robô dispara direto pros amigos) é liberado
+// também no canal Oficial. O 'official' escolhido no painel roda como Full.
 function modoRecAtual(empresa) {
-  if (empresa && empresa.whatsappTipo === 'oficial') return 'full';
   const m = empresa && empresa.modoRecomendacao;
-  // 'official' (escolhido no painel) roda como Full (seguro/compliant), igual à API Oficial.
   return (m === 'full' || m === 'official') ? 'full' : 'basic';
 }
 
