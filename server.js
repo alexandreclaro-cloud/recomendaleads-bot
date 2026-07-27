@@ -899,11 +899,14 @@ async function getEmpresaById(empresaId) {
     oficialToken: data.oficialToken || null,
     oficialVerifyToken: data.oficialVerifyToken || null,
     oficialWabaId: data.oficialWabaId || null,
-    oficialTemplateRecomendado: data.oficialTemplateRecomendado || null,
+    // Templates oficiais: preferem o valor salvo na `configuracao` (editável no CRM,
+    // junto de cada mensagem) e caem pro campo de topo (salvo no painel novo) — assim
+    // dá pra configurar nos DOIS lugares sem quebrar quem já salvou no painel novo.
+    oficialTemplateRecomendado: cfg.oficialTemplateRecomendado || data.oficialTemplateRecomendado || null,
     // Templates oficiais por tipo de mensagem (vazio = usa texto livre, só entrega em 24h).
-    oficialTemplateInsistencia: data.oficialTemplateInsistencia || null,
-    oficialTemplateFollowupCliente: data.oficialTemplateFollowupCliente || null,
-    oficialTemplateConvite: data.oficialTemplateConvite || null,
+    oficialTemplateInsistencia: cfg.oficialTemplateInsistencia || data.oficialTemplateInsistencia || null,
+    oficialTemplateFollowupCliente: cfg.oficialTemplateFollowupCliente || data.oficialTemplateFollowupCliente || null,
+    oficialTemplateConvite: cfg.oficialTemplateConvite || data.oficialTemplateConvite || null,
     // Pré-pago (só cobra quando prepagoAtivo = true).
     prepagoAtivo: !!data.prepagoAtivo,
     saldoCentavos: data.saldoCentavos || 0,
@@ -4526,8 +4529,12 @@ app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
     // whatsappTipo é campo de TOPO da empresa (não fica dentro de `configuracao`) —
     // o painel precisa dele pra saber que é oficial (ex.: mostrar "Disparo em massa").
     configuracao.whatsappTipo = req.empresaLogin.whatsappTipo || 'zapi';
-    // Template do convite (campanha) — pra pré-preencher a aba de Disparo em massa.
-    configuracao.oficialTemplateConvite = req.empresaLogin.oficialTemplateConvite || '';
+    // Templates oficiais: expõe os 4 pro painel/CRM. Prefere o que já está na
+    // `configuracao` (salvo no CRM, junto da mensagem); senão cai pro campo de
+    // topo (salvo no painel novo). Assim os dois lugares editam o mesmo template.
+    ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite'].forEach(k => {
+      if (!configuracao[k]) configuracao[k] = req.empresaLogin[k] || '';
+    });
     res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

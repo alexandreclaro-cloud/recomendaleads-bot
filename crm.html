@@ -884,6 +884,12 @@
           <label>🔄 Variação 3 da mensagem inicial <span style="font-weight:400;color:var(--text-dim)">(opcional)</span></label>
           <textarea id="mensagemInicialRecomendado3Input" rows="3" placeholder="Deixe vazio se não quiser."></textarea>
 
+          <div id="oficialTemplateRecomendadoBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
+            <label style="margin-top:0;">🟢 Template da API Oficial — usado no <b>1º contato</b> (frio)</label>
+            <input type="text" id="oficialTemplateRecomendadoInput" placeholder="ex: recomenda_amigos">
+            <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Nome <b>exato</b> do template aprovado na Meta. Na API Oficial, a 1ª mensagem pro recomendado (que nunca te chamou) TEM que ser template — os textos acima só valem dentro da janela de 24h. Variáveis na ordem: <b>{{1}}</b> nome do recomendado · <b>{{2}}</b> quem recomendou · <b>{{3}}</b> vendedor.</div>
+          </div>
+
           <label>Mensagem repetida enquanto a pessoa não confirma</label>
           <input type="text" id="mensagemAguardandoConfirmacaoInput" placeholder="Ex: Posso te contar mais sobre isso?">
 
@@ -1887,6 +1893,11 @@ async function carregarConfiguracao() {
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemInicialRecomendado2Input').value = configuracaoAtual.mensagemInicialRecomendado2 || '';
     document.getElementById('mensagemInicialRecomendado3Input').value = configuracaoAtual.mensagemInicialRecomendado3 || '';
+    // Template da API Oficial (só aparece se a empresa for oficial).
+    const tplRecEl = document.getElementById('oficialTemplateRecomendadoInput');
+    if (tplRecEl) tplRecEl.value = configuracaoAtual.oficialTemplateRecomendado || '';
+    const tplRecBox = document.getElementById('oficialTemplateRecomendadoBox');
+    if (tplRecBox) tplRecBox.style.display = (configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
     document.getElementById('mensagemPedeNomeInput').value = configuracaoAtual.mensagemPedeNome || '';
@@ -2207,6 +2218,8 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const faqValidade = document.getElementById('faqValidadeInput').value.trim() || null;
   const posAtendente = document.getElementById('posAtendenteInput').value.trim() || null;
   const numeroAtendente = (document.getElementById('numeroAtendenteInput').value || '').replace(/\D/g, '') || null;
+  const tplRecEl = document.getElementById('oficialTemplateRecomendadoInput');
+  const oficialTemplateRecomendado = tplRecEl ? tplRecEl.value.trim() : '';
 
   btn.disabled = true;
   statusEl.textContent = 'Salvando...';
@@ -2220,7 +2233,8 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         cadenciaFollowupRecomendado,
-        faqComoFunciona, faqValidade, posAtendente, numeroAtendente
+        faqComoFunciona, faqValidade, posAtendente, numeroAtendente,
+        oficialTemplateRecomendado
       })
     });
     const data = await resp.json();
