@@ -580,6 +580,23 @@
               <input class="input" type="text" id="oficialTemplateInput" placeholder="Ex: recomendacao_presente">
               <div class="hint">Obrigatório no modo oficial pra falar com quem foi recomendado. O template precisa ter 3 variáveis no corpo, <b>nesta ordem</b>: <b>{{1}}</b> nome do recomendado (quem recebe) · <b>{{2}}</b> quem recomendou · <b>{{3}}</b> vendedor/atendente. O <b>nome da sua empresa</b> você escreve direto no texto (fixo) — não precisa ser variável. <i>(Sem vendedor cadastrado, o {{3}} usa o nome da empresa automaticamente.)</i></div>
 
+              <div style="margin-top:14px;padding:12px;border:1px dashed var(--border);border-radius:12px;background:var(--brand-soft,#f7faff);">
+                <b style="font-size:0.9rem;">📨 Templates das outras mensagens (opcional)</b>
+                <div class="hint" style="margin:4px 0 10px;">Preencha só se quiser que essas mensagens saiam também <b>fora da janela de 24h</b> (ex.: dias depois). <b>Deixe em branco = texto livre</b> (só entrega dentro das 24h). Cada um precisa de um template aprovado na Meta.</div>
+
+                <label class="label" style="margin-top:0;">Template da insistência (amigo não respondeu)</label>
+                <input class="input" type="text" id="oficialTemplateInsistenciaInput" placeholder="Ex: lembrete_recomendado">
+                <div class="hint">Variáveis: <b>{{1}}</b> nome do recomendado · <b>{{2}}</b> quem recomendou · <b>{{3}}</b> vendedor.</div>
+
+                <label class="label">Template do follow-up do cliente (lembrar de avisar os amigos)</label>
+                <input class="input" type="text" id="oficialTemplateFollowupInput" placeholder="Ex: lembrete_cliente">
+                <div class="hint">Variáveis: <b>{{1}}</b> nome do cliente · <b>{{2}}</b> empresa.</div>
+
+                <label class="label">Template do convite (campanha pro cliente indicar)</label>
+                <input class="input" type="text" id="oficialTemplateConviteInput" placeholder="Ex: pdn_convite_indicar">
+                <div class="hint">Fica salvo como padrão e <b>já vem preenchido</b> na aba "Disparo em massa".</div>
+              </div>
+
               <label class="label">URL de Webhook (cole na configuração do app na Meta)</label>
               <div class="webhook-box">
                 <code id="oficialWebhookUrlText">—</code>
@@ -842,6 +859,9 @@ async function carregarDisparo() {
   const ehOficial = configuracaoAtual && configuracaoAtual.whatsappTipo === 'oficial';
   const soOf = document.getElementById('disparoSoOficial'); if (soOf) soOf.style.display = ehOficial ? 'none' : 'block';
   const btn = document.getElementById('disparoBtn'); if (btn) btn.disabled = !ehOficial;
+  // Pré-preenche o template do convite (se configurado e o campo estiver vazio).
+  const tplInp = document.getElementById('disparoTemplate');
+  if (tplInp && !tplInp.value && configuracaoAtual && configuracaoAtual.oficialTemplateConvite) tplInp.value = configuracaoAtual.oficialTemplateConvite;
   atualizarResumoDisparo();
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-saldo`);
@@ -1382,6 +1402,9 @@ async function carregarWhatsapp() {
       oficialTemToken = !!cfg.temOficialToken;
       oficialTemVerify = !!cfg.temOficialVerifyToken;
       document.getElementById('oficialTemplateInput').value = cfg.oficialTemplateRecomendado || '';
+      document.getElementById('oficialTemplateInsistenciaInput').value = cfg.oficialTemplateInsistencia || '';
+      document.getElementById('oficialTemplateFollowupInput').value = cfg.oficialTemplateFollowupCliente || '';
+      document.getElementById('oficialTemplateConviteInput').value = cfg.oficialTemplateConvite || '';
       document.getElementById('oficialWebhookUrlText').textContent = cfg.oficialWebhookUrl || '—';
     }
     // Modo QR grátis (Baileys): mostra só o QR; esconde as configs de API.
@@ -1661,13 +1684,16 @@ document.getElementById('salvarOficialBtn').addEventListener('click', async () =
   const oficialVerifyToken = document.getElementById('oficialVerifyTokenInput').value.trim();
   const oficialWabaId = document.getElementById('oficialWabaIdInput').value.trim();
   const oficialTemplateRecomendado = document.getElementById('oficialTemplateInput').value.trim();
+  const oficialTemplateInsistencia = document.getElementById('oficialTemplateInsistenciaInput').value.trim();
+  const oficialTemplateFollowupCliente = document.getElementById('oficialTemplateFollowupInput').value.trim();
+  const oficialTemplateConvite = document.getElementById('oficialTemplateConviteInput').value.trim();
   // Token e Verify podem ficar EM BRANCO se já estiverem salvos (o backend mantém o valor).
   if (!oficialPhoneId) { statusEl.textContent = '❌ Preencha o Phone Number ID'; statusEl.className = 'status-msg err'; return; }
   if (!oficialToken && !oficialTemToken) { statusEl.textContent = '❌ Preencha o Token de acesso'; statusEl.className = 'status-msg err'; return; }
   if (!oficialVerifyToken && !oficialTemVerify) { statusEl.textContent = '❌ Preencha o Verify Token'; statusEl.className = 'status-msg err'; return; }
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/oficial`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/oficial`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado, oficialTemplateInsistencia, oficialTemplateFollowupCliente, oficialTemplateConvite }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       statusEl.textContent = '✅ Salvo! Modo oficial ativado.'; statusEl.className = 'status-msg ok';

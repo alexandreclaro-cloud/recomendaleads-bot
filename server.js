@@ -900,6 +900,10 @@ async function getEmpresaById(empresaId) {
     oficialVerifyToken: data.oficialVerifyToken || null,
     oficialWabaId: data.oficialWabaId || null,
     oficialTemplateRecomendado: data.oficialTemplateRecomendado || null,
+    // Templates oficiais por tipo de mensagem (vazio = usa texto livre, só entrega em 24h).
+    oficialTemplateInsistencia: data.oficialTemplateInsistencia || null,
+    oficialTemplateFollowupCliente: data.oficialTemplateFollowupCliente || null,
+    oficialTemplateConvite: data.oficialTemplateConvite || null,
     // Pré-pago (só cobra quando prepagoAtivo = true).
     prepagoAtivo: !!data.prepagoAtivo,
     saldoCentavos: data.saldoCentavos || 0,
@@ -1326,6 +1330,24 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
     }
     return false;
   }
+}
+
+// Envia como TEMPLATE (se estiver no modo oficial E houver um nome de template
+// configurado) — funciona FORA da janela de 24h. Senão, manda texto livre (o
+// comportamento de sempre, que só entrega dentro das 24h no oficial). Os `params`
+// preenchem {{1}}, {{2}}... na ordem; a quantidade é ajustada ao template.
+async function sendTextOuTemplate(telefone, textoLivre, templateName, params) {
+  const tpl = templateName && String(templateName).trim();
+  if (tpl && tipoWppAtual() === 'oficial') {
+    let n = await getTemplateVarCount(oficialAtual(), tpl);
+    if (n === null || n === undefined) n = (params || []).length;
+    const enviou = await sendTemplate(telefone, tpl, (params || []).slice(0, n));
+    if (enviou) return true;
+    // Se o template falhou (ex.: sem saldo), NÃO cai pro texto livre no oficial —
+    // texto livre fora da janela não entrega e ainda confundiria. Devolve false.
+    return false;
+  }
+  return await sendText(telefone, textoLivre);
 }
 
 // ============================================================
@@ -4504,6 +4526,8 @@ app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
     // whatsappTipo é campo de TOPO da empresa (não fica dentro de `configuracao`) —
     // o painel precisa dele pra saber que é oficial (ex.: mostrar "Disparo em massa").
     configuracao.whatsappTipo = req.empresaLogin.whatsappTipo || 'zapi';
+    // Template do convite (campanha) — pra pré-preencher a aba de Disparo em massa.
+    configuracao.oficialTemplateConvite = req.empresaLogin.oficialTemplateConvite || '';
     res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -4851,6 +4875,9 @@ app.get('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
       temOficialToken: !!e.oficialToken,
       temOficialVerifyToken: !!e.oficialVerifyToken,
       oficialTemplateRecomendado: e.oficialTemplateRecomendado || '',
+      oficialTemplateInsistencia: e.oficialTemplateInsistencia || '',
+      oficialTemplateFollowupCliente: e.oficialTemplateFollowupCliente || '',
+      oficialTemplateConvite: e.oficialTemplateConvite || '',
       oficialConectado: !!(e.oficialPhoneId && e.oficialToken),
       oficialWebhookUrl: `${urlBase(req)}/webhook-oficial/${e.id}`
     });
@@ -4898,7 +4925,8 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) =
 // (única por empresa) é mostrada pra ele configurar no app da Meta.
 app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
-    const { oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado } = req.body;
+    const { oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado,
+      oficialTemplateInsistencia, oficialTemplateFollowupCliente, oficialTemplateConvite } = req.body;
 
     // Campos "já salvos" (Token, Verify Token) podem vir VAZIOS do painel — ele mostra
     // "já salvo — preencha para trocar". Nesse caso, MANTÉM o valor gravado em vez de
@@ -4921,6 +4949,10 @@ app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, async (req
       oficialVerifyToken: verifyFinal,
       oficialWabaId: (oficialWabaId && String(oficialWabaId).trim()) || atual.oficialWabaId || null,
       oficialTemplateRecomendado: (oficialTemplateRecomendado && String(oficialTemplateRecomendado).trim()) || atual.oficialTemplateRecomendado || null,
+      // Templates por tipo de mensagem — vazio APAGA (deixa em branco = volta ao texto livre).
+      oficialTemplateInsistencia: (oficialTemplateInsistencia != null ? String(oficialTemplateInsistencia).trim() : (atual.oficialTemplateInsistencia || '')) || null,
+      oficialTemplateFollowupCliente: (oficialTemplateFollowupCliente != null ? String(oficialTemplateFollowupCliente).trim() : (atual.oficialTemplateFollowupCliente || '')) || null,
+      oficialTemplateConvite: (oficialTemplateConvite != null ? String(oficialTemplateConvite).trim() : (atual.oficialTemplateConvite || '')) || null,
       // Limpa o número que sobrou de sessão Z-API antiga (numeroConectado) pra o
       // link/painel não mostrar número torto — no modo oficial o número vem da Meta.
       configuracao: { numeroConectado: '', numeroDetectado: '' }
@@ -6529,7 +6561,15 @@ async function processarAgendamentoInterno(agendamento) {
       vendedor: sessaoAtual.vendedorNome || empresa.nome,
       empresa: empresa.nome
     };
-    await sendText(telefone, substituirVariaveis(proximo.texto, variaveisFollowup));
+    // Insistência com o amigo (recomendado) — pode cair FORA da janela de 24h, então
+    // no oficial usa o template configurado (se houver). {{1}} nome do recomendado,
+    // {{2}} quem recomendou, {{3}} vendedor.
+    await sendTextOuTemplate(
+      telefone,
+      substituirVariaveis(proximo.texto, variaveisFollowup),
+      empresa.oficialTemplateInsistencia,
+      [variaveisFollowup.nomeRecomendado, variaveisFollowup.recomendador, variaveisFollowup.vendedor]
+    );
     const novaMarca = new Date().toISOString();
     await saveSessaoRecomendado(telefone, { ultimaMensagemEm: novaMarca });
     await agendarProximoFollowup(telefone, empresa, novaMarca, indiceFollowup + 1);
@@ -6564,7 +6604,14 @@ async function processarAgendamentoInterno(agendamento) {
       empresa.followupRecomendadorMensagem3 || padrao1
     ];
     const textoLembrete = textosLembrete[indice] || padrao1;
-    await sendText(telefone, substituirVariaveis(textoLembrete, vars));
+    // Lembrete ao cliente — costuma ser dias depois (fora da janela 24h), então
+    // no oficial usa o template configurado. {{1}} nome do cliente, {{2}} empresa.
+    await sendTextOuTemplate(
+      telefone,
+      substituirVariaveis(textoLembrete, vars),
+      empresa.oficialTemplateFollowupCliente,
+      [vars.nomeRecomendado, empresa.nome]
+    );
     await saveSessao(telefone, { followupAguardando: true });
     await agendarFollowupRecomendador(telefone, empresa, indice + 1, teste ? { teste: true } : undefined);
     return;
