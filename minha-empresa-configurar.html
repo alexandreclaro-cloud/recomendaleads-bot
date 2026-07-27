@@ -61,6 +61,7 @@
       <button class="nav-item" data-section="info" data-gestor style="display:none"><i data-lucide="info"></i><span class="txt">Informações do negócio</span></button>
       <button class="nav-item" data-section="modo" data-gestor><i data-lucide="git-branch"></i><span class="txt">Modo de recomendação</span></button>
       <button class="nav-item" data-section="whatsapp" data-gestor><i data-lucide="smartphone"></i><span class="txt">WhatsApp</span></button>
+      <button class="nav-item" data-section="disparo" data-gestor style="display:none"><i data-lucide="send"></i><span class="txt">Disparo em massa</span></button>
       <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
       <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
       <button class="nav-item" data-section="equipe" data-gestor><i data-lucide="users"></i><span class="txt">Equipe</span></button>
@@ -595,6 +596,51 @@
         </div>
       </section>
 
+      <section class="view fade-in" id="view-disparo">
+        <div class="card">
+          <div class="block-title"><i data-lucide="wallet"></i> Seu saldo</div>
+          <p class="sub">Você paga um pré-pago e cada mensagem enviada desconta do saldo. Quando zera, o disparo pausa até recarregar.</p>
+          <div style="background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            <div>
+              <div style="font-size:0.82rem;color:var(--text-dim);">Saldo disponível</div>
+              <div id="saldoValor" style="font-size:1.8rem;font-weight:800;">—</div>
+            </div>
+            <div style="font-size:0.82rem;color:var(--text-dim);text-align:right;">
+              Marketing: <b id="precoMktTxt">—</b>/msg<br>Utility: <b id="precoUtilTxt">—</b>/msg<br>Resposta na janela 24h: <b>grátis</b>
+            </div>
+          </div>
+          <div id="saldoBaixoAviso" style="display:none;margin-top:10px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:10px;padding:10px 12px;font-size:0.86rem;">⚠️ Saldo baixo/zerado. Faça um Pix e peça pra equipe RecomendaLeads lançar a recarga.</div>
+          <details style="margin-top:12px;"><summary style="cursor:pointer;font-size:0.84rem;color:var(--text-dim);">Ver extrato (recargas e gastos)</summary><div id="saldoExtrato" style="font-size:0.82rem;margin-top:8px;">—</div></details>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <div class="block-title"><i data-lucide="send"></i> Disparar campanha</div>
+          <p class="sub">Manda um <b>template aprovado</b> pra uma lista de contatos, tudo pela API Oficial (sem risco de ban). Cada envio desconta do saldo.</p>
+          <div id="disparoSoOficial" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:0.86rem;margin-bottom:12px;">⚠️ O disparo em massa só funciona no modo <b>API Oficial da Meta</b>. Configure na aba WhatsApp.</div>
+
+          <label class="label">Nome do template aprovado na Meta</label>
+          <input class="input" id="disparoTemplate" type="text" placeholder="ex: poder_network_corretores" style="max-width:420px;">
+          <div class="hint">Tem que ser um template <b>Ativo</b> na sua conta da Meta. As variáveis vão na ordem das colunas abaixo.</div>
+
+          <label class="label" style="margin-top:14px;">Lista de contatos</label>
+          <div class="hint" style="margin-bottom:6px;">Um contato por linha. <b>1ª coluna = telefone com DDD</b>; as colunas seguintes são as variáveis do template ({{1}}, {{2}}...), na ordem. Separe por <b>vírgula</b> ou cole direto de uma planilha (tab). Ex:<br><code>11999998888, João, Nicolas</code></div>
+          <textarea class="textarea" id="disparoLista" rows="8" placeholder="11999998888, João, Nicolas&#10;11988887777, Maria, Nicolas" style="font-family:monospace;font-size:0.85rem;"></textarea>
+          <div id="disparoResumo" class="hint" style="margin-top:6px;">—</div>
+
+          <div class="row-save" style="align-items:center;">
+            <button class="btn btn-action" id="disparoBtn">🚀 Disparar</button>
+            <span class="status-msg" id="disparoStatus"></span>
+          </div>
+
+          <div id="disparoProgresso" style="display:none;margin-top:14px;border:1px solid var(--border);border-radius:12px;padding:14px;">
+            <div style="height:12px;background:var(--border);border-radius:6px;overflow:hidden;">
+              <div id="disparoBarra" style="height:100%;width:0%;background:var(--brand,#2563eb);transition:width .4s;"></div>
+            </div>
+            <div id="disparoNumeros" style="margin-top:10px;font-size:0.88rem;display:flex;gap:16px;flex-wrap:wrap;"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="view fade-in" id="view-equipe">
         <div class="card">
           <div class="block-title"><i data-lucide="user-plus"></i> Adicionar usuário</div>
@@ -700,7 +746,7 @@ const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') 
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
 let EH_MATRIZ = false;
-const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'equipe', 'assinatura'];
+const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'disparo', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
@@ -732,6 +778,7 @@ const TITULOS = {
   info: ['Informações do negócio', 'O robô responde dúvidas do cliente com estes dados.'],
   modo: ['Modo de recomendação', 'Como o presente chega aos amigos recomendados.'],
   whatsapp: ['WhatsApp', 'Conecte o número que o Agente I.A. vai usar.'],
+  disparo: ['Disparo em massa', 'Mande um template pra uma lista — cada envio desconta do seu saldo.'],
   equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
   assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.'],
   avisos: ['Mensagens do sistema', 'Novidades, melhorias e avisos da plataforma.']
@@ -759,6 +806,7 @@ function trocarSecao(secao) {
   if (secao === 'followup' && typeof carregarFollowup === 'function') carregarFollowup();
   if (secao === 'info' && typeof carregarInfo === 'function') carregarInfo();
   if (secao === 'modo' && typeof carregarModo === 'function') carregarModo();
+  if (secao === 'disparo' && typeof carregarDisparo === 'function') carregarDisparo();
   if (secao === 'assinatura' && typeof carregarAssinatura === 'function') carregarAssinatura();
   if (secao === 'avisos' && typeof renderAvisosLista === 'function') { renderAvisosLista(); marcarTodosLidos(); }
 }
@@ -775,6 +823,111 @@ function tempoRelativo(iso) {
   return `há ${Math.floor(diff/86400)}d`;
 }
 
+// ===================== DISPARO EM MASSA + SALDO (pré-pago) =====================
+function fmtReaisCliente(c) { return 'R$ ' + ((c || 0) / 100).toFixed(2).replace('.', ','); }
+let disparoPollTimer = null;
+
+async function carregarDisparo() {
+  const ehOficial = configuracaoAtual && configuracaoAtual.whatsappTipo === 'oficial';
+  const soOf = document.getElementById('disparoSoOficial'); if (soOf) soOf.style.display = ehOficial ? 'none' : 'block';
+  const btn = document.getElementById('disparoBtn'); if (btn) btn.disabled = !ehOficial;
+  atualizarResumoDisparo();
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-saldo`);
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) throw new Error();
+    const sv = document.getElementById('saldoValor');
+    sv.textContent = fmtReaisCliente(d.saldoCentavos);
+    sv.style.color = (d.saldoCentavos || 0) <= 0 ? '#c0392b' : '';
+    document.getElementById('precoMktTxt').textContent = fmtReaisCliente(d.precoMktCentavos);
+    document.getElementById('precoUtilTxt').textContent = fmtReaisCliente(d.precoUtilCentavos);
+    document.getElementById('saldoBaixoAviso').style.display = (d.prepagoAtivo && (d.saldoCentavos || 0) < (d.precoMktCentavos || 35)) ? 'block' : 'none';
+    const ex = d.extrato || [];
+    document.getElementById('saldoExtrato').innerHTML = ex.length ? ex.map(t => `
+      <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--border);padding:5px 0;">
+        <span style="color:var(--text-dim);white-space:nowrap;">${String(t.em||'').slice(0,16).replace('T',' ')}</span>
+        <span style="flex:1;">${String(t.motivo||t.categoria||'').replace(/[<>]/g,'')}</span>
+        <span style="font-weight:700;white-space:nowrap;color:${t.tipo==='credito'?'#166534':'#b45309'};">${t.tipo==='credito'?'+':'−'}${fmtReaisCliente(t.valorCentavos)}</span>
+      </div>`).join('') : '<span class="sub">Sem lançamentos ainda.</span>';
+  } catch (e) { const sv = document.getElementById('saldoValor'); if (sv) sv.textContent = '—'; }
+}
+
+function parseListaDisparo() {
+  const raw = (document.getElementById('disparoLista') || {}).value || '';
+  const contatos = [];
+  for (const l of raw.split(/\n/)) {
+    const cols = l.split(/[,\t;]+/).map(c => c.trim()).filter(x => x !== '');
+    if (!cols.length) continue;
+    const tel = cols[0].replace(/\D/g, '');
+    if (tel.length < 10) continue;
+    contatos.push({ telefone: tel, params: cols.slice(1) });
+  }
+  return contatos;
+}
+
+function atualizarResumoDisparo() {
+  const el = document.getElementById('disparoResumo'); if (!el) return;
+  const c = parseListaDisparo();
+  el.textContent = c.length ? `✅ ${c.length} contato(s) válido(s) detectado(s).` : 'Cole a lista acima (telefone na 1ª coluna).';
+}
+
+async function dispararCampanha() {
+  const st = document.getElementById('disparoStatus');
+  const template = document.getElementById('disparoTemplate').value.trim();
+  const contatos = parseListaDisparo();
+  if (!template) { st.textContent = '❌ Informe o nome do template.'; st.className = 'status-msg err'; return; }
+  if (!contatos.length) { st.textContent = '❌ Nenhum contato válido na lista.'; st.className = 'status-msg err'; return; }
+  if (!confirm(`Disparar o template "${template}" para ${contatos.length} contato(s)?\nCada envio desconta do seu saldo.`)) return;
+  const btn = document.getElementById('disparoBtn');
+  btn.disabled = true; st.textContent = 'Iniciando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-disparo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template, contatos }) });
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) { st.textContent = '❌ ' + (d.erro || 'Erro'); st.className = 'status-msg err'; btn.disabled = false; return; }
+    st.textContent = `🚀 Disparo iniciado (${d.total} contatos)`; st.className = 'status-msg ok';
+    document.getElementById('disparoProgresso').style.display = 'block';
+    pollDisparo();
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; btn.disabled = false; }
+}
+
+function pollDisparo() {
+  if (disparoPollTimer) clearInterval(disparoPollTimer);
+  const render = (s) => {
+    if (!s) return;
+    const feito = (s.enviados||0) + (s.falhas||0) + (s.bloqueados||0) + (s.optout||0);
+    const pct = s.total ? Math.round(feito / s.total * 100) : 0;
+    document.getElementById('disparoBarra').style.width = pct + '%';
+    document.getElementById('disparoNumeros').innerHTML =
+      `<span>✅ Enviados: <b>${s.enviados||0}</b></span>` +
+      `<span>🚫 Sem saldo: <b>${s.bloqueados||0}</b></span>` +
+      `<span>⚠️ Falhas: <b>${s.falhas||0}</b></span>` +
+      `<span>🔕 Opt-out: <b>${s.optout||0}</b></span>` +
+      `<span>Total: <b>${s.total||0}</b></span>`;
+  };
+  disparoPollTimer = setInterval(async () => {
+    try {
+      const resp = await fetchAutenticado(`${API_BASE}/minha-disparo/status`);
+      const d = await resp.json();
+      render(d.status);
+      if (d.status && d.status.terminado) {
+        clearInterval(disparoPollTimer); disparoPollTimer = null;
+        document.getElementById('disparoBtn').disabled = false;
+        const st = document.getElementById('disparoStatus');
+        st.textContent = d.status.semSaldo ? '⚠️ Parou: o saldo acabou. Recarregue e dispare o restante.' : '✅ Disparo concluído!';
+        st.className = d.status.semSaldo ? 'status-msg err' : 'status-msg ok';
+        carregarDisparo();
+      }
+    } catch (e) {}
+  }, 1500);
+}
+
+(function wireDisparo() {
+  const btn = document.getElementById('disparoBtn');
+  if (btn) btn.addEventListener('click', dispararCampanha);
+  const lista = document.getElementById('disparoLista');
+  if (lista) lista.addEventListener('input', atualizarResumoDisparo);
+})();
+
 async function carregarConfiguracao() {
   const loadMsg = document.getElementById('loadMsg');
   try {
@@ -788,6 +941,11 @@ async function carregarConfiguracao() {
     if (!EH_MATRIZ) {
       const nav = document.querySelector('#nav .nav-item[data-section="nichos"]');
       if (nav) nav.style.display = 'none';
+    }
+    // Disparo em massa aparece só no modo API Oficial (é onde faz sentido cobrar por msg).
+    if (configuracaoAtual && configuracaoAtual.whatsappTipo === 'oficial') {
+      const navD = document.querySelector('#nav .nav-item[data-section="disparo"]');
+      if (navD) navD.style.display = '';
     }
     loadMsg.style.display = 'none';
     document.getElementById('conteudo').style.display = 'block';
