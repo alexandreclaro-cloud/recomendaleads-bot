@@ -4501,6 +4501,9 @@ app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
     // Mescla com os padrões pra o painel mostrar todos os textos preenchidos
     // (campos não personalizados vêm com o texto padrão, pronto pra editar).
     const configuracao = { ...EMPRESA_PADRAO, ...(req.empresaLogin.configuracao || { nome: req.empresaLogin.nome }) };
+    // whatsappTipo é campo de TOPO da empresa (não fica dentro de `configuracao`) —
+    // o painel precisa dele pra saber que é oficial (ex.: mostrar "Disparo em massa").
+    configuracao.whatsappTipo = req.empresaLogin.whatsappTipo || 'zapi';
     res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
