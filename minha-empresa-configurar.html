@@ -1307,6 +1307,21 @@ document.getElementById('testeEntregaBtn').addEventListener('click', async () =>
     const d = await r.json();
     if (!d.ok) { out.textContent = '❌ ' + (d.erro || 'Falhou'); return; }
     const x = d.resultado || {};
+    // Modo API Oficial (Meta): resultado tem outro formato/linguagem.
+    if (x.canal === 'oficial') {
+      const veredito = x.aceitou
+        ? '✅ A META ACEITOU o envio' + (x.template ? ` (template "${x.template}")` : '') + '. Confira se chegou no número testado. Se não chegou, veja a resposta abaixo.'
+        : '❌ A META RECUSOU o envio (veja o erro abaixo) → é aqui que está o problema (token, template ou número).';
+      out.textContent = veredito + '\n\n' +
+        'Canal: API Oficial da Meta\n' +
+        'Phone Number ID: ' + (x.phoneId || '?') + '\n' +
+        (x.template ? 'Template usado: ' + x.template + '\n' : 'Tipo: texto livre (só entrega dentro da janela de 24h)\n') +
+        'Número enviado: ' + (x.numeroEnviado || '?') + '\n' +
+        'HTTP: ' + (x.httpStatus != null ? x.httpStatus : '?') + '\n' +
+        'messageId: ' + (x.messageId || '?') + '\n\n' +
+        'Resposta da Meta:\n' + JSON.stringify(x.zapiResposta || {}, null, 2);
+      return;
+    }
     const temWpp = x.checagem && (x.checagem.exists === true) ? 'SIM' : (x.checagem && x.checagem.exists === false ? 'NÃO' : 'desconhecido');
     let veredito;
     if (x.aceitou && temWpp === 'NÃO') veredito = '⚠️ A Z-API ACEITOU, mas este número NÃO tem WhatsApp segundo a checagem → por isso não chega.';

@@ -4231,6 +4231,35 @@ app.post('/minha-entrega/testar', exigirLoginEmpresa, exigirGestor, async (req, 
     const numero = String((req.body && req.body.numero) || '').replace(/\D/g, '');
     if (numero.length < 10) return res.status(400).json({ ok: false, erro: 'Número inválido — use DDD + número (com o 55 se quiser).' });
     const empresa = await getEmpresaById(req.empresaLogin.id);
+
+    // Modo API Oficial (Meta): envia pela Cloud API, NÃO pela Z-API. Fora da janela
+    // de 24h só template passa — então testa com o template configurado (se houver).
+    if (empresa.whatsappTipo === 'oficial') {
+      const oficial = oficialDaEmpresa(empresa);
+      const out = { canal: 'oficial', numeroOriginal: numero, numeroEnviado: soDigitos(numero), phoneId: oficial && oficial.phoneId };
+      if (!oficial) return res.json({ ok: true, resultado: { ...out, aceitou: false, zapiResposta: 'Credenciais oficiais não configuradas (Phone Number ID + Token).' } });
+      const tpl = empresa.oficialTemplateRecomendado;
+      let payload;
+      if (tpl) {
+        let nVars = await getTemplateVarCount(oficial, tpl);
+        if (nVars === null || nVars === undefined) nVars = 3;
+        const exemplo = ['Teste', 'RecomendaLeads', 'Equipe'].slice(0, Math.min(nVars, 3));
+        const components = exemplo.length ? [{ type: 'body', parameters: exemplo.map(t => ({ type: 'text', text: t })) }] : [];
+        payload = { messaging_product: 'whatsapp', to: soDigitos(numero), type: 'template', template: { name: tpl, language: { code: 'pt_BR' }, components } };
+        out.template = tpl;
+      } else {
+        payload = { messaging_product: 'whatsapp', to: soDigitos(numero), type: 'text', text: { body: `🧪 Teste RecomendaLeads (API Oficial) — ${new Date().toLocaleTimeString('pt-BR')}` } };
+      }
+      try {
+        const r = await axios.post(metaMessagesUrl(oficial), payload, { headers: metaHeaders(oficial) });
+        out.httpStatus = r.status; out.aceitou = true; out.zapiResposta = r.data;
+        out.messageId = r.data && r.data.messages && r.data.messages[0] && r.data.messages[0].id;
+      } catch (e) {
+        out.httpStatus = e.response?.status || 0; out.aceitou = false; out.zapiResposta = e.response?.data || e.message;
+      }
+      return res.json({ ok: true, resultado: out });
+    }
+
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
     const resultado = await tenantContext.run(contexto, async () => {
       const cfg = zapiAtual();
@@ -4805,6 +4834,19 @@ function zapiCfgDaEmpresaLogin(e) {
 }
 
 app.get('/minha-whatsapp/status', exigirLoginEmpresa, async (req, res) => {
+  // Modo API Oficial (Meta): "conectado" = credenciais válidas. Confirma buscando
+  // o número real na Meta (display_phone_number). Não depende de Z-API nenhuma.
+  if (req.empresaLogin.whatsappTipo === 'oficial') {
+    try {
+      const empresa = await getEmpresaById(req.empresaLogin.id);
+      const oficial = oficialDaEmpresa(empresa);
+      if (!oficial) return res.json({ ok: true, provisionado: false, conectado: false, canal: 'oficial' });
+      const numero = await getNumeroOficial(oficial);
+      return res.json({ ok: true, provisionado: false, conectado: !!numero, canal: 'oficial', numero: numero || null });
+    } catch (e) {
+      return res.json({ ok: true, provisionado: false, conectado: false, canal: 'oficial', erro: e.message });
+    }
+  }
   // Instância própria da empresa ou, na falta dela, a Z-API global (caso PDN).
   // `provisionado` só é true quando a empresa tem instância PRÓPRIA — assim o
   // painel oferece o QR apenas para quem realmente pode escanear; quem roda no
