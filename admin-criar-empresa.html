@@ -197,8 +197,9 @@
     <select id="whatsappTipoSelect" style="width:100%;padding:11px 12px;border:1px solid var(--line,#ccc);border-radius:8px;font-size:0.95rem;">
       <option value="zapi">Z-API (cliente contrata)</option>
       <option value="baileys">QR grátis — sem Z-API (demo / sem verba)</option>
+      <option value="oficial">API Oficial da Meta (selo verde)</option>
     </select>
-    <div class="hint">No modo "QR grátis", o cliente conecta lendo um QR Code no painel, sem precisar pagar a Z-API. Ótimo para demonstração e clientes sem verba.</div>
+    <div class="hint">No modo "QR grátis", o cliente conecta lendo um QR Code no painel, sem precisar pagar a Z-API. Ótimo para demonstração e clientes sem verba. No modo "API Oficial", as credenciais da Meta são preenchidas no painel do próprio cliente em <b>WhatsApp → API Oficial</b>.</div>
 
     <div id="zapiBloco">
     <div class="sec">WhatsApp (Z-API) — opcional</div>
@@ -384,7 +385,7 @@ document.getElementById('trialSelect').addEventListener('change', function () {
 });
 
 document.getElementById('whatsappTipoSelect').addEventListener('change', function () {
-  document.getElementById('zapiBloco').style.display = this.value === 'baileys' ? 'none' : 'block';
+  document.getElementById('zapiBloco').style.display = (this.value === 'baileys' || this.value === 'oficial') ? 'none' : 'block';
 });
 
 document.getElementById('criarBtn').addEventListener('click', async () => {

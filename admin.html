@@ -760,10 +760,11 @@ function abrirEdicao(id) {
         <div class="campo">
           <label>Modo de conexão</label>
           <select class="input" id="e_whatsappTipo">
-            <option value="zapi" ${(e.whatsappTipo || 'zapi') !== 'baileys' ? 'selected' : ''}>Z-API (cliente contrata)</option>
+            <option value="zapi" ${(e.whatsappTipo || 'zapi') === 'zapi' ? 'selected' : ''}>Z-API (cliente contrata)</option>
             <option value="baileys" ${e.whatsappTipo === 'baileys' ? 'selected' : ''}>QR grátis — sem Z-API (demo / sem verba)</option>
+            <option value="oficial" ${e.whatsappTipo === 'oficial' ? 'selected' : ''}>API Oficial da Meta (selo verde)</option>
           </select>
-          <div class="muted" style="font-size:0.76rem;margin-top:4px;">No modo "QR grátis", o painel do cliente mostra só o QR Code (ideal para demonstração dos vendedores e clientes sem verba).</div>
+          <div class="muted" style="font-size:0.76rem;margin-top:4px;">No modo "QR grátis", o painel do cliente mostra só o QR Code (ideal para demonstração dos vendedores e clientes sem verba). No modo "API Oficial", as credenciais (Phone Number ID, Token, etc.) são preenchidas no painel do próprio cliente em <b>WhatsApp → API Oficial</b>.</div>
         </div>
         <div class="grid2" style="margin-top:8px;">
           ${inpL('e_inst','Instance ID (Z-API)', e.zapiInstanceId)}

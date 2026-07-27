@@ -241,6 +241,30 @@ function soDigitos(telefone) {
   return String(telefone || '').replace(/\D/g, '');
 }
 
+// Descobre o número REAL da conta oficial direto na Meta (display_phone_number
+// do Phone Number ID). É a fonte da verdade no modo 'oficial' — não depende de
+// número que sobrou de sessão Z-API antiga. Cacheia em memória por phoneId.
+const _numeroOficialCache = {};
+async function getNumeroOficial(oficial) {
+  if (!oficial || !oficial.phoneId || !oficial.token) return null;
+  const cache = _numeroOficialCache[oficial.phoneId];
+  if (cache && (Date.now() - cache.em) < 60 * 60 * 1000 && cache.numero) return cache.numero;
+  try {
+    const resp = await axios.get(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${oficial.phoneId}`,
+      { params: { fields: 'display_phone_number' }, headers: { Authorization: `Bearer ${oficial.token}` }, timeout: 6000 }
+    );
+    const numero = soDigitos((resp.data && resp.data.display_phone_number) || '');
+    if (numero) {
+      _numeroOficialCache[oficial.phoneId] = { numero, em: Date.now() };
+      return numero;
+    }
+  } catch (e) {
+    console.warn('[NUM-OFICIAL] falha ao buscar display_phone_number:', e.response ? JSON.stringify(e.response.data).slice(0, 180) : e.message);
+  }
+  return null;
+}
+
 // empresaId do contexto atual, ou a PDN como padrão (comportamento de hoje).
 function empresaIdAtual() {
   const ctx = tenantContext.getStore();
@@ -1664,6 +1688,12 @@ async function salvarNumeroConectado(empresaId, numero) {
 
 async function getNumeroConectado(empresa) {
   const eid = empresaIdAtual();
+  // 0) Modo Oficial: o número REAL é o da conta na Meta (display_phone_number),
+  // não o numeroConectado que possa ter sobrado de uma sessão Z-API antiga.
+  if (empresa && empresa.whatsappTipo === 'oficial') {
+    const numOf = await getNumeroOficial(oficialDaEmpresa(empresa));
+    if (numOf) return numOf;
+  }
   // 1) Fonte MAIS confiável: número que o webhook do Z-API informou (connectedPhone).
   const doWebhook = String((empresa && empresa.numeroConectado) || '').replace(/\D/g, '') || null;
   if (doWebhook) return doWebhook;
