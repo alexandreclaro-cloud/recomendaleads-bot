@@ -599,18 +599,26 @@
       <section class="view fade-in" id="view-disparo">
         <div class="card">
           <div class="block-title"><i data-lucide="wallet"></i> Seu saldo</div>
-          <p class="sub">Você paga um pré-pago e cada mensagem enviada desconta do saldo. Quando zera, o disparo pausa até recarregar.</p>
-          <div style="background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-            <div>
-              <div style="font-size:0.82rem;color:var(--text-dim);">Saldo disponível</div>
-              <div id="saldoValor" style="font-size:1.8rem;font-weight:800;">—</div>
-            </div>
-            <div style="font-size:0.82rem;color:var(--text-dim);text-align:right;">
-              Marketing: <b id="precoMktTxt">—</b>/msg<br>Utility: <b id="precoUtilTxt">—</b>/msg<br>Resposta na janela 24h: <b>grátis</b>
-            </div>
+          <!-- Empresa com Meta PRÓPRIA (paga a Meta direto): sem cobrança aqui -->
+          <div id="saldoSemCobrancaBox" style="display:none;">
+            <p class="sub">✅ Sua conta usa a <b>sua própria conta da Meta</b> — você paga o WhatsApp direto pra Meta, <b>sem cobrança por mensagem aqui</b>. Pode disparar à vontade.</p>
+            <div style="background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;border-radius:10px;padding:10px 12px;font-size:0.85rem;">💡 O pré-pago/saldo vale só pra clientes que usam o <b>número do RecomendaLeads</b> (seu crédito) em vez de ter Meta própria.</div>
           </div>
-          <div id="saldoBaixoAviso" style="display:none;margin-top:10px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:10px;padding:10px 12px;font-size:0.86rem;">⚠️ Saldo baixo/zerado. Faça um Pix e peça pra equipe RecomendaLeads lançar a recarga.</div>
-          <details style="margin-top:12px;"><summary style="cursor:pointer;font-size:0.84rem;color:var(--text-dim);">Ver extrato (recargas e gastos)</summary><div id="saldoExtrato" style="font-size:0.82rem;margin-top:8px;">—</div></details>
+          <!-- Empresa pré-pago (usa o número/crédito do RecomendaLeads) -->
+          <div id="saldoPrepagoBox" style="display:none;">
+            <p class="sub">Você paga um pré-pago e cada mensagem enviada desconta do saldo. Quando zera, o disparo pausa até recarregar.</p>
+            <div style="background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+              <div>
+                <div style="font-size:0.82rem;color:var(--text-dim);">Saldo disponível</div>
+                <div id="saldoValor" style="font-size:1.8rem;font-weight:800;">—</div>
+              </div>
+              <div style="font-size:0.82rem;color:var(--text-dim);text-align:right;">
+                Marketing: <b id="precoMktTxt">—</b>/msg<br>Utility: <b id="precoUtilTxt">—</b>/msg<br>Resposta na janela 24h: <b>grátis</b>
+              </div>
+            </div>
+            <div id="saldoBaixoAviso" style="display:none;margin-top:10px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:10px;padding:10px 12px;font-size:0.86rem;">⚠️ Saldo baixo/zerado. Faça um Pix e peça pra equipe RecomendaLeads lançar a recarga.</div>
+            <details style="margin-top:12px;"><summary style="cursor:pointer;font-size:0.84rem;color:var(--text-dim);">Ver extrato (recargas e gastos)</summary><div id="saldoExtrato" style="font-size:0.82rem;margin-top:8px;">—</div></details>
+          </div>
         </div>
 
         <div class="card" style="margin-top:16px;">
@@ -622,8 +630,11 @@
           <input class="input" id="disparoTemplate" type="text" placeholder="ex: poder_network_corretores" style="max-width:420px;">
           <div class="hint">Tem que ser um template <b>Ativo</b> na sua conta da Meta. As variáveis vão na ordem das colunas abaixo.</div>
 
-          <label class="label" style="margin-top:14px;">Lista de contatos</label>
-          <div class="hint" style="margin-bottom:6px;">Um contato por linha. <b>1ª coluna = telefone com DDD</b>; as colunas seguintes são as variáveis do template ({{1}}, {{2}}...), na ordem. Separe por <b>vírgula</b> ou cole direto de uma planilha (tab). Ex:<br><code>11999998888, João, Nicolas</code></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:14px;">
+            <label class="label" style="margin:0;">Lista de contatos</label>
+            <button type="button" id="baixarModeloBtn" class="btn btn-secondary" style="padding:6px 12px;font-size:0.82rem;">📥 Baixar modelo (CSV)</button>
+          </div>
+          <div class="hint" style="margin-bottom:6px;">Um contato por linha. <b>1ª coluna = telefone com DDD</b>; as colunas seguintes são as variáveis do template ({{1}}, {{2}}...), na ordem. Separe por <b>vírgula</b> ou cole direto de uma planilha (tab). Ex:<br><code>11999998888, João, Nicolas</code><br>💡 Baixe o modelo, preencha no Excel/Sheets e cole aqui.</div>
           <textarea class="textarea" id="disparoLista" rows="8" placeholder="11999998888, João, Nicolas&#10;11988887777, Maria, Nicolas" style="font-family:monospace;font-size:0.85rem;"></textarea>
           <div id="disparoResumo" class="hint" style="margin-top:6px;">—</div>
 
@@ -836,6 +847,10 @@ async function carregarDisparo() {
     const resp = await fetchAutenticado(`${API_BASE}/minha-saldo`);
     const d = await resp.json();
     if (!resp.ok || !d.ok) throw new Error();
+    // Sem cobrança (Meta própria) vs pré-pago (usa o crédito do RecomendaLeads).
+    document.getElementById('saldoPrepagoBox').style.display = d.prepagoAtivo ? 'block' : 'none';
+    document.getElementById('saldoSemCobrancaBox').style.display = d.prepagoAtivo ? 'none' : 'block';
+    if (!d.prepagoAtivo) return; // resto (saldo/preços/extrato) só faz sentido no pré-pago
     const sv = document.getElementById('saldoValor');
     sv.textContent = fmtReaisCliente(d.saldoCentavos);
     sv.style.color = (d.saldoCentavos || 0) <= 0 ? '#c0392b' : '';
@@ -921,11 +936,23 @@ function pollDisparo() {
   }, 1500);
 }
 
+function baixarModeloDisparo() {
+  const csv = 'telefone,variavel1,variavel2,variavel3\n11999998888,João,Maria,Nicolas\n11988887777,Ana,Carlos,Nicolas\n';
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'modelo-disparo-recomendaleads.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 (function wireDisparo() {
   const btn = document.getElementById('disparoBtn');
   if (btn) btn.addEventListener('click', dispararCampanha);
   const lista = document.getElementById('disparoLista');
   if (lista) lista.addEventListener('input', atualizarResumoDisparo);
+  const modelo = document.getElementById('baixarModeloBtn');
+  if (modelo) modelo.addEventListener('click', baixarModeloDisparo);
 })();
 
 async function carregarConfiguracao() {
