@@ -2164,11 +2164,15 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
   const mensagemInicial = substituirVariaveis(escolherSaudacaoRecomendado(empresa), variaveis);
   // No modo OFICIAL, a primeira mensagem ao recomendado (que nunca te chamou)
   // precisa ser um TEMPLATE aprovado pela Meta. Params na ordem:
-  // {{1}}=nome do recomendado, {{2}}=quem recomendou, {{3}}=empresa.
+  // {{1}}=nome do recomendado, {{2}}=quem recomendou, {{3}}=vendedor.
+  // (O nome da empresa entra como texto fixo no template — cada template é de
+  //  uma empresa só. Sem vendedor cadastrado, {{3}} cai pro nome da empresa,
+  //  mantendo compatível com templates antigos que usavam {{3}}=empresa.)
   // Fora do modo oficial (ou sem template configurado) segue como hoje.
   if (tipoWppAtual() === 'oficial' && empresa.oficialTemplateRecomendado) {
+    const nomeVendedor = (vendedorNome && String(vendedorNome).trim()) || empresa.nome;
     const enviou = await sendTemplate(contato.telefone, empresa.oficialTemplateRecomendado,
-      [primeiroNomeRecomendado, nomeRecomendador.split(' ')[0], empresa.nome]);
+      [primeiroNomeRecomendado, nomeRecomendador.split(' ')[0], nomeVendedor]);
     if (!enviou) await sendText(contato.telefone, mensagemInicial);
   } else {
     await sendText(contato.telefone, mensagemInicial);
