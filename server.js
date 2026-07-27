@@ -4809,8 +4809,13 @@ app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, async (req
       oficialToken: tokenFinal,
       oficialVerifyToken: verifyFinal,
       oficialWabaId: (oficialWabaId && String(oficialWabaId).trim()) || atual.oficialWabaId || null,
-      oficialTemplateRecomendado: (oficialTemplateRecomendado && String(oficialTemplateRecomendado).trim()) || atual.oficialTemplateRecomendado || null
+      oficialTemplateRecomendado: (oficialTemplateRecomendado && String(oficialTemplateRecomendado).trim()) || atual.oficialTemplateRecomendado || null,
+      // Limpa o número que sobrou de sessão Z-API antiga (numeroConectado) pra o
+      // link/painel não mostrar número torto — no modo oficial o número vem da Meta.
+      configuracao: { numeroConectado: '', numeroDetectado: '' }
     }, { merge: true });
+    // Zera o cache em memória do número (senão o valor antigo persiste até expirar).
+    try { delete _numeroConectadoCache[req.empresaLogin.id]; } catch (e) {}
 
     // Encerra o Baileys (se houver) pra não brigar pelo número.
     try { await baileys.desconectar(req.empresaLogin.id); } catch (e) {}
