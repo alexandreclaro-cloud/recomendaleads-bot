@@ -2465,7 +2465,9 @@ async function enviarPresenteVendaAoRecomendador(lead, empresa) {
     premio: empresa.premioVenda || ''
   };
   const msg = substituirVariaveis(empresa.mensagemVenda ?? EMPRESA_PADRAO.mensagemVenda, vars);
-  if (msg && msg.trim()) await sendText(tel, msg);
+  // A venda pode acontecer dias depois (fora das 24h) → usa template no oficial (se configurado).
+  // Params na ordem: {{1}} recomendador · {{2}} recomendado · {{3}} prêmio.
+  if (msg && msg.trim()) await sendTextOuTemplate(tel, msg, empresa.oficialTemplateVenda, [vars.recomendador, vars.recomendado, empresa.premioVenda || '']);
   if (empresa.arquivoVenda) {
     await enviarVoucher(tel, empresa.arquivoVenda, empresa.premioVenda || '', empresa.premioVenda || 'presente');
   }
@@ -6759,7 +6761,9 @@ async function enviarMarketingAoRecomendador(tel, nomeRecomendador, empresa) {
     premio: empresa.marketingPremio || ''
   };
   const msg = substituirVariaveis(empresa.marketingMensagem ?? EMPRESA_PADRAO.marketingMensagem, vars);
-  if (msg && msg.trim()) await sendText(tel, msg);
+  // Recorrente (a cada N dias) = fora das 24h → usa template no oficial (se configurado).
+  // Params na ordem: {{1}} recomendador · {{2}} empresa · {{3}} prêmio.
+  if (msg && msg.trim()) await sendTextOuTemplate(tel, msg, empresa.oficialTemplateMarketing, [vars.recomendador, empresa.nome || '', empresa.marketingPremio || '']);
   if (empresa.marketingArquivo) {
     await enviarVoucher(tel, empresa.marketingArquivo, empresa.marketingPremio || '', empresa.marketingPremio || 'presente');
   }

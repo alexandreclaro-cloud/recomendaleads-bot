@@ -1036,6 +1036,11 @@
           </p>
           <label>Mensagem enviada ao recomendador (avisando que o amigo comprou)</label>
           <textarea id="mensagemVendaInput" rows="3" placeholder="Ex: Boa notícia, {recomendador}! {recomendado} comprou e você ganhou: {premio} 🎁"></textarea>
+          <div id="oficialTemplateVendaBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:10px 0;">
+            <label style="margin-top:0;">🟢 Template da API Oficial (a venda pode ser dias depois → fora das 24h)</label>
+            <input type="text" id="oficialTemplateVendaInput" placeholder="ex: presente_venda">
+            <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Variáveis na ordem: <b>{{1}}</b> recomendador · <b>{{2}}</b> recomendado · <b>{{3}}</b> prêmio. Deixe vazio pra não avisar fora das 24h.</div>
+          </div>
           <label>Prêmio (texto curto)</label>
           <input type="text" id="premioVendaInput" placeholder="Ex: Vale-presente de R$ 50">
           <label>Arquivo (imagem JPEG/PNG ou PDF)</label>
@@ -1097,6 +1102,11 @@
           <input type="number" id="marketingIntervaloInput" min="1" max="365" placeholder="45" style="max-width:140px;">
           <label>Mensagem</label>
           <textarea id="marketingMensagemInput" rows="3" placeholder="Ex: Oi {recomendador}! Temos novidades na {empresa} 😊"></textarea>
+          <div id="oficialTemplateMarketingBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:10px 0;">
+            <label style="margin-top:0;">🟢 Template da API Oficial (recorrente = sempre fora das 24h)</label>
+            <input type="text" id="oficialTemplateMarketingInput" placeholder="ex: agenda_marketing">
+            <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Como manda a cada X dias, SEMPRE cai fora das 24h → precisa de template. Variáveis na ordem: <b>{{1}}</b> recomendador · <b>{{2}}</b> empresa · <b>{{3}}</b> prêmio. Vazio = não manda no oficial.</div>
+          </div>
           <label>Prêmio (opcional — texto curto)</label>
           <input type="text" id="marketingPremioInput" placeholder="Ex: Cupom de 10% (deixe vazio se não houver)">
           <label>Arquivo (imagem JPEG/PNG ou PDF — opcional)</label>
@@ -1906,6 +1916,14 @@ async function carregarConfiguracao() {
     document.getElementById('marketingArquivoInput').value = configuracaoAtual.marketingArquivo || '';
     document.getElementById('marketingLinkInput').value = configuracaoAtual.marketingLink || '';
     document.getElementById('marketingTextoInput').value = configuracaoAtual.marketingTexto || '';
+    // Templates da API Oficial nos cards de Marketing e Venda (só aparecem se oficial).
+    const ehOficialCrm = configuracaoAtual.whatsappTipo === 'oficial';
+    const setTpl = (inputId, boxId, valor) => {
+      const inp = document.getElementById(inputId); if (inp) inp.value = valor || '';
+      const box = document.getElementById(boxId); if (box) box.style.display = ehOficialCrm ? 'block' : 'none';
+    };
+    setTpl('oficialTemplateMarketingInput', 'oficialTemplateMarketingBox', configuracaoAtual.oficialTemplateMarketing);
+    setTpl('oficialTemplateVendaInput', 'oficialTemplateVendaBox', configuracaoAtual.oficialTemplateVenda);
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemInicialRecomendado2Input').value = configuracaoAtual.mensagemInicialRecomendado2 || '';
     document.getElementById('mensagemInicialRecomendado3Input').value = configuracaoAtual.mensagemInicialRecomendado3 || '';
@@ -2114,11 +2132,13 @@ document.getElementById('salvarPresenteVendaBtn').addEventListener('click', asyn
   const arquivoVenda = document.getElementById('arquivoVendaInput').value.trim() || null;
   const linkVenda = document.getElementById('linkVendaInput').value.trim() || null;
   const textoVenda = document.getElementById('textoVendaInput').value.trim() || null;
+  const tplVendaEl = document.getElementById('oficialTemplateVendaInput');
+  const oficialTemplateVenda = tplVendaEl ? tplVendaEl.value.trim() : '';
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ mensagemVenda, premioVenda, arquivoVenda, linkVenda, textoVenda })
+      body: JSON.stringify({ mensagemVenda, premioVenda, arquivoVenda, linkVenda, textoVenda, oficialTemplateVenda })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
@@ -2137,12 +2157,14 @@ document.getElementById('salvarMarketingBtn').addEventListener('click', async ()
   const marketingArquivo = document.getElementById('marketingArquivoInput').value.trim() || null;
   const marketingLink = document.getElementById('marketingLinkInput').value.trim() || null;
   const marketingTexto = document.getElementById('marketingTextoInput').value.trim() || null;
+  const tplMktEl = document.getElementById('oficialTemplateMarketingInput');
+  const oficialTemplateMarketing = tplMktEl ? tplMktEl.value.trim() : '';
   if (marketingAtivo && !marketingMensagem) { statusEl.textContent = '❌ Escreva a mensagem'; statusEl.className = 'config-status-msg err'; return; }
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ marketingAtivo, marketingIntervaloDias, marketingMensagem, marketingPremio, marketingArquivo, marketingLink, marketingTexto })
+      body: JSON.stringify({ marketingAtivo, marketingIntervaloDias, marketingMensagem, marketingPremio, marketingArquivo, marketingLink, marketingTexto, oficialTemplateMarketing })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
