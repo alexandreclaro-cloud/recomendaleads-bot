@@ -431,6 +431,11 @@
               </select>
             </div>
           </div>
+          <div id="oficialTemplateFollowupBox2" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
+            <label class="label" style="margin-top:0;">🟢 Template da API Oficial — lembrete do cliente (dias depois = fora das 24h)</label>
+            <input class="input" type="text" id="oficialTemplateFollowupInput2" placeholder="ex: lembrete_cliente" style="max-width:420px;">
+            <div class="hint" style="font-size:0.76rem;margin-top:4px;">Os lembretes costumam sair dias depois → fora das 24h → precisam de template. Variáveis: <b>{{1}}</b> nome do cliente · <b>{{2}}</b> empresa. Vazio = não lembra no oficial. <i>(É o mesmo template do painel WhatsApp → API Oficial.)</i></div>
+          </div>
           <div class="row-save">
             <button class="btn btn-action" id="salvarBasicConfBtn">Salvar</button>
             <span class="status-msg" id="statusBasicConf"></span>
@@ -2062,6 +2067,11 @@ function carregarBasicConf() {
   document.getElementById('basicTextoProntoConfirma').value = c.basicTextoProntoConfirma || '';
   document.getElementById('basicAindaNao').value = c.basicAindaNao || c.followupAindaNao || '';
   document.getElementById('basicSemConf').value = c.basicSemConfirmacao || 'nao_envia';
+  // Template do lembrete (só aparece no oficial). É o mesmo do painel API Oficial.
+  const tplFupEl = document.getElementById('oficialTemplateFollowupInput2');
+  if (tplFupEl) tplFupEl.value = c.oficialTemplateFollowupCliente || '';
+  const tplFupBox = document.getElementById('oficialTemplateFollowupBox2');
+  if (tplFupBox) tplFupBox.style.display = (c.whatsappTipo === 'oficial') ? 'block' : 'none';
   basicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || c.cadenciaFollowupRecomendador || []));
   // Se a empresa ainda não tem lembretes salvos, mostra 3 padrão já preenchidos
   // (o mesmo que o robô usa por padrão) — assim os campos aparecem em TODA conta
@@ -2107,6 +2117,8 @@ document.getElementById('salvarBasicConfBtn').addEventListener('click', async ()
     cadenciaFollowupRecomendador: cad,
     basicSemConfirmacao: document.getElementById('basicSemConf').value
   };
+  const tplFupEl2 = document.getElementById('oficialTemplateFollowupInput2');
+  if (tplFupEl2) body.oficialTemplateFollowupCliente = tplFupEl2.value.trim();
   st.textContent = 'Salvando...'; st.className = 'status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
