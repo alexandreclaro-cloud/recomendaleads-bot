@@ -3009,11 +3009,27 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
         vendedor: sessao.vendedorNome || empresa.nome,
         empresa: empresa.nome
       };
+      // IA primeiro (mesma do "Atendimento pós-fluxo"): se souber responder com as
+      // infos do negócio (endereço, horário etc.), responde e NÃO chama o vendedor
+      // ainda — só escala quando a IA sinaliza ##TRANSFERIR## (não sabe) ou o
+      // recurso está desligado.
+      if (empresa.infoAtendimentoAtivo && texto) {
+        let respostaIA = await responderPerguntaNegocio(texto, empresa);
+        if (respostaIA && !/##TRANSFERIR##/.test(respostaIA)) {
+          await sendText(telefone, respostaIA);
+          await saveSessaoRecomendado(telefone, { ultimaMensagemEm: new Date().toISOString() });
+          return true; // continua em aguardando_confirmacao — IA segue respondendo
+        }
+        if (respostaIA) {
+          respostaIA = respostaIA.replace(/##TRANSFERIR##/g, '').trim();
+          if (respostaIA) await sendText(telefone, respostaIA);
+        }
+      }
       const msgH = substituirVariaveis(empresa.recomendadoHumanoMensagem ?? EMPRESA_PADRAO.recomendadoHumanoMensagem, varsH);
       if (msgH && msgH.trim()) await sendText(telefone, msgH);
       await saveSessaoRecomendado(telefone, { etapa: 'atendimento_humano', ultimaMensagemEm: new Date().toISOString() });
       await pausarNumero(telefone);           // robô para nesse contato
-      await avisarAtendente(telefone, sessao.nomeRecomendado, empresa); // avisa o vendedor
+      await avisarAtendente(telefone, sessao.nomeRecomendado, empresa); // avisa o vendedor (som + WhatsApp)
       console.log(`[REC-HUMANO] ${telefone} passou pro atendimento humano (${empresa.nome})`);
       return true;
     }
