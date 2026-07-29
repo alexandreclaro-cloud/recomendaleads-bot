@@ -800,6 +800,26 @@
           <label>Aviso enviado ao cliente logo após o presente, pedindo que ele avise os amigos recomendados (deixe vazio para não enviar)</label>
           <textarea id="mensagemValidarAmigoInput" rows="3"></textarea>
 
+          <p style="font-weight:600;color:var(--gold-deep);margin:20px 0 0;border-top:1px solid var(--border,#eee);padding-top:16px;">6) 🔔 Avisar os amigos — segurar o disparo até confirmar</p>
+          <p style="font-size:0.8rem;color:var(--text-dim);margin:2px 0 8px;">Variáveis: <code class="var-chip">{cliente}</code> <code class="var-chip">{empresa}</code></p>
+          <label style="display:flex;align-items:center;gap:10px;margin:8px 0;cursor:pointer;">
+            <input type="checkbox" id="crmSegurarAtivo" style="width:18px;height:18px;">
+            <span style="font-weight:600;">🛡️ Segurar o disparo até o cliente confirmar que avisou os amigos</span>
+          </label>
+          <p style="font-size:0.78rem;color:var(--text-dim);margin:0 0 8px;">Ligado: o robô só chama os amigos depois que o cliente responde <b>1 (já avisei)</b>. Se não confirmar, manda os lembretes abaixo e, no fim, dispara conforme a opção "Se nunca confirmar".</p>
+          <div id="crmSegurarBox" style="display:none;">
+            <label>Mensagem que pede a confirmação <span style="font-weight:400;color:var(--text-dim)">(menu 1 já avisei · 2 ainda não · 3 me manda um texto pronto)</span></label>
+            <textarea id="crmBasicConfirmMsg" rows="5"></textarea>
+            <label style="margin-top:14px;">Lembretes <span style="font-weight:400;color:var(--text-dim)">(o robô insiste até o cliente responder — você define quantos, o tempo e o texto de cada)</span></label>
+            <div id="crmBasicCadContainer"></div>
+            <button class="config-save-btn" id="crmAddLembreteBtn" type="button" style="background:transparent;border:1px solid var(--gold);color:var(--gold-deep);margin-top:4px;">➕ Adicionar lembrete</button>
+            <label style="margin-top:16px;">Se o cliente nunca confirmar (após todos os lembretes):</label>
+            <select id="crmBasicSemConf" class="input" style="max-width:340px;">
+              <option value="nao_envia">Não disparar 🛡️ (mais seguro)</option>
+              <option value="envia">Disparar mesmo assim</option>
+            </select>
+          </div>
+
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarClienteConversaBtn">Salvar conversa do cliente</button>
             <span class="config-status-msg" id="statusClienteConversa"></span>
@@ -1952,6 +1972,8 @@ async function carregarConfiguracao() {
     document.getElementById('mensagemPedeContatosInput').value = configuracaoAtual.mensagemPedeContatos || '';
     document.getElementById('mensagemColetaInput').value = configuracaoAtual.mensagemColeta || '';
     document.getElementById('mensagemValidarAmigoInput').value = configuracaoAtual.mensagemValidarAmigo ?? '';
+    // Avisar os amigos (Segurar) — carrega estado + cadência.
+    if (typeof carregarCrmSegurar === 'function') carregarCrmSegurar();
     document.getElementById('tempoEsperaConversaoMinInput').value = configuracaoAtual.tempoEsperaConversaoMin || 60;
     document.getElementById('posMensagemConexaoInput').value = configuracaoAtual.posMensagemConexao ?? '';
     document.getElementById('posMenuPrincipalInput').value = configuracaoAtual.posMenuPrincipal || '';
@@ -2087,6 +2109,66 @@ document.getElementById('salvarEmpresaBtn').addEventListener('click', async () =
   }
 });
 
+// ===== Avisar os amigos (Segurar até confirmar) — editor de cadência no CRM =====
+let crmBasicCad = [];
+function renderCrmBasicCad() {
+  const cont = document.getElementById('crmBasicCadContainer');
+  if (!cont) return;
+  cont.innerHTML = (crmBasicCad || []).map((item, i) => {
+    const u = minParaUnidade(item.esperaMin);
+    const escTxt = String(item.texto || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    return `<div class="crm-lembrete" style="border:1px solid var(--border,#e5e7eb);border-radius:12px;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+        <b style="min-width:78px;">Lembrete ${i + 1}</b>
+        <input class="input cbc-val" type="number" min="0" value="${u.valor}" style="max-width:90px;">
+        <select class="input cbc-uni" style="max-width:120px;">
+          <option value="minutos"${u.unidade === 'minutos' ? ' selected' : ''}>minutos</option>
+          <option value="horas"${u.unidade === 'horas' ? ' selected' : ''}>horas</option>
+          <option value="dias"${u.unidade === 'dias' ? ' selected' : ''}>dias</option>
+        </select>
+        <span style="color:var(--text-dim);font-size:.82rem;">depois do anterior</span>
+        <button type="button" class="config-save-btn cbc-del" data-i="${i}" style="margin-left:auto;background:transparent;border:1px solid #f3c2c2;color:#c0392b;">Remover</button>
+      </div>
+      <textarea class="cbc-txt" rows="2" placeholder="Texto do lembrete" style="width:100%;">${escTxt}</textarea>
+    </div>`;
+  }).join('');
+  cont.querySelectorAll('.cbc-del').forEach(b => b.addEventListener('click', () => { syncCrmBasicCadFromDom(); crmBasicCad.splice(+b.dataset.i, 1); renderCrmBasicCad(); }));
+}
+function syncCrmBasicCadFromDom() {
+  const cont = document.getElementById('crmBasicCadContainer');
+  if (!cont) return;
+  crmBasicCad = [...cont.querySelectorAll('.crm-lembrete')].map(row => ({
+    esperaMin: unidadeParaMin(row.querySelector('.cbc-val').value, row.querySelector('.cbc-uni').value) || 60,
+    texto: row.querySelector('.cbc-txt').value
+  }));
+}
+function aplicarCrmSegurarUI() {
+  const on = document.getElementById('crmSegurarAtivo').checked;
+  document.getElementById('crmSegurarBox').style.display = on ? 'block' : 'none';
+}
+function carregarCrmSegurar() {
+  const c = configuracaoAtual || {};
+  document.getElementById('crmSegurarAtivo').checked = !!c.basicConfirmarAntesDisparo;
+  document.getElementById('crmBasicConfirmMsg').value = c.basicConfirmMensagem || '';
+  document.getElementById('crmBasicSemConf').value = c.basicSemConfirmacao || 'nao_envia';
+  crmBasicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || []));
+  if (!crmBasicCad.length) {
+    crmBasicCad = [
+      { esperaMin: 120, texto: 'Oi {cliente}! 😊 Conseguiu avisar seus amigos? Quando estiver tudo certo, responde *1* (já avisei) que eu chamo eles 🎁' },
+      { esperaMin: 1440, texto: 'Oi {cliente}! Seus amigos ainda estão te esperando 🎁 Avisa eles e responde *1* (já avisei).' },
+      { esperaMin: 4320, texto: 'Oi {cliente}! Última lembrança 🙌 É só avisar os amigos e responder *1* (já avisei) que eu libero os presentes deles.' }
+    ];
+  }
+  renderCrmBasicCad();
+  aplicarCrmSegurarUI();
+}
+document.getElementById('crmSegurarAtivo').addEventListener('change', aplicarCrmSegurarUI);
+document.getElementById('crmAddLembreteBtn').addEventListener('click', () => {
+  syncCrmBasicCadFromDom();
+  crmBasicCad.push({ esperaMin: 1440, texto: 'Oi {cliente}! 😊 Assim que avisar seus amigos, responde *1* (já avisei) que eu chamo eles 🎁' });
+  renderCrmBasicCad();
+});
+
 document.getElementById('salvarClienteConversaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarClienteConversaBtn');
   const statusEl = document.getElementById('statusClienteConversa');
@@ -2098,11 +2180,18 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   // Vazio salva '' (não null) de propósito: '' = não enviar; null cairia no padrão.
   const mensagemValidarAmigo = document.getElementById('mensagemValidarAmigoInput').value.trim();
   const gatilhoPresente = document.getElementById('gatilhoPresenteInput').value.trim() || 'quero meu presente';
+  // Avisar os amigos (Segurar até confirmar + cadência + disparar mesmo assim).
+  syncCrmBasicCadFromDom();
+  const basicConfirmarAntesDisparo = document.getElementById('crmSegurarAtivo').checked;
+  const basicConfirmMensagem = document.getElementById('crmBasicConfirmMsg').value.trim();
+  const basicSemConfirmacao = document.getElementById('crmBasicSemConf').value;
+  const basicConfirmacaoCadencia = (crmBasicCad || []).filter(x => x.texto && x.texto.trim());
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta, mensagemValidarAmigo, gatilhoPresente })
+      body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta, mensagemValidarAmigo, gatilhoPresente,
+        basicConfirmarAntesDisparo, basicConfirmMensagem, basicSemConfirmacao, basicConfirmacaoCadencia })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
