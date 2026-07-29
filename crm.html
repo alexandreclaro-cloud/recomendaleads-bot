@@ -875,6 +875,13 @@
             Variáveis (clique para copiar): <code class="var-chip">{nomeRecomendado}</code> <code class="var-chip">{recomendador}</code> <code class="var-chip">{vendedor}</code> <code class="var-chip">{empresa}</code>
           </p>
 
+          <div id="recHumanoBox" style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px;margin:6px 0 16px;">
+            <label style="display:flex;align-items:center;gap:8px;margin-top:0;font-weight:600;"><input type="checkbox" id="recHumanoAtivo"> ⚡ Modo direto — atendimento humano do recomendado</label>
+            <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin:6px 0 8px;">LIGADO: quando o recomendado clica no botão, ele <b>NÃO</b> recebe o fluxo automático do presente — o robô manda <b>1 mensagem curta</b>, avisa o vendedor e a conversa cai em <b>Conversas</b> pro humano assumir. <i>(As mensagens automáticas abaixo só valem com o modo DESLIGADO.)</i></div>
+            <label style="margin-top:0;">Mensagem curta antes de passar pro vendedor <span style="font-weight:400;color:var(--text-dim)">(variáveis: {nomeRecomendado}, {empresa})</span></label>
+            <textarea id="recHumanoMsg" rows="2" placeholder="Ex: Que bom! Já já um consultor te chama pra liberar seu presente 🙌"></textarea>
+          </div>
+
           <label>1️⃣ Mensagem inicial (pede confirmação antes de seguir)</label>
           <textarea id="mensagemInicialRecomendadoInput" rows="3"></textarea>
 
@@ -1928,6 +1935,8 @@ async function carregarConfiguracao() {
     document.getElementById('mensagemInicialRecomendado2Input').value = configuracaoAtual.mensagemInicialRecomendado2 || '';
     document.getElementById('mensagemInicialRecomendado3Input').value = configuracaoAtual.mensagemInicialRecomendado3 || '';
     // Template da API Oficial (só aparece se a empresa for oficial).
+    const recHA = document.getElementById('recHumanoAtivo'); if (recHA) recHA.checked = !!configuracaoAtual.recomendadoAtendimentoHumano;
+    const recHM = document.getElementById('recHumanoMsg'); if (recHM) recHM.value = configuracaoAtual.recomendadoHumanoMensagem || '';
     const tplRecEl = document.getElementById('oficialTemplateRecomendadoInput');
     if (tplRecEl) tplRecEl.value = configuracaoAtual.oficialTemplateRecomendado || '';
     const tplRecBox = document.getElementById('oficialTemplateRecomendadoBox');
@@ -2262,6 +2271,10 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const numeroAtendente = (document.getElementById('numeroAtendenteInput').value || '').replace(/\D/g, '') || null;
   const tplRecEl = document.getElementById('oficialTemplateRecomendadoInput');
   const oficialTemplateRecomendado = tplRecEl ? tplRecEl.value.trim() : '';
+  const recHAEl = document.getElementById('recHumanoAtivo');
+  const recomendadoAtendimentoHumano = recHAEl ? recHAEl.checked : false;
+  const recHMEl = document.getElementById('recHumanoMsg');
+  const recomendadoHumanoMensagem = recHMEl ? recHMEl.value.trim() : '';
 
   btn.disabled = true;
   statusEl.textContent = 'Salvando...';
@@ -2276,7 +2289,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         cadenciaFollowupRecomendado,
         faqComoFunciona, faqValidade, posAtendente, numeroAtendente,
-        oficialTemplateRecomendado
+        oficialTemplateRecomendado, recomendadoAtendimentoHumano, recomendadoHumanoMensagem
       })
     });
     const data = await resp.json();

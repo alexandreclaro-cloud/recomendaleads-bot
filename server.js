@@ -728,6 +728,11 @@ const EMPRESA_PADRAO = {
   mensagemInicialRecomendado2: '',
   mensagemInicialRecomendado3: '',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
+  // Modo direto: quando o recomendado responder ao template, o robô NÃO roda o
+  // fluxo do presente — manda 1 mensagem curta, avisa o vendedor e passa a conversa
+  // pro humano (cai em Conversas). Default OFF (segue o fluxo automático de sempre).
+  recomendadoAtendimentoHumano: false,
+  recomendadoHumanoMensagem: 'Que bom, {nomeRecomendado}! 😊 Já já um consultor da {empresa} te chama por aqui pra liberar o seu presente. Só um instante 🙌',
   mensagemAntesPresente: '🎉 Boa notícia! Você ganhou {premio}. Aqui está o seu presente 👇',
   gatilhoPresente: 'quero meu presente',
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
@@ -2959,6 +2964,24 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   // Mais rápido, previsível e sem delay de API.
 
   if (sessao.etapa === 'aguardando_confirmacao') {
+    // Modo direto (atendimento humano): não roda o fluxo do presente. Manda 1 msg
+    // curta, avisa o vendedor e passa a conversa pro humano assumir em Conversas.
+    if (empresa.recomendadoAtendimentoHumano) {
+      const varsH = {
+        nomeRecomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
+        recomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
+        recomendador: sessao.nomeRecomendador ? sessao.nomeRecomendador.split(' ')[0] : 'seu amigo',
+        vendedor: sessao.vendedorNome || empresa.nome,
+        empresa: empresa.nome
+      };
+      const msgH = substituirVariaveis(empresa.recomendadoHumanoMensagem ?? EMPRESA_PADRAO.recomendadoHumanoMensagem, varsH);
+      if (msgH && msgH.trim()) await sendText(telefone, msgH);
+      await saveSessaoRecomendado(telefone, { etapa: 'atendimento_humano', ultimaMensagemEm: new Date().toISOString() });
+      await pausarNumero(telefone);           // robô para nesse contato
+      await avisarAtendente(telefone, sessao.nomeRecomendado, empresa); // avisa o vendedor
+      console.log(`[REC-HUMANO] ${telefone} passou pro atendimento humano (${empresa.nome})`);
+      return true;
+    }
     const variaveis = {
       nomeRecomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
       recomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
