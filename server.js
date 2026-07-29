@@ -2074,6 +2074,10 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   // Ordem congruente: presente (imagem) → mensagem de orientação → link
   if (faixa.arquivo) {
     await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
+    // A mídia (imagem/PDF) demora pra ser processada e entregue pelo WhatsApp — sem
+    // esse respiro o texto de orientação ("clique no link abaixo") CHEGA ANTES da
+    // imagem. Espera um pouco pra garantir que a imagem apareça primeiro.
+    await new Promise(r => setTimeout(r, 2500));
   } else {
     await sendText(telefone, faixa.premio);
   }
@@ -2392,6 +2396,8 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
 
   if (empresa.arquivoRecomendado) {
     await enviarVoucher(telefone, empresa.arquivoRecomendado, empresa.premioRecomendado || '', empresa.premioRecomendado || 'presente');
+    // Respiro pra a imagem chegar ANTES do link/texto (mídia demora a ser entregue).
+    await new Promise(r => setTimeout(r, 2500));
   }
 
   if (empresa.linkRecomendado) {
@@ -2474,6 +2480,7 @@ async function enviarPresenteVendaAoRecomendador(lead, empresa) {
   if (msg && msg.trim()) await sendTextOuTemplate(tel, msg, empresa.oficialTemplateVenda, [vars.recomendador, vars.recomendado, empresa.premioVenda || '']);
   if (empresa.arquivoVenda) {
     await enviarVoucher(tel, empresa.arquivoVenda, empresa.premioVenda || '', empresa.premioVenda || 'presente');
+    await new Promise(r => setTimeout(r, 2500)); // imagem chega antes do link/texto
   }
   if (empresa.linkVenda) await sendText(tel, empresa.linkVenda);
   if (empresa.textoVenda && empresa.textoVenda.trim()) {
@@ -6770,6 +6777,7 @@ async function enviarMarketingAoRecomendador(tel, nomeRecomendador, empresa) {
   if (msg && msg.trim()) await sendTextOuTemplate(tel, msg, empresa.oficialTemplateMarketing, [vars.recomendador, empresa.nome || '', empresa.marketingPremio || '']);
   if (empresa.marketingArquivo) {
     await enviarVoucher(tel, empresa.marketingArquivo, empresa.marketingPremio || '', empresa.marketingPremio || 'presente');
+    await new Promise(r => setTimeout(r, 2500)); // imagem chega antes do link/texto
   }
   if (empresa.marketingLink) await sendText(tel, empresa.marketingLink);
   if (empresa.marketingTexto && empresa.marketingTexto.trim()) {
