@@ -1988,6 +1988,7 @@ async function finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDest
 // Agenda o disparo escalonado (anti-rajada) pros recomendados. Reutilizável:
 // chamado na hora (Basic normal) ou depois da confirmação (Basic com confirmação).
 async function dispararRecomendados(nomeRecomendador, vendedorNome, contatos, empresa, telefoneRecomendador) {
+  console.log(`[DISPARO] chamado: ${(contatos || []).length} contato(s) | empresa=${empresa.nome} | tempoEspera=${empresa.tempoEsperaConversaoMin || 0}min | contatos=${JSON.stringify((contatos || []).map(c => c && c.telefone))}`);
   const baseMs = Math.max(0, empresa.tempoEsperaConversaoMin || 0) * 60 * 1000;
   const gapMinMs = Math.max(0, (empresa.recomendadoGapMinMin != null ? empresa.recomendadoGapMinMin : 3)) * 60 * 1000;
   const gapMaxMs = Math.max(gapMinMs, (empresa.recomendadoGapMaxMin != null ? empresa.recomendadoGapMaxMin : 8) * 60 * 1000);
@@ -2370,6 +2371,7 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
   //  uma empresa só. Sem vendedor cadastrado, {{3}} cai pro nome da empresa,
   //  mantendo compatível com templates antigos que usavam {{3}}=empresa.)
   // Fora do modo oficial (ou sem template configurado) segue como hoje.
+  console.log(`[REC-INICIO] empresa=${empresa.nome} tel=${contato.telefone} tipo=${tipoWppAtual()} template=${empresa.oficialTemplateRecomendado || '(vazio)'}`);
   if (tipoWppAtual() === 'oficial' && empresa.oficialTemplateRecomendado) {
     const nomeVendedor = (vendedorNome && String(vendedorNome).trim()) || empresa.nome;
     // Ordem fixa dos parâmetros: {{1}} recomendado, {{2}} recomendador, {{3}} vendedor.
@@ -2380,8 +2382,10 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
     if (nVars === null || nVars === undefined) nVars = 3;
     const params = todosParams.slice(0, Math.min(nVars, todosParams.length));
     const enviou = await sendTemplate(contato.telefone, empresa.oficialTemplateRecomendado, params);
+    console.log(`[REC-INICIO] sendTemplate "${empresa.oficialTemplateRecomendado}" → ${contato.telefone} = ${enviou ? 'ENVIADO ✅' : 'FALHOU/BLOQUEADO ❌'} params=${JSON.stringify(params)}`);
     if (!enviou) await sendText(contato.telefone, mensagemInicial);
   } else {
+    console.log(`[REC-INICIO] NAO-oficial ou SEM template → mandando TEXTO LIVRE pra ${contato.telefone} (fora das 24h isso NAO entrega no oficial)`);
     await sendText(contato.telefone, mensagemInicial);
   }
 
