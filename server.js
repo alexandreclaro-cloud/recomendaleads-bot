@@ -3380,19 +3380,31 @@ async function tratarWebhook(req, res) {
       const primeiro = t.charAt(0);
       const nome1 = (s.clienteNome || '').split(' ')[0] || 'você';
       const varsC = { nomeRecomendado: nome1, recomendador: nome1, empresa: empresaC.nome };
+      const menuJaEnviado = !!s.aguardandoConfirmacaoDisparo;
 
-      // 3 → manda o texto pronto pro cliente encaminhar (continua aguardando)
-      if (primeiro === '3' || /textinho|texto pronto|manda o texto|manda um texto|modelo/.test(t)) {
-        await sendText(telefone, substituirVariaveis(empresaC.basicTextoPronto || EMPRESA_PADRAO.basicTextoPronto, varsC));
-        await sendText(telefone, substituirVariaveis(empresaC.basicTextoProntoConfirma || EMPRESA_PADRAO.basicTextoProntoConfirma, varsC));
-        return res.sendStatus(200);
-      }
-      // 1 / "já avisei" / "pode mandar" → dispara agora os recomendados segurados
+      // 1 / "já avisei" / "pode mandar" → dispara agora (vale até antes do menu aparecer)
       if (primeiro === '1' || ehConfirmacaoDisparo(texto)) {
         await dispararRecomendados(s.clienteNome, s.vendedorNome, s.contatosPendentesDisparo || [], empresaC, telefone);
         await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, aguardandoIntervaloConfirmacao: false, contatosPendentesDisparo: [] });
         await cancelarConfirmacoesDisparo(telefone);
         await sendText(telefone, 'Perfeito! 🙌 Já estou avisando seus amigos. Muito obrigado(a)!');
+        return res.sendStatus(200);
+      }
+
+      // O cliente escreveu ANTES do menu de confirmação aparecer (janela de espera):
+      // em vez de mandar "sem pressa", ANTECIPA o MENU (a mensagem que o dono
+      // configurou). O job agendado não reenvia (checa o flag). Assim ele vê a msg certa.
+      if (!menuJaEnviado) {
+        await sendText(telefone, substituirVariaveis(empresaC.basicConfirmMensagem || EMPRESA_PADRAO.basicConfirmMensagem, varsC));
+        await saveSessao(telefone, { aguardandoConfirmacaoDisparo: true, aguardandoIntervaloConfirmacao: false });
+        return res.sendStatus(200);
+      }
+
+      // Menu já enviado — trata a resposta:
+      // 3 → manda o texto pronto pro cliente encaminhar (continua aguardando)
+      if (primeiro === '3' || /textinho|texto pronto|manda o texto|manda um texto|modelo/.test(t)) {
+        await sendText(telefone, substituirVariaveis(empresaC.basicTextoPronto || EMPRESA_PADRAO.basicTextoPronto, varsC));
+        await sendText(telefone, substituirVariaveis(empresaC.basicTextoProntoConfirma || EMPRESA_PADRAO.basicTextoProntoConfirma, varsC));
         return res.sendStatus(200);
       }
       // 2 / "ainda não avisei" / "não consigo avisá-los" / QUALQUER outra resposta →

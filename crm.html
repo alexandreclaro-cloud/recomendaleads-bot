@@ -810,6 +810,12 @@
           <div id="crmSegurarBox" style="display:none;">
             <label>Mensagem que pede a confirmação <span style="font-weight:400;color:var(--text-dim)">(menu 1 já avisei · 2 ainda não · 3 me manda um texto pronto)</span></label>
             <textarea id="crmBasicConfirmMsg" rows="5"></textarea>
+            <label style="margin-top:12px;">Opção 3 — texto pronto pro cliente encaminhar pros amigos</label>
+            <textarea id="crmBasicTextoPronto" rows="3"></textarea>
+            <label style="margin-top:12px;">Opção 3 — frase logo depois do textinho (próximo passo)</label>
+            <textarea id="crmBasicTextoProntoConfirma" rows="2"></textarea>
+            <label style="margin-top:12px;">Opção 2 / "não consigo" — resposta que tranquiliza <span style="font-weight:400;color:var(--text-dim)">(quando o cliente ainda não confirmou)</span></label>
+            <textarea id="crmBasicAindaNao" rows="3"></textarea>
             <label style="margin-top:14px;">Lembretes <span style="font-weight:400;color:var(--text-dim)">(o robô insiste até o cliente responder — você define quantos, o tempo e o texto de cada)</span></label>
             <div id="crmBasicCadContainer"></div>
             <button class="config-save-btn" id="crmAddLembreteBtn" type="button" style="background:transparent;border:1px solid var(--gold);color:var(--gold-deep);margin-top:4px;">➕ Adicionar lembrete</button>
@@ -2150,6 +2156,9 @@ function carregarCrmSegurar() {
   const c = configuracaoAtual || {};
   document.getElementById('crmSegurarAtivo').checked = !!c.basicConfirmarAntesDisparo;
   document.getElementById('crmBasicConfirmMsg').value = c.basicConfirmMensagem || '';
+  document.getElementById('crmBasicTextoPronto').value = c.basicTextoPronto || '';
+  document.getElementById('crmBasicTextoProntoConfirma').value = c.basicTextoProntoConfirma || '';
+  document.getElementById('crmBasicAindaNao').value = c.basicAindaNao || '';
   document.getElementById('crmBasicSemConf').value = c.basicSemConfirmacao || 'nao_envia';
   crmBasicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || []));
   if (!crmBasicCad.length) {
@@ -2184,6 +2193,9 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   syncCrmBasicCadFromDom();
   const basicConfirmarAntesDisparo = document.getElementById('crmSegurarAtivo').checked;
   const basicConfirmMensagem = document.getElementById('crmBasicConfirmMsg').value.trim();
+  const basicTextoPronto = document.getElementById('crmBasicTextoPronto').value.trim();
+  const basicTextoProntoConfirma = document.getElementById('crmBasicTextoProntoConfirma').value.trim();
+  const basicAindaNao = document.getElementById('crmBasicAindaNao').value.trim();
   const basicSemConfirmacao = document.getElementById('crmBasicSemConf').value;
   const basicConfirmacaoCadencia = (crmBasicCad || []).filter(x => x.texto && x.texto.trim());
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
@@ -2191,7 +2203,8 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta, mensagemValidarAmigo, gatilhoPresente,
-        basicConfirmarAntesDisparo, basicConfirmMensagem, basicSemConfirmacao, basicConfirmacaoCadencia })
+        basicConfirmarAntesDisparo, basicConfirmMensagem, basicSemConfirmacao, basicConfirmacaoCadencia,
+        basicTextoPronto, basicTextoProntoConfirma, basicAindaNao })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
