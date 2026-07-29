@@ -1590,7 +1590,14 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
     let novosContatos = [];
 
     if (contatosMultiplos && contatosMultiplos.length > 0) {
-      novosContatos = contatosMultiplos.filter(c => c && c.nome);
+      // Exige telefone válido (não só nome) — um contato sem telefone conta na
+      // faixa mas nunca é chamado depois (silenciosamente), fazendo parecer que
+      // o disparo "sumiu". Loga pra aparecer no log se algum contato vier quebrado.
+      novosContatos = contatosMultiplos.filter(c => {
+        const ok = c && c.nome && c.telefone && soDigitos(c.telefone).length >= 10;
+        if (c && c.nome && !ok) console.warn(`[CONTATO-INVALIDO] "${c.nome}" descartado — telefone ausente/curto: "${c.telefone}"`);
+        return ok;
+      });
     } else if (vCard) {
       const c = parseVCard(vCard);
       if (c && c.nome) novosContatos = [c];
@@ -3180,6 +3187,14 @@ async function tratarWebhook(req, res) {
 
     if (body.contactArray && Array.isArray(body.contactArray) && body.contactArray.length > 0) {
       contatosMultiplos = body.contactArray.map(c => {
+        // Já vem no formato final {nome, telefone} — caso da API Oficial, onde
+        // metaMensagemParaInterno já resolveu o número certo (wa_id/DDI). Reprocessar
+        // aqui com os campos do Z-API (phones/waid/vcard) zerava o telefone (null),
+        // porque esses campos não existem nesse objeto — bug que fazia o disparo
+        // "confirmar" mas não ter pra quem mandar.
+        if (c && typeof c.telefone === 'string') {
+          return { nome: c.nome || 'Contato sem nome', telefone: c.telefone };
+        }
         if (c.vcard || c.vCard) {
           return parseVCard(c.vcard || c.vCard);
         }
