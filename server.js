@@ -1708,11 +1708,15 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
   }
 }
 
-// Modo de recomendação vigente: respeita a escolha do painel (Basic/Full).
-// Na API Oficial NÃO há risco de ban (envio compliant via template aprovado),
-// então o Basic (alcance rápido — o robô dispara direto pros amigos) é liberado
-// também no canal Oficial. O 'official' escolhido no painel roda como Full.
+// Modo de recomendação vigente.
+// API OFICIAL = SEMPRE direto ('basic'): não há risco de ban (envio compliant via
+// template aprovado), então o robô fala com cada amigo direto. O fluxo Full (link
+// que o cliente encaminha) NÃO se aplica no oficial — decisão do Alexandre 2026-07-29
+// ("só vamos usar a api oficial, não vai existir mais o basic vs full"). A estratégia
+// de "confirmar antes de disparar" fica no card "Avisar os amigos" (basicConfirmar...).
+// Fora do oficial (Z-API/Baileys), respeita a escolha Basic/Full do painel.
 function modoRecAtual(empresa) {
+  if (empresa && empresa.whatsappTipo === 'oficial') return 'basic';
   const m = empresa && empresa.modoRecomendacao;
   return (m === 'full' || m === 'official') ? 'full' : 'basic';
 }
