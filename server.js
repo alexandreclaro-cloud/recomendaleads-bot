@@ -1523,7 +1523,19 @@ async function iniciarColetaContatos(telefone, sessao, empresa) {
   await sendText(telefone, substituirVariaveis(empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta, varsCliente));
 }
 
-async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
+// Serializa o processamento por número: se chegam 2 mensagens quase juntas do
+// mesmo número (ex.: o cliente clica 2x no mesmo contato), a 2ª ESPERA a 1ª
+// terminar e re-lê a sessão já atualizada — evita completar a faixa duas vezes
+// e duplicar todas as mensagens (presente, link etc.).
+const _filaMensagem = {};
+function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
+  const anterior = _filaMensagem[telefone] || Promise.resolve();
+  const atual = anterior.catch(() => {}).then(() => _processarMensagemInterno(telefone, texto, vCard, contatosMultiplos));
+  _filaMensagem[telefone] = atual.finally(() => { if (_filaMensagem[telefone] === atual) delete _filaMensagem[telefone]; });
+  return atual;
+}
+
+async function _processarMensagemInterno(telefone, texto, vCard, contatosMultiplos) {
   const empresa = await getEmpresa();
   const sessao = await getSessao(telefone);
 
@@ -1599,6 +1611,18 @@ async function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
           }];
         }
       }
+    }
+
+    // Dedup por telefone: ignora contato que já foi coletado (cliente mandou o
+    // mesmo 2x) e repetidos dentro do próprio lote — senão conta em dobro na faixa.
+    if (novosContatos.length > 0) {
+      const jaColetados = new Set((sessao.contatos || []).map(c => soDigitos(c && c.telefone)).filter(Boolean));
+      novosContatos = novosContatos.filter(c => {
+        const tel = soDigitos(c && c.telefone);
+        if (tel && jaColetados.has(tel)) return false;
+        if (tel) jaColetados.add(tel);
+        return true;
+      });
     }
 
     if (novosContatos.length > 0) {
@@ -3345,8 +3369,12 @@ async function tratarWebhook(req, res) {
 
     // Basic com confirmação: cliente respondeu ao menu (1 já avisei / 2 ainda não /
     // 3 me manda um texto pronto). Trata antes do roteamento normal.
-    if (sessaoExiste && sessaoExistenteSnap.data().aguardandoConfirmacaoDisparo && !ehGatilhoInicial && !nichoDetectado) {
-      const s = sessaoExistenteSnap.data();
+    // Fase de confirmação do disparo (Basic+Segurar): cobre TANTO a janela de espera
+    // (aguardandoIntervaloConfirmacao) quanto o menu já enviado (aguardandoConfirmacaoDisparo).
+    // Assim o robô NUNCA fica mudo se o cliente responder antes do menu aparecer.
+    const _sConf = sessaoExiste ? sessaoExistenteSnap.data() : null;
+    if (_sConf && (_sConf.aguardandoConfirmacaoDisparo || _sConf.aguardandoIntervaloConfirmacao) && !ehGatilhoInicial && !nichoDetectado) {
+      const s = _sConf;
       const empresaC = await getEmpresa();
       const t = (texto || '').trim().toLowerCase();
       const primeiro = t.charAt(0);
@@ -3356,24 +3384,22 @@ async function tratarWebhook(req, res) {
       // 3 → manda o texto pronto pro cliente encaminhar (continua aguardando)
       if (primeiro === '3' || /textinho|texto pronto|manda o texto|manda um texto|modelo/.test(t)) {
         await sendText(telefone, substituirVariaveis(empresaC.basicTextoPronto || EMPRESA_PADRAO.basicTextoPronto, varsC));
-        // Logo em seguida, avisa o próximo passo (responder 1) pra não ficar no vácuo até o 1º lembrete.
         await sendText(telefone, substituirVariaveis(empresaC.basicTextoProntoConfirma || EMPRESA_PADRAO.basicTextoProntoConfirma, varsC));
-        return res.sendStatus(200);
-      }
-      // 2 → ainda não avisou (continua aguardando; os lembretes seguem)
-      if (primeiro === '2' || /ainda n[ãa]o|n[ãa]o avisei|n[ãa]o mandei/.test(t)) {
-        await sendText(telefone, substituirVariaveis(empresaC.basicAindaNao || EMPRESA_PADRAO.basicAindaNao, varsC));
         return res.sendStatus(200);
       }
       // 1 / "já avisei" / "pode mandar" → dispara agora os recomendados segurados
       if (primeiro === '1' || ehConfirmacaoDisparo(texto)) {
         await dispararRecomendados(s.clienteNome, s.vendedorNome, s.contatosPendentesDisparo || [], empresaC, telefone);
-        await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
+        await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, aguardandoIntervaloConfirmacao: false, contatosPendentesDisparo: [] });
         await cancelarConfirmacoesDisparo(telefone);
         await sendText(telefone, 'Perfeito! 🙌 Já estou avisando seus amigos. Muito obrigado(a)!');
         return res.sendStatus(200);
       }
-      // não reconheceu a resposta → segue o roteamento normal (não força nada)
+      // 2 / "ainda não avisei" / "não consigo avisá-los" / QUALQUER outra resposta →
+      // NÃO fica mudo: tranquiliza com o basicAindaNao (os lembretes seguem e, com
+      // "disparar mesmo assim", o disparo acontece de qualquer forma).
+      await sendText(telefone, substituirVariaveis(empresaC.basicAindaNao || EMPRESA_PADRAO.basicAindaNao, varsC));
+      return res.sendStatus(200);
     }
 
     // Follow-up do recomendador: se está aguardando resposta ao lembrete
