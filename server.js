@@ -3570,9 +3570,16 @@ function metaMensagemParaInterno(value, msg) {
   } else if (msg.type === 'button' && msg.button) {
     base.text = { message: msg.button.text || msg.button.payload || '' };
   } else if (msg.type === 'contacts' && Array.isArray(msg.contacts)) {
+    // O nº vem como o contato foi SALVO na agenda de quem compartilhou (ex: "(11)
+    // 91234-5678", sem DDI) — sem corrigir, o disparo vai pra um número incompleto
+    // e a Meta não entrega (silenciosamente). Prioriza `wa_id` (o ID canônico do
+    // WhatsApp, já com DDI) quando a Meta manda; senão completa o 55 nos números
+    // brasileiros de 10/11 dígitos, igual já fazemos em outros pontos do código.
     base.contactArray = msg.contacts.map(c => {
-      const phones = (c.phones && c.phones.map(p => p.phone)) || [];
-      return { nome: (c.name && c.name.formatted_name) || '', telefone: (phones[0] || '').replace(/\D/g, '') };
+      const p0 = (c.phones && c.phones[0]) || {};
+      let tel = soDigitos(p0.wa_id || p0.phone || '');
+      if (!p0.wa_id && (tel.length === 10 || tel.length === 11) && !tel.startsWith('55')) tel = '55' + tel;
+      return { nome: (c.name && c.name.formatted_name) || '', telefone: tel };
     });
   } else {
     return null; // tipos não tratados (áudio, mídia recebida, etc.)
