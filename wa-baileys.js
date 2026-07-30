@@ -349,11 +349,15 @@ async function enviarTexto(empresaId, phone, message) {
   console.log(`[BAILEYS] texto enviado p/ ${jid} (origem ${phone})`);
 }
 
-async function enviarMidia(empresaId, phone, buffer, mimetype, caption, asDocument, fileName) {
+async function enviarMidia(empresaId, phone, buffer, mimetype, caption, asDocument, fileName, tipo) {
   const s = sessoes[empresaId];
   if (!s || !s.sock || s.status !== 'conectado') throw new Error('WhatsApp (Baileys) não conectado');
   const jid = await resolverJid(s, phone);
-  if (asDocument) {
+  if (tipo === 'audio') {
+    await s.sock.sendMessage(jid, { audio: buffer, mimetype: mimetype || 'audio/ogg; codecs=opus', ptt: true });
+  } else if (tipo === 'video') {
+    await s.sock.sendMessage(jid, { video: buffer, mimetype: mimetype || 'video/mp4', caption: caption || '' });
+  } else if (asDocument) {
     await s.sock.sendMessage(jid, { document: buffer, mimetype: mimetype || 'application/octet-stream', fileName: fileName || 'arquivo', caption: caption || '' });
   } else {
     await s.sock.sendMessage(jid, { image: buffer, caption: caption || '' });

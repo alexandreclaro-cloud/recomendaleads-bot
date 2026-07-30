@@ -355,7 +355,7 @@ async function upsertClientePipeline(telefone, nome, etapa, contatos) {
 
 // Grava uma mensagem (recebida ou enviada) no histórico da conversa e atualiza
 // o resumo da conversa. Usado para a caixa de entrada do WhatsApp.
-async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo }) {
+async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo, midiaUrl }) {
   if (!db || !telefone) return;
   const agora = new Date().toISOString();
   try {
@@ -365,7 +365,8 @@ async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, ti
       telefone,
       direcao, // 'in' (recebida) ou 'out' (enviada)
       texto: texto || '',
-      tipo: tipo || 'texto',
+      tipo: tipo || 'texto', // 'texto' | 'imagem' | 'audio' | 'video' | 'documento'
+      midiaUrl: midiaUrl || null, // URL pra renderizar a mídia no painel (imagem/áudio/vídeo/doc)
       criadoEm: agora
     });
     const resumo = {
@@ -1055,6 +1056,32 @@ async function metaUploadMedia(cfg, buffer, mimetype, filename) {
   return resp.data && resp.data.id;
 }
 
+// Caminho INVERSO: baixa uma mídia que o CLIENTE mandou pra gente (foto, áudio,
+// vídeo, documento) e sobe pro nosso Storage — pra guardar um link permanente
+// (o link que a Meta dá expira em minutos) e o painel conseguir exibir depois.
+async function baixarMidiaMetaEUpload(cfg, mediaId, empresaId) {
+  try {
+    const info = await axios.get(`https://graph.facebook.com/${META_GRAPH_VERSION}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${cfg.token}` }, timeout: 8000
+    });
+    const { url: urlTemporaria, mime_type } = info.data || {};
+    if (!urlTemporaria) return null;
+    const resp = await axios.get(urlTemporaria, {
+      headers: { Authorization: `Bearer ${cfg.token}` }, responseType: 'arraybuffer', timeout: 15000
+    });
+    const ext = (mime_type || '').split('/')[1]?.split(';')[0] || 'bin';
+    const nomeArquivo = `conversas-recebidas/${empresaId}/${Date.now()}_${mediaId}.${ext}`;
+    const bucket = admin.storage().bucket();
+    const fileRef = bucket.file(nomeArquivo);
+    await fileRef.save(Buffer.from(resp.data), { metadata: { contentType: mime_type || 'application/octet-stream' } });
+    const [urlPermanente] = await fileRef.getSignedUrl({ action: 'read', expires: '01-01-2125' });
+    return { url: urlPermanente, mimetype: mime_type };
+  } catch (e) {
+    console.warn('[MIDIA-RECEBIDA] falha ao baixar da Meta:', e.response ? JSON.stringify(e.response.data).slice(0, 160) : e.message);
+    return null;
+  }
+}
+
 // Ritmo humano por telefone: guarda até quando a janela do último envio vai,
 // pra ESPAÇAR mensagens seguidas (não chegar tudo junto = cara de robô/rajada).
 const _ritmoEnvio = {};
@@ -1305,13 +1332,19 @@ async function transferirParaAtendente(telefone, nome, empresa) {
   await sendText(telefone, substituirVariaveis(empresa.posAtendente || EMPRESA_PADRAO.posAtendente, { nomeRecomendado: prim, recomendado: prim, empresa: empresa.nome }));
 }
 
+// URL de verdade (não data:) pra guardar e renderizar a mídia no painel — data
+// URI (base64) não entra no Firestore (ficaria enorme), só link real.
+function urlParaRegistro(s) {
+  return (typeof s === 'string' && !s.startsWith('data:')) ? s : null;
+}
+
 async function sendImage(phone, imageUrl, caption) {
   if (tipoWppAtual() === 'baileys') {
     try {
       const d = dataUriParaBuffer(imageUrl);
       if (d) await baileys.enviarMidia(empresaIdAtual(), phone, d.buffer, d.mimetype, caption || '', false);
       else { await baileys.enviarTexto(empresaIdAtual(), phone, (caption ? caption + '\n' : '') + imageUrl); }
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem' });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem', midiaUrl: urlParaRegistro(imageUrl) });
     } catch (err) { console.error('Erro ao enviar imagem (Baileys):', err.message); }
     return;
   }
@@ -1326,7 +1359,7 @@ async function sendImage(phone, imageUrl, caption) {
         messaging_product: 'whatsapp', to: soDigitos(phone), type: 'image', image
       }, { headers: metaHeaders(cfg) });
       console.log(`[IMAGEM ENVIADA/oficial] para ${phone}`);
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem' });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem', midiaUrl: urlParaRegistro(imageUrl) });
     } catch (err) { console.error('Erro ao enviar imagem (Oficial):', err.response?.data || err.message); }
     return;
   }
@@ -1336,7 +1369,7 @@ async function sendImage(phone, imageUrl, caption) {
       phone, image: imageUrl, caption: caption || ''
     }, { headers: zapiHeaders(cfg) });
     console.log(`[IMAGEM ENVIADA] para ${phone}`);
-    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem' });
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem', midiaUrl: urlParaRegistro(imageUrl) });
   } catch (err) {
     console.error('Erro ao enviar imagem:', err.response?.data || err.message);
   }
@@ -1348,7 +1381,7 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
       const d = dataUriParaBuffer(base64OrUrl);
       if (d) await baileys.enviarMidia(empresaIdAtual(), phone, d.buffer, d.mimetype, '', true, `${fileName || 'arquivo'}.${extension || ''}`);
       else { await baileys.enviarTexto(empresaIdAtual(), phone, base64OrUrl); }
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento' });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento', midiaUrl: urlParaRegistro(base64OrUrl) });
     } catch (err) { console.error('Erro ao enviar documento (Baileys):', err.message); }
     return;
   }
@@ -1364,7 +1397,7 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
         messaging_product: 'whatsapp', to: soDigitos(phone), type: 'document', document
       }, { headers: metaHeaders(cfg) });
       console.log(`[DOCUMENTO ENVIADO/oficial] para ${phone}: ${nomeArq}`);
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento' });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento', midiaUrl: urlParaRegistro(base64OrUrl) });
     } catch (err) { console.error('Erro ao enviar documento (Oficial):', err.response?.data || err.message); }
     return;
   }
@@ -1374,9 +1407,79 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
       phone, document: base64OrUrl, fileName
     }, { headers: zapiHeaders(cfg) });
     console.log(`[DOCUMENTO ENVIADO] para ${phone}: ${fileName}`);
-    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento' });
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento', midiaUrl: urlParaRegistro(base64OrUrl) });
   } catch (err) {
     console.error('Erro ao enviar documento:', err.response?.data || err.message);
+  }
+}
+
+// Áudio (mensagem de voz — ptt) e vídeo. Mesmo padrão de sendImage/sendDocument,
+// cobrindo os 3 canais (Baileys/Oficial/Z-API).
+async function sendAudio(phone, audioUrl) {
+  if (tipoWppAtual() === 'baileys') {
+    try {
+      const d = dataUriParaBuffer(audioUrl);
+      if (d) await baileys.enviarMidia(empresaIdAtual(), phone, d.buffer, d.mimetype || 'audio/ogg', '', false, null, 'audio');
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: '🎤 Áudio', tipo: 'audio', midiaUrl: urlParaRegistro(audioUrl) });
+    } catch (err) { console.error('Erro ao enviar áudio (Baileys):', err.message); }
+    return;
+  }
+  if (tipoWppAtual() === 'oficial') {
+    try {
+      const cfg = oficialAtual();
+      const d = dataUriParaBuffer(audioUrl);
+      let audio;
+      if (d) { const id = await metaUploadMedia(cfg, d.buffer, d.mimetype || 'audio/ogg', 'audio'); audio = { id }; }
+      else { audio = { link: audioUrl }; }
+      await axios.post(metaMessagesUrl(cfg), {
+        messaging_product: 'whatsapp', to: soDigitos(phone), type: 'audio', audio
+      }, { headers: metaHeaders(cfg) });
+      console.log(`[AUDIO ENVIADO/oficial] para ${phone}`);
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: '🎤 Áudio', tipo: 'audio', midiaUrl: urlParaRegistro(audioUrl) });
+    } catch (err) { console.error('Erro ao enviar áudio (Oficial):', err.response?.data || err.message); }
+    return;
+  }
+  try {
+    const cfg = zapiAtual();
+    await axios.post(`${zapiBaseUrl(cfg)}/send-audio`, { phone, audio: audioUrl }, { headers: zapiHeaders(cfg) });
+    console.log(`[AUDIO ENVIADO] para ${phone}`);
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: '🎤 Áudio', tipo: 'audio', midiaUrl: urlParaRegistro(audioUrl) });
+  } catch (err) {
+    console.error('Erro ao enviar áudio:', err.response?.data || err.message);
+  }
+}
+
+async function sendVideo(phone, videoUrl, caption) {
+  if (tipoWppAtual() === 'baileys') {
+    try {
+      const d = dataUriParaBuffer(videoUrl);
+      if (d) await baileys.enviarMidia(empresaIdAtual(), phone, d.buffer, d.mimetype || 'video/mp4', caption || '', false, null, 'video');
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '🎬 Vídeo', tipo: 'video', midiaUrl: urlParaRegistro(videoUrl) });
+    } catch (err) { console.error('Erro ao enviar vídeo (Baileys):', err.message); }
+    return;
+  }
+  if (tipoWppAtual() === 'oficial') {
+    try {
+      const cfg = oficialAtual();
+      const d = dataUriParaBuffer(videoUrl);
+      let video;
+      if (d) { const id = await metaUploadMedia(cfg, d.buffer, d.mimetype || 'video/mp4', 'video'); video = { id, caption: caption || '' }; }
+      else { video = { link: videoUrl, caption: caption || '' }; }
+      await axios.post(metaMessagesUrl(cfg), {
+        messaging_product: 'whatsapp', to: soDigitos(phone), type: 'video', video
+      }, { headers: metaHeaders(cfg) });
+      console.log(`[VIDEO ENVIADO/oficial] para ${phone}`);
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '🎬 Vídeo', tipo: 'video', midiaUrl: urlParaRegistro(videoUrl) });
+    } catch (err) { console.error('Erro ao enviar vídeo (Oficial):', err.response?.data || err.message); }
+    return;
+  }
+  try {
+    const cfg = zapiAtual();
+    await axios.post(`${zapiBaseUrl(cfg)}/send-video`, { phone, video: videoUrl, caption: caption || '' }, { headers: zapiHeaders(cfg) });
+    console.log(`[VIDEO ENVIADO] para ${phone}`);
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '🎬 Vídeo', tipo: 'video', midiaUrl: urlParaRegistro(videoUrl) });
+  } catch (err) {
+    console.error('Erro ao enviar vídeo:', err.response?.data || err.message);
   }
 }
 
@@ -3314,9 +3417,18 @@ async function tratarWebhook(req, res) {
     // Registra a mensagem recebida no histórico da conversa (caixa de entrada)
     const nomeContato = body.senderName || body.chatName || body.pushname || null;
     let textoChat = texto;
+    let midiaTipoChat = null, midiaUrlChat = null;
     if (!textoChat) {
       if (contatosMultiplos && contatosMultiplos.length) textoChat = '👤 Contato(s) compartilhado(s)';
       else if (vCard) textoChat = '👤 Contato compartilhado';
+      else if (body.midia) {
+        // Mídia recebida via API Oficial (já baixada da Meta e resolvida em
+        // metaMensagemParaInterno) — tem URL permanente pro painel exibir.
+        const rotulos = { image: '📷 Imagem', audio: '🎤 Áudio', video: '🎬 Vídeo', document: '📎 Documento' };
+        midiaTipoChat = { image: 'imagem', audio: 'audio', video: 'video', document: 'documento' }[body.midia.tipo] || 'documento';
+        midiaUrlChat = body.midia.url || null;
+        textoChat = body.midia.caption || rotulos[body.midia.tipo] || '📎 Anexo';
+      }
       else if (body.image) textoChat = '📷 Imagem';
       else if (body.audio) textoChat = '🎤 Áudio';
       else if (body.document) textoChat = '📎 Documento';
@@ -3338,7 +3450,7 @@ async function tratarWebhook(req, res) {
         }
       } catch (e) { ehDoBot = false; }
       if (ehDoBot) {
-        registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat });
+        registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat, tipo: midiaTipoChat, midiaUrl: midiaUrlChat });
       }
     }
 
@@ -3665,7 +3777,7 @@ app.get('/webhook-oficial/:empresaId', async (req, res) => {
 });
 
 // Converte uma mensagem do payload da Meta pro formato interno (estilo Z-API).
-function metaMensagemParaInterno(value, msg) {
+async function metaMensagemParaInterno(value, msg, cfg, empresaId) {
   const contato = (value.contacts && value.contacts[0]) || {};
   const nome = (contato.profile && contato.profile.name) || null;
   const base = { phone: msg.from, senderName: nome, messageId: msg.id, fromMe: false, isGroup: false };
@@ -3677,6 +3789,14 @@ function metaMensagemParaInterno(value, msg) {
       || (it.list_reply && (it.list_reply.title || it.list_reply.id)) || '' };
   } else if (msg.type === 'button' && msg.button) {
     base.text = { message: msg.button.text || msg.button.payload || '' };
+  } else if (['image', 'audio', 'video', 'document'].includes(msg.type) && msg[msg.type]) {
+    // Mídia que o CLIENTE mandou (foto, áudio, vídeo, documento). Baixa da Meta e
+    // sobe pro nosso Storage (o link da Meta expira em minutos) pra o painel exibir.
+    const m = msg[msg.type];
+    const baixada = cfg ? await baixarMidiaMetaEUpload(cfg, m.id, empresaId) : null;
+    base.midia = { tipo: msg.type, url: baixada ? baixada.url : null, caption: m.caption || '' };
+    // Sem texto — o roteamento normal (por `texto`) não trata isso; entra só na
+    // caixa de entrada pro atendente ver (ver tratarWebhook, bloco de registro).
   } else if (msg.type === 'contacts' && Array.isArray(msg.contacts)) {
     // O nº vem como o contato foi SALVO na agenda de quem compartilhou (ex: "(11)
     // 91234-5678", sem DDI) — sem corrigir, o disparo vai pra um número incompleto
@@ -3690,7 +3810,7 @@ function metaMensagemParaInterno(value, msg) {
       return { nome: (c.name && c.name.formatted_name) || '', telefone: tel };
     });
   } else {
-    return null; // tipos não tratados (áudio, mídia recebida, etc.)
+    return null; // tipos não tratados (localização, figurinha, reação, etc.)
   }
   return base;
 }
@@ -3700,6 +3820,7 @@ async function comWebhookOficial(req, res, empresaId) {
   try {
     const empresa = await getEmpresaById(empresaId);
     if (!empresa) { console.warn(`[WEBHOOK-OFICIAL] empresaId desconhecido: ${empresaId}`); return; }
+    const oficialCfg = oficialDaEmpresa(empresa);
     for (const entry of ((req.body && req.body.entry) || [])) {
       for (const change of (entry.changes || [])) {
         const value = change.value || {};
@@ -3709,9 +3830,9 @@ async function comWebhookOficial(req, res, empresaId) {
           continue;
         }
         for (const msg of (value.messages || [])) {
-          const interno = metaMensagemParaInterno(value, msg);
+          const interno = await metaMensagemParaInterno(value, msg, oficialCfg, empresa.id);
           if (!interno) continue;
-          const contexto = { empresa, empresaId: empresa.id, zapi: zapiDaEmpresa(empresa), oficial: oficialDaEmpresa(empresa) };
+          const contexto = { empresa, empresaId: empresa.id, zapi: zapiDaEmpresa(empresa), oficial: oficialCfg };
           const fakeRes = { sendStatus() {}, status() { return this; }, json() {}, send() {} };
           await tenantContext.run(contexto, () => tratarWebhook({ body: interno }, fakeRes));
         }
@@ -5408,6 +5529,35 @@ app.post('/minha-conversas/:telefone/enviar', exigirLoginEmpresa, async (req, re
   }
 });
 
+// Envia mídia (imagem/áudio/vídeo/documento) manualmente — o atendente sobe o
+// arquivo via /minha-conversas/upload e este endpoint despacha pro canal certo,
+// igual o /enviar faz com texto (assume o atendimento).
+app.post('/minha-conversas/:telefone/enviar-midia', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    const { tipo, url, caption, fileName, extension } = req.body || {};
+    if (!url) return res.status(400).json({ ok: false, erro: 'Sem arquivo — faça o upload primeiro.' });
+    if (!['imagem', 'audio', 'video', 'documento'].includes(tipo)) {
+      return res.status(400).json({ ok: false, erro: 'Tipo de mídia inválido' });
+    }
+
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+    await tenantContext.run(contexto, async () => {
+      await pausarNumero(telefone); // assume o atendimento: bot para nesse contato
+      if (tipo === 'imagem') await sendImage(telefone, url, caption || '');
+      else if (tipo === 'audio') await sendAudio(telefone, url);
+      else if (tipo === 'video') await sendVideo(telefone, url, caption || '');
+      else await sendDocument(telefone, url, fileName || 'arquivo', extension || '');
+    });
+    const nomeAt = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Devolve o atendimento ao robô (reativa o bot para o contato).
 app.post('/minha-conversas/:telefone/devolver', exigirLoginEmpresa, async (req, res) => {
   try {
@@ -6620,6 +6770,42 @@ app.post('/upload-arquivo', exigirLoginEmpresa, exigirGestor, uploadMiddleware.s
     res.json({ ok: true, url });
   } catch (err) {
     console.error('Erro ao fazer upload:', err.message);
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Upload pra anexar em Conversas (atendente manda foto/áudio/vídeo/documento pro
+// cliente) — qualquer usuário logado (não só gestor), mais tipos, limite maior
+// (áudio/vídeo pesam mais que imagem de voucher).
+const uploadChatMiddleware = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const permitidosExatos = [
+      'application/pdf', 'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain'
+    ];
+    const ok = permitidosExatos.includes(file.mimetype) || /^(image|audio|video)\//.test(file.mimetype);
+    if (ok) cb(null, true);
+    else cb(new Error('Tipo de arquivo não suportado.'));
+  }
+});
+
+app.post('/minha-conversas/upload', exigirLoginEmpresa, uploadChatMiddleware.single('arquivo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, erro: 'Nenhum arquivo enviado.' });
+    const empresaId = req.empresaLogin.id;
+    const timestamp = Date.now();
+    const nomeArquivo = `conversas/${empresaId}/${timestamp}_${req.file.originalname.replace(/\s+/g, '_')}`;
+    const bucket = admin.storage().bucket();
+    const fileRef = bucket.file(nomeArquivo);
+    await fileRef.save(req.file.buffer, { metadata: { contentType: req.file.mimetype } });
+    const [url] = await fileRef.getSignedUrl({ action: 'read', expires: '01-01-2125' });
+    res.json({ ok: true, url, mimetype: req.file.mimetype, originalname: req.file.originalname });
+  } catch (err) {
+    console.error('Erro ao fazer upload (conversas):', err.message);
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
