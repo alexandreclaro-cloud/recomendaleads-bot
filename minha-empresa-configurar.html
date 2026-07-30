@@ -1085,6 +1085,12 @@ async function carregarConfiguracao() {
       const nav = document.querySelector('#nav .nav-item[data-section="nichos"]');
       if (nav) nav.style.display = 'none';
     }
+    // Múltiplas ofertas é função extra, cobrada à parte — só aparece pra quem o
+    // admin habilitou no cadastro (o backend também bloqueia os endpoints).
+    if (!data.ofertasHabilitado) {
+      const navOf = document.querySelector('#nav .nav-item[data-section="ofertas"]');
+      if (navOf) navOf.style.display = 'none';
+    }
     // Disparo em massa aparece só no modo API Oficial (é onde faz sentido cobrar por msg).
     if (configuracaoAtual && configuracaoAtual.whatsappTipo === 'oficial') {
       const navD = document.querySelector('#nav .nav-item[data-section="disparo"]');
@@ -2389,7 +2395,10 @@ function renderOfertas() {
     const badgePadrao = o.padrao ? ' <span class="badge badge-success">🟢 Conectada ao WhatsApp</span>' : '';
     const badgeAtiva = !o.ativa ? ' <span class="badge">Inativa</span>' : '';
     const criada = o.criadoEm ? new Date(o.criadoEm).toLocaleDateString('pt-BR') : '—';
-    const acoes = [`<button class="btn btn-secondary" data-acao="renomear" data-id="${o.id}" data-nome="${escapeHtml(o.nome)}" style="padding:6px 10px;font-size:0.78rem">Renomear</button>`];
+    const acoes = [
+      `<a class="btn btn-action" href="/crm?oferta=${encodeURIComponent(o.id)}#config" style="padding:6px 10px;font-size:0.78rem;text-decoration:none;">✏️ Editar conteúdo</a>`,
+      `<button class="btn btn-secondary" data-acao="renomear" data-id="${o.id}" data-nome="${escapeHtml(o.nome)}" style="padding:6px 10px;font-size:0.78rem">Renomear</button>`
+    ];
     // A oferta conectada (padrão) não pode ser desativada/removida nesta fase.
     if (!o.padrao) {
       acoes.push(`<button class="btn btn-secondary" data-acao="${o.ativa ? 'desativar' : 'ativar'}" data-id="${o.id}" style="padding:6px 10px;font-size:0.78rem">${o.ativa ? 'Desativar' : 'Ativar'}</button>`);

@@ -745,6 +745,12 @@ function abrirEdicao(id) {
           ${inpL('e_obs','Observações', e.observacoes)}
         </div>
 
+        <div class="sec">Funções extras (cobradas à parte)</div>
+        <div class="campo">
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;"><input type="checkbox" id="e_ofertasHabilitado" ${e.ofertasHabilitado ? 'checked' : ''}> Múltiplas ofertas/lançamentos habilitado</label>
+          <div class="muted" style="font-size:0.76rem;margin-top:4px;">Libera a aba "Ofertas" no painel do cliente — mais de um lançamento rodando no mesmo número, cada um com mensagens/prêmios/Kanban próprios. Cobrar à parte por cada oferta extra (lançamento manual por enquanto).</div>
+        </div>
+
         <div class="sec">Período gratuito (cortesia / mentorados)</div>
         <div class="campo">
           <label>${e.assinatura && e.assinatura.acessoAte ? `Acesso atual até <b>${fmtData(e.assinatura.acessoAte)}</b> · status: ${e.assinatura.status || '—'}` : 'Sem período/assinatura ativos'}</label>
@@ -900,7 +906,8 @@ async function salvar(id) {
     },
     plano: v('e_plano'), valorMensal: v('e_valor'), statusPagamento: document.getElementById('e_status').value, observacoes: v('e_obs'), vendedorComissao: v('e_vendedorComissao'),
     zapiInstanceId: v('e_inst'), zapiToken: v('e_tok'), zapiClientToken: v('e_ctok'), whatsappTipo: document.getElementById('e_whatsappTipo').value,
-    prepagoAtivo: document.getElementById('e_prepagoAtivo').checked
+    prepagoAtivo: document.getElementById('e_prepagoAtivo').checked,
+    ofertasHabilitado: document.getElementById('e_ofertasHabilitado').checked
   };
   // Preços só entram se o campo tiver valor (evita zerar o preço por engano).
   if (v('e_precoMkt')) body.precoMktCentavos = reaisParaCentavos(v('e_precoMkt'));

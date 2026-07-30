@@ -905,7 +905,8 @@ const CAMPOS_OPERACAO_EMPRESA = new Set([
 const CAMPOS_PRODUTO_OFERTA = new Set([
   ...Object.keys(EMPRESA_PADRAO).filter(k => !CAMPOS_OPERACAO_EMPRESA.has(k)),
   'oficialTemplateRecomendado', 'oficialTemplateInsistencia',
-  'oficialTemplateFollowupCliente', 'oficialTemplateConvite'
+  'oficialTemplateFollowupCliente', 'oficialTemplateConvite',
+  'oficialTemplateVenda', 'oficialTemplateMarketing'
 ]);
 // Gera um id de oferta a partir do nome (reaproveita o slugify de nichos) + sufixo
 // aleatório curto — evita colisão sem precisar de contador/corrida entre criações.
@@ -4931,11 +4932,21 @@ function exigirMatriz(req, res, next) {
   next();
 }
 
+// Múltiplas ofertas/lançamentos: função extra, cobrada à parte — só libera pra
+// quem o admin marcou `ofertasHabilitado` no cadastro (ver /admin/empresas/:id).
+function exigirOfertasHabilitado(req, res, next) {
+  if (!req.empresaLogin || !req.empresaLogin.ofertasHabilitado) {
+    return res.status(403).json({ ok: false, erro: 'Múltiplas ofertas não está habilitado pra sua conta. Fale com o suporte pra contratar.' });
+  }
+  next();
+}
+
 app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
   try {
     // Mescla com os padrões pra o painel mostrar todos os textos preenchidos
     // (campos não personalizados vêm com o texto padrão, pronto pra editar).
-    const configuracao = { ...EMPRESA_PADRAO, ...(req.empresaLogin.configuracao || { nome: req.empresaLogin.nome }) };
+    const configTop = req.empresaLogin.configuracao || { nome: req.empresaLogin.nome };
+    let configuracao = { ...EMPRESA_PADRAO, ...configTop };
     // whatsappTipo é campo de TOPO da empresa (não fica dentro de `configuracao`) —
     // o painel precisa dele pra saber que é oficial (ex.: mostrar "Disparo em massa").
     configuracao.whatsappTipo = req.empresaLogin.whatsappTipo || 'zapi';
@@ -4945,7 +4956,16 @@ app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
     ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite'].forEach(k => {
       if (!configuracao[k]) configuracao[k] = req.empresaLogin[k] || '';
     });
-    res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN });
+    // Múltiplas ofertas: ?oferta=<id> sobrepõe os campos PRODUTO com os da oferta
+    // selecionada (campos de operação continuam vindo do topo, sempre compartilhados).
+    // Sem o parâmetro (caso comum hoje), nada muda — mesmo objeto de sempre.
+    let ofertaAtiva = null;
+    const ofertaId = req.query && req.query.oferta;
+    if (req.empresaLogin.ofertasHabilitado && ofertaId && configTop.ofertas && configTop.ofertas[ofertaId]) {
+      configuracao = { ...configuracao, ...configTop.ofertas[ofertaId] };
+      ofertaAtiva = { id: ofertaId, nome: configTop.ofertas[ofertaId].nomeOferta || ofertaId, padrao: ofertaId === configTop.ofertaAtivaPadrao };
+    }
+    res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN, ofertasHabilitado: !!req.empresaLogin.ofertasHabilitado, ofertaAtiva });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -4954,6 +4974,26 @@ app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
 app.post('/minha-config', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const configuracaoAtual = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+    const ofertaId = req.query && req.query.oferta;
+    if (req.empresaLogin.ofertasHabilitado && ofertaId && configuracaoAtual.ofertas && configuracaoAtual.ofertas[ofertaId]) {
+      // Múltiplas ofertas: separa o corpo — campos de operação vão pro topo
+      // (sempre compartilhados), campos de produto só pra oferta selecionada.
+      const corpoOperacao = {}, corpoProduto = {};
+      for (const k of Object.keys(req.body || {})) {
+        if (CAMPOS_PRODUTO_OFERTA.has(k)) corpoProduto[k] = req.body[k];
+        else corpoOperacao[k] = req.body[k];
+      }
+      const novaConfiguracao = { ...configuracaoAtual, ...corpoOperacao };
+      novaConfiguracao.ofertas = {
+        ...novaConfiguracao.ofertas,
+        [ofertaId]: { ...novaConfiguracao.ofertas[ofertaId], ...corpoProduto, atualizadoEm: new Date().toISOString() }
+      };
+      // Se for a oferta conectada ao WhatsApp, espelha os campos produto no topo
+      // também — é o que getEmpresaById lê pro robô ao vivo.
+      if (ofertaId === novaConfiguracao.ofertaAtivaPadrao) Object.assign(novaConfiguracao, corpoProduto);
+      await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: novaConfiguracao }, { merge: true });
+      return res.json({ ok: true, empresa: { ...EMPRESA_PADRAO, ...novaConfiguracao, ...novaConfiguracao.ofertas[ofertaId] } });
+    }
     const novaConfiguracao = { ...configuracaoAtual, ...req.body };
 
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: novaConfiguracao }, { merge: true });
@@ -5109,7 +5149,7 @@ app.post('/minha-nichos-numero', exigirLoginEmpresa, exigirGestor, exigirMatriz,
 // Lista as ofertas da empresa. Na 1ª chamada (empresa ainda sem `configuracao.ofertas`),
 // migra sozinha: a config atual (topo) vira a oferta "Padrão" — zero impacto pra quem
 // já usa o sistema, e ela fica marcada como `ofertaAtivaPadrao` (a que o robô usa).
-app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
   try {
     let config = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
     if (!config.ofertas || !Object.keys(config.ofertas).length) {
@@ -5143,7 +5183,7 @@ app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, async (req, res) => 
 
 // Cria uma oferta nova, vazia (defaults de fábrica do EMPRESA_PADRAO — não copia
 // nada de nenhuma oferta existente). Não mexe em qual é a `ofertaAtivaPadrao`.
-app.post('/minha-ofertas', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
   try {
     const nome = String((req.body && req.body.nome) || '').trim();
     if (!nome) return res.status(400).json({ ok: false, erro: 'Informe o nome da oferta.' });
@@ -5164,7 +5204,7 @@ app.post('/minha-ofertas', exigirLoginEmpresa, exigirGestor, async (req, res) =>
 // Renomear / ativar / desativar uma oferta. A oferta conectada ao WhatsApp
 // (`ofertaAtivaPadrao`) nunca pode ser desativada nesta fase — reatribuir qual
 // oferta fica "ao vivo" é trabalho da Fase 2 (roteamento).
-app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
   try {
     const id = req.params.id;
     const config = req.empresaLogin.configuracao || {};
@@ -5201,7 +5241,7 @@ app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, async (req, re
 
 // Remove uma oferta. Bloqueado se for a única, ou se for a `ofertaAtivaPadrao`
 // (a conectada ao WhatsApp — nunca pode sumir nesta fase).
-app.delete('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.delete('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
   try {
     const id = req.params.id;
     const config = req.empresaLogin.configuracao || {};
@@ -5225,7 +5265,7 @@ app.delete('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, async (req, r
 });
 
 // Config mesclada de uma oferta específica (mesmo padrão do getEmpresaById, escopado).
-app.get('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.get('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
   try {
     const id = req.params.id;
     const config = req.empresaLogin.configuracao || {};
@@ -5240,7 +5280,7 @@ app.get('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, async (re
 // Salva campos "produto" dentro de uma oferta. Se for a `ofertaAtivaPadrao`,
 // espelha os mesmos campos na config de topo — é o que getEmpresaById lê pro
 // robô ao vivo, então sem esse espelho a edição não teria efeito nenhum até a Fase 2.
-app.post('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
   try {
     const id = req.params.id;
     const config = req.empresaLogin.configuracao || {};
@@ -5902,7 +5942,14 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, async (req, re
     const { quantidade, novaQuantidade, arquivo, link, texto, premio, ativa } = req.body;
     const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
 
-    const faixa = configuracao.faixasBonus.find(f => f.quantidade === quantidade);
+    // Múltiplas ofertas: ?oferta=<id> edita as faixas DENTRO dessa oferta, não as
+    // do topo (mesmo padrão do /minha-config?oferta=).
+    const ofertaId = req.query && req.query.oferta;
+    const usaOferta = req.empresaLogin.ofertasHabilitado && ofertaId && configuracao.ofertas && configuracao.ofertas[ofertaId];
+    const alvo = usaOferta ? configuracao.ofertas[ofertaId] : configuracao;
+    alvo.faixasBonus = alvo.faixasBonus || (usaOferta ? [] : EMPRESA_PADRAO.faixasBonus);
+
+    const faixa = alvo.faixasBonus.find(f => f.quantidade === quantidade);
     if (!faixa) {
       return res.status(404).json({ ok: false, erro: 'Faixa não encontrada para essa quantidade' });
     }
@@ -5913,15 +5960,21 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, async (req, re
     if (ativa !== undefined) faixa.ativa = !!ativa;
     if (novaQuantidade && novaQuantidade !== quantidade) {
       // Não pode ter duas etapas com o mesmo número de recomendações.
-      if (configuracao.faixasBonus.some(f => f !== faixa && f.quantidade === novaQuantidade)) {
+      if (alvo.faixasBonus.some(f => f !== faixa && f.quantidade === novaQuantidade)) {
         return res.status(400).json({ ok: false, erro: 'Já existe uma etapa com esse número de recomendações' });
       }
       faixa.quantidade = novaQuantidade;
     }
 
     // Mantém as etapas SEMPRE em ordem crescente de quantidade (o fluxo avança por ordem).
-    configuracao.faixasBonus.sort((a, b) => (a.quantidade || 0) - (b.quantidade || 0));
+    alvo.faixasBonus.sort((a, b) => (a.quantidade || 0) - (b.quantidade || 0));
 
+    if (usaOferta) {
+      alvo.atualizadoEm = new Date().toISOString();
+      configuracao.ofertas[ofertaId] = alvo;
+      // Espelha no topo se for a oferta conectada ao WhatsApp.
+      if (ofertaId === configuracao.ofertaAtivaPadrao) configuracao.faixasBonus = alvo.faixasBonus;
+    }
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao }, { merge: true });
     res.json({ ok: true, faixa });
   } catch (err) {
@@ -6740,6 +6793,7 @@ app.get('/admin/empresas', exigirAdmin, async (req, res) => {
         whatsappMonitor: data.whatsappMonitor || null,
         whatsappTipo: data.whatsappTipo || 'zapi',
         assinatura: data.assinatura || null,
+        ofertasHabilitado: !!data.ofertasHabilitado,
         leads: 0
       });
     });
@@ -6870,6 +6924,9 @@ app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
     });
     // Pré-pago: liga/desliga a cobrança e ajusta os preços (em centavos).
     if (b.prepagoAtivo !== undefined) upd.prepagoAtivo = !!b.prepagoAtivo;
+    // Múltiplas ofertas/lançamentos: função extra, só o admin habilita por cliente
+    // (cobrada à parte). Gate real fica nos endpoints /minha-ofertas* (server-side).
+    if (b.ofertasHabilitado !== undefined) upd.ofertasHabilitado = !!b.ofertasHabilitado;
     if (b.precoMktCentavos !== undefined && b.precoMktCentavos !== '') upd.precoMktCentavos = Math.max(0, parseInt(b.precoMktCentavos, 10) || 0);
     if (b.precoUtilCentavos !== undefined && b.precoUtilCentavos !== '') upd.precoUtilCentavos = Math.max(0, parseInt(b.precoUtilCentavos, 10) || 0);
     if (b.nome !== undefined && String(b.nome).trim()) {

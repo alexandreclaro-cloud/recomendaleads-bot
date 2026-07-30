@@ -659,6 +659,7 @@
     <div id="configLoadMsg" class="load-msg">Carregando configuração...</div>
 
     <div id="configConteudo" style="display:none">
+      <div id="ofertaAtivaBanner" style="display:none;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.86rem;"></div>
       <div class="subtabs">
         <button class="subtab-btn active" data-subtab="empresa">Empresa</button>
         <button class="subtab-btn" data-subtab="clienteConversa">Conversa do Cliente</button>
@@ -1201,10 +1202,20 @@ document.getElementById('sairBtn').addEventListener('click', () => {
   window.location.href = '/login';
 });
 
+// Múltiplas ofertas: se a URL da página trouxer ?oferta=<id> (link "Editar
+// conteúdo" de uma oferta no painel), as chamadas de configuração passam a
+// mexer nessa oferta específica em vez da config compartilhada. Sem o parâmetro
+// (o caso de sempre), fetchAutenticado funciona 100% igual a antes.
+const OFERTA_QUERY_ID = new URLSearchParams(location.search).get('oferta') || null;
 async function fetchAutenticado(url, options = {}) {
-  const resp = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}), 'Authorization': `Bearer ${token}` }
+  const { semOferta, ...opts } = options;
+  let finalUrl = url;
+  if (OFERTA_QUERY_ID && !semOferta && typeof url === 'string' && url.indexOf(`${API_BASE}/minha-config`) === 0) {
+    finalUrl = url + (url.includes('?') ? '&' : '?') + 'oferta=' + encodeURIComponent(OFERTA_QUERY_ID);
+  }
+  const resp = await fetch(finalUrl, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}), 'Authorization': `Bearer ${token}` }
   });
   if (resp.status === 401) {
     localStorage.removeItem('recomendaleads_token');
@@ -1294,7 +1305,10 @@ async function carregarLeads() {
   try {
     const [respLeads, respConfig, respCli, respConv] = await Promise.all([
       fetchAutenticado(`${API_BASE}/minha-leads`),
-      fetchAutenticado(`${API_BASE}/minha-config`),
+      // Kanban/board sempre usa as etapas da oferta PADRÃO (semOferta: true) —
+      // os leads ainda não são vinculados a oferta nenhuma (isso é a Fase 2), então
+      // seguir o seletor aqui faria os cartões sumirem/quebrarem ao trocar de oferta.
+      fetchAutenticado(`${API_BASE}/minha-config`, { semOferta: true }),
       fetchAutenticado(`${API_BASE}/minha-clientes-pipeline`),
       fetchAutenticado(`${API_BASE}/minha-conversas`)
     ]);
@@ -1925,6 +1939,23 @@ async function carregarConfiguracao() {
     configuracaoCarregada = true;
     loadMsg.style.display = 'none';
     document.getElementById('configConteudo').style.display = 'block';
+
+    // Banner de qual oferta está sendo editada (só aparece com ?oferta= na URL).
+    const banner = document.getElementById('ofertaAtivaBanner');
+    if (banner) {
+      if (data.ofertaAtiva) {
+        banner.style.display = 'block';
+        if (data.ofertaAtiva.padrao) {
+          banner.style.background = 'var(--success-soft,#DCFCE7)'; banner.style.color = 'var(--success-dark,#166534)';
+          banner.innerHTML = `🟢 Editando a oferta <b>${esc(data.ofertaAtiva.nome)}</b> — conectada ao WhatsApp agora.`;
+        } else {
+          banner.style.background = '#FFFBEB'; banner.style.color = '#92400E';
+          banner.innerHTML = `✏️ Editando a oferta <b>${esc(data.ofertaAtiva.nome)}</b> — ainda não conectada ao WhatsApp (o robô continua usando a oferta padrão até o roteamento automático entre ofertas ficar pronto).`;
+        }
+      } else {
+        banner.style.display = 'none';
+      }
+    }
 
     document.getElementById('empresaNomeInput').value = configuracaoAtual.nome || '';
     document.getElementById('gatilhoPresenteInput').value = configuracaoAtual.gatilhoPresente || 'quero meu presente';
