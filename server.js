@@ -1580,10 +1580,15 @@ async function iniciarConversa(telefone) {
   await getSessao(telefone);
   // Pipeline do cliente: entrou (leu o QR / mandou o gatilho).
   await upsertClientePipeline(telefone, null, 'iniciou');
-  await sendText(telefone, substituirVariaveis(empresa.mensagemAgradecimento, { empresa: empresa.nome }));
+  // A tela "Conversa do Cliente" anuncia {premio}/{quantidade} como variáveis
+  // válidas em TODA a aba (inclusive nas Boas-vindas) — antes só {empresa} chegava
+  // aqui, então quem usava {premio} na 1ª mensagem via o texto cru, sem substituir.
+  const faixaBoasVindas = faixasAtivas(empresa)[0];
+  const varsBoasVindas = { empresa: empresa.nome, premio: faixaBoasVindas ? faixaBoasVindas.premio : '', quantidade: faixaBoasVindas ? faixaBoasVindas.quantidade : '' };
+  await sendText(telefone, substituirVariaveis(empresa.mensagemAgradecimento, varsBoasVindas));
   // Pergunta o nome primeiro; no modo Full, a explicação das 2 fases vem DEPOIS
   // que o cliente responde o nome (ver handler 'aguardando_nome') — mais natural.
-  await sendText(telefone, substituirVariaveis(empresa.mensagemPedeNome || EMPRESA_PADRAO.mensagemPedeNome, { empresa: empresa.nome }));
+  await sendText(telefone, substituirVariaveis(empresa.mensagemPedeNome || EMPRESA_PADRAO.mensagemPedeNome, varsBoasVindas));
 }
 
 // Inicia a coleta de contatos (usado após o vendedor, OU direto após o nome
@@ -1639,7 +1644,11 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
     await saveSessao(telefone, sessao);
 
     const listaVendedores = empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
-    const perguntaVendedor = substituirVariaveis(perguntaVend || EMPRESA_PADRAO.mensagemPedeVendedor, { nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome });
+    const faixaVend = faixasAtivas(empresa)[0];
+    const perguntaVendedor = substituirVariaveis(perguntaVend || EMPRESA_PADRAO.mensagemPedeVendedor, {
+      nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome,
+      premio: faixaVend ? faixaVend.premio : '', quantidade: faixaVend ? faixaVend.quantidade : ''
+    });
     await sendText(telefone, `${perguntaVendedor}\n\n${listaVendedores}\n\n👇 _Digita o número aqui_ 👇`);
     return;
   }
