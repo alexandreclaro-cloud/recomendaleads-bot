@@ -114,7 +114,6 @@
         <button class="btn btn-secondary" id="pausarBtn" style="display:none;padding:8px 12px;font-size:0.8rem">🙋 Assumir (sou eu)</button>
         <button class="btn btn-secondary" id="devolverBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Devolver ao Agente I.A.</button>
         <select id="etapaSelect" title="Mover esse lead pra outra etapa do CRM" style="display:none;padding:7px 10px;font-size:0.8rem;border-radius:8px;border:1px solid var(--border);background:var(--surface);"></select>
-        <button class="btn btn-ghost" id="agendarBtn" title="Agendar um lembrete de retorno pra esta conversa" style="padding:8px 10px;font-size:0.8rem">📅</button>
         <button class="btn btn-ghost" id="resetarBtn" title="Zerar este contato: apaga a conversa e reinicia a pessoa do zero (mantém os leads no CRM)" style="padding:8px 12px;font-size:0.8rem;color:#c0392b">Resetar</button>
       </div>
       <div id="lembreteFaixa" style="display:none;background:#FFFBEB;border-bottom:1px solid #FDE68A;color:#92400E;padding:8px 20px;font-size:0.82rem;display:none;align-items:center;justify-content:space-between;gap:10px;">
@@ -125,10 +124,11 @@
       <div id="respostasRapidasBox" style="display:none;"></div>
       <div class="composer" id="composer">
         <input type="file" id="anexoInput" style="display:none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+        <input class="input" type="text" id="msgInput" placeholder="Digite uma mensagem... ( / pra respostas rápidas )" autocomplete="off" style="display:block;">
+        <span id="gravandoIndicador" style="display:none;align-items:center;gap:6px;color:#DC2626;font-size:0.82rem;font-weight:600;white-space:nowrap;">🔴 <span id="gravandoTempo">0:00</span></span>
         <button class="btn btn-ghost" id="anexoBtn" title="Anexar arquivo" style="padding:8px 10px;"><i data-lucide="paperclip"></i></button>
         <button class="btn btn-ghost" id="audioBtn" title="Gravar áudio" style="padding:8px 10px;"><i data-lucide="mic"></i></button>
-        <span id="gravandoIndicador" style="display:none;align-items:center;gap:6px;color:#DC2626;font-size:0.82rem;font-weight:600;white-space:nowrap;">🔴 <span id="gravandoTempo">0:00</span></span>
-        <input class="input" type="text" id="msgInput" placeholder="Digite uma mensagem... ( / pra respostas rápidas )" autocomplete="off" style="display:block;">
+        <button class="btn btn-ghost" id="agendarBtn" title="Agendar um lembrete de retorno pra esta conversa" style="padding:8px 10px;"><i data-lucide="calendar"></i></button>
         <button class="btn btn-action" id="enviarBtn"><i data-lucide="send"></i></button>
       </div>
     </div>
