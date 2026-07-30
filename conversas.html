@@ -77,7 +77,11 @@
     <div class="conv-top">
       <div class="logo"><i data-lucide="message-circle"></i></div>
       <b>Conversas</b>
-      <button id="disponivelBtn" title="Alterna se você participa do revezamento de atendimento" style="border:none;border-radius:999px;padding:5px 11px;font-size:0.74rem;font-weight:700;cursor:pointer;white-space:nowrap;">🟢 Disponível</button>
+      <select id="statusAtendBtn" title="Seu status no revezamento de atendimento" style="border:none;border-radius:999px;padding:5px 9px;font-size:0.74rem;font-weight:700;cursor:pointer;white-space:nowrap;">
+        <option value="online">🟢 Online</option>
+        <option value="pausa">☕ Pausa</option>
+        <option value="offline">⚫ Offline</option>
+      </select>
       <a href="/minha-empresa/configurar" title="Voltar ao painel"><i data-lucide="arrow-left" style="width:18px;height:18px;vertical-align:-4px"></i></a>
     </div>
     <div class="conv-search">
@@ -324,32 +328,36 @@ document.getElementById('voltarMobile').addEventListener('click', () => {
 });
 if (window.innerWidth <= 760) document.getElementById('voltarMobile').style.display = 'inline-flex';
 
-// ===== Disponível/Ausente (revezamento de atendimento) =====
-// "Disponível" + heartbeat recente = participa do carrossel que distribui o
-// atendimento humano (modo direto) entre quem está online agora.
-let _disponivel = true;
-function pintarDisponivelBtn() {
-  const b = document.getElementById('disponivelBtn');
-  if (!b) return;
-  b.textContent = _disponivel ? '🟢 Disponível' : '⚪ Ausente';
-  b.style.background = _disponivel ? 'var(--success-soft, #DCFCE7)' : 'var(--surface-2, #eee)';
-  b.style.color = _disponivel ? 'var(--success-dark, #166534)' : 'var(--text-dim, #666)';
+// ===== Online / Pausa / Offline (revezamento de atendimento) =====
+// "Online" + heartbeat recente = participa do carrossel que distribui o
+// atendimento humano (modo direto) entre quem está disponível agora.
+const CORES_STATUS = {
+  online: { bg: 'var(--success-soft, #DCFCE7)', cor: 'var(--success-dark, #166534)' },
+  pausa: { bg: '#FEF3C7', cor: '#92400E' },
+  offline: { bg: 'var(--surface-2, #eee)', cor: 'var(--text-dim, #666)' }
+};
+function pintarStatusBtn(status) {
+  const sel = document.getElementById('statusAtendBtn');
+  if (!sel) return;
+  sel.value = status;
+  const c = CORES_STATUS[status] || CORES_STATUS.offline;
+  sel.style.background = c.bg; sel.style.color = c.cor;
 }
 async function carregarMeuStatus() {
   try {
     const r = await fetchAut(`${API_BASE}/minha-equipe/meu-status`);
     const d = await r.json();
-    if (d.ok) { _disponivel = d.disponivel !== false; pintarDisponivelBtn(); }
+    if (d.ok) pintarStatusBtn(d.status || 'online');
   } catch (e) {}
 }
 async function enviarHeartbeat() {
   try { await fetchAut(`${API_BASE}/minha-equipe/heartbeat`, { method: 'POST' }); } catch (e) {}
 }
-document.getElementById('disponivelBtn').addEventListener('click', async () => {
-  _disponivel = !_disponivel;
-  pintarDisponivelBtn();
-  try { await fetchAut(`${API_BASE}/minha-equipe/disponibilidade`, { method: 'POST', body: JSON.stringify({ disponivel: _disponivel }) }); } catch (e) {}
-  if (_disponivel) enviarHeartbeat();
+document.getElementById('statusAtendBtn').addEventListener('change', async (e) => {
+  const status = e.target.value;
+  pintarStatusBtn(status);
+  try { await fetchAut(`${API_BASE}/minha-equipe/status`, { method: 'POST', body: JSON.stringify({ status }) }); } catch (err) {}
+  if (status === 'online') enviarHeartbeat();
 });
 carregarMeuStatus();
 enviarHeartbeat();

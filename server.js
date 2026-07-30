@@ -1215,8 +1215,9 @@ async function avisarAtendente(telefone, nomePessoa, empresa) {
 // escala pro próximo online — até esgotar as tentativas.
 // ============================================================
 
-// Atendentes "online" agora: telefone cadastrado, não marcado Ausente, e com
-// heartbeat recente (o painel manda a cada 30s enquanto a aba fica aberta).
+// Atendentes "online" agora: telefone cadastrado, status = 'online' (o próprio
+// atendente escolhe em Conversas: Online/Pausa/Offline), e com heartbeat recente
+// (o painel manda a cada 30s enquanto a aba fica aberta).
 async function usuariosOnlineRevezamento(empresaId) {
   const snap = await USUARIOS_COL().where('empresaId', '==', empresaId).get();
   const agora = Date.now();
@@ -1225,7 +1226,7 @@ async function usuariosOnlineRevezamento(empresaId) {
     const u = d.data();
     if (u.ativo === false) return;
     if (!u.telefone) return;
-    if (u.disponivel === false) return;              // marcou "Ausente" manualmente
+    if ((u.statusAtendimento || 'online') !== 'online') return; // em Pausa/Offline
     if (!u.ultimaAtividadeEm) return;                 // nunca deu heartbeat (painel fechado)
     const idadeMs = agora - new Date(u.ultimaAtividadeEm).getTime();
     if (idadeMs > 90 * 1000) return;                  // heartbeat velho = considera offline
@@ -4445,7 +4446,8 @@ app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
     const agora = Date.now();
     const usuarios = snap.docs.map(d => {
       const u = d.data();
-      const online = !!u.telefone && u.disponivel !== false && !!u.ultimaAtividadeEm
+      const statusAtendimento = u.statusAtendimento || 'online';
+      const online = !!u.telefone && statusAtendimento === 'online' && !!u.ultimaAtividadeEm
         && (agora - new Date(u.ultimaAtividadeEm).getTime()) <= 90 * 1000;
       return {
         id: d.id,
@@ -4453,9 +4455,8 @@ app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
         email: u.email,
         papel: u.papel,
         telefone: u.telefone || '',
-        atendenteOficial: !!u.atendenteOficial,
         ativo: u.ativo !== false,
-        disponivel: u.disponivel !== false,
+        statusAtendimento,
         online, // pro revezamento: 🟢 = participa agora do carrossel de atendimento
         souEu: !!(req.usuario && req.usuario.id === d.id)
       };
@@ -4479,30 +4480,30 @@ app.post('/minha-equipe/heartbeat', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
-// Disponível/Ausente — toggle manual. Ausente = fica fora do revezamento mesmo
-// com a aba aberta (ex: foi almoçar mas esqueceu de fechar o painel).
-app.post('/minha-equipe/disponibilidade', exigirLoginEmpresa, async (req, res) => {
+// Online / Pausa / Offline — o próprio atendente escolhe (em Conversas). Pausa e
+// Offline ficam fora do revezamento mesmo com a aba aberta.
+app.post('/minha-equipe/status', exigirLoginEmpresa, async (req, res) => {
   try {
-    const disponivel = !!(req.body && req.body.disponivel);
+    const status = ['online', 'pausa', 'offline'].includes(req.body && req.body.status) ? req.body.status : 'offline';
     if (req.usuario && req.usuario.id) {
-      await USUARIOS_COL().doc(req.usuario.id).set({ disponivel, ultimaAtividadeEm: new Date().toISOString() }, { merge: true });
+      await USUARIOS_COL().doc(req.usuario.id).set({ statusAtendimento: status, ultimaAtividadeEm: new Date().toISOString() }, { merge: true });
     }
-    res.json({ ok: true, disponivel });
+    res.json({ ok: true, status });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
 
-// Estado do próprio usuário logado — pra restaurar o toggle Disponível/Ausente
+// Estado do próprio usuário logado — pra restaurar o seletor Online/Pausa/Offline
 // ao abrir a página (sem precisar ser gestor).
 app.get('/minha-equipe/meu-status', exigirLoginEmpresa, async (req, res) => {
   try {
-    let disponivel = true;
+    let status = 'online';
     if (req.usuario && req.usuario.id) {
       const snap = await USUARIOS_COL().doc(req.usuario.id).get();
-      if (snap.exists) disponivel = snap.data().disponivel !== false;
+      if (snap.exists) status = snap.data().statusAtendimento || 'online';
     }
-    res.json({ ok: true, disponivel });
+    res.json({ ok: true, status });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
