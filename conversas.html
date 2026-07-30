@@ -113,6 +113,7 @@
         <span class="bot-flag on" id="botFlag">Agente I.A. ativo</span>
         <button class="btn btn-secondary" id="pausarBtn" style="display:none;padding:8px 12px;font-size:0.8rem">🙋 Assumir (sou eu)</button>
         <button class="btn btn-secondary" id="devolverBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Devolver ao Agente I.A.</button>
+        <select id="etapaSelect" title="Mover esse lead pra outra etapa do CRM" style="display:none;padding:7px 10px;font-size:0.8rem;border-radius:8px;border:1px solid var(--border);background:var(--surface);"></select>
         <button class="btn btn-ghost" id="agendarBtn" title="Agendar um lembrete de retorno pra esta conversa" style="padding:8px 10px;font-size:0.8rem">📅</button>
         <button class="btn btn-ghost" id="resetarBtn" title="Zerar este contato: apaga a conversa e reinicia a pessoa do zero (mantém os leads no CRM)" style="padding:8px 12px;font-size:0.8rem;color:#c0392b">Resetar</button>
       </div>
@@ -133,6 +134,24 @@
     </div>
   </section>
 </div>
+
+<div id="qrModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:14px;width:560px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+      <b style="flex:1;font-size:1rem;">⚡ Respostas rápidas</b>
+      <button id="qrModalFechar" class="btn btn-ghost" style="padding:4px 10px;">✕</button>
+    </div>
+    <p style="padding:10px 18px 0;margin:0;font-size:0.8rem;color:var(--text-dim);">Digite <b>/</b> + o atalho no chat pra usar (ex: <b>/1</b>). Cada uma pode ter texto, imagem/arquivo, ou os dois.</p>
+    <div id="qrModalLista" style="flex:1;overflow-y:auto;padding:12px 18px;"></div>
+    <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;">
+      <button id="qrModalAddBtn" class="btn btn-secondary" style="padding:8px 14px;font-size:0.85rem;">➕ Nova resposta rápida</button>
+      <span style="flex:1;"></span>
+      <span id="qrModalStatus" style="font-size:0.82rem;color:var(--text-dim);"></span>
+      <button id="qrModalSalvarBtn" class="btn btn-action" style="padding:8px 16px;">Salvar tudo</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="qrAnexoInput" style="display:none;" accept="image/*,video/*,.pdf,.doc,.docx">
 
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
@@ -304,7 +323,33 @@ async function abrirConversa(telefone, nome) {
   renderConversas();
   await carregarMensagens(true);
   await carregarLembrete();
+  await carregarEtapaLead();
 }
+
+// ===== Mover o lead de etapa no CRM, direto da conversa =====
+let _leadAtualId = null;
+async function carregarEtapaLead() {
+  const sel = document.getElementById('etapaSelect');
+  sel.style.display = 'none'; sel.innerHTML = ''; _leadAtualId = null;
+  if (!atual) return;
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-conversas/${atual}/lead`);
+    const d = await r.json();
+    if (!d.ok || !d.lead) return; // essa conversa não tem lead (ex.: é o recomendador, não o recomendado)
+    _leadAtualId = d.lead.id;
+    sel.innerHTML = (d.etapas || []).map(e => `<option value="${esc(e.id)}"${e.id === d.lead.etapa ? ' selected' : ''}>${esc(e.nome)}</option>`).join('');
+    sel.style.display = 'inline-block';
+  } catch (e) {}
+}
+document.getElementById('etapaSelect').addEventListener('change', async (e) => {
+  if (!_leadAtualId) return;
+  const novaEtapa = e.target.value;
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-leads/${_leadAtualId}`, { method: 'PATCH', body: JSON.stringify({ etapa: novaEtapa }) });
+    const d = await r.json();
+    if (!r.ok || !d.ok) alert('❌ ' + (d.erro || 'Não foi possível mover o lead.'));
+  } catch (err) { alert('Erro de conexão.'); }
+});
 
 async function carregarMensagens(scroll) {
   if (!atual) return;
@@ -430,22 +475,41 @@ function fecharRespostasRapidas() {
 function abrirRespostasRapidas(filtro) {
   const lista = _respostasRapidas.filter(r => r.atalho.startsWith(filtro));
   const box = document.getElementById('respostasRapidasBox');
-  if (!lista.length) {
-    box.style.display = 'block';
-    box.innerHTML = `<div class="qr-item" style="cursor:default;color:var(--text-dim)">Nenhuma resposta rápida com "/${esc(filtro)}". <a href="#" id="gerenciarQRLink">Gerenciar respostas rápidas</a></div>`;
-    const link = document.getElementById('gerenciarQRLink');
-    if (link) link.addEventListener('click', (ev) => { ev.preventDefault(); abrirGerenciadorQR(); });
-    return;
-  }
   box.style.display = 'block';
-  box.innerHTML = lista.map(r => `<div class="qr-item" data-texto="${esc(r.texto)}"><b>/${esc(r.atalho)}</b><span>${esc(r.texto)}</span></div>`).join('');
-  box.querySelectorAll('.qr-item').forEach(el => {
-    el.addEventListener('click', () => {
-      document.getElementById('msgInput').value = el.dataset.texto;
-      fecharRespostasRapidas();
-      document.getElementById('msgInput').focus();
-    });
+  const rodape = `<div class="qr-item" style="cursor:pointer;color:var(--brand);text-align:center;" id="gerenciarQRItem">⚙️ Gerenciar respostas rápidas</div>`;
+  if (!lista.length) {
+    box.innerHTML = `<div class="qr-item" style="cursor:default;color:var(--text-dim)">Nenhuma resposta rápida com "/${esc(filtro)}".</div>` + rodape;
+  } else {
+    box.innerHTML = lista.map(r => `
+      <div class="qr-item" data-i="${_respostasRapidas.indexOf(r)}">
+        <b>/${esc(r.atalho)}</b> ${r.midiaUrl ? '📎' : ''}
+        <span>${esc(r.texto || '(anexo sem texto)')}</span>
+      </div>`).join('') + rodape;
+  }
+  box.querySelectorAll('.qr-item[data-i]').forEach(el => {
+    el.addEventListener('click', () => selecionarRespostaRapida(_respostasRapidas[+el.dataset.i]));
   });
+  const gerBtn = document.getElementById('gerenciarQRItem');
+  if (gerBtn) gerBtn.addEventListener('click', abrirGerenciadorQR);
+}
+async function selecionarRespostaRapida(r) {
+  fecharRespostasRapidas();
+  if (!r) return;
+  if (r.midiaUrl) {
+    // Tem anexo: manda direto (igual um anexo manual), com o texto como legenda.
+    if (!atual) return;
+    try {
+      await fetchAut(`${API_BASE}/minha-conversas/${atual}/enviar-midia`, {
+        method: 'POST',
+        body: JSON.stringify({ tipo: r.midiaTipo || 'documento', url: r.midiaUrl, caption: r.texto || '', fileName: 'anexo' })
+      });
+      await carregarMensagens(true);
+      await carregarConversas();
+    } catch (e) {}
+  } else {
+    document.getElementById('msgInput').value = r.texto || '';
+    document.getElementById('msgInput').focus();
+  }
 }
 document.getElementById('msgInput').addEventListener('input', (e) => {
   const v = e.target.value;
@@ -461,21 +525,85 @@ document.getElementById('msgInput').addEventListener('keydown', e => {
 });
 carregarRespostasRapidas();
 
-// Gerenciador simples de respostas rápidas (lista editável, salva tudo de uma vez).
+// ===== Gerenciador de respostas rápidas (modal de verdade) =====
+let _qrEditando = [];
 function abrirGerenciadorQR() {
   fecharRespostasRapidas();
-  const linhas = _respostasRapidas.map(r => `${r.atalho} | ${r.texto}`).join('\n');
-  const novo = prompt('Respostas rápidas — uma por linha, no formato:\natalho | texto da mensagem\n\nEx:\nboasvindas | Oi! Tudo bem? Como posso ajudar? 😊\nhorario | Nosso horário é de seg a sex, 9h às 18h.', linhas);
-  if (novo == null) return;
-  const respostas = novo.split('\n').map(l => {
-    const i = l.indexOf('|');
-    if (i < 0) return null;
-    return { atalho: l.slice(0, i).trim(), texto: l.slice(i + 1).trim() };
-  }).filter(Boolean).filter(r => r.atalho && r.texto);
-  fetchAut(`${API_BASE}/minha-respostas-rapidas`, { method: 'POST', body: JSON.stringify({ respostas }) })
-    .then(() => carregarRespostasRapidas())
-    .catch(() => {});
+  _qrEditando = JSON.parse(JSON.stringify(_respostasRapidas));
+  renderModalQR();
+  document.getElementById('qrModalOverlay').style.display = 'flex';
 }
+function fecharModalQR() { document.getElementById('qrModalOverlay').style.display = 'none'; }
+function renderModalQR() {
+  const cont = document.getElementById('qrModalLista');
+  if (!_qrEditando.length) {
+    cont.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--text-dim);font-size:0.86rem;">Nenhuma resposta rápida ainda. Clica em "Nova" abaixo.</div>';
+    return;
+  }
+  cont.innerHTML = _qrEditando.map((r, i) => `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:10px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+        <span style="font-weight:700;color:var(--brand);">/</span>
+        <input class="input qr-f-atalho" data-i="${i}" value="${esc(r.atalho)}" placeholder="1" style="max-width:90px;padding:6px 8px;">
+        <button type="button" class="btn btn-ghost qr-f-anexar" data-i="${i}" title="Anexar imagem/vídeo/arquivo" style="margin-left:auto;padding:5px 9px;">📎</button>
+        <button type="button" class="btn btn-ghost qr-f-remover" data-i="${i}" title="Remover" style="padding:5px 9px;color:#c0392b;">🗑️</button>
+      </div>
+      <textarea class="input qr-f-texto" data-i="${i}" rows="2" placeholder="Texto da mensagem (opcional se tiver anexo)" style="width:100%;padding:6px 8px;">${esc(r.texto || '')}</textarea>
+      ${r.midiaUrl ? `<div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:0.78rem;color:var(--text-dim);">
+        ${r.midiaTipo === 'imagem' ? `<img src="${esc(r.midiaUrl)}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;">` : '📎'}
+        <span>Anexo salvo</span>
+        <button type="button" class="btn btn-ghost qr-f-remover-midia" data-i="${i}" style="padding:2px 8px;color:#c0392b;">remover anexo</button>
+      </div>` : ''}
+    </div>
+  `).join('');
+  cont.querySelectorAll('.qr-f-atalho').forEach(el => el.addEventListener('input', e => { _qrEditando[+e.target.dataset.i].atalho = e.target.value; }));
+  cont.querySelectorAll('.qr-f-texto').forEach(el => el.addEventListener('input', e => { _qrEditando[+e.target.dataset.i].texto = e.target.value; }));
+  cont.querySelectorAll('.qr-f-remover').forEach(el => el.addEventListener('click', e => { _qrEditando.splice(+e.currentTarget.dataset.i, 1); renderModalQR(); }));
+  cont.querySelectorAll('.qr-f-remover-midia').forEach(el => el.addEventListener('click', e => {
+    const i = +e.currentTarget.dataset.i; _qrEditando[i].midiaUrl = null; _qrEditando[i].midiaTipo = null; renderModalQR();
+  }));
+  cont.querySelectorAll('.qr-f-anexar').forEach(el => el.addEventListener('click', e => {
+    document.getElementById('qrAnexoInput').dataset.i = e.currentTarget.dataset.i;
+    document.getElementById('qrAnexoInput').click();
+  }));
+}
+document.getElementById('qrAnexoInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  const i = +e.target.dataset.i;
+  e.target.value = '';
+  if (!file) return;
+  const status = document.getElementById('qrModalStatus');
+  status.textContent = 'Enviando anexo...';
+  try {
+    const fd = new FormData();
+    fd.append('arquivo', file, file.name);
+    const up = await fetchAut(`${API_BASE}/minha-conversas/upload`, { method: 'POST', body: fd });
+    const upData = await up.json();
+    if (up.ok && upData.ok) {
+      _qrEditando[i].midiaUrl = upData.url;
+      _qrEditando[i].midiaTipo = detectarTipoMidia(upData.mimetype || file.type);
+      renderModalQR();
+      status.textContent = '✅ Anexado (lembre de Salvar)';
+    } else status.textContent = '❌ Falha no upload';
+  } catch (err) { status.textContent = '❌ Falha no upload'; }
+  setTimeout(() => { status.textContent = ''; }, 3000);
+});
+document.getElementById('qrModalAddBtn').addEventListener('click', () => {
+  _qrEditando.push({ atalho: '', texto: '', midiaUrl: null, midiaTipo: null });
+  renderModalQR();
+});
+document.getElementById('qrModalFechar').addEventListener('click', fecharModalQR);
+document.getElementById('qrModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'qrModalOverlay') fecharModalQR(); });
+document.getElementById('qrModalSalvarBtn').addEventListener('click', async () => {
+  const status = document.getElementById('qrModalStatus');
+  status.textContent = 'Salvando...';
+  try {
+    const resp = await fetchAut(`${API_BASE}/minha-respostas-rapidas`, { method: 'POST', body: JSON.stringify({ respostas: _qrEditando }) });
+    const d = await resp.json();
+    if (resp.ok && d.ok) { _respostasRapidas = d.respostas || []; status.textContent = '✅ Salvo!'; setTimeout(fecharModalQR, 500); }
+    else status.textContent = '❌ ' + (d.erro || 'Erro ao salvar');
+  } catch (e) { status.textContent = '❌ Erro de conexão'; }
+});
 
 // ===== Agendar retorno (lembrete pessoal ligado à conversa) =====
 async function carregarLembrete() {

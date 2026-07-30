@@ -5508,6 +5508,21 @@ app.get('/minha-conversas/:telefone/mensagens', exigirLoginEmpresa, async (req, 
   }
 });
 
+// Acha o lead (recomendado) ligado a este telefone, pra Conversas mostrar/mudar a
+// etapa do Kanban direto da conversa (sem precisar ir no CRM arrastar o card).
+app.get('/minha-conversas/:telefone/lead', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id };
+    let lead = null;
+    await tenantContext.run(contexto, async () => { lead = await acharLeadRecPorTelefone(req.params.telefone); });
+    const etapas = (empresa.etapasKanban && empresa.etapasKanban.length) ? empresa.etapasKanban : EMPRESA_PADRAO.etapasKanban;
+    res.json({ ok: true, lead: lead ? { id: lead.id, etapa: lead.etapa || null } : null, etapas });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Envia uma mensagem manual e pausa o bot para esse contato.
 app.post('/minha-conversas/:telefone/enviar', exigirLoginEmpresa, async (req, res) => {
   try {
@@ -5611,9 +5626,16 @@ app.post('/minha-respostas-rapidas', exigirLoginEmpresa, async (req, res) => {
   try {
     const entrada = Array.isArray(req.body && req.body.respostas) ? req.body.respostas : [];
     const lista = entrada
-      .map(r => ({ atalho: String((r && r.atalho) || '').trim().toLowerCase().replace(/\s+/g, ''), texto: String((r && r.texto) || '').trim() }))
-      .filter(r => r.atalho && r.texto)
-      .slice(0, 100);
+      .map(r => ({
+        atalho: String((r && r.atalho) || '').trim().toLowerCase().replace(/\s+/g, ''),
+        texto: String((r && r.texto) || '').trim(),
+        // Anexo opcional (imagem/vídeo/documento) — a resposta rápida pode mandar
+        // mídia direto, não só texto. midiaTipo vem do upload (ver detectarTipoMidia).
+        midiaUrl: (r && r.midiaUrl) ? String(r.midiaUrl).trim() : null,
+        midiaTipo: (r && r.midiaTipo) ? String(r.midiaTipo).trim() : null
+      }))
+      .filter(r => r.atalho && (r.texto || r.midiaUrl)) // precisa ter texto OU mídia
+      .slice(0, 200);
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ respostasRapidas: lista }, { merge: true });
     res.json({ ok: true, respostas: lista });
   } catch (err) {
