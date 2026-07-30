@@ -5558,6 +5558,69 @@ app.post('/minha-conversas/:telefone/enviar-midia', exigirLoginEmpresa, async (r
   }
 });
 
+// Agenda um lembrete de retorno pra ESTA conversa (ex.: "cliente pediu pra ligar
+// mais tarde"). Notifica só o PRÓPRIO atendente que agendou (não é revezamento —
+// é o dono do compromisso) na hora escolhida, via WhatsApp + o alarme do painel.
+app.post('/minha-conversas/:telefone/agendar-retorno', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    const quando = req.body && req.body.quando; // ISO datetime (local do navegador)
+    if (!quando || isNaN(new Date(quando).getTime())) return res.status(400).json({ ok: false, erro: 'Data/hora inválida' });
+    if (new Date(quando).getTime() <= Date.now()) return res.status(400).json({ ok: false, erro: 'Escolha um horário no futuro' });
+    const atendenteId = (req.usuario && req.usuario.id) || null;
+    const atendenteNome = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
+    const chave = `${req.empresaLogin.id}__${telefone}`;
+    await CONVERSAS_COL().doc(chave).set({ lembreteRetorno: { quando, atendenteId, atendenteNome } }, { merge: true });
+    await AGENDAMENTOS_COL().add({
+      tipo: 'lembrete_retorno_atendente', executarEm: quando, status: 'pendente',
+      empresaId: req.empresaLogin.id,
+      dados: { telefone, atendenteId, atendenteNome },
+      criadoEm: new Date().toISOString()
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Cancela o lembrete agendado. Não precisa apagar da coleção de agendamentos —
+// o executor checa `lembreteRetorno` antes de notificar, então limpar aqui basta.
+app.post('/minha-conversas/:telefone/cancelar-lembrete', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const chave = `${req.empresaLogin.id}__${req.params.telefone}`;
+    await CONVERSAS_COL().doc(chave).set({ lembreteRetorno: null }, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Respostas rápidas ("/" no composer de Conversas) — compartilhadas pela equipe,
+// qualquer atendente pode ver/editar (não é recurso só de gestor).
+app.get('/minha-respostas-rapidas', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const doc = await EMPRESAS_COL().doc(req.empresaLogin.id).get();
+    const lista = (doc.exists && doc.data().respostasRapidas) || [];
+    res.json({ ok: true, respostas: lista });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post('/minha-respostas-rapidas', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const entrada = Array.isArray(req.body && req.body.respostas) ? req.body.respostas : [];
+    const lista = entrada
+      .map(r => ({ atalho: String((r && r.atalho) || '').trim().toLowerCase().replace(/\s+/g, ''), texto: String((r && r.texto) || '').trim() }))
+      .filter(r => r.atalho && r.texto)
+      .slice(0, 100);
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ respostasRapidas: lista }, { merge: true });
+    res.json({ ok: true, respostas: lista });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Devolve o atendimento ao robô (reativa o bot para o contato).
 app.post('/minha-conversas/:telefone/devolver', exigirLoginEmpresa, async (req, res) => {
   try {
@@ -6963,6 +7026,33 @@ async function processarAgendamentoInterno(agendamento) {
       return;
     }
     await avisarAtendenteRevezamento(telefone, nomePessoa, empresa, excluirIds, tentativa);
+    return;
+  }
+
+  // Lembrete de retorno agendado numa conversa (ex.: "cliente pediu pra ligar mais
+  // tarde"). Avisa só o atendente que agendou, não é revezamento.
+  if (agendamento.tipo === 'lembrete_retorno_atendente') {
+    const { telefone, atendenteId, atendenteNome } = agendamento.dados;
+    const chave = `${empresa.id}__${telefone}`;
+    const convSnap = await CONVERSAS_COL().doc(chave).get();
+    const conv = convSnap.exists ? convSnap.data() : {};
+    if (!conv.lembreteRetorno) {
+      console.log(`[LEMBRETE] ${telefone} — cancelado ou já tratado, não notifica`);
+      return; // foi cancelado (ou reagendado, o que sobrescreve o campo)
+    }
+    await CONVERSAS_COL().doc(chave).set({
+      precisaAtendente: true, precisaAtendenteEm: new Date().toISOString(), lembreteRetorno: null
+    }, { merge: true });
+    let telAtendente = null;
+    if (atendenteId) {
+      try { const u = await USUARIOS_COL().doc(atendenteId).get(); if (u.exists) telAtendente = soDigitosTel(u.data().telefone); } catch (e) {}
+    }
+    if (!telAtendente) telAtendente = await getNumeroAvisoAtendente(empresa);
+    if (telAtendente) {
+      const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
+      const link = `${base}/conversas?tel=${encodeURIComponent(soDigitosTel(telefone))}`;
+      await enviarSemLog(telAtendente, `⏰ *Lembrete de retorno*\n\n${atendenteNome ? atendenteNome + ', você' : 'Você'} agendou pra voltar nesta conversa agora.\n\n👉 ${link}`);
+    }
     return;
   }
 
