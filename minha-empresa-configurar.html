@@ -62,6 +62,7 @@
       <button class="nav-item" data-section="modo" data-gestor><i data-lucide="git-branch"></i><span class="txt">Modo de recomendação</span></button>
       <button class="nav-item" data-section="whatsapp" data-gestor><i data-lucide="smartphone"></i><span class="txt">WhatsApp</span></button>
       <button class="nav-item" data-section="disparo" data-gestor style="display:none"><i data-lucide="send"></i><span class="txt">Disparo em massa</span></button>
+      <button class="nav-item" data-section="script" data-gestor><i data-lucide="scroll-text"></i><span class="txt">Script de vendas</span></button>
       <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
       <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
       <button class="nav-item" data-section="equipe" data-gestor><i data-lucide="users"></i><span class="txt">Equipe</span></button>
@@ -685,6 +686,19 @@
         </div>
       </section>
 
+      <section class="view fade-in" id="view-script">
+        <div class="card">
+          <div class="block-title"><i data-lucide="scroll-text"></i> Script de vendas</div>
+          <p class="sub">Roteiro por fase da negociação. Aparece num painel do lado direito em <b>Conversas</b>, pro atendente ler ou copiar enquanto fala com o cliente. Divida em quantas fases fizer sentido (ex: Abertura, Descoberta, Apresentação, Objeções, Fechamento).</p>
+          <div id="scriptContainer"></div>
+          <button class="btn btn-secondary" id="addFaseScriptBtn" type="button" style="margin-top:6px;">➕ Adicionar fase</button>
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarScriptBtn">Salvar script</button>
+            <span class="status-msg" id="statusScript"></span>
+          </div>
+        </div>
+      </section>
+
       <section class="view fade-in" id="view-equipe">
         <div class="card">
           <div class="block-title"><i data-lucide="user-plus"></i> Adicionar usuário</div>
@@ -786,7 +800,7 @@ const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') 
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
 let EH_MATRIZ = false;
-const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'disparo', 'equipe', 'assinatura'];
+const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'disparo', 'script', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
@@ -819,6 +833,7 @@ const TITULOS = {
   modo: ['Modo de recomendação', 'Como o presente chega aos amigos recomendados.'],
   whatsapp: ['WhatsApp', 'Conecte o número que o Agente I.A. vai usar.'],
   disparo: ['Disparo em massa', 'Mande um template pra uma lista — cada envio desconta do seu saldo.'],
+  script: ['Script de vendas', 'Roteiro por fase da negociação — aparece pro atendente em Conversas.'],
   equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
   assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.'],
   avisos: ['Mensagens do sistema', 'Novidades, melhorias e avisos da plataforma.']
@@ -847,6 +862,7 @@ function trocarSecao(secao) {
   if (secao === 'info' && typeof carregarInfo === 'function') carregarInfo();
   if (secao === 'modo' && typeof carregarModo === 'function') carregarModo();
   if (secao === 'disparo' && typeof carregarDisparo === 'function') carregarDisparo();
+  if (secao === 'script' && typeof carregarScript === 'function') carregarScript();
   if (secao === 'assinatura' && typeof carregarAssinatura === 'function') carregarAssinatura();
   if (secao === 'avisos' && typeof renderAvisosLista === 'function') { renderAvisosLista(); marcarTodosLidos(); }
 }
@@ -2172,6 +2188,58 @@ document.getElementById('salvarFullConfBtn').addEventListener('click', async () 
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await resp.json();
     if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
+
+// ---- Script de vendas: fases da negociação (painel lateral em Conversas) ----
+let scriptFases = [];
+function renderScriptFases() {
+  const cont = document.getElementById('scriptContainer');
+  if (!cont) return;
+  if (!scriptFases.length) {
+    cont.innerHTML = '<p class="sub" style="margin:0 0 6px;">Nenhuma fase ainda. Clique em "Adicionar fase" pra começar.</p>';
+    return;
+  }
+  cont.innerHTML = scriptFases.map((f, i) => {
+    const titulo = String(f.titulo || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const texto = String(f.texto || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    return `<div class="script-fase" style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <input class="input sf-titulo" placeholder="Nome da fase (ex: Abertura)" value="${titulo}" style="flex:1;">
+        <button class="btn btn-secondary sf-del" type="button" data-i="${i}" style="color:var(--danger-dark);">Remover</button>
+      </div>
+      <textarea class="textarea sf-texto" rows="5" placeholder="O que o vendedor vai falar/ler nessa fase...">${texto}</textarea>
+    </div>`;
+  }).join('');
+  cont.querySelectorAll('.sf-del').forEach(b => b.addEventListener('click', () => { syncScriptFasesFromDom(); scriptFases.splice(+b.dataset.i, 1); renderScriptFases(); }));
+}
+function syncScriptFasesFromDom() {
+  scriptFases = [...document.querySelectorAll('#scriptContainer .script-fase')].map(row => ({
+    titulo: row.querySelector('.sf-titulo').value,
+    texto: row.querySelector('.sf-texto').value
+  }));
+}
+function carregarScript() {
+  const c = configuracaoAtual || {};
+  scriptFases = JSON.parse(JSON.stringify(c.scriptVendas || []));
+  renderScriptFases();
+}
+document.getElementById('addFaseScriptBtn').addEventListener('click', () => {
+  syncScriptFasesFromDom();
+  scriptFases.push({ titulo: '', texto: '' });
+  renderScriptFases();
+});
+document.getElementById('salvarScriptBtn').addEventListener('click', async () => {
+  syncScriptFasesFromDom();
+  const st = document.getElementById('statusScript');
+  const body = { scriptVendas: scriptFases.filter(f => (f.titulo && f.titulo.trim()) || (f.texto && f.texto.trim())) };
+  st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); scriptFases = JSON.parse(JSON.stringify(body.scriptVendas)); renderScriptFases(); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
     else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
   finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }

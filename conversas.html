@@ -67,6 +67,24 @@
   .qr-item b { color: var(--brand); }
   .qr-item span { display: block; color: var(--text-dim); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  /* Script de vendas — painel vertical à direita, com as fases da negociação */
+  .script-panel { width: 300px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+  .script-panel.hidden { display: none; }
+  .script-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .script-head b { flex: 1; font-size: 0.9rem; }
+  .script-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+  .script-fase-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .script-fase-card .sf-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .script-fase-card .sf-titulo { font-weight: 700; font-size: 0.85rem; color: var(--brand); }
+  .script-fase-card .sf-texto { font-size: 0.84rem; line-height: 1.5; white-space: pre-wrap; color: var(--text); }
+  .script-copy-btn { background: none; border: 1px solid var(--border); border-radius: 7px; padding: 3px 8px; font-size: 0.7rem; cursor: pointer; color: var(--text-dim); flex-shrink: 0; }
+  .script-copy-btn:hover { background: var(--surface-2); }
+  .script-copy-btn.copiado { color: var(--success-dark); border-color: var(--success-dark); }
+  .script-empty { color: var(--text-dim); font-size: 0.84rem; text-align: center; padding: 30px 12px; }
+
+  @media (max-width: 1100px) {
+    .script-panel { display: none !important; }
+  }
   @media (max-width: 760px) {
     .conv-list { width: 100%; }
     .conv-list.hide-mobile { display: none; }
@@ -136,6 +154,14 @@
       </div>
     </div>
   </section>
+
+  <aside class="script-panel hidden" id="scriptPanel">
+    <div class="script-head">
+      <i data-lucide="scroll-text"></i>
+      <b>Script de vendas</b>
+    </div>
+    <div class="script-body" id="scriptBody"></div>
+  </aside>
 </div>
 
 <div id="qrModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;">
@@ -566,6 +592,43 @@ document.getElementById('msgInput').addEventListener('keydown', e => {
   if (e.key === 'Escape') fecharRespostasRapidas();
 });
 carregarRespostasRapidas();
+
+// ===== Script de vendas (painel lateral, só leitura pro atendente) =====
+async function carregarScriptVendas() {
+  const painel = document.getElementById('scriptPanel');
+  const body = document.getElementById('scriptBody');
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-config`);
+    const d = await r.json();
+    const fases = (d.ok && Array.isArray(d.empresa.scriptVendas)) ? d.empresa.scriptVendas : [];
+    if (!fases.length) { painel.classList.add('hidden'); return; }
+    body.innerHTML = fases.map((f, i) => {
+      const titulo = (f.titulo || `Fase ${i + 1}`).replace(/</g, '&lt;');
+      const texto = (f.texto || '').replace(/</g, '&lt;');
+      return `<div class="script-fase-card">
+        <div class="sf-head">
+          <span class="sf-titulo">${titulo}</span>
+          <button class="script-copy-btn" data-i="${i}">📋 Copiar</button>
+        </div>
+        <div class="sf-texto">${texto}</div>
+      </div>`;
+    }).join('');
+    body.querySelectorAll('.script-copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const texto = fases[+btn.dataset.i].texto || '';
+        try {
+          await navigator.clipboard.writeText(texto);
+          const original = btn.textContent;
+          btn.textContent = '✅ Copiado!';
+          btn.classList.add('copiado');
+          setTimeout(() => { btn.textContent = original; btn.classList.remove('copiado'); }, 1800);
+        } catch (e) {}
+      });
+    });
+    painel.classList.remove('hidden');
+  } catch (e) { painel.classList.add('hidden'); }
+}
+carregarScriptVendas();
 
 // ===== Gerenciador de respostas rápidas (modal de verdade) =====
 let _qrEditando = [];

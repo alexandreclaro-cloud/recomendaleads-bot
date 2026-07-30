@@ -871,7 +871,12 @@ const EMPRESA_PADRAO = {
     { id: 'comprou', nome: 'Comprou' },
     { id: 'nao_respondeu', nome: 'Não respondeu' },
     { id: 'nao_tem_interesse', nome: 'Não tem interesse' }
-  ]
+  ],
+
+  // Script de vendas — roteiro por fase da negociação, pro atendente ler/copiar
+  // enquanto conversa no WhatsApp (painel lateral em Conversas). Vazio até o gestor
+  // preencher; sem exemplo pré-pronto pra não confundir com script de outra empresa.
+  scriptVendas: []
 };
 
 // Configuração especial para empresa de teste — faixa 1 com apenas 1 recomendação
