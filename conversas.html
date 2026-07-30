@@ -153,6 +153,31 @@
 </div>
 <input type="file" id="qrAnexoInput" style="display:none;" accept="image/*,video/*,.pdf,.doc,.docx">
 
+<div id="agendarModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:14px;width:420px;max-width:92vw;padding:18px;">
+    <b style="font-size:1rem;">📅 Agendar retorno</b>
+    <p style="font-size:0.8rem;color:var(--text-dim);margin:8px 0 14px;">Na hora marcada: se preencher uma mensagem, o sistema <b>manda automático pro cliente</b> (só entrega se ainda estiver dentro da janela de 24h) e a conversa fica <b>piscando</b> pra você assumir.</p>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <div style="flex:1;">
+        <label style="font-size:0.78rem;color:var(--text-dim);display:block;margin-bottom:4px;">Data</label>
+        <input type="date" id="agendarData" class="input" style="width:100%;">
+      </div>
+      <div style="width:110px;">
+        <label style="font-size:0.78rem;color:var(--text-dim);display:block;margin-bottom:4px;">Hora</label>
+        <input type="time" id="agendarHora" class="input" style="width:100%;">
+      </div>
+    </div>
+    <label style="font-size:0.78rem;color:var(--text-dim);display:block;margin-bottom:4px;">Mensagem <span style="font-weight:400;">(opcional — vazio = só te lembra, sem mandar nada pro cliente)</span></label>
+    <textarea id="agendarMensagem" class="input" rows="3" style="width:100%;" placeholder="Ex: Oi! Passando pra saber se você ainda tem interesse 😊"></textarea>
+    <div style="display:flex;gap:10px;margin-top:14px;align-items:center;">
+      <button id="agendarModalFechar" class="btn btn-ghost" style="padding:8px 12px;">Cancelar</button>
+      <span style="flex:1;"></span>
+      <span id="agendarModalStatus" style="font-size:0.8rem;color:var(--text-dim);"></span>
+      <button id="agendarModalConfirmar" class="btn btn-action" style="padding:8px 16px;">Agendar</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
 const API_BASE = window.location.origin;
@@ -615,28 +640,47 @@ async function carregarLembrete() {
     const conv = (d.conversas || []).find(c => c.telefone === atual);
     if (conv && conv.lembreteRetorno && conv.lembreteRetorno.quando) {
       const dt = new Date(conv.lembreteRetorno.quando);
-      txt.textContent = `📅 Retorno agendado pra ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${conv.lembreteRetorno.atendenteNome ? ' — ' + conv.lembreteRetorno.atendenteNome : ''}`;
+      const temMsg = conv.lembreteRetorno.mensagem && conv.lembreteRetorno.mensagem.trim();
+      txt.textContent = `📅 ${temMsg ? 'Mensagem agendada' : 'Retorno agendado'} pra ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${conv.lembreteRetorno.atendenteNome ? ' — ' + conv.lembreteRetorno.atendenteNome : ''}`;
       faixa.style.display = 'flex';
     } else {
       faixa.style.display = 'none';
     }
   } catch (e) { faixa.style.display = 'none'; }
 }
-document.getElementById('agendarBtn').addEventListener('click', async () => {
+
+// ---- Modal de agendamento (data + hora + mensagem opcional) ----
+function abrirModalAgendar() {
   if (!atual) return;
-  const data = prompt('Agendar retorno pra quando? Formato: DD/MM/AAAA HH:MM\n\nEx: 30/07/2026 15:00');
-  if (!data) return;
-  const m = data.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
-  if (!m) { alert('Formato inválido. Use DD/MM/AAAA HH:MM (ex: 30/07/2026 15:00)'); return; }
-  const [, dd, mm, yyyy, hh, min] = m;
-  const dt = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min));
-  if (isNaN(dt.getTime()) || dt.getTime() <= Date.now()) { alert('Escolha uma data/hora no futuro.'); return; }
+  const agora = new Date(Date.now() + 30 * 60000); // sugestão: daqui 30 min
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('agendarData').value = `${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}`;
+  document.getElementById('agendarHora').value = `${pad(agora.getHours())}:${pad(agora.getMinutes())}`;
+  document.getElementById('agendarMensagem').value = '';
+  document.getElementById('agendarModalStatus').textContent = '';
+  document.getElementById('agendarModalOverlay').style.display = 'flex';
+}
+function fecharModalAgendar() { document.getElementById('agendarModalOverlay').style.display = 'none'; }
+document.getElementById('agendarBtn').addEventListener('click', abrirModalAgendar);
+document.getElementById('agendarModalFechar').addEventListener('click', fecharModalAgendar);
+document.getElementById('agendarModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'agendarModalOverlay') fecharModalAgendar(); });
+document.getElementById('agendarModalConfirmar').addEventListener('click', async () => {
+  const status = document.getElementById('agendarModalStatus');
+  const dataStr = document.getElementById('agendarData').value;
+  const horaStr = document.getElementById('agendarHora').value;
+  const mensagem = document.getElementById('agendarMensagem').value.trim();
+  if (!dataStr || !horaStr) { status.textContent = '❌ Preencha data e hora.'; status.style.color = '#c0392b'; return; }
+  const [ano, mes, dia] = dataStr.split('-').map(Number);
+  const [hh, mm] = horaStr.split(':').map(Number);
+  const dt = new Date(ano, mes - 1, dia, hh, mm);
+  if (isNaN(dt.getTime()) || dt.getTime() <= Date.now()) { status.textContent = '❌ Escolha uma data/hora no futuro.'; status.style.color = '#c0392b'; return; }
+  status.textContent = 'Agendando...'; status.style.color = 'var(--text-dim)';
   try {
-    const resp = await fetchAut(`${API_BASE}/minha-conversas/${atual}/agendar-retorno`, { method: 'POST', body: JSON.stringify({ quando: dt.toISOString() }) });
+    const resp = await fetchAut(`${API_BASE}/minha-conversas/${atual}/agendar-retorno`, { method: 'POST', body: JSON.stringify({ quando: dt.toISOString(), mensagem }) });
     const d = await resp.json();
-    if (resp.ok && d.ok) { await carregarLembrete(); }
-    else alert('❌ ' + (d.erro || 'Não foi possível agendar.'));
-  } catch (e) { alert('Erro de conexão.'); }
+    if (resp.ok && d.ok) { await carregarLembrete(); fecharModalAgendar(); }
+    else { status.textContent = '❌ ' + (d.erro || 'Não foi possível agendar.'); status.style.color = '#c0392b'; }
+  } catch (e) { status.textContent = '❌ Erro de conexão.'; status.style.color = '#c0392b'; }
 });
 document.getElementById('cancelarLembreteBtn').addEventListener('click', async () => {
   if (!atual) return;

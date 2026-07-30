@@ -5580,16 +5580,17 @@ app.post('/minha-conversas/:telefone/agendar-retorno', exigirLoginEmpresa, async
   try {
     const telefone = req.params.telefone;
     const quando = req.body && req.body.quando; // ISO datetime (local do navegador)
+    const mensagem = (req.body && req.body.mensagem) ? String(req.body.mensagem).trim() : '';
     if (!quando || isNaN(new Date(quando).getTime())) return res.status(400).json({ ok: false, erro: 'Data/hora inválida' });
     if (new Date(quando).getTime() <= Date.now()) return res.status(400).json({ ok: false, erro: 'Escolha um horário no futuro' });
     const atendenteId = (req.usuario && req.usuario.id) || null;
     const atendenteNome = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
     const chave = `${req.empresaLogin.id}__${telefone}`;
-    await CONVERSAS_COL().doc(chave).set({ lembreteRetorno: { quando, atendenteId, atendenteNome } }, { merge: true });
+    await CONVERSAS_COL().doc(chave).set({ lembreteRetorno: { quando, atendenteId, atendenteNome, mensagem } }, { merge: true });
     await AGENDAMENTOS_COL().add({
       tipo: 'lembrete_retorno_atendente', executarEm: quando, status: 'pendente',
       empresaId: req.empresaLogin.id,
-      dados: { telefone, atendenteId, atendenteNome },
+      dados: { telefone, atendenteId, atendenteNome, mensagem },
       criadoEm: new Date().toISOString()
     });
     res.json({ ok: true });
@@ -7054,13 +7055,20 @@ async function processarAgendamentoInterno(agendamento) {
   // Lembrete de retorno agendado numa conversa (ex.: "cliente pediu pra ligar mais
   // tarde"). Avisa só o atendente que agendou, não é revezamento.
   if (agendamento.tipo === 'lembrete_retorno_atendente') {
-    const { telefone, atendenteId, atendenteNome } = agendamento.dados;
+    const { telefone, atendenteId, atendenteNome, mensagem } = agendamento.dados;
     const chave = `${empresa.id}__${telefone}`;
     const convSnap = await CONVERSAS_COL().doc(chave).get();
     const conv = convSnap.exists ? convSnap.data() : {};
     if (!conv.lembreteRetorno) {
       console.log(`[LEMBRETE] ${telefone} — cancelado ou já tratado, não notifica`);
       return; // foi cancelado (ou reagendado, o que sobrescreve o campo)
+    }
+    // Manda a mensagem automática pro CLIENTE, se foi configurada uma — só entrega
+    // se a conversa ainda estiver na janela de 24h (texto livre); fora da janela a
+    // Meta recusa e não há como avisar aqui (seria preciso um template).
+    if (mensagem && mensagem.trim()) {
+      try { await sendText(telefone, mensagem.trim()); console.log(`[LEMBRETE] mensagem automática enviada pra ${telefone}`); }
+      catch (e) { console.warn('[LEMBRETE] falha ao mandar mensagem automática:', e.message); }
     }
     await CONVERSAS_COL().doc(chave).set({
       precisaAtendente: true, precisaAtendenteEm: new Date().toISOString(), lembreteRetorno: null
@@ -7073,7 +7081,8 @@ async function processarAgendamentoInterno(agendamento) {
     if (telAtendente) {
       const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
       const link = `${base}/conversas?tel=${encodeURIComponent(soDigitosTel(telefone))}`;
-      await enviarSemLog(telAtendente, `⏰ *Lembrete de retorno*\n\n${atendenteNome ? atendenteNome + ', você' : 'Você'} agendou pra voltar nesta conversa agora.\n\n👉 ${link}`);
+      const linhaMsg = (mensagem && mensagem.trim()) ? `\n✅ A mensagem automática já foi enviada pro cliente.` : '';
+      await enviarSemLog(telAtendente, `⏰ *Lembrete de retorno*\n\n${atendenteNome ? atendenteNome + ', você' : 'Você'} agendou pra voltar nesta conversa agora.${linhaMsg}\n\n👉 ${link}`);
     }
     return;
   }
