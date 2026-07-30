@@ -650,8 +650,12 @@
           <div id="disparoSoOficial" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:0.86rem;margin-bottom:12px;">⚠️ O disparo em massa só funciona no modo <b>API Oficial da Meta</b>. Configure na aba WhatsApp.</div>
 
           <label class="label">Nome do template aprovado na Meta</label>
-          <input class="input" id="disparoTemplate" type="text" placeholder="ex: poder_network_corretores" style="max-width:420px;">
-          <div class="hint">Tem que ser um template <b>Ativo</b> na sua conta da Meta. As variáveis vão na ordem das colunas abaixo.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input class="input" id="disparoTemplate" type="text" placeholder="ex: poder_network_corretores" style="max-width:420px;flex:1;">
+            <button type="button" class="btn btn-secondary" id="salvarTemplateDisparoBtn">💾 Salvar template</button>
+            <span class="status-msg" id="statusTemplateDisparo"></span>
+          </div>
+          <div class="hint">Tem que ser um template <b>Ativo</b> na sua conta da Meta. As variáveis vão na ordem das colunas abaixo. Pode salvar o template agora e montar a lista depois — fica guardado aqui.</div>
 
           <div style="margin-top:12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;">
             <div style="font-size:0.9rem;font-weight:600;margin-bottom:4px;">🧪 Testar antes (recomendado)</div>
@@ -887,9 +891,12 @@ async function carregarDisparo() {
   const ehOficial = configuracaoAtual && configuracaoAtual.whatsappTipo === 'oficial';
   const soOf = document.getElementById('disparoSoOficial'); if (soOf) soOf.style.display = ehOficial ? 'none' : 'block';
   const btn = document.getElementById('disparoBtn'); if (btn) btn.disabled = !ehOficial;
-  // Pré-preenche o template do convite (se configurado e o campo estiver vazio).
+  // Pré-preenche com o template salvo pro disparo; se ainda não salvou nenhum,
+  // cai pro template do convite automático (só como sugestão de ponto de partida).
   const tplInp = document.getElementById('disparoTemplate');
-  if (tplInp && !tplInp.value && configuracaoAtual && configuracaoAtual.oficialTemplateConvite) tplInp.value = configuracaoAtual.oficialTemplateConvite;
+  if (tplInp && !tplInp.value && configuracaoAtual) {
+    tplInp.value = configuracaoAtual.disparoTemplateSalvo || configuracaoAtual.oficialTemplateConvite || '';
+  }
   atualizarResumoDisparo();
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-saldo`);
@@ -952,6 +959,21 @@ async function dispararCampanha() {
     pollDisparo();
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; btn.disabled = false; }
 }
+
+async function salvarTemplateDisparo() {
+  const st = document.getElementById('statusTemplateDisparo');
+  const template = document.getElementById('disparoTemplate').value.trim();
+  if (!template) { st.textContent = '❌ Informe o nome do template.'; st.className = 'status-msg err'; return; }
+  st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disparoTemplateSalvo: template }) });
+    const d = await resp.json();
+    if (resp.ok && d.ok) { configuracaoAtual = d.empresa || Object.assign({}, configuracaoAtual, { disparoTemplateSalvo: template }); st.textContent = '✅ Salvo! Pode voltar aqui e montar a lista quando quiser.'; st.className = 'status-msg ok'; }
+    else { st.textContent = '❌ ' + (d.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 5000); }
+}
+document.getElementById('salvarTemplateDisparoBtn').addEventListener('click', salvarTemplateDisparo);
 
 function pollDisparo() {
   if (disparoPollTimer) clearInterval(disparoPollTimer);
