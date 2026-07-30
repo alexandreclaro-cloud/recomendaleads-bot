@@ -1769,6 +1769,9 @@ async function carregarEquipe() {
         ? '<span class="badge badge-success">Gestor</span>'
         : '<span class="badge">Atendente</span>';
       const selo = u.atendenteOficial ? ' <span class="badge" style="background:#FEF3C7;color:#92400E">⭐ Atendente oficial</span>' : '';
+      const statusOnline = u.online
+        ? ' <span title="No revezamento agora" style="color:#16a34a;font-weight:600;font-size:0.78rem">🟢 online</span>'
+        : (u.disponivel === false ? ' <span title="Marcou Ausente" style="color:#9ca3af;font-size:0.78rem">⚪ ausente</span>' : ' <span title="Painel fechado (sem revezamento agora)" style="color:#d1d5db;font-size:0.78rem">⚫ offline</span>');
       const eu = u.souEu ? ' <small style="color:var(--text-dim)">(você)</small>' : '';
       const tel = u.telefone ? `<br><small style="color:var(--text-dim)">📱 ${escapeHtml(u.telefone)}</small>` : '';
       const btnOficial = u.atendenteOficial ? '' : `<button class="btn btn-secondary" data-acao="oficial" data-id="${u.id}" data-tel="${escapeHtml(u.telefone || '')}" style="padding:6px 10px;font-size:0.78rem">⭐ Tornar oficial</button>`;
@@ -1778,7 +1781,7 @@ async function carregarEquipe() {
         <button class="btn btn-secondary" data-acao="senha" data-id="${u.id}" style="padding:6px 10px;font-size:0.78rem">Resetar senha</button>
         <button class="btn btn-secondary" data-acao="remover" data-id="${u.id}" data-nome="${escapeHtml(u.nome)}" style="padding:6px 10px;font-size:0.78rem;color:var(--error)">Remover</button>`;
       return `<div class="user-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)">
-        <div><b>${escapeHtml(u.nome)}</b>${eu} ${badge}${selo}<br><small style="color:var(--text-dim)">${escapeHtml(u.email)}</small>${tel}</div>
+        <div><b>${escapeHtml(u.nome)}</b>${eu} ${badge}${selo}${statusOnline}<br><small style="color:var(--text-dim)">${escapeHtml(u.email)}</small>${tel}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btnTestar}${btnOficial}${acoes}</div>
       </div>`;
     }).join('');

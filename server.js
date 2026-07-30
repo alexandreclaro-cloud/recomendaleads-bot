@@ -1208,6 +1208,84 @@ async function avisarAtendente(telefone, nomePessoa, empresa) {
   }
 }
 
+// ============================================================
+// REVEZAMENTO DE ATENDIMENTO — distribui o "modo direto" (recomendado que
+// escolhe ir direto pro humano, sem passar pelo fluxo automático) entre os
+// atendentes ONLINE, em carrossel. Se ninguém responder (assumir) em 1 min,
+// escala pro próximo online — até esgotar as tentativas.
+// ============================================================
+
+// Atendentes "online" agora: telefone cadastrado, não marcado Ausente, e com
+// heartbeat recente (o painel manda a cada 30s enquanto a aba fica aberta).
+async function usuariosOnlineRevezamento(empresaId) {
+  const snap = await USUARIOS_COL().where('empresaId', '==', empresaId).get();
+  const agora = Date.now();
+  const lista = [];
+  snap.forEach(d => {
+    const u = d.data();
+    if (u.ativo === false) return;
+    if (!u.telefone) return;
+    if (u.disponivel === false) return;              // marcou "Ausente" manualmente
+    if (!u.ultimaAtividadeEm) return;                 // nunca deu heartbeat (painel fechado)
+    const idadeMs = agora - new Date(u.ultimaAtividadeEm).getTime();
+    if (idadeMs > 90 * 1000) return;                  // heartbeat velho = considera offline
+    lista.push({ id: d.id, nome: u.nome, telefone: u.telefone });
+  });
+  lista.sort((a, b) => a.id.localeCompare(b.id)); // ordem estável pro carrossel
+  return lista;
+}
+
+// Escolhe o próximo do carrossel, pulando quem já tentou nesta escalada
+// (excluirIds). Null = ninguém online agora (cai no fallback do atendente oficial).
+async function escolherProximoAtendenteRevezamento(empresaId, excluirIds) {
+  const online = await usuariosOnlineRevezamento(empresaId);
+  if (!online.length) return null;
+  let pool = online.filter(u => !(excluirIds || []).includes(u.id));
+  if (!pool.length) pool = online; // já tentou todo mundo — reinicia o ciclo
+  const empDoc = await EMPRESAS_COL().doc(empresaId).get();
+  const lastId = empDoc.exists ? empDoc.data().ultimoAtendenteRevezamentoId : null;
+  const idx = pool.findIndex(u => u.id === lastId);
+  const escolhido = pool[(idx + 1) % pool.length];
+  await EMPRESAS_COL().doc(empresaId).set({ ultimoAtendenteRevezamentoId: escolhido.id }, { merge: true });
+  return escolhido;
+}
+
+// Avisa o atendente escolhido (WhatsApp + marca a conversa pro alerta piscar/tocar
+// no painel). Se ninguém assumir em 1 min, agenda escalar pro próximo online.
+const MAX_TENTATIVAS_REVEZAMENTO = 6; // ~6 min de tentativas antes de desistir
+async function avisarAtendenteRevezamento(telefone, nomePessoa, empresa, excluirIds, tentativa) {
+  excluirIds = excluirIds || [];
+  tentativa = tentativa || 1;
+  const escolhido = await escolherProximoAtendenteRevezamento(empresa.id, excluirIds);
+  try {
+    await CONVERSAS_COL().doc(`${empresa.id}__${telefone}`).set({
+      precisaAtendente: true, precisaAtendenteEm: new Date().toISOString(),
+      atendenteAtribuidoId: escolhido ? escolhido.id : null,
+      atendenteAtribuidoNome: escolhido ? escolhido.nome : null
+    }, { merge: true });
+  } catch (e) { /* best-effort */ }
+  const numAt = escolhido ? escolhido.telefone : await getNumeroAvisoAtendente(empresa);
+  if (numAt) {
+    const nome = (nomePessoa || '').split(' ')[0] || 'Um cliente';
+    const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
+    const link = `${base}/conversas?tel=${encodeURIComponent(soDigitosTel(telefone))}`;
+    const prefixo = tentativa > 1 ? '🔔 *Lembrete — atendimento ainda sem resposta*' : '🔔 *Atendimento humano solicitado*';
+    const msg = `${prefixo}\n\n${nome} pediu pra falar direto com um consultor${empresa.nome ? ` na ${empresa.nome}` : ''}.\n\n👉 Responda pelo sistema (abre direto na conversa):\n${link}`;
+    await enviarSemLog(numAt, msg);
+  }
+  console.log(`[REVEZAMENTO] tentativa ${tentativa} — ${telefone} → ${escolhido ? escolhido.nome : '(sem ninguém online — fallback atendente oficial)'}`);
+  if (tentativa < MAX_TENTATIVAS_REVEZAMENTO) {
+    const novosExcluidos = escolhido ? [...excluirIds, escolhido.id] : excluirIds;
+    try {
+      await criarAgendamento({
+        tipo: 'escalar_aviso_atendente',
+        executarEm: new Date(Date.now() + 60000).toISOString(),
+        dados: { telefone, nomePessoa, excluirIds: novosExcluidos, tentativa: tentativa + 1 }
+      });
+    } catch (e) { console.error('agendar escalar_aviso_atendente:', e.message); }
+  }
+}
+
 // Detecta pedido de atendente humano por frase natural, em qualquer momento.
 function pedeAtendente(texto) {
   const t = (texto || '').toLowerCase().trim();
@@ -3029,7 +3107,10 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       if (msgH && msgH.trim()) await sendText(telefone, msgH);
       await saveSessaoRecomendado(telefone, { etapa: 'atendimento_humano', ultimaMensagemEm: new Date().toISOString() });
       await pausarNumero(telefone);           // robô para nesse contato
-      await avisarAtendente(telefone, sessao.nomeRecomendado, empresa); // avisa o vendedor (som + WhatsApp)
+      // Revezamento: distribui entre os atendentes ONLINE (carrossel); se ninguém
+      // assumir em 1 min, escala pro próximo. Só nesse fluxo (modo direto) — os
+      // outros pontos de "pedir atendente" continuam indo pro atendente oficial único.
+      await avisarAtendenteRevezamento(telefone, sessao.nomeRecomendado, empresa, [], 1);
       console.log(`[REC-HUMANO] ${telefone} passou pro atendimento humano (${empresa.nome})`);
       return true;
     }
@@ -4361,8 +4442,11 @@ async function desmarcarOutrosOficiais(empresaId, exceptoId) {
 app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const snap = await USUARIOS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const agora = Date.now();
     const usuarios = snap.docs.map(d => {
       const u = d.data();
+      const online = !!u.telefone && u.disponivel !== false && !!u.ultimaAtividadeEm
+        && (agora - new Date(u.ultimaAtividadeEm).getTime()) <= 90 * 1000;
       return {
         id: d.id,
         nome: u.nome,
@@ -4371,10 +4455,54 @@ app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
         telefone: u.telefone || '',
         atendenteOficial: !!u.atendenteOficial,
         ativo: u.ativo !== false,
+        disponivel: u.disponivel !== false,
+        online, // pro revezamento: 🟢 = participa agora do carrossel de atendimento
         souEu: !!(req.usuario && req.usuario.id === d.id)
       };
     }).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
     res.json({ ok: true, usuarios });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Heartbeat de presença (o painel manda a cada 30s enquanto a aba fica aberta) —
+// usado pelo revezamento de atendimento pra saber quem está online agora.
+app.post('/minha-equipe/heartbeat', exigirLoginEmpresa, async (req, res) => {
+  try {
+    if (req.usuario && req.usuario.id) {
+      await USUARIOS_COL().doc(req.usuario.id).set({ ultimaAtividadeEm: new Date().toISOString() }, { merge: true });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Disponível/Ausente — toggle manual. Ausente = fica fora do revezamento mesmo
+// com a aba aberta (ex: foi almoçar mas esqueceu de fechar o painel).
+app.post('/minha-equipe/disponibilidade', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const disponivel = !!(req.body && req.body.disponivel);
+    if (req.usuario && req.usuario.id) {
+      await USUARIOS_COL().doc(req.usuario.id).set({ disponivel, ultimaAtividadeEm: new Date().toISOString() }, { merge: true });
+    }
+    res.json({ ok: true, disponivel });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Estado do próprio usuário logado — pra restaurar o toggle Disponível/Ausente
+// ao abrir a página (sem precisar ser gestor).
+app.get('/minha-equipe/meu-status', exigirLoginEmpresa, async (req, res) => {
+  try {
+    let disponivel = true;
+    if (req.usuario && req.usuario.id) {
+      const snap = await USUARIOS_COL().doc(req.usuario.id).get();
+      if (snap.exists) disponivel = snap.data().disponivel !== false;
+    }
+    res.json({ ok: true, disponivel });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -6635,6 +6763,21 @@ async function processarAgendamentoInterno(agendamento) {
     const sessao = await getSessaoRecomendado(telefone);
     if (!sessao || sessao.etapa !== 'aguardando_reacao_presente') return; // já respondeu / mudou de estado
     await enviarMenuEFollowupRec(telefone, sessao, empresa);
+    return;
+  }
+
+  // Revezamento de atendimento: se ninguém assumiu (botPausado) em 1 min,
+  // escala o aviso pro próximo atendente online.
+  if (agendamento.tipo === 'escalar_aviso_atendente') {
+    const { telefone, nomePessoa, excluirIds, tentativa } = agendamento.dados;
+    const chave = `${empresa.id}__${telefone}`;
+    const convSnap = await CONVERSAS_COL().doc(chave).get();
+    const conv = convSnap.exists ? convSnap.data() : {};
+    if (conv.botPausado) {
+      console.log(`[REVEZAMENTO] ${telefone} já foi assumido — não escalona mais`);
+      return;
+    }
+    await avisarAtendenteRevezamento(telefone, nomePessoa, empresa, excluirIds, tentativa);
     return;
   }
 
