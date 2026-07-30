@@ -916,7 +916,13 @@ const EMPRESA_PADRAO = {
   // Script de vendas — roteiro por fase da negociação, pro atendente ler/copiar
   // enquanto conversa no WhatsApp (painel lateral em Conversas). Vazio até o gestor
   // preencher; sem exemplo pré-pronto pra não confundir com script de outra empresa.
-  scriptVendas: []
+  scriptVendas: [],
+
+  // Rede de lojas: pergunta mandada quando 2+ ofertas estão ativas e ninguém
+  // resolveu ainda qual loja é o contato (nenhuma frase-gatilho específica bateu).
+  // É sobre a empresa toda (não uma oferta), por isso fica aqui e não dentro de
+  // uma oferta — {opcoes} é substituído pela lista numerada das lojas ativas.
+  mensagemEscolhaOferta: 'Antes de continuar, me diz qual loja você prefere:\n{opcoes}\n\nResponda só com o número 😉'
 };
 
 // ============================================================
@@ -938,7 +944,7 @@ const CAMPOS_OPERACAO_EMPRESA = new Set([
   'infoTelefone', 'infoEmail', 'infoOutras',
   'recomendadoGapMinMin', 'recomendadoGapMaxMin', 'humanizarDigitacao', 'humanizarMaxSeg',
   'intervaloProximaFaixaMin', 'avisarConfirmDelayMin', 'menuAposReacaoMin',
-  'modoRecomendacao', 'nichos', 'numeroConectado', 'numeroDemo'
+  'modoRecomendacao', 'nichos', 'numeroConectado', 'numeroDemo', 'mensagemEscolhaOferta'
 ]);
 // Campos de PRODUTO — tudo que descreve o lançamento em si (mensagens, prêmios,
 // cadências, Kanban, script de vendas, templates da Meta). Vive dentro de cada oferta.
@@ -3708,6 +3714,27 @@ async function tratarWebhook(req, res) {
     // (aguardandoIntervaloConfirmacao) quanto o menu já enviado (aguardandoConfirmacaoDisparo).
     // Assim o robô NUNCA fica mudo se o cliente responder antes do menu aparecer.
     const _sConf = sessaoExiste ? sessaoExistenteSnap.data() : null;
+
+    // ---- Rede de lojas: resposta ao menu "qual loja você prefere?" (Fase 2b) ----
+    // Prioridade máxima — é uma resposta de menu específica, trata antes de
+    // qualquer outro roteamento (inclusive antes do menu de confirmação Basic).
+    if (_sConf && _sConf.aguardandoEscolhaOferta && !ehOptOut(texto)) {
+      const opcoes = _sConf.opcoesOferta || [];
+      const idx = parseInt(String(texto || '').trim(), 10) - 1;
+      const escolhida = opcoes[idx];
+      if (!escolhida) {
+        await sendText(telefone, 'Não entendi — responda só com o número da opção 🙂\n' +
+          opcoes.map((o, i) => `${i + 1}. ${o.nome}`).join('\n'));
+        return res.sendStatus(200);
+      }
+      const ctxEsc = tenantContext.getStore();
+      if (ctxEsc) ctxEsc.empresa = aplicarOferta(ctxEsc.empresa, escolhida.id);
+      await resetSessao(telefone);
+      await iniciarConversa(telefone);
+      await saveSessao(telefone, { ofertaId: escolhida.id });
+      return res.sendStatus(200);
+    }
+
     if (_sConf && (_sConf.aguardandoConfirmacaoDisparo || _sConf.aguardandoIntervaloConfirmacao) && !ehGatilhoInicial && !nichoDetectado) {
       const s = _sConf;
       const empresaC = await getEmpresa();
@@ -3777,6 +3804,20 @@ async function tratarWebhook(req, res) {
     const querRecomendar = querRecomendarMais(texto) && sessaoExiste && !clienteAtivo && !recomendadoAtivo;
 
     if (ehGatilhoInicial || nichoDetectado || querRecomendar) {
+      // Rede de lojas: ninguém resolveu ainda qual loja é (2+ ofertas ativas,
+      // nenhuma frase-gatilho específica bateu) — manda o menu e espera a
+      // resposta antes de iniciar qualquer fluxo.
+      const ativasMenu = (!ofertaEfetivaId && empGatilho.ofertasHabilitado && empGatilho.ofertas)
+        ? Object.entries(empGatilho.ofertas).filter(([, o]) => o && o.ativa) : [];
+      if (ativasMenu.length > 1) {
+        await resetSessao(telefone);
+        const opcoes = ativasMenu.map(([id, o]) => ({ id, nome: o.nomeOferta || id }));
+        const listaTexto = opcoes.map((o, i) => `${i + 1}. ${o.nome}`).join('\n');
+        const msgEscolha = (empGatilho.mensagemEscolhaOferta || EMPRESA_PADRAO.mensagemEscolhaOferta).replace('{opcoes}', listaTexto);
+        await sendText(telefone, msgEscolha);
+        await saveSessao(telefone, { aguardandoEscolhaOferta: true, opcoesOferta: opcoes });
+        return res.sendStatus(200);
+      }
       await resetSessao(telefone);
       await iniciarConversa(telefone);
       if (nichoEfetivo) await saveSessao(telefone, { nicho: nichoEfetivo });
