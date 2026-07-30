@@ -3056,6 +3056,46 @@ if (location.hash === '#config' && EH_GESTOR) {
     ov.querySelector('#avisoReload').addEventListener('click', () => { localStorage.setItem('recomendaleads_aviso_visto', a.id); location.reload(); });
   } catch (e) {}
 })();
+
+// ===== Alarme de atendimento pendente (mesmo alerta da tela Conversas) =====
+// Toca em QUALQUER tela do sistema, não só em Conversas — pra não passar batido
+// quando o atendente está no painel/CRM. Só alarma pras conversas atribuídas a
+// mim no rodízio (ou sem atribuição, aviso antigo que vale pra todo mundo).
+(function () {
+  let meuId = null, alarmeInterval = null, alertados = new Set();
+  function bipAtendimento() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 880;
+      o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      o.start(); o.stop(ctx.currentTime + 0.45);
+    } catch (e) {}
+  }
+  async function checarAtendimentoPendente() {
+    try {
+      if (meuId === null) {
+        const r = await fetchAutenticado(`${API_BASE}/minha-equipe/meu-status`);
+        const d = await r.json();
+        meuId = (d.ok && d.id) || '_sem_id_';
+      }
+      const r2 = await fetchAutenticado(`${API_BASE}/minha-conversas`);
+      const d2 = await r2.json();
+      if (!d2.ok) return;
+      const pendentes = (d2.conversas || []).filter(c => c.precisaAtendente && (!c.atendenteAtribuidoId || c.atendenteAtribuidoId === meuId));
+      if (pendentes.length) {
+        if (pendentes.some(c => !alertados.has(c.telefone))) bipAtendimento();
+        if (!alarmeInterval) alarmeInterval = setInterval(bipAtendimento, 2500);
+      } else if (alarmeInterval) { clearInterval(alarmeInterval); alarmeInterval = null; }
+      alertados = new Set(pendentes.map(c => c.telefone));
+    } catch (e) {}
+  }
+  checarAtendimentoPendente();
+  setInterval(checarAtendimentoPendente, 6000);
+})();
 </script>
 </body>
 </html>

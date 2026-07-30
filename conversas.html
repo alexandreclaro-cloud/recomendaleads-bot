@@ -29,6 +29,8 @@
   .btn-assumir-lista { background: #DC2626; color: #fff; font-size: 0.7rem; font-weight: 700; border: none; border-radius: 999px; padding: 6px 11px; white-space: nowrap; cursor: pointer; flex-shrink: 0; }
   .btn-assumir-lista:hover { background: #B91C1C; }
   .btn-assumir-lista:disabled { opacity: .6; cursor: default; }
+  .btn-assumir-lista.muted { background: var(--surface-2); color: var(--text-dim); font-weight: 600; }
+  .btn-assumir-lista.muted:hover { background: var(--border); }
   .conv-item.precisa-atendente { background: #FEF2F2; animation: piscaAtend 1.1s ease-in-out infinite; }
   @keyframes piscaAtend { 0%,100% { background: #FEF2F2; } 50% { background: #FEE2E2; } }
 
@@ -234,6 +236,7 @@ async function fetchAut(url, opts = {}) {
 let conversas = [];
 let atual = null; // telefone selecionado
 let botPausadoAtual = false;
+let MEU_USUARIO_ID = null; // pra filtrar o alarme só pra quem o rodízio escolheu
 
 function inicial(s) { return ((s || '?').trim()[0] || '?').toUpperCase(); }
 function horaCurta(iso) {
@@ -288,8 +291,14 @@ function tocarBipAtendente() {
     o.start(); o.stop(ctx.currentTime + 0.45);
   } catch (e) {}
 }
+// Uma conversa só toca/pisca pra mim se: ninguém foi escolhido no rodízio (aviso
+// antigo, vale pra todo mundo) OU o rodízio me escolheu especificamente. Assim,
+// quando tem 2+ atendentes online, cada lead chama só quem é a vez — não todo mundo.
+function ehMinhaChamada(c) {
+  return !!c.precisaAtendente && (!c.atendenteAtribuidoId || !MEU_USUARIO_ID || c.atendenteAtribuidoId === MEU_USUARIO_ID);
+}
 function atualizarAlertaAtendente() {
-  const pendentes = conversas.filter(c => c.precisaAtendente);
+  const pendentes = conversas.filter(ehMinhaChamada);
   const novos = pendentes.filter(c => !_atendentesAlertados.has(c.telefone));
   if (novos.length) {
     tocarBipAtendente();
@@ -351,20 +360,29 @@ function renderConversas() {
     !termo || (c.nome || '').toLowerCase().includes(termo) || (c.telefone || '').includes(termo));
   const cont = document.getElementById('convItems');
   if (!lista.length) { cont.innerHTML = '<div class="chat-empty" style="padding:30px">Nenhuma conversa ainda.</div>'; return; }
-  // Quem pediu atendimento humano vai pro TOPO da lista.
-  lista.sort((a, b) => (b.precisaAtendente ? 1 : 0) - (a.precisaAtendente ? 1 : 0));
-  cont.innerHTML = lista.map(c => `
-    <div class="conv-item ${c.telefone === atual ? 'active' : ''} ${c.precisaAtendente ? 'precisa-atendente' : ''}" data-tel="${esc(c.telefone)}" data-nome="${esc(c.nome || '')}">
+  // Quem pediu atendimento humano vai pro TOPO da lista (minha vez primeiro).
+  lista.sort((a, b) => (ehMinhaChamada(b) ? 2 : (b.precisaAtendente ? 1 : 0)) - (ehMinhaChamada(a) ? 2 : (a.precisaAtendente ? 1 : 0)));
+  cont.innerHTML = lista.map(c => {
+    const minhaChamada = ehMinhaChamada(c);
+    // Foi atribuído a OUTRO atendente no rodízio: mostra que está com ele, sem
+    // piscar/alarmar aqui (só quem é a vez recebe o alarme) — mas ainda dá pra
+    // assumir na mão se precisar (botão discreto, sem o vermelho de urgência).
+    const deOutroAtendente = c.precisaAtendente && !minhaChamada;
+    let acaoHtml;
+    if (minhaChamada) acaoHtml = `<button class="btn-assumir-lista" data-tel="${esc(c.telefone)}" data-nome="${esc(c.nome || '')}">🙋 Assumir</button>`;
+    else if (deOutroAtendente) acaoHtml = `<button class="btn-assumir-lista muted" data-tel="${esc(c.telefone)}" data-nome="${esc(c.nome || '')}" title="Atribuído a ${esc(c.atendenteAtribuidoNome || 'outro atendente')} no rodízio — assume na mão se precisar">⏳ Com ${esc((c.atendenteAtribuidoNome || 'outro').split(' ')[0])}</button>`;
+    else acaoHtml = (c.naoLidas ? `<span class="badge-naolida">${c.naoLidas}</span>` : '');
+    return `
+    <div class="conv-item ${c.telefone === atual ? 'active' : ''} ${minhaChamada ? 'precisa-atendente' : ''}" data-tel="${esc(c.telefone)}" data-nome="${esc(c.nome || '')}">
       <div class="conv-av">${inicial(c.nome || c.telefone)}</div>
       <div class="conv-meta">
         <div class="nome">${esc(c.nome || c.telefone)} <small>${horaCurta(c.ultimaEm)}</small></div>
         <div class="prev">${c.ultimaDirecao === 'out' ? 'Você: ' : ''}${esc(c.ultimaMensagem || '')}</div>
         ${c.atendenteNome ? `<div class="prev" style="color:var(--action-dark);font-weight:600;font-size:0.72rem;">🙋 Atendendo: ${esc(c.atendenteNome)}</div>` : ''}
       </div>
-      ${c.precisaAtendente
-        ? `<button class="btn-assumir-lista" data-tel="${esc(c.telefone)}" data-nome="${esc(c.nome || '')}">🙋 Assumir</button>`
-        : (c.naoLidas ? `<span class="badge-naolida">${c.naoLidas}</span>` : '')}
-    </div>`).join('');
+      ${acaoHtml}
+    </div>`;
+  }).join('');
   cont.querySelectorAll('.conv-item').forEach(el => {
     el.addEventListener('click', (ev) => { if (ev.target.closest('.btn-assumir-lista')) return; abrirConversa(el.dataset.tel, el.dataset.nome); });
   });
@@ -852,7 +870,7 @@ async function carregarMeuStatus() {
   try {
     const r = await fetchAut(`${API_BASE}/minha-equipe/meu-status`);
     const d = await r.json();
-    if (d.ok) pintarStatusBtn(d.status || 'online');
+    if (d.ok) { pintarStatusBtn(d.status || 'online'); MEU_USUARIO_ID = d.id || null; }
   } catch (e) {}
 }
 async function enviarHeartbeat() {

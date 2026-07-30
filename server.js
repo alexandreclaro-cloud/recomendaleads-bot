@@ -4624,7 +4624,9 @@ app.get('/minha-equipe/meu-status', exigirLoginEmpresa, async (req, res) => {
       const snap = await USUARIOS_COL().doc(req.usuario.id).get();
       if (snap.exists) status = snap.data().statusAtendimento || 'online';
     }
-    res.json({ ok: true, status });
+    // `id` vai junto pro painel saber "quem sou eu" e filtrar o alarme de
+    // atendimento só pras conversas atribuídas a mim no rodízio.
+    res.json({ ok: true, status, id: (req.usuario && req.usuario.id) || null });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
