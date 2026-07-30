@@ -879,6 +879,46 @@ const EMPRESA_PADRAO = {
   scriptVendas: []
 };
 
+// ============================================================
+// MÚLTIPLAS OFERTAS — Fase 1 (fundação). Uma empresa pode ter mais de um
+// lançamento/evento rodando no mesmo número de WhatsApp/login, cada um com
+// mensagens, prêmios, templates e Kanban 100% independentes. A oferta marcada
+// como `ofertaAtivaPadrao` fica sempre espelhada nos campos de topo de
+// `configuracao` (getEmpresaById NÃO muda) — é ela que o robô ao vivo usa até
+// a Fase 2 (roteamento de verdade) existir. As demais ofertas só existem
+// dentro de `configuracao.ofertas`, sem efeito no robô por enquanto.
+// ============================================================
+
+// Campos de OPERAÇÃO/CONEXÃO da empresa — nunca entram dentro de uma oferta,
+// continuam soltos em `configuracao` de topo (compartilhados entre ofertas).
+const CAMPOS_OPERACAO_EMPRESA = new Set([
+  'nome', 'vendedores', 'numeroWhatsapp', 'numeroAtendente', 'linkAgendamento',
+  'diasFechados', 'enderecoEmpresa', 'horariosEmpresa',
+  'infoAtendimentoAtivo', 'infoEndereco', 'infoHorario', 'infoSite', 'infoInstagram',
+  'infoTelefone', 'infoEmail', 'infoOutras',
+  'recomendadoGapMinMin', 'recomendadoGapMaxMin', 'humanizarDigitacao', 'humanizarMaxSeg',
+  'intervaloProximaFaixaMin', 'avisarConfirmDelayMin', 'menuAposReacaoMin',
+  'modoRecomendacao', 'nichos', 'numeroConectado', 'numeroDemo'
+]);
+// Campos de PRODUTO — tudo que descreve o lançamento em si (mensagens, prêmios,
+// cadências, Kanban, script de vendas, templates da Meta). Vive dentro de cada oferta.
+const CAMPOS_PRODUTO_OFERTA = new Set([
+  ...Object.keys(EMPRESA_PADRAO).filter(k => !CAMPOS_OPERACAO_EMPRESA.has(k)),
+  'oficialTemplateRecomendado', 'oficialTemplateInsistencia',
+  'oficialTemplateFollowupCliente', 'oficialTemplateConvite'
+]);
+// Gera um id de oferta a partir do nome (reaproveita o slugify de nichos) + sufixo
+// aleatório curto — evita colisão sem precisar de contador/corrida entre criações.
+function gerarIdOferta(nome) {
+  const base = slugNicho(nome) || 'oferta';
+  return `${base.slice(0, 30)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+// Mescla uma oferta com os defaults do EMPRESA_PADRAO — mesmo padrão de merge
+// que getEmpresaById já usa hoje, só que escopado a uma oferta específica.
+function mesclarOfertaComPadrao(oferta) {
+  return { ...EMPRESA_PADRAO, ...(oferta || {}) };
+}
+
 // Configuração especial para empresa de teste — faixa 1 com apenas 1 recomendação
 const EMPRESA_TESTE_CONFIG = {
   ...EMPRESA_PADRAO,
@@ -5060,6 +5100,166 @@ app.post('/minha-nichos-numero', exigirLoginEmpresa, exigirGestor, exigirMatriz,
   }
 });
 
+// ============================================================
+// MÚLTIPLAS OFERTAS — Fase 1: CRUD + migração preguiçosa. Sem exigirMatriz —
+// disponível pra qualquer cliente da plataforma (ver bloco CAMPOS_OPERACAO_EMPRESA
+// / CAMPOS_PRODUTO_OFERTA logo depois de EMPRESA_PADRAO).
+// ============================================================
+
+// Lista as ofertas da empresa. Na 1ª chamada (empresa ainda sem `configuracao.ofertas`),
+// migra sozinha: a config atual (topo) vira a oferta "Padrão" — zero impacto pra quem
+// já usa o sistema, e ela fica marcada como `ofertaAtivaPadrao` (a que o robô usa).
+app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    let config = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+    if (!config.ofertas || !Object.keys(config.ofertas).length) {
+      const camposProduto = {};
+      for (const chave of CAMPOS_PRODUTO_OFERTA) {
+        if (config[chave] !== undefined) camposProduto[chave] = config[chave];
+      }
+      // Templates oficiais: mesmo fallback que getEmpresaById já usa hoje (prioriza
+      // o que estiver dentro de `configuracao`, senão cai pro campo de topo do doc).
+      ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite'].forEach(k => {
+        camposProduto[k] = config[k] || req.empresaLogin[k] || null;
+      });
+      const agora = new Date().toISOString();
+      const idPadrao = gerarIdOferta('padrao');
+      config = {
+        ...config,
+        ofertas: { [idPadrao]: { nomeOferta: 'Padrão', ativa: true, criadoEm: agora, atualizadoEm: agora, ...camposProduto } },
+        ofertaAtivaPadrao: idPadrao
+      };
+      await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
+    }
+    const lista = Object.entries(config.ofertas).map(([id, o]) => ({
+      id, nome: o.nomeOferta || id, ativa: !!o.ativa, criadoEm: o.criadoEm || null,
+      padrao: id === config.ofertaAtivaPadrao
+    })).sort((a, b) => (a.criadoEm || '').localeCompare(b.criadoEm || ''));
+    res.json({ ok: true, ofertas: lista });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Cria uma oferta nova, vazia (defaults de fábrica do EMPRESA_PADRAO — não copia
+// nada de nenhuma oferta existente). Não mexe em qual é a `ofertaAtivaPadrao`.
+app.post('/minha-ofertas', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const nome = String((req.body && req.body.nome) || '').trim();
+    if (!nome) return res.status(400).json({ ok: false, erro: 'Informe o nome da oferta.' });
+    const config = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
+    config.ofertas = config.ofertas || {};
+    const duplicado = Object.values(config.ofertas).some(o => (o.nomeOferta || '').trim().toLowerCase() === nome.toLowerCase());
+    if (duplicado) return res.status(400).json({ ok: false, erro: 'Já existe uma oferta com esse nome.' });
+    const id = gerarIdOferta(nome);
+    const agora = new Date().toISOString();
+    config.ofertas[id] = { nomeOferta: nome, ativa: true, criadoEm: agora, atualizadoEm: agora };
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
+    res.status(201).json({ ok: true, id, nome, ativa: true, criadoEm: agora, padrao: false });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Renomear / ativar / desativar uma oferta. A oferta conectada ao WhatsApp
+// (`ofertaAtivaPadrao`) nunca pode ser desativada nesta fase — reatribuir qual
+// oferta fica "ao vivo" é trabalho da Fase 2 (roteamento).
+app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const config = req.empresaLogin.configuracao || {};
+    const ofertas = config.ofertas || {};
+    if (!ofertas[id]) return res.status(404).json({ ok: false, erro: 'Oferta não encontrada.' });
+    const { nome, ativa } = req.body || {};
+    const atualizacoes = {};
+    if (nome !== undefined) {
+      const nomeLimpo = String(nome).trim();
+      if (!nomeLimpo) return res.status(400).json({ ok: false, erro: 'Informe o nome da oferta.' });
+      const duplicado = Object.entries(ofertas).some(([oid, o]) => oid !== id && (o.nomeOferta || '').trim().toLowerCase() === nomeLimpo.toLowerCase());
+      if (duplicado) return res.status(400).json({ ok: false, erro: 'Já existe uma oferta com esse nome.' });
+      atualizacoes.nomeOferta = nomeLimpo;
+    }
+    if (ativa !== undefined && !ativa) {
+      if (id === config.ofertaAtivaPadrao) {
+        return res.status(400).json({ ok: false, erro: 'Essa é a oferta conectada ao WhatsApp agora — não pode ser desativada.' });
+      }
+      const outrasAtivas = Object.entries(ofertas).filter(([oid, o]) => oid !== id && o.ativa).length;
+      if (!outrasAtivas) return res.status(400).json({ ok: false, erro: 'Não é possível desativar a última oferta ativa.' });
+      atualizacoes.ativa = false;
+    } else if (ativa !== undefined) {
+      atualizacoes.ativa = true;
+    }
+    atualizacoes.atualizadoEm = new Date().toISOString();
+    ofertas[id] = { ...ofertas[id], ...atualizacoes };
+    config.ofertas = ofertas;
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
+    res.json({ ok: true, oferta: { id, nome: ofertas[id].nomeOferta, ativa: !!ofertas[id].ativa, criadoEm: ofertas[id].criadoEm, padrao: id === config.ofertaAtivaPadrao } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Remove uma oferta. Bloqueado se for a única, ou se for a `ofertaAtivaPadrao`
+// (a conectada ao WhatsApp — nunca pode sumir nesta fase).
+app.delete('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const config = req.empresaLogin.configuracao || {};
+    const ofertas = config.ofertas || {};
+    if (!ofertas[id]) return res.status(404).json({ ok: false, erro: 'Oferta não encontrada.' });
+    if (id === config.ofertaAtivaPadrao) {
+      return res.status(400).json({ ok: false, erro: 'Essa é a oferta conectada ao WhatsApp agora — não pode ser removida.' });
+    }
+    if (Object.keys(ofertas).length <= 1) {
+      return res.status(400).json({ ok: false, erro: 'Não é possível remover a única oferta.' });
+    }
+    // TODO Fase 2: bloquear/perguntar se houver leads.ofertaId === id (leads ainda
+    // não têm ofertaId nesta fase — nada vinculado ainda, então é seguro remover).
+    await EMPRESAS_COL().doc(req.empresaLogin.id).update({
+      [`configuracao.ofertas.${id}`]: admin.firestore.FieldValue.delete()
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Config mesclada de uma oferta específica (mesmo padrão do getEmpresaById, escopado).
+app.get('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const config = req.empresaLogin.configuracao || {};
+    const oferta = config.ofertas && config.ofertas[id];
+    if (!oferta) return res.status(404).json({ ok: false, erro: 'Oferta não encontrada.' });
+    res.json({ ok: true, empresa: mesclarOfertaComPadrao(oferta), padrao: id === config.ofertaAtivaPadrao });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Salva campos "produto" dentro de uma oferta. Se for a `ofertaAtivaPadrao`,
+// espelha os mesmos campos na config de topo — é o que getEmpresaById lê pro
+// robô ao vivo, então sem esse espelho a edição não teria efeito nenhum até a Fase 2.
+app.post('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const config = req.empresaLogin.configuracao || {};
+    if (!config.ofertas || !config.ofertas[id]) return res.status(404).json({ ok: false, erro: 'Oferta não encontrada.' });
+    const corpoFiltrado = {};
+    for (const k of Object.keys(req.body || {})) {
+      if (CAMPOS_PRODUTO_OFERTA.has(k)) corpoFiltrado[k] = req.body[k];
+    }
+    config.ofertas[id] = { ...config.ofertas[id], ...corpoFiltrado, atualizadoEm: new Date().toISOString() };
+    if (id === config.ofertaAtivaPadrao) {
+      Object.assign(config, corpoFiltrado);
+    }
+    await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
+    res.json({ ok: true, empresa: mesclarOfertaComPadrao(config.ofertas[id]), padrao: id === config.ofertaAtivaPadrao });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Envio de teste da Agenda de Marketing — manda o conteúdo SALVO para um número
 // informado (ex.: o próprio gestor), sem afetar a recorrência dos clientes.
 app.post('/minha-marketing/teste', exigirLoginEmpresa, exigirGestor, async (req, res) => {
@@ -5325,8 +5525,11 @@ app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, async (req
       oficialToken: tokenFinal,
       oficialVerifyToken: verifyFinal,
       oficialWabaId: (oficialWabaId && String(oficialWabaId).trim()) || atual.oficialWabaId || null,
+      // NOTA (múltiplas ofertas — Fase 1): estes 4 templates ainda gravam aqui, no
+      // topo do doc, compartilhados — só passam a ser por oferta quando esta tela
+      // (e as demais de mensagens/prêmios) forem religadas ao endpoint por oferta,
+      // numa próxima etapa. Enquanto isso, editar aqui sempre afeta a oferta padrão.
       oficialTemplateRecomendado: (oficialTemplateRecomendado && String(oficialTemplateRecomendado).trim()) || atual.oficialTemplateRecomendado || null,
-      // Templates por tipo de mensagem — vazio APAGA (deixa em branco = volta ao texto livre).
       oficialTemplateInsistencia: (oficialTemplateInsistencia != null ? String(oficialTemplateInsistencia).trim() : (atual.oficialTemplateInsistencia || '')) || null,
       oficialTemplateFollowupCliente: (oficialTemplateFollowupCliente != null ? String(oficialTemplateFollowupCliente).trim() : (atual.oficialTemplateFollowupCliente || '')) || null,
       oficialTemplateConvite: (oficialTemplateConvite != null ? String(oficialTemplateConvite).trim() : (atual.oficialTemplateConvite || '')) || null,

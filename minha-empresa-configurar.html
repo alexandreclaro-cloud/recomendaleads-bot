@@ -61,6 +61,7 @@
       <button class="nav-item" data-section="info" data-gestor style="display:none"><i data-lucide="info"></i><span class="txt">Informações do negócio</span></button>
       <button class="nav-item" data-section="modo" data-gestor><i data-lucide="git-branch"></i><span class="txt">Modo de recomendação</span></button>
       <button class="nav-item" data-section="whatsapp" data-gestor><i data-lucide="smartphone"></i><span class="txt">WhatsApp</span></button>
+      <button class="nav-item" data-section="ofertas" data-gestor><i data-lucide="layers"></i><span class="txt">Ofertas</span></button>
       <button class="nav-item" data-section="disparo" data-gestor style="display:none"><i data-lucide="send"></i><span class="txt">Disparo em massa</span></button>
       <button class="nav-item" data-section="script" data-gestor><i data-lucide="scroll-text"></i><span class="txt">Script de vendas</span></button>
       <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
@@ -690,10 +691,27 @@
         </div>
       </section>
 
+      <section class="view fade-in" id="view-ofertas">
+        <div class="card">
+          <div class="block-title"><i data-lucide="layers"></i> Ofertas / Lançamentos</div>
+          <p class="sub">Tem mais de um lançamento/evento rodando ao mesmo tempo, no mesmo número de WhatsApp? Cada oferta tem nome, mensagens, prêmios, templates da Meta e Kanban próprios. A oferta com o selo 🟢 é a que está <b>conectada ao WhatsApp agora</b> — as demais ficam cadastradas, prontas pra usar quando o roteamento automático entre ofertas estiver pronto.</p>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+            <input class="input" id="novaOfertaNome" type="text" placeholder="Nome da nova oferta (ex: Lançamento Turma 5)" style="max-width:360px;flex:1;">
+            <button class="btn btn-action" id="criarOfertaBtn" type="button">➕ Nova oferta</button>
+          </div>
+          <span class="status-msg" id="statusOfertas"></span>
+          <div id="ofertasLista" style="margin-top:10px;"><div class="empty">Carregando ofertas...</div></div>
+        </div>
+      </section>
+
       <section class="view fade-in" id="view-script">
         <div class="card">
           <div class="block-title"><i data-lucide="scroll-text"></i> Script de vendas</div>
           <p class="sub">Roteiro por fase da negociação. Aparece num painel do lado direito em <b>Conversas</b>, pro atendente ler ou copiar enquanto fala com o cliente. Divida em quantas fases fizer sentido (ex: Abertura, Descoberta, Apresentação, Objeções, Fechamento).</p>
+          <div id="scriptOfertaSeletorBox" style="display:none;margin-bottom:14px;">
+            <label class="label">Editando o script da oferta:</label>
+            <select class="input" id="scriptOfertaSeletor" style="max-width:320px;"></select>
+          </div>
           <div id="scriptContainer"></div>
           <button class="btn btn-secondary" id="addFaseScriptBtn" type="button" style="margin-top:6px;">➕ Adicionar fase</button>
           <div class="row-save">
@@ -804,7 +822,7 @@ const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') 
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
 let EH_MATRIZ = false;
-const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'disparo', 'script', 'equipe', 'assinatura'];
+const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'ofertas', 'disparo', 'script', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
@@ -836,6 +854,7 @@ const TITULOS = {
   info: ['Informações do negócio', 'O robô responde dúvidas do cliente com estes dados.'],
   modo: ['Modo de recomendação', 'Como o presente chega aos amigos recomendados.'],
   whatsapp: ['WhatsApp', 'Conecte o número que o Agente I.A. vai usar.'],
+  ofertas: ['Ofertas', 'Mais de um lançamento rodando no mesmo número — cada um com mensagens, prêmios e Kanban próprios.'],
   disparo: ['Disparo em massa', 'Mande um template pra uma lista — cada envio desconta do seu saldo.'],
   script: ['Script de vendas', 'Roteiro por fase da negociação — aparece pro atendente em Conversas.'],
   equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
@@ -867,6 +886,7 @@ function trocarSecao(secao) {
   if (secao === 'modo' && typeof carregarModo === 'function') carregarModo();
   if (secao === 'disparo' && typeof carregarDisparo === 'function') carregarDisparo();
   if (secao === 'script' && typeof carregarScript === 'function') carregarScript();
+  if (secao === 'ofertas' && typeof carregarOfertas === 'function') carregarOfertas();
   if (secao === 'assinatura' && typeof carregarAssinatura === 'function') carregarAssinatura();
   if (secao === 'avisos' && typeof renderAvisosLista === 'function') { renderAvisosLista(); marcarTodosLidos(); }
 }
@@ -2273,11 +2293,56 @@ function syncScriptFasesFromDom() {
     texto: row.querySelector('.sf-texto').value
   }));
 }
-function carregarScript() {
-  const c = configuracaoAtual || {};
+// Script de vendas é o primeiro campo "por oferta" de verdade: com 1 oferta só
+// (caso comum hoje) continua tudo igual, gravando em /minha-config. Com 2+ ofertas,
+// aparece o seletor e passa a gravar na oferta escolhida (/minha-ofertas/:id/config).
+let scriptOfertaId = null;
+let scriptOfertasList = [];
+function urlScriptConfig() {
+  return scriptOfertasList.length > 1
+    ? `${API_BASE}/minha-ofertas/${scriptOfertaId}/config`
+    : `${API_BASE}/minha-config`;
+}
+async function carregarScript() {
+  try {
+    const r = await fetchAutenticado(`${API_BASE}/minha-ofertas`);
+    const d = await r.json();
+    scriptOfertasList = (d.ok && d.ofertas) || [];
+  } catch (e) { scriptOfertasList = []; }
+  const box = document.getElementById('scriptOfertaSeletorBox');
+  const sel = document.getElementById('scriptOfertaSeletor');
+  if (scriptOfertasList.length > 1) {
+    box.style.display = 'block';
+    sel.innerHTML = scriptOfertasList.map(o => `<option value="${o.id}">${escapeHtml(o.nome)}${o.padrao ? ' 🟢' : ''}${!o.ativa ? ' (inativa)' : ''}</option>`).join('');
+    if (!scriptOfertaId || !scriptOfertasList.some(o => o.id === scriptOfertaId)) {
+      scriptOfertaId = (scriptOfertasList.find(o => o.padrao) || scriptOfertasList[0]).id;
+    }
+    sel.value = scriptOfertaId;
+  } else {
+    box.style.display = 'none';
+    scriptOfertaId = scriptOfertasList[0] ? scriptOfertasList[0].id : null;
+  }
+  await carregarScriptConteudo();
+}
+async function carregarScriptConteudo() {
+  let c;
+  if (scriptOfertasList.length > 1) {
+    try {
+      const r = await fetchAutenticado(urlScriptConfig());
+      const d = await r.json();
+      c = (d.ok && d.empresa) || {};
+    } catch (e) { c = {}; }
+  } else {
+    c = configuracaoAtual || {};
+  }
   scriptFases = JSON.parse(JSON.stringify(c.scriptVendas || []));
   renderScriptFases();
 }
+const scriptOfertaSeletorEl = document.getElementById('scriptOfertaSeletor');
+if (scriptOfertaSeletorEl) scriptOfertaSeletorEl.addEventListener('change', (e) => {
+  scriptOfertaId = e.target.value;
+  carregarScriptConteudo();
+});
 document.getElementById('addFaseScriptBtn').addEventListener('click', () => {
   syncScriptFasesFromDom();
   scriptFases.push({ titulo: '', texto: '' });
@@ -2289,10 +2354,91 @@ document.getElementById('salvarScriptBtn').addEventListener('click', async () =>
   const body = { scriptVendas: scriptFases.filter(f => (f.titulo && f.titulo.trim()) || (f.texto && f.texto.trim())) };
   st.textContent = 'Salvando...'; st.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const resp = await fetchAutenticado(urlScriptConfig(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await resp.json();
-    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); scriptFases = JSON.parse(JSON.stringify(body.scriptVendas)); renderScriptFases(); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
+    if (resp.ok && data.ok) {
+      if (scriptOfertasList.length <= 1) configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body);
+      scriptFases = JSON.parse(JSON.stringify(body.scriptVendas));
+      renderScriptFases(); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok';
+    }
     else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
+
+// ---- Ofertas / Lançamentos (Fase 1 — fundação: CRUD + seletor pras demais telas) ----
+let ofertasCache = [];
+async function carregarOfertas() {
+  const wrap = document.getElementById('ofertasLista');
+  if (!wrap) return;
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error(data.erro || 'Falha');
+    ofertasCache = data.ofertas || [];
+    renderOfertas();
+  } catch (e) {
+    wrap.innerHTML = '<div class="empty">Não foi possível carregar as ofertas.</div>';
+  }
+}
+function renderOfertas() {
+  const wrap = document.getElementById('ofertasLista');
+  if (!wrap) return;
+  if (!ofertasCache.length) { wrap.innerHTML = '<div class="empty">Nenhuma oferta ainda.</div>'; return; }
+  wrap.innerHTML = ofertasCache.map(o => {
+    const badgePadrao = o.padrao ? ' <span class="badge badge-success">🟢 Conectada ao WhatsApp</span>' : '';
+    const badgeAtiva = !o.ativa ? ' <span class="badge">Inativa</span>' : '';
+    const criada = o.criadoEm ? new Date(o.criadoEm).toLocaleDateString('pt-BR') : '—';
+    const acoes = [`<button class="btn btn-secondary" data-acao="renomear" data-id="${o.id}" data-nome="${escapeHtml(o.nome)}" style="padding:6px 10px;font-size:0.78rem">Renomear</button>`];
+    // A oferta conectada (padrão) não pode ser desativada/removida nesta fase.
+    if (!o.padrao) {
+      acoes.push(`<button class="btn btn-secondary" data-acao="${o.ativa ? 'desativar' : 'ativar'}" data-id="${o.id}" style="padding:6px 10px;font-size:0.78rem">${o.ativa ? 'Desativar' : 'Ativar'}</button>`);
+      acoes.push(`<button class="btn btn-secondary" data-acao="remover" data-id="${o.id}" data-nome="${escapeHtml(o.nome)}" style="padding:6px 10px;font-size:0.78rem;color:var(--error)">Remover</button>`);
+    }
+    return `<div class="user-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)">
+      <div><b>${escapeHtml(o.nome)}</b>${badgePadrao}${badgeAtiva}<br><small style="color:var(--text-dim)">Criada em ${criada}</small></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${acoes.join('')}</div>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('button[data-acao]').forEach(b => b.addEventListener('click', acaoOferta));
+}
+async function acaoOferta(e) {
+  const btn = e.currentTarget;
+  const id = btn.dataset.id;
+  const acao = btn.dataset.acao;
+  try {
+    if (acao === 'renomear') {
+      const novo = prompt('Novo nome da oferta:', btn.dataset.nome);
+      if (novo == null) return;
+      const nomeLimpo = novo.trim();
+      if (!nomeLimpo) return alert('Informe um nome.');
+      const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: nomeLimpo }) });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) return alert(data.erro || 'Não foi possível renomear.');
+    } else if (acao === 'ativar' || acao === 'desativar') {
+      const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ativa: acao === 'ativar' }) });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) return alert(data.erro || 'Não foi possível alterar.');
+    } else if (acao === 'remover') {
+      if (!confirm(`Remover a oferta "${btn.dataset.nome}"? Essa ação não pode ser desfeita.`)) return;
+      const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas/${id}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) return alert(data.erro || 'Não foi possível remover.');
+    }
+    carregarOfertas();
+  } catch (err) { alert('Erro de conexão.'); }
+}
+document.getElementById('criarOfertaBtn').addEventListener('click', async () => {
+  const inp = document.getElementById('novaOfertaNome');
+  const st = document.getElementById('statusOfertas');
+  const nome = inp.value.trim();
+  if (!nome) { st.textContent = '❌ Informe o nome da nova oferta.'; st.className = 'status-msg err'; return; }
+  st.textContent = 'Criando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { inp.value = ''; st.textContent = '✅ Oferta criada!'; st.className = 'status-msg ok'; carregarOfertas(); }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro ao criar oferta'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
   finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
 });
