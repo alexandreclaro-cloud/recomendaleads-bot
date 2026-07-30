@@ -2194,6 +2194,32 @@ document.getElementById('salvarFullConfBtn').addEventListener('click', async () 
 });
 
 // ---- Script de vendas: fases da negociação (painel lateral em Conversas) ----
+// O campo é texto puro (markdown simples: **negrito**, # título, listas com -),
+// igual ao que vem colado do ChatGPT/Word. A pré-visualização abaixo mostra como
+// vai aparecer formatado pro vendedor em Conversas (um <textarea> não tem como
+// exibir negrito de verdade, por isso a prévia).
+function scriptEscHtml(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+function scriptNegritoHtml(s) { return s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'); }
+function scriptMdParaHtml(texto) {
+  const linhas = String(texto || '').split('\n');
+  let html = '', emLista = false;
+  for (const linha of linhas) {
+    const hMatch = linha.match(/^\s*#{1,6}\s+(.*)/);
+    const liMatch = linha.match(/^\s*[-*]\s+(.*)/);
+    if (hMatch) {
+      if (emLista) { html += '</ul>'; emLista = false; }
+      html += `<div style="font-weight:700;color:var(--brand);margin:6px 0 3px;">${scriptNegritoHtml(scriptEscHtml(hMatch[1]))}</div>`;
+    } else if (liMatch) {
+      if (!emLista) { html += '<ul style="margin:2px 0 6px 18px;padding:0;">'; emLista = true; }
+      html += `<li>${scriptNegritoHtml(scriptEscHtml(liMatch[1]))}</li>`;
+    } else {
+      if (emLista) { html += '</ul>'; emLista = false; }
+      html += `<div style="min-height:1em;">${scriptNegritoHtml(scriptEscHtml(linha))}</div>`;
+    }
+  }
+  if (emLista) html += '</ul>';
+  return html;
+}
 let scriptFases = [];
 function renderScriptFases() {
   const cont = document.getElementById('scriptContainer');
@@ -2210,10 +2236,14 @@ function renderScriptFases() {
         <input class="input sf-titulo" placeholder="Nome da fase (ex: Abertura)" value="${titulo}" style="flex:1;">
         <button class="btn btn-secondary sf-del" type="button" data-i="${i}" style="color:var(--danger-dark);">Remover</button>
       </div>
-      <textarea class="textarea sf-texto" rows="5" placeholder="O que o vendedor vai falar/ler nessa fase...">${texto}</textarea>
+      <textarea class="textarea sf-texto" rows="5" placeholder="O que o vendedor vai falar/ler nessa fase... Dica: **negrito** ou # Título">${texto}</textarea>
+      <div class="sf-preview" style="margin-top:8px;padding:10px 12px;background:var(--surface-2);border-radius:8px;font-size:0.84rem;line-height:1.5;">${scriptMdParaHtml(f.texto || '')}</div>
     </div>`;
   }).join('');
   cont.querySelectorAll('.sf-del').forEach(b => b.addEventListener('click', () => { syncScriptFasesFromDom(); scriptFases.splice(+b.dataset.i, 1); renderScriptFases(); }));
+  cont.querySelectorAll('.sf-texto').forEach(ta => {
+    ta.addEventListener('input', () => { ta.nextElementSibling.innerHTML = scriptMdParaHtml(ta.value); });
+  });
 }
 function syncScriptFasesFromDom() {
   scriptFases = [...document.querySelectorAll('#scriptContainer .script-fase')].map(row => ({

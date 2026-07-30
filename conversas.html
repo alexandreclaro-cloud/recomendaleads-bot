@@ -76,7 +76,12 @@
   .script-fase-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
   .script-fase-card .sf-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
   .script-fase-card .sf-titulo { font-weight: 700; font-size: 0.85rem; color: var(--brand); }
-  .script-fase-card .sf-texto { font-size: 0.84rem; line-height: 1.5; white-space: pre-wrap; color: var(--text); }
+  .script-fase-card .sf-texto { font-size: 0.84rem; line-height: 1.5; color: var(--text); }
+  .script-fase-card .sf-texto .sf-h { font-weight: 700; color: var(--brand); margin: 8px 0 4px; }
+  .script-fase-card .sf-texto .sf-h:first-child { margin-top: 0; }
+  .script-fase-card .sf-texto .sf-ln { margin-bottom: 2px; min-height: 1em; }
+  .script-fase-card .sf-texto ul { margin: 2px 0 8px 18px; padding: 0; }
+  .script-fase-card .sf-texto li { margin-bottom: 2px; }
   .script-copy-btn { background: none; border: 1px solid var(--border); border-radius: 7px; padding: 3px 8px; font-size: 0.7rem; cursor: pointer; color: var(--text-dim); flex-shrink: 0; }
   .script-copy-btn:hover { background: var(--surface-2); }
   .script-copy-btn.copiado { color: var(--success-dark); border-color: var(--success-dark); }
@@ -594,6 +599,37 @@ document.getElementById('msgInput').addEventListener('keydown', e => {
 carregarRespostasRapidas();
 
 // ===== Script de vendas (painel lateral, só leitura pro atendente) =====
+// Interpreta markdown simples (**negrito**, # título, listas com - ou *) pra exibir
+// formatado — o texto colado do ChatGPT/Word já vem com essas marcações.
+function escHtml(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+function negritoHtml(s) { return s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'); }
+function mdParaHtml(texto) {
+  const linhas = String(texto || '').split('\n');
+  let html = '', emLista = false;
+  for (const linha of linhas) {
+    const hMatch = linha.match(/^\s*#{1,6}\s+(.*)/);
+    const liMatch = linha.match(/^\s*[-*]\s+(.*)/);
+    if (hMatch) {
+      if (emLista) { html += '</ul>'; emLista = false; }
+      html += `<div class="sf-h">${negritoHtml(escHtml(hMatch[1]))}</div>`;
+    } else if (liMatch) {
+      if (!emLista) { html += '<ul>'; emLista = true; }
+      html += `<li>${negritoHtml(escHtml(liMatch[1]))}</li>`;
+    } else {
+      if (emLista) { html += '</ul>'; emLista = false; }
+      html += `<div class="sf-ln">${negritoHtml(escHtml(linha))}</div>`;
+    }
+  }
+  if (emLista) html += '</ul>';
+  return html;
+}
+// Converte pro formato de negrito que o WHATSAPP entende de verdade (asterisco
+// simples), pra quando o vendedor colar o texto direto numa conversa o negrito aparecer lá também.
+function mdParaWhatsapp(texto) {
+  return String(texto || '')
+    .replace(/^\s{0,3}#{1,6}\s+(.*)$/gm, '*$1*')
+    .replace(/\*\*(.+?)\*\*/g, '*$1*');
+}
 async function carregarScriptVendas() {
   const painel = document.getElementById('scriptPanel');
   const body = document.getElementById('scriptBody');
@@ -603,19 +639,18 @@ async function carregarScriptVendas() {
     const fases = (d.ok && Array.isArray(d.empresa.scriptVendas)) ? d.empresa.scriptVendas : [];
     if (!fases.length) { painel.classList.add('hidden'); return; }
     body.innerHTML = fases.map((f, i) => {
-      const titulo = (f.titulo || `Fase ${i + 1}`).replace(/</g, '&lt;');
-      const texto = (f.texto || '').replace(/</g, '&lt;');
+      const titulo = escHtml(f.titulo || `Fase ${i + 1}`);
       return `<div class="script-fase-card">
         <div class="sf-head">
           <span class="sf-titulo">${titulo}</span>
           <button class="script-copy-btn" data-i="${i}">📋 Copiar</button>
         </div>
-        <div class="sf-texto">${texto}</div>
+        <div class="sf-texto">${mdParaHtml(f.texto || '')}</div>
       </div>`;
     }).join('');
     body.querySelectorAll('.script-copy-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const texto = fases[+btn.dataset.i].texto || '';
+        const texto = mdParaWhatsapp(fases[+btn.dataset.i].texto || '');
         try {
           await navigator.clipboard.writeText(texto);
           const original = btn.textContent;
