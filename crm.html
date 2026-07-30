@@ -1218,7 +1218,14 @@ document.getElementById('sairBtn').addEventListener('click', () => {
 // conteúdo" de uma oferta no painel), as chamadas de configuração passam a
 // mexer nessa oferta específica em vez da config compartilhada. Sem o parâmetro
 // (o caso de sempre), fetchAutenticado funciona 100% igual a antes.
-const OFERTA_QUERY_ID = new URLSearchParams(location.search).get('oferta') || null;
+// Fica "grudado" no navegador (localStorage) pra sobreviver a navegações que não
+// levam o ?oferta= na URL (ex.: painel → CRM pelo menu lateral) — só muda quando
+// você entra de novo via "Editar conteúdo" de outra oferta, ou clica em "sair" no
+// próprio selo do cabeçalho.
+const OFERTA_CHAVE_LS = 'recomendaleads_oferta_ativa';
+const OFERTA_URL_ID = new URLSearchParams(location.search).get('oferta') || null;
+if (OFERTA_URL_ID) { try { localStorage.setItem(OFERTA_CHAVE_LS, OFERTA_URL_ID); } catch (e) {} }
+const OFERTA_QUERY_ID = OFERTA_URL_ID || (() => { try { return localStorage.getItem(OFERTA_CHAVE_LS); } catch (e) { return null; } })();
 async function fetchAutenticado(url, options = {}) {
   const { semOferta, ...opts } = options;
   let finalUrl = url;
@@ -3074,12 +3081,20 @@ async function carregarBadgeOferta() {
     const data = await resp.json();
     const oferta = data.ok && (data.ofertas || []).find(o => o.id === OFERTA_QUERY_ID);
     if (!oferta) return;
-    badge.style.display = 'inline-block';
+    badge.style.display = 'inline-flex';
+    badge.style.alignItems = 'center';
+    badge.style.gap = '7px';
     badge.className = oferta.padrao ? 'padrao' : 'extra';
-    badge.textContent = (oferta.padrao ? '🟢 ' : '✏️ ') + oferta.nome;
     badge.title = oferta.padrao
       ? 'Editando a oferta conectada ao WhatsApp agora.'
       : 'Editando esta oferta — ainda não conectada ao WhatsApp.';
+    badge.innerHTML = `<span>${oferta.padrao ? '🟢' : '✏️'} ${esc(oferta.nome)}</span>` +
+      `<button type="button" id="sairOfertaBtn" title="Sair desta oferta (voltar ao normal)" style="background:none;border:none;cursor:pointer;font-weight:800;font-size:0.9rem;line-height:1;color:inherit;padding:0;">✕</button>`;
+    const sairBtn = document.getElementById('sairOfertaBtn');
+    if (sairBtn) sairBtn.addEventListener('click', () => {
+      try { localStorage.removeItem(OFERTA_CHAVE_LS); } catch (e) {}
+      window.location.href = '/crm' + (location.hash || '');
+    });
   } catch (e) { /* best-effort — sem badge não quebra nada */ }
 }
 
