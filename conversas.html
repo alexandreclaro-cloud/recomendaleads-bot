@@ -136,6 +136,12 @@ function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => (
 let _atendentesAlertados = new Set();
 let _tituloOriginal = document.title;
 let _flashTitulo = null;
+let _alarmeInterval = null;
+// Pede permissão de notificação do navegador 1x (silencioso se recusar/já decidido)
+// — assim o aviso aparece mesmo com a aba em segundo plano.
+if (window.Notification && Notification.permission === 'default') {
+  try { Notification.requestPermission(); } catch (e) {}
+}
 // Bip curto via Web Audio (sem arquivo externo — passa no CSP).
 function tocarBipAtendente() {
   try {
@@ -152,8 +158,26 @@ function tocarBipAtendente() {
 function atualizarAlertaAtendente() {
   const pendentes = conversas.filter(c => c.precisaAtendente);
   const novos = pendentes.filter(c => !_atendentesAlertados.has(c.telefone));
-  if (novos.length) tocarBipAtendente();
+  if (novos.length) {
+    tocarBipAtendente();
+    if (window.Notification && Notification.permission === 'granted') {
+      try {
+        const n = new Notification('🔔 Atendimento solicitado', {
+          body: novos.map(c => c.nome || c.telefone).join(', '),
+          tag: 'recomendaleads-atendente'
+        });
+        n.onclick = () => { window.focus(); n.close(); };
+      } catch (e) {}
+    }
+  }
   _atendentesAlertados = new Set(pendentes.map(c => c.telefone));
+  // Alarme REPETIDO: enquanto houver pendente, o bip toca a cada 2.5s (não só uma vez
+  // no momento exato em que chegou) — pra não passar batido se ninguém estava olhando.
+  if (pendentes.length && !_alarmeInterval) {
+    _alarmeInterval = setInterval(tocarBipAtendente, 2500);
+  } else if (!pendentes.length && _alarmeInterval) {
+    clearInterval(_alarmeInterval); _alarmeInterval = null;
+  }
   if (pendentes.length && !_flashTitulo) {
     _flashTitulo = setInterval(() => {
       document.title = document.title.startsWith('🔔') ? _tituloOriginal : `🔔 ${pendentes.length} atendimento(s)!`;
