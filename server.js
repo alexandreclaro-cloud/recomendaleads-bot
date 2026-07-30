@@ -3794,7 +3794,7 @@ async function metaMensagemParaInterno(value, msg, cfg, empresaId) {
     // sobe pro nosso Storage (o link da Meta expira em minutos) pra o painel exibir.
     const m = msg[msg.type];
     const baixada = cfg ? await baixarMidiaMetaEUpload(cfg, m.id, empresaId) : null;
-    base.midia = { tipo: msg.type, url: baixada ? baixada.url : null, caption: m.caption || '' };
+    base.midia = { tipo: msg.type, url: baixada ? baixada.url : null, caption: m.caption || m.filename || '' };
     // Sem texto — o roteamento normal (por `texto`) não trata isso; entra só na
     // caixa de entrada pro atendente ver (ver tratarWebhook, bloco de registro).
   } else if (msg.type === 'contacts' && Array.isArray(msg.contacts)) {

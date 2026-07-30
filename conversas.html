@@ -51,6 +51,19 @@
   .composer .btn { padding: 8px 14px; }
   .composer.disabled { opacity: 0.6; }
 
+  /* Bolhas de mídia (imagem/áudio/vídeo/documento) */
+  .bubble img.midia-img { max-width: 100%; max-height: 260px; border-radius: 8px; display: block; margin-bottom: 4px; cursor: pointer; }
+  .bubble video.midia-video { max-width: 100%; max-height: 260px; border-radius: 8px; display: block; margin-bottom: 4px; }
+  .bubble audio.midia-audio { max-width: 240px; display: block; margin-bottom: 2px; }
+  .bubble a.midia-doc { display: flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; font-weight: 600; padding: 4px 0; }
+
+  /* Respostas rápidas (autocomplete ao digitar "/") */
+  #respostasRapidasBox { background: var(--surface); border-top: 1px solid var(--border); max-height: 180px; overflow-y: auto; }
+  .qr-item { padding: 8px 16px; cursor: pointer; font-size: 0.84rem; border-bottom: 1px solid var(--border); }
+  .qr-item:hover, .qr-item.sel { background: var(--brand-soft); }
+  .qr-item b { color: var(--brand); }
+  .qr-item span { display: block; color: var(--text-dim); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   @media (max-width: 760px) {
     .conv-list { width: 100%; }
     .conv-list.hide-mobile { display: none; }
@@ -100,11 +113,21 @@
         <span class="bot-flag on" id="botFlag">Agente I.A. ativo</span>
         <button class="btn btn-secondary" id="pausarBtn" style="display:none;padding:8px 12px;font-size:0.8rem">🙋 Assumir (sou eu)</button>
         <button class="btn btn-secondary" id="devolverBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Devolver ao Agente I.A.</button>
+        <button class="btn btn-ghost" id="agendarBtn" title="Agendar um lembrete de retorno pra esta conversa" style="padding:8px 10px;font-size:0.8rem">📅</button>
         <button class="btn btn-ghost" id="resetarBtn" title="Zerar este contato: apaga a conversa e reinicia a pessoa do zero (mantém os leads no CRM)" style="padding:8px 12px;font-size:0.8rem;color:#c0392b">Resetar</button>
       </div>
+      <div id="lembreteFaixa" style="display:none;background:#FFFBEB;border-bottom:1px solid #FDE68A;color:#92400E;padding:8px 20px;font-size:0.82rem;display:none;align-items:center;justify-content:space-between;gap:10px;">
+        <span id="lembreteTexto"></span>
+        <button class="btn btn-ghost" id="cancelarLembreteBtn" style="padding:2px 8px;font-size:0.76rem;color:#92400E">Cancelar</button>
+      </div>
       <div class="msgs" id="msgs"></div>
+      <div id="respostasRapidasBox" style="display:none;"></div>
       <div class="composer" id="composer">
-        <input class="input" type="text" id="msgInput" placeholder="Digite uma mensagem... (você assume o atendimento)">
+        <input type="file" id="anexoInput" style="display:none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+        <button class="btn btn-ghost" id="anexoBtn" title="Anexar arquivo" style="padding:8px 10px;"><i data-lucide="paperclip"></i></button>
+        <button class="btn btn-ghost" id="audioBtn" title="Gravar áudio" style="padding:8px 10px;"><i data-lucide="mic"></i></button>
+        <span id="gravandoIndicador" style="display:none;align-items:center;gap:6px;color:#DC2626;font-size:0.82rem;font-weight:600;white-space:nowrap;">🔴 <span id="gravandoTempo">0:00</span></span>
+        <input class="input" type="text" id="msgInput" placeholder="Digite uma mensagem... ( / pra respostas rápidas )" style="display:block;">
         <button class="btn btn-action" id="enviarBtn"><i data-lucide="send"></i></button>
       </div>
     </div>
@@ -119,7 +142,13 @@ if (!TOKEN) window.location.href = '/login';
 function icons() { try { lucide.createIcons(); } catch (e) {} }
 
 async function fetchAut(url, opts = {}) {
-  const resp = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}), 'Authorization': `Bearer ${TOKEN}` } });
+  // FormData (upload de arquivo) não pode ter Content-Type forçado — o browser
+  // precisa definir o boundary do multipart sozinho.
+  const ehFormData = opts.body instanceof FormData;
+  const headers = ehFormData
+    ? { ...(opts.headers || {}), 'Authorization': `Bearer ${TOKEN}` }
+    : { 'Content-Type': 'application/json', ...(opts.headers || {}), 'Authorization': `Bearer ${TOKEN}` };
+  const resp = await fetch(url, { ...opts, headers });
   if (resp.status === 401) { localStorage.removeItem('recomendaleads_token'); window.location.href = '/login'; throw new Error('401'); }
   return resp;
 }
@@ -137,6 +166,27 @@ function horaCurta(iso) {
                    : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+// Bolha com mídia (imagem/áudio/vídeo/documento) quando a mensagem tiver midiaUrl;
+// senão, texto normal.
+function renderConteudoMsg(m) {
+  const url = m.midiaUrl;
+  if (url && m.tipo === 'imagem') {
+    const legenda = (m.texto && m.texto !== '📷 Imagem') ? `<div>${esc(m.texto)}</div>` : '';
+    return `<img class="midia-img" src="${esc(url)}" onclick="window.open('${esc(url)}','_blank')">${legenda}`;
+  }
+  if (url && m.tipo === 'video') {
+    const legenda = (m.texto && m.texto !== '🎬 Vídeo') ? `<div>${esc(m.texto)}</div>` : '';
+    return `<video class="midia-video" src="${esc(url)}" controls></video>${legenda}`;
+  }
+  if (url && m.tipo === 'audio') {
+    return `<audio class="midia-audio" src="${esc(url)}" controls></audio>`;
+  }
+  if (url && m.tipo === 'documento') {
+    return `<a class="midia-doc" href="${esc(url)}" target="_blank">📎 ${esc(m.texto || 'Documento')}</a>`;
+  }
+  return esc(m.texto);
+}
 
 let _atendentesAlertados = new Set();
 let _tituloOriginal = document.title;
@@ -250,8 +300,10 @@ async function abrirConversa(telefone, nome) {
   document.getElementById('chatAv').textContent = inicial(nome || telefone);
   document.querySelector('.conv-list').classList.add('hide-mobile');
   document.getElementById('chat').classList.add('show-mobile');
+  fecharRespostasRapidas();
   renderConversas();
   await carregarMensagens(true);
+  await carregarLembrete();
 }
 
 async function carregarMensagens(scroll) {
@@ -277,7 +329,7 @@ async function carregarMensagens(scroll) {
     const msgs = document.getElementById('msgs');
     const estavaNoFim = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
     msgs.innerHTML = (data.mensagens || []).map(m => `
-      <div class="bubble ${m.direcao === 'out' ? 'out' : 'in'}">${esc(m.texto)}<small>${horaCurta(m.criadoEm)}</small></div>
+      <div class="bubble ${m.direcao === 'out' ? 'out' : 'in'}">${renderConteudoMsg(m)}<small>${horaCurta(m.criadoEm)}</small></div>
     `).join('') || '<div class="chat-empty">Nenhuma mensagem ainda.</div>';
     if (scroll || estavaNoFim) msgs.scrollTop = msgs.scrollHeight;
   } catch (e) {}
@@ -295,7 +347,173 @@ async function enviar() {
   } catch (e) { input.value = texto; }
 }
 document.getElementById('enviarBtn').addEventListener('click', enviar);
-document.getElementById('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') enviar(); });
+
+// ===== Anexo (imagem/vídeo/documento) =====
+function detectarTipoMidia(mimetype) {
+  mimetype = mimetype || '';
+  if (mimetype.startsWith('image/')) return 'imagem';
+  if (mimetype.startsWith('video/')) return 'video';
+  if (mimetype.startsWith('audio/')) return 'audio';
+  return 'documento';
+}
+async function uploadEEnviarMidia(file, tipoForcado) {
+  if (!atual) return;
+  const fd = new FormData();
+  fd.append('arquivo', file, file.name);
+  try {
+    const up = await fetchAut(`${API_BASE}/minha-conversas/upload`, { method: 'POST', body: fd });
+    const upData = await up.json();
+    if (!up.ok || !upData.ok) { alert('Falha no upload: ' + (upData.erro || 'erro')); return; }
+    const tipo = tipoForcado || detectarTipoMidia(upData.mimetype || file.type);
+    const extensao = (file.name.split('.').pop() || '').toLowerCase();
+    await fetchAut(`${API_BASE}/minha-conversas/${atual}/enviar-midia`, {
+      method: 'POST',
+      body: JSON.stringify({ tipo, url: upData.url, fileName: file.name.replace(/\.[^.]+$/, ''), extension: extensao })
+    });
+    await carregarMensagens(true);
+    await carregarConversas();
+  } catch (e) { alert('Erro ao enviar anexo.'); }
+}
+document.getElementById('anexoBtn').addEventListener('click', () => { if (atual) document.getElementById('anexoInput').click(); });
+document.getElementById('anexoInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (file) await uploadEEnviarMidia(file);
+});
+
+// ===== Áudio (grava no navegador e manda como mensagem de voz) =====
+let _mediaRecorder = null, _audioChunks = [], _gravandoTimer = null, _gravandoInicio = 0;
+document.getElementById('audioBtn').addEventListener('click', async () => {
+  if (!atual) return;
+  if (_mediaRecorder && _mediaRecorder.state === 'recording') { _mediaRecorder.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    _audioChunks = [];
+    const mime = (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) ? 'audio/webm;codecs=opus' : 'audio/webm';
+    _mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+    _mediaRecorder.ondataavailable = ev => { if (ev.data.size > 0) _audioChunks.push(ev.data); };
+    _mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(_gravandoTimer);
+      document.getElementById('gravandoIndicador').style.display = 'none';
+      document.getElementById('audioBtn').innerHTML = '<i data-lucide="mic"></i>'; icons();
+      const blob = new Blob(_audioChunks, { type: mime });
+      if (blob.size > 500) { // ignora clique acidental (gravação vazia/curtíssima)
+        const file = new File([blob], `audio_${Date.now()}.webm`, { type: mime });
+        await uploadEEnviarMidia(file, 'audio');
+      }
+    };
+    _mediaRecorder.start();
+    _gravandoInicio = Date.now();
+    document.getElementById('gravandoIndicador').style.display = 'inline-flex';
+    document.getElementById('audioBtn').innerHTML = '⏹️';
+    _gravandoTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - _gravandoInicio) / 1000);
+      document.getElementById('gravandoTempo').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }, 500);
+  } catch (e) { alert('Não consegui acessar o microfone. Verifique a permissão do navegador.'); }
+});
+
+// ===== Respostas rápidas ("/" no composer) =====
+let _respostasRapidas = [];
+async function carregarRespostasRapidas() {
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-respostas-rapidas`);
+    const d = await r.json();
+    if (d.ok) _respostasRapidas = d.respostas || [];
+  } catch (e) {}
+}
+function fecharRespostasRapidas() {
+  const box = document.getElementById('respostasRapidasBox');
+  box.style.display = 'none'; box.innerHTML = '';
+}
+function abrirRespostasRapidas(filtro) {
+  const lista = _respostasRapidas.filter(r => r.atalho.startsWith(filtro));
+  const box = document.getElementById('respostasRapidasBox');
+  if (!lista.length) {
+    box.style.display = 'block';
+    box.innerHTML = `<div class="qr-item" style="cursor:default;color:var(--text-dim)">Nenhuma resposta rápida com "/${esc(filtro)}". <a href="#" id="gerenciarQRLink">Gerenciar respostas rápidas</a></div>`;
+    const link = document.getElementById('gerenciarQRLink');
+    if (link) link.addEventListener('click', (ev) => { ev.preventDefault(); abrirGerenciadorQR(); });
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML = lista.map(r => `<div class="qr-item" data-texto="${esc(r.texto)}"><b>/${esc(r.atalho)}</b><span>${esc(r.texto)}</span></div>`).join('');
+  box.querySelectorAll('.qr-item').forEach(el => {
+    el.addEventListener('click', () => {
+      document.getElementById('msgInput').value = el.dataset.texto;
+      fecharRespostasRapidas();
+      document.getElementById('msgInput').focus();
+    });
+  });
+}
+document.getElementById('msgInput').addEventListener('input', (e) => {
+  const v = e.target.value;
+  if (v.startsWith('/') && v.length >= 1 && !v.includes(' ')) {
+    abrirRespostasRapidas(v.slice(1).toLowerCase());
+  } else {
+    fecharRespostasRapidas();
+  }
+});
+document.getElementById('msgInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { fecharRespostasRapidas(); enviar(); }
+  if (e.key === 'Escape') fecharRespostasRapidas();
+});
+carregarRespostasRapidas();
+
+// Gerenciador simples de respostas rápidas (lista editável, salva tudo de uma vez).
+function abrirGerenciadorQR() {
+  fecharRespostasRapidas();
+  const linhas = _respostasRapidas.map(r => `${r.atalho} | ${r.texto}`).join('\n');
+  const novo = prompt('Respostas rápidas — uma por linha, no formato:\natalho | texto da mensagem\n\nEx:\nboasvindas | Oi! Tudo bem? Como posso ajudar? 😊\nhorario | Nosso horário é de seg a sex, 9h às 18h.', linhas);
+  if (novo == null) return;
+  const respostas = novo.split('\n').map(l => {
+    const i = l.indexOf('|');
+    if (i < 0) return null;
+    return { atalho: l.slice(0, i).trim(), texto: l.slice(i + 1).trim() };
+  }).filter(Boolean).filter(r => r.atalho && r.texto);
+  fetchAut(`${API_BASE}/minha-respostas-rapidas`, { method: 'POST', body: JSON.stringify({ respostas }) })
+    .then(() => carregarRespostasRapidas())
+    .catch(() => {});
+}
+
+// ===== Agendar retorno (lembrete pessoal ligado à conversa) =====
+async function carregarLembrete() {
+  const faixa = document.getElementById('lembreteFaixa');
+  const txt = document.getElementById('lembreteTexto');
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-conversas`);
+    const d = await r.json();
+    const conv = (d.conversas || []).find(c => c.telefone === atual);
+    if (conv && conv.lembreteRetorno && conv.lembreteRetorno.quando) {
+      const dt = new Date(conv.lembreteRetorno.quando);
+      txt.textContent = `📅 Retorno agendado pra ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${conv.lembreteRetorno.atendenteNome ? ' — ' + conv.lembreteRetorno.atendenteNome : ''}`;
+      faixa.style.display = 'flex';
+    } else {
+      faixa.style.display = 'none';
+    }
+  } catch (e) { faixa.style.display = 'none'; }
+}
+document.getElementById('agendarBtn').addEventListener('click', async () => {
+  if (!atual) return;
+  const data = prompt('Agendar retorno pra quando? Formato: DD/MM/AAAA HH:MM\n\nEx: 30/07/2026 15:00');
+  if (!data) return;
+  const m = data.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+  if (!m) { alert('Formato inválido. Use DD/MM/AAAA HH:MM (ex: 30/07/2026 15:00)'); return; }
+  const [, dd, mm, yyyy, hh, min] = m;
+  const dt = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min));
+  if (isNaN(dt.getTime()) || dt.getTime() <= Date.now()) { alert('Escolha uma data/hora no futuro.'); return; }
+  try {
+    const resp = await fetchAut(`${API_BASE}/minha-conversas/${atual}/agendar-retorno`, { method: 'POST', body: JSON.stringify({ quando: dt.toISOString() }) });
+    const d = await resp.json();
+    if (resp.ok && d.ok) { await carregarLembrete(); }
+    else alert('❌ ' + (d.erro || 'Não foi possível agendar.'));
+  } catch (e) { alert('Erro de conexão.'); }
+});
+document.getElementById('cancelarLembreteBtn').addEventListener('click', async () => {
+  if (!atual) return;
+  try { await fetchAut(`${API_BASE}/minha-conversas/${atual}/cancelar-lembrete`, { method: 'POST' }); await carregarLembrete(); } catch (e) {}
+});
 
 document.getElementById('devolverBtn').addEventListener('click', async () => {
   if (!atual) return;
