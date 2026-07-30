@@ -5375,8 +5375,11 @@ app.get('/minha-conversas/:telefone/mensagens', exigirLoginEmpresa, async (req, 
     const mensagens = [];
     snap.forEach(d => mensagens.push({ id: d.id, ...d.data() }));
     mensagens.sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
-    // marca como lida e tira o alerta de "precisa atendente" (o atendente abriu)
-    await CONVERSAS_COL().doc(chave).set({ naoLidas: 0, precisaAtendente: false }, { merge: true }).catch(() => {});
+    // Marca como lida — MAS não tira mais o alerta "precisa atendente" só por abrir
+    // (só de olhar, sem assumir de verdade). O alarme (som/piscar) e o revezamento
+    // continuam até alguém clicar "Assumir" ou mandar mensagem (endpoints /pausar e
+    // /enviar), que aí sim zeram precisaAtendente junto com botPausado.
+    await CONVERSAS_COL().doc(chave).set({ naoLidas: 0 }, { merge: true }).catch(() => {});
     const conv = await CONVERSAS_COL().doc(chave).get().then(d => d.exists ? d.data() : {}).catch(() => ({}));
     res.json({ ok: true, mensagens, botPausado: !!conv.botPausado, atendenteNome: conv.atendenteNome || null });
   } catch (err) {
