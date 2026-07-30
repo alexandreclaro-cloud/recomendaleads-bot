@@ -80,6 +80,17 @@
   @media (prefers-reduced-motion: reduce) {
     header h1::before { animation: none; }
   }
+  /* Badge de "qual oferta/loja estou configurando agora" — some ao lado do nome,
+     visível em TODAS as abas (não só Configurações), pra nunca ficar confuso. */
+  #ofertaHeaderBadge {
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 4px 11px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  #ofertaHeaderBadge.padrao { background: var(--success-soft,#DCFCE7); color: var(--success-dark,#166534); }
+  #ofertaHeaderBadge.extra { background: #FEF3C7; color: #92400E; }
 
   .header-stats {
     display: flex;
@@ -589,6 +600,7 @@
   <main class="crm-main">
     <header>
       <h1>Poder da Recomendação</h1>
+      <span id="ofertaHeaderBadge" style="display:none;"></span>
       <div class="header-stats" id="headerStats">
         <span class="stat-pill">Total <b id="statTotal">—</b></span>
         <span class="stat-pill">Comprou <b id="statComprou">—</b></span>
@@ -3049,9 +3061,32 @@ document.addEventListener('click', (e) => {
   });
 });
 
+// Badge "qual oferta/loja estou configurando agora" no cabeçalho — visível em
+// TODAS as abas (não só Configurações), pra nunca ficar confuso qual delas
+// está sendo mexida. Só aparece quando a página foi aberta via ?oferta=<id>
+// (o botão "Editar conteúdo" da tela Ofertas no painel).
+async function carregarBadgeOferta() {
+  if (!OFERTA_QUERY_ID) return;
+  const badge = document.getElementById('ofertaHeaderBadge');
+  if (!badge) return;
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas`, { semOferta: true });
+    const data = await resp.json();
+    const oferta = data.ok && (data.ofertas || []).find(o => o.id === OFERTA_QUERY_ID);
+    if (!oferta) return;
+    badge.style.display = 'inline-block';
+    badge.className = oferta.padrao ? 'padrao' : 'extra';
+    badge.textContent = (oferta.padrao ? '🟢 ' : '✏️ ') + oferta.nome;
+    badge.title = oferta.padrao
+      ? 'Editando a oferta conectada ao WhatsApp agora.'
+      : 'Editando esta oferta — ainda não conectada ao WhatsApp.';
+  } catch (e) { /* best-effort — sem badge não quebra nada */ }
+}
+
 // ============================================================
 // INICIALIZAÇÃO
 // ============================================================
+carregarBadgeOferta();
 carregarLeads();
 setInterval(carregarLeads, 60000);
 
