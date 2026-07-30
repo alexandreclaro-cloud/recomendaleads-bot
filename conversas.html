@@ -26,6 +26,9 @@
   .conv-meta .prev { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .badge-naolida { background: var(--success); color: #fff; font-size: 0.68rem; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
   .badge-atendente { background: #DC2626; color: #fff; font-size: 0.62rem; font-weight: 700; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
+  .btn-assumir-lista { background: #DC2626; color: #fff; font-size: 0.7rem; font-weight: 700; border: none; border-radius: 999px; padding: 6px 11px; white-space: nowrap; cursor: pointer; flex-shrink: 0; }
+  .btn-assumir-lista:hover { background: #B91C1C; }
+  .btn-assumir-lista:disabled { opacity: .6; cursor: default; }
   .conv-item.precisa-atendente { background: #FEF2F2; animation: piscaAtend 1.1s ease-in-out infinite; }
   @keyframes piscaAtend { 0%,100% { background: #FEF2F2; } 50% { background: #FEE2E2; } }
 
@@ -327,10 +330,24 @@ function renderConversas() {
         <div class="prev">${c.ultimaDirecao === 'out' ? 'Você: ' : ''}${esc(c.ultimaMensagem || '')}</div>
         ${c.atendenteNome ? `<div class="prev" style="color:var(--action-dark);font-weight:600;font-size:0.72rem;">🙋 Atendendo: ${esc(c.atendenteNome)}</div>` : ''}
       </div>
-      ${c.precisaAtendente ? '<span class="badge-atendente">🔔 atende</span>' : (c.naoLidas ? `<span class="badge-naolida">${c.naoLidas}</span>` : '')}
+      ${c.precisaAtendente
+        ? `<button class="btn-assumir-lista" data-tel="${esc(c.telefone)}" data-nome="${esc(c.nome || '')}">🙋 Assumir</button>`
+        : (c.naoLidas ? `<span class="badge-naolida">${c.naoLidas}</span>` : '')}
     </div>`).join('');
   cont.querySelectorAll('.conv-item').forEach(el => {
-    el.addEventListener('click', () => abrirConversa(el.dataset.tel, el.dataset.nome));
+    el.addEventListener('click', (ev) => { if (ev.target.closest('.btn-assumir-lista')) return; abrirConversa(el.dataset.tel, el.dataset.nome); });
+  });
+  cont.querySelectorAll('.btn-assumir-lista').forEach(el => {
+    el.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const tel = el.dataset.tel, nome = el.dataset.nome;
+      el.disabled = true; el.textContent = '...';
+      try {
+        await fetchAut(`${API_BASE}/minha-conversas/${tel}/pausar`, { method: 'POST' });
+        await abrirConversa(tel, nome); // já abre a conversa assumida, pronto pra atender
+        await carregarConversas();
+      } catch (e) { el.disabled = false; el.textContent = '🙋 Assumir'; }
+    });
   });
 }
 document.getElementById('buscaConv').addEventListener('input', renderConversas);
