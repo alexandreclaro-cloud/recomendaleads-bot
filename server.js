@@ -378,6 +378,12 @@ async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, ti
     };
     if (nome) resumo.nome = nome;
     if (direcao === 'in') resumo.naoLidas = admin.firestore.FieldValue.increment(1);
+    // Rede de lojas: carimba ofertaId quando já resolvido no contexto da requisição
+    // (best-effort — nunca sobrescreve com null/undefined um valor já gravado antes).
+    try {
+      const ctx = tenantContext.getStore();
+      if (ctx && ctx.empresa && ctx.empresa.ofertaId) resumo.ofertaId = ctx.empresa.ofertaId;
+    } catch (e) {}
     await CONVERSAS_COL().doc(`${empresaId || EMPRESA_ID_PDN}__${telefone}`).set(resumo, { merge: true });
   } catch (err) {
     console.error('Erro ao registrar mensagem no chat:', err.message);
@@ -642,6 +648,40 @@ function aplicarNicho(empresa, nicho) {
     merged.faixasBonus = merged.faixasBonus.slice(0, 1);
   }
   return merged;
+}
+
+// Sobrepõe os campos PRODUTO (mensagens, prêmios, Kanban, templates) da oferta
+// resolvida sobre a config em uso — mesmo padrão de aplicarNicho, mas por
+// ofertaId (rede de lojas: cada loja é uma oferta dentro da mesma empresa).
+function aplicarOferta(empresa, ofertaId) {
+  if (!empresa || !ofertaId || !empresa.ofertas || !empresa.ofertas[ofertaId]) return empresa;
+  const oferta = empresa.ofertas[ofertaId];
+  const camposProduto = {};
+  for (const k of CAMPOS_PRODUTO_OFERTA) {
+    if (oferta[k] !== undefined) camposProduto[k] = oferta[k];
+  }
+  // ofertaId fica carimbado no próprio objeto — assim quem já recebe `empresa`
+  // (criarLead, iniciarConversaRecomendado, registrarMensagem via contexto) acha
+  // o valor sem precisar de mais um parâmetro novo em cada função.
+  return { ...empresa, ...camposProduto, id: empresa.id, ofertas: empresa.ofertas, ofertaId };
+}
+
+// Resolve a oferta (loja) de um contato SEM perguntar nada — só quando é óbvio:
+// (1) a sessão já sabe, (2) o texto bate com a frase-gatilho de alguma oferta
+// ativa (ex.: "quero meu bônus" = loja 2), (3) só existe 1 oferta ativa. Com 2+
+// ofertas ativas e nenhum sinal, devolve null — fica pra Fase 2b (menu).
+function resolverOfertaSilenciosa(empresa, texto, ofertaIdConhecida) {
+  if (ofertaIdConhecida) return ofertaIdConhecida;
+  if (!empresa || !empresa.ofertasHabilitado || !empresa.ofertas) return null;
+  const ativas = Object.entries(empresa.ofertas).filter(([, o]) => o && o.ativa);
+  if (!ativas.length) return null;
+  if (texto) {
+    const t = String(texto).toLowerCase();
+    const porGatilho = ativas.find(([, o]) => o.gatilhoPresente && t.includes(String(o.gatilhoPresente).toLowerCase()));
+    if (porGatilho) return porGatilho[0];
+  }
+  if (ativas.length === 1) return ativas[0][0];
+  return null;
 }
 
 function respostaEhPositiva(texto) {
@@ -963,7 +1003,10 @@ async function getEmpresaById(empresaId) {
     prepagoAtivo: !!data.prepagoAtivo,
     saldoCentavos: data.saldoCentavos || 0,
     precoMktCentavos: data.precoMktCentavos != null ? data.precoMktCentavos : PRECO_MKT_PADRAO,
-    precoUtilCentavos: data.precoUtilCentavos != null ? data.precoUtilCentavos : PRECO_UTIL_PADRAO
+    precoUtilCentavos: data.precoUtilCentavos != null ? data.precoUtilCentavos : PRECO_UTIL_PADRAO,
+    // Múltiplas ofertas: sem isso o robô (que só enxerga o objeto devolvido aqui,
+    // não o doc bruto) não tem como saber se deve rotear por oferta.
+    ofertasHabilitado: !!data.ofertasHabilitado
   };
 }
 
@@ -1038,6 +1081,10 @@ async function criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendado
     telefoneRecomendador: telefoneRecomendador || null,
     vendedor: vendedor || null,
     empresaId: empresaId || null,
+    // Rede de lojas: de qual oferta (loja) é este lead — resolvido no fluxo
+    // (webhook) e carimbado em `empresa.ofertaId` via aplicarOferta(). Null pra
+    // quem não usa múltiplas ofertas, sem mudar nada do comportamento de hoje.
+    ofertaId: empresa.ofertaId || null,
     etapa: etapaInicial,
     bonusPago: false,
     criadoEm: new Date().toISOString(),
@@ -2640,6 +2687,7 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
     telefoneRecomendado: contato.telefone,
     nomeRecomendador: nomeRecomendador,
     vendedorNome: vendedorNome,
+    ofertaId: empresa.ofertaId || null,
     ultimaMensagemEm: marcaTempo,
     criadoEm: marcaTempo
   });
@@ -3635,6 +3683,23 @@ async function tratarWebhook(req, res) {
       const ctx = tenantContext.getStore();
       if (ctx) ctx.empresa = aplicarNicho(ctx.empresa, nichoEfetivo);
       console.log(`[NICHO] ${telefone} → ${nichoEfetivo}${nichoDetectado ? ' (novo pelo link)' : ' (sessão)'}`);
+    }
+
+    // ---- Rede de lojas: tagueamento silencioso por oferta (Fase 2a) ----
+    // Resolve só quando é óbvio (sessão já sabe, frase-gatilho bate, ou só 1
+    // oferta ativa) — com 2+ ofertas ambíguas, fica null e segue tudo igual a
+    // hoje até a Fase 2b (menu de desambiguação) existir.
+    const ofertaIdSessaoCliente = sessaoExiste ? sessaoExistenteSnap.data().ofertaId : null;
+    const ofertaIdSessaoRec = sessaoRecomendado ? sessaoRecomendado.ofertaId : null;
+    const ofertaEfetivaId = resolverOfertaSilenciosa(empGatilho, texto, ofertaIdSessaoCliente || ofertaIdSessaoRec);
+    if (ofertaEfetivaId) {
+      const ctx = tenantContext.getStore();
+      if (ctx) ctx.empresa = aplicarOferta(ctx.empresa, ofertaEfetivaId);
+      // Persiste na sessão certa se ela já existe e ainda não sabia — pra próximas
+      // mensagens não recalcularem. Sessão nova (contato 100% inédito) recebe o
+      // carimbo mais adiante, quando o fluxo efetivamente cria ela.
+      if (sessaoExiste && !ofertaIdSessaoCliente) await saveSessao(telefone, { ofertaId: ofertaEfetivaId });
+      if (sessaoRecomendado && !ofertaIdSessaoRec) await saveSessaoRecomendado(telefone, { ofertaId: ofertaEfetivaId });
     }
 
     // Basic com confirmação: cliente respondeu ao menu (1 já avisei / 2 ainda não /
