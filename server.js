@@ -2999,21 +2999,10 @@ function ehFechamentoConversa(texto) {
   return false;
 }
 
-async function responderPerguntaNegocio(pergunta, empresa, opts) {
+async function responderPerguntaNegocio(pergunta, empresa) {
   const infos = infosNegocioDisponiveis(empresa);
   if (!infos) return null; // nada cadastrado — não responde
   if (!ANTHROPIC_API_KEY) return respostaInfoPorPalavraChave(pergunta, empresa);
-
-  // Modo direto (handoff pro consultor): NÃO deixa a IA "bater papo" sem escalar.
-  // No atendimento pós-fluxo normal, uma resposta cordial a "oi"/confirmação vaga é
-  // ok (a conversa já tinha terminado). No modo direto, o objetivo é conectar rápido
-  // com um humano — então qualquer coisa que não seja pergunta objetiva respondível
-  // pelas infos cadastradas TEM que escalar (senão o cliente fica só com um "oi" solto
-  // e o vendedor nunca é avisado).
-  const modoDireto = opts && opts.modoDireto;
-  const regraSmalltalk = modoDireto
-    ? `- SÓ responda diretamente se for uma PERGUNTA OBJETIVA sobre o negócio (endereço, horário, preço etc.) que você consiga responder com certeza usando as informações acima. Para QUALQUER outra coisa — "oi", agradecimento, confirmações vagas ("pode", "sim", "ok", "quero saber mais", "beleza") ou dúvida que não está nas informações — responda breve e gentil dizendo que vai *chamar um consultor* pra continuar, e TERMINE sua resposta com o marcador ##TRANSFERIR##.`
-    : `- Se o cliente perguntar algo que NÃO está nas informações (ou pedir algo que exige um humano), responda breve e gentil dizendo que vai *transferir pra uma atendente* que já vai ajudar, e TERMINE sua resposta com o marcador ##TRANSFERIR## (o sistema vai chamar um humano de verdade). Nunca invente.\n- Se for só um "oi", agradecimento ou conversa fiada, responda cordialmente e se coloque à disposição (NÃO use ##TRANSFERIR## nesses casos).`;
 
   const systemPrompt = `Você é o atendente virtual da empresa "${empresa.nome}" no WhatsApp. O cliente já foi atendido e voltou a mandar mensagem. Responda de forma curta, simpática e natural (português do Brasil), usando SOMENTE as informações abaixo.
 
@@ -3022,7 +3011,8 @@ ${infos}
 
 Regras:
 - Use SOMENTE os dados acima. NUNCA invente endereço, horário, preço, ou qualquer dado que não esteja listado.
-${regraSmalltalk}
+- Se o cliente perguntar algo que NÃO está nas informações (ou pedir algo que exige um humano), responda breve e gentil dizendo que vai *transferir pra uma atendente* que já vai ajudar, e TERMINE sua resposta com o marcador ##TRANSFERIR## (o sistema vai chamar um humano de verdade). Nunca invente.
+- Se for só um "oi", agradecimento ou conversa fiada, responda cordialmente e se coloque à disposição (NÃO use ##TRANSFERIR## nesses casos).
 - No máximo 2-3 frases curtas. Sem markdown, sem títulos (o marcador ##TRANSFERIR##, quando usado, não conta como markdown).`;
 
   try {
@@ -3037,11 +3027,9 @@ ${regraSmalltalk}
       timeout: 6000
     });
     const txt = (resp.data?.content?.[0]?.text || '').trim();
-    if (txt) return txt;
-    return modoDireto ? '##TRANSFERIR##' : respostaInfoPorPalavraChave(pergunta, empresa);
+    return txt || respostaInfoPorPalavraChave(pergunta, empresa);
   } catch (err) {
     console.error('Erro na IA de atendimento pós-fluxo, usando palavras-chave:', err.message);
-    if (modoDireto) return '##TRANSFERIR##'; // sem IA disponível → escala direto, não arrisca "oi" solto
     return respostaInfoPorPalavraChave(pergunta, empresa);
   }
 }
@@ -3109,22 +3097,8 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
         vendedor: sessao.vendedorNome || empresa.nome,
         empresa: empresa.nome
       };
-      // IA primeiro (mesma do "Atendimento pós-fluxo"): se souber responder com as
-      // infos do negócio (endereço, horário etc.), responde e NÃO chama o vendedor
-      // ainda — só escala quando a IA sinaliza ##TRANSFERIR## (não sabe) ou o
-      // recurso está desligado.
-      if (empresa.infoAtendimentoAtivo && texto) {
-        let respostaIA = await responderPerguntaNegocio(texto, empresa, { modoDireto: true });
-        if (respostaIA && !/##TRANSFERIR##/.test(respostaIA)) {
-          await sendText(telefone, respostaIA);
-          await saveSessaoRecomendado(telefone, { ultimaMensagemEm: new Date().toISOString() });
-          return true; // continua em aguardando_confirmacao — IA segue respondendo
-        }
-        if (respostaIA) {
-          respostaIA = respostaIA.replace(/##TRANSFERIR##/g, '').trim();
-          if (respostaIA) await sendText(telefone, respostaIA);
-        }
-      }
+      // SEM IA aqui — só o script fixo já definido, direto pro vendedor. Nada de
+      // gerar/inventar texto: previsível, sem risco de responder algo fora do lugar.
       const msgH = substituirVariaveis(empresa.recomendadoHumanoMensagem ?? EMPRESA_PADRAO.recomendadoHumanoMensagem, varsH);
       if (msgH && msgH.trim()) await sendText(telefone, msgH);
       await saveSessaoRecomendado(telefone, { etapa: 'atendimento_humano', ultimaMensagemEm: new Date().toISOString() });
