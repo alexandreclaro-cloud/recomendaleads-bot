@@ -671,9 +671,13 @@
 
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:14px;">
             <label class="label" style="margin:0;">Lista de contatos</label>
-            <button type="button" id="baixarModeloBtn" class="btn btn-secondary" style="padding:6px 12px;font-size:0.82rem;">📥 Baixar modelo (CSV)</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input type="file" id="disparoArquivoInput" accept=".csv,.txt,.xlsx,.xls" style="display:none;">
+              <button type="button" id="disparoUploadBtn" class="btn btn-secondary" style="padding:6px 12px;font-size:0.82rem;">📤 Subir arquivo (CSV/Excel)</button>
+              <button type="button" id="baixarModeloBtn" class="btn btn-secondary" style="padding:6px 12px;font-size:0.82rem;">📥 Baixar modelo (CSV)</button>
+            </div>
           </div>
-          <div class="hint" style="margin-bottom:6px;">Um contato por linha. <b>1ª coluna = telefone com DDD</b>; as colunas seguintes são as variáveis do template ({{1}}, {{2}}...), na ordem. Separe por <b>vírgula</b> ou cole direto de uma planilha (tab). Ex:<br><code>11999998888, João, Nicolas</code><br>💡 Baixe o modelo, preencha no Excel/Sheets e cole aqui.</div>
+          <div class="hint" style="margin-bottom:6px;">Um contato por linha. <b>1ª coluna = telefone com DDD</b>; as colunas seguintes são as variáveis do template ({{1}}, {{2}}...), na ordem. Baixe o modelo, preencha no Excel/Sheets e <b>suba o arquivo</b> (menos erro de formatação do que colar) — ou cole direto se preferir:<br><code>11999998888, João, Nicolas</code></div>
           <textarea class="textarea" id="disparoLista" rows="8" placeholder="11999998888, João, Nicolas&#10;11988887777, Maria, Nicolas" style="font-family:monospace;font-size:0.85rem;"></textarea>
           <div id="disparoResumo" class="hint" style="margin-top:6px;">—</div>
 
@@ -1046,6 +1050,62 @@ function baixarModeloDisparo() {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+// Leitor de Excel (SheetJS) carregado só quando alguém sobe um .xlsx/.xls de
+// verdade — não pesa a página pra quem nunca usa isso. O arquivo NÃO vai pro
+// Meta; só preenche a mesma lista que já funciona colando na caixa de texto.
+let _xlsxCarregando = null;
+function carregarLeitorExcel() {
+  if (window.XLSX) return Promise.resolve();
+  if (_xlsxCarregando) return _xlsxCarregando;
+  _xlsxCarregando = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Não consegui carregar o leitor de Excel.'));
+    document.head.appendChild(s);
+  });
+  return _xlsxCarregando;
+}
+document.getElementById('disparoUploadBtn').addEventListener('click', () => {
+  document.getElementById('disparoArquivoInput').click();
+});
+document.getElementById('disparoArquivoInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  const st = document.getElementById('disparoResumo');
+  if (!file) return;
+  const nomeExt = (file.name.split('.').pop() || '').toLowerCase();
+  try {
+    let linhas = [];
+    if (nomeExt === 'xlsx' || nomeExt === 'xls') {
+      st.textContent = 'Lendo arquivo…'; st.className = 'hint';
+      await carregarLeitorExcel();
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const primeira = wb.Sheets[wb.SheetNames[0]];
+      const linhasPlanilha = XLSX.utils.sheet_to_json(primeira, { header: 1, raw: false, defval: '' });
+      linhas = linhasPlanilha.map(row => row.map(c => String(c ?? '').trim()).join(','));
+    } else {
+      // CSV/TXT — texto puro, mesmo parser de sempre.
+      linhas = (await file.text()).split(/\r?\n/);
+    }
+    // Descarta a linha de cabeçalho (ex.: "telefone,variavel1,...") se a 1ª
+    // coluna dela não tiver um telefone de verdade — evita ela entrar como um
+    // "contato inválido" confuso na prévia.
+    if (linhas.length) {
+      const primeiraColuna = (linhas[0].split(/[,\t;]+/)[0] || '').replace(/\D/g, '');
+      if (primeiraColuna.length < 10) linhas = linhas.slice(1);
+    }
+    const texto = linhas.map(l => l.trim()).filter(Boolean).join('\n');
+    if (!texto) { st.textContent = '❌ Não achei nenhum contato válido nesse arquivo.'; st.className = 'status-msg err'; return; }
+    document.getElementById('disparoLista').value = texto;
+    atualizarResumoDisparo();
+  } catch (err) {
+    st.textContent = '❌ ' + (err.message || 'Não consegui ler esse arquivo.'); st.className = 'status-msg err';
+  } finally {
+    e.target.value = ''; // permite subir o mesmo arquivo de novo depois
+  }
+});
 
 async function testarTemplateDisparo() {
   const st = document.getElementById('disparoTesteStatus');
