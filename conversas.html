@@ -219,6 +219,12 @@
 const API_BASE = window.location.origin;
 const TOKEN = localStorage.getItem('recomendaleads_token');
 if (!TOKEN) window.location.href = '/login';
+// Rede de lojas: presente quando o usuário logado está preso a uma loja
+// específica (null = usuário matriz). Sem gating de tela nesta primeira etapa
+// (qualquer atendente/gestor já vê só as próprias conversas depois da Fase 2d),
+// mas o conteúdo por-oferta (Script de vendas) já precisa saber qual é a loja.
+const EMPRESA_LOGADA_CONV = JSON.parse(localStorage.getItem('recomendaleads_empresa') || 'null');
+const MEU_OFERTA_ID = (EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.ofertaId) || null;
 function icons() { try { lucide.createIcons(); } catch (e) {} }
 
 async function fetchAut(url, opts = {}) {
@@ -652,7 +658,9 @@ async function carregarScriptVendas() {
   const painel = document.getElementById('scriptPanel');
   const body = document.getElementById('scriptBody');
   try {
-    const r = await fetchAut(`${API_BASE}/minha-config`);
+    // Usuário de loja lê o script DA PRÓPRIA loja, não o compartilhado.
+    const url = MEU_OFERTA_ID ? `${API_BASE}/minha-config?oferta=${encodeURIComponent(MEU_OFERTA_ID)}` : `${API_BASE}/minha-config`;
+    const r = await fetchAut(url);
     const d = await r.json();
     const fases = (d.ok && Array.isArray(d.empresa.scriptVendas)) ? d.empresa.scriptVendas : [];
     if (!fases.length) { painel.classList.add('hidden'); return; }

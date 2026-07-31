@@ -4302,9 +4302,24 @@ app.post('/login', limiteLogin, async (req, res) => {
 
     // Nome da empresa para exibição (e compatibilidade com o painel atual).
     let nomeEmpresa = usuario.nome;
+    let ofertaNome = null;
     try {
       const empDoc = await EMPRESAS_COL().doc(usuario.empresaId).get();
-      if (empDoc.exists) nomeEmpresa = empDoc.data().nome || nomeEmpresa;
+      if (empDoc.exists) {
+        const empData = empDoc.data();
+        nomeEmpresa = empData.nome || nomeEmpresa;
+        // Rede de lojas: usuário preso a uma loja só entra se a matriz liberou o
+        // acesso daquela loja (mesma checagem que exigirLoginEmpresa faz depois
+        // em toda requisição — aqui é só pra dar um erro claro já no login).
+        if (usuario.ofertaId) {
+          const ofertasCfg = (empData.configuracao && empData.configuracao.ofertas) || {};
+          const minhaOferta = ofertasCfg[usuario.ofertaId];
+          if (!minhaOferta || !minhaOferta.acessoLiberado) {
+            return res.status(403).json({ ok: false, erro: 'O acesso da sua loja foi suspenso. Fale com a matriz.' });
+          }
+          ofertaNome = minhaOferta.nomeOferta || usuario.ofertaId;
+        }
+      }
     } catch (_) {}
 
     const token = jwt.sign(
@@ -4316,7 +4331,13 @@ app.post('/login', limiteLogin, async (req, res) => {
       ok: true,
       token,
       usuario: { nome: usuario.nome, email: usuario.email, papel: usuario.papel },
-      empresa: { id: usuario.empresaId, nome: nomeEmpresa, email: usuario.email, papel: usuario.papel, senhaProvisoria: !!usuario.senhaProvisoria }
+      empresa: {
+        id: usuario.empresaId, nome: nomeEmpresa, email: usuario.email, papel: usuario.papel,
+        senhaProvisoria: !!usuario.senhaProvisoria,
+        // Rede de lojas: presente só quando o usuário está preso a uma loja.
+        ofertaId: usuario.ofertaId || null,
+        ofertaNome
+      }
     });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -4712,7 +4733,9 @@ app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const snap = await USUARIOS_COL().where('empresaId', '==', req.empresaLogin.id).get();
     const agora = Date.now();
-    const usuarios = snap.docs.map(d => {
+    const ofertasCfg = (req.empresaLogin.configuracao && req.empresaLogin.configuracao.ofertas) || {};
+    const meuOfertaId = req.usuario && req.usuario.ofertaId;
+    let usuarios = snap.docs.map(d => {
       const u = d.data();
       const statusAtendimento = u.statusAtendimento || 'online';
       const online = !!u.telefone && statusAtendimento === 'online' && !!u.ultimaAtividadeEm
@@ -4726,9 +4749,14 @@ app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
         ativo: u.ativo !== false,
         statusAtendimento,
         online, // pro revezamento: 🟢 = participa agora do carrossel de atendimento
-        souEu: !!(req.usuario && req.usuario.id === d.id)
+        souEu: !!(req.usuario && req.usuario.id === d.id),
+        // Rede de lojas: ausente/null = usuário matriz (vê tudo).
+        ofertaId: u.ofertaId || null,
+        ofertaNome: u.ofertaId ? ((ofertasCfg[u.ofertaId] && ofertasCfg[u.ofertaId].nomeOferta) || u.ofertaId) : null
       };
     }).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    // Gestor de loja só enxerga a própria equipe, nunca a rede toda.
+    if (meuOfertaId) usuarios = usuarios.filter(u => u.ofertaId === meuOfertaId);
     res.json({ ok: true, usuarios });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -4781,7 +4809,7 @@ app.get('/minha-equipe/meu-status', exigirLoginEmpresa, async (req, res) => {
 
 app.post('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
-    const { nome, email, senha, papel, telefone, atendenteOficial } = req.body;
+    const { nome, email, senha, papel, telefone, atendenteOficial, ofertaId } = req.body;
     if (!nome || !email || !senha) {
       return res.status(400).json({ ok: false, erro: 'Informe nome, email e senha' });
     }
@@ -4794,6 +4822,21 @@ app.post('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => 
     if (!existe.empty) {
       return res.status(409).json({ ok: false, erro: 'Já existe um usuário com esse email' });
     }
+    // Rede de lojas: quem cria já preso a uma loja só pode criar dentro da
+    // própria (nunca confia no corpo); a matriz pode escolher qualquer loja
+    // válida (ou nenhuma, pra criar um usuário de nível matriz).
+    const meuOfertaId = req.usuario && req.usuario.ofertaId;
+    let ofertaIdFinal = null;
+    if (meuOfertaId) {
+      if (ofertaId !== undefined && ofertaId && ofertaId !== meuOfertaId) {
+        return res.status(403).json({ ok: false, erro: 'Você só pode criar usuários da sua própria loja.' });
+      }
+      ofertaIdFinal = meuOfertaId;
+    } else if (ofertaId) {
+      const ofertasCfg = (req.empresaLogin.configuracao && req.empresaLogin.configuracao.ofertas) || {};
+      if (!ofertasCfg[ofertaId]) return res.status(400).json({ ok: false, erro: 'Loja não encontrada.' });
+      ofertaIdFinal = ofertaId;
+    }
     const tel = String(telefone || '').replace(/\D/g, '');
     const senhaHash = await bcrypt.hash(String(senha), 10);
     const ref = await USUARIOS_COL().add({
@@ -4804,6 +4847,7 @@ app.post('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => 
       papel: papelFinal,
       telefone: tel,
       atendenteOficial: !!atendenteOficial,
+      ofertaId: ofertaIdFinal,
       senhaProvisoria: true,
       ativo: true,
       criadoEm: new Date().toISOString()
@@ -4823,11 +4867,31 @@ app.patch('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res
       return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
     }
     const alvo = doc.data();
-    const { nome, papel, novaSenha, telefone, atendenteOficial } = req.body;
+    const meuOfertaId = req.usuario && req.usuario.ofertaId;
+    // Rede de lojas: gestor de loja só mexe em usuários da própria loja — trata
+    // como "não encontrado" pros de fora, mesma resposta do mismatch de empresa.
+    if (meuOfertaId && alvo.ofertaId !== meuOfertaId) {
+      return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+    }
+    const { nome, papel, novaSenha, telefone, atendenteOficial, ofertaId } = req.body;
     const update = {};
     if (nome) update.nome = String(nome).trim();
     if (telefone !== undefined) update.telefone = String(telefone || '').replace(/\D/g, '');
     if (atendenteOficial !== undefined) update.atendenteOficial = !!atendenteOficial;
+    if (ofertaId !== undefined) {
+      if (meuOfertaId) {
+        if (ofertaId && ofertaId !== meuOfertaId) {
+          return res.status(403).json({ ok: false, erro: 'Você só pode gerenciar usuários da sua própria loja.' });
+        }
+        update.ofertaId = meuOfertaId;
+      } else if (!ofertaId) {
+        update.ofertaId = null;
+      } else {
+        const ofertasCfg = (req.empresaLogin.configuracao && req.empresaLogin.configuracao.ofertas) || {};
+        if (!ofertasCfg[ofertaId]) return res.status(400).json({ ok: false, erro: 'Loja não encontrada.' });
+        update.ofertaId = ofertaId;
+      }
+    }
     if (papel === 'gestor' || papel === 'atendente') {
       // Não permitir rebaixar o último gestor da empresa.
       if (alvo.papel === 'gestor' && papel !== 'gestor' && (await contarGestoresAtivos(req.empresaLogin.id)) <= 1) {
@@ -4963,6 +5027,10 @@ app.delete('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, re
     if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
       return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
     }
+    const meuOfertaIdDel = req.usuario && req.usuario.ofertaId;
+    if (meuOfertaIdDel && doc.data().ofertaId !== meuOfertaIdDel) {
+      return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
+    }
     if (doc.data().papel === 'gestor' && (await contarGestoresAtivos(req.empresaLogin.id)) <= 1) {
       return res.status(409).json({ ok: false, erro: 'A empresa precisa de ao menos um gestor.' });
     }
@@ -5013,6 +5081,17 @@ async function exigirLoginEmpresa(req, res, next) {
       }
       req.usuario = { id: u.id, ...dadosU };
       req.papel = dadosU.papel || req.papel;
+      // Rede de lojas: usuário preso a uma oferta (loja) só entra se a matriz
+      // liberou o acesso daquela loja especificamente (configuracao.ofertas[id]
+      // .acessoLiberado — diferente do ofertasHabilitado, que é o admin da
+      // RecomendaLeads liberando a função pra empresa toda).
+      if (req.usuario.ofertaId) {
+        const ofertasCfg = (req.empresaLogin.configuracao && req.empresaLogin.configuracao.ofertas) || {};
+        const minhaOferta = ofertasCfg[req.usuario.ofertaId];
+        if (!minhaOferta || !minhaOferta.acessoLiberado) {
+          return res.status(401).json({ ok: false, erro: 'O acesso da sua loja foi suspenso. Fale com a matriz.' });
+        }
+      }
     }
     next();
   } catch (err) {
@@ -5047,7 +5126,34 @@ function exigirOfertasHabilitado(req, res, next) {
   next();
 }
 
-app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
+// Rede de lojas: trava o acesso a uma oferta específica quando o usuário
+// logado está preso a uma loja (req.usuario.ofertaId). Usuário matriz
+// (ofertaId null/ausente) não é bloqueado — comportamento de hoje, inalterado.
+// O alvo pode vir de :id (rota) ou ?oferta= (query, usado por /minha-config).
+function exigirEscopoOferta(req, res, next) {
+  const meuOfertaId = req.usuario && req.usuario.ofertaId;
+  if (!meuOfertaId) return next();
+  const alvoId = (req.params && req.params.id) || (req.query && req.query.oferta) || null;
+  // Exige presença E igualdade — um usuário de loja chamando /minha-config SEM
+  // ?oferta= (ex.: direto na API, pulando o app) não pode cair na config
+  // compartilhada só porque "não mandou nada pra comparar".
+  if (alvoId !== meuOfertaId) {
+    return res.status(403).json({ ok: false, erro: 'Você só tem acesso à sua própria loja.' });
+  }
+  next();
+}
+
+// Rede de lojas: só usuário SEM ofertaId (o nível "matriz" dentro da empresa) —
+// pra ações que afetam a rede toda (criar/remover loja). Não confundir com
+// exigirMatriz, que é outra coisa (hardcoded pra conta PDN).
+function exigirUsuarioSemOferta(req, res, next) {
+  if (req.usuario && req.usuario.ofertaId) {
+    return res.status(403).json({ ok: false, erro: 'Ação disponível apenas para o usuário da matriz.' });
+  }
+  next();
+}
+
+app.get('/minha-config', exigirLoginEmpresa, exigirEscopoOferta, async (req, res) => {
   try {
     // Mescla com os padrões pra o painel mostrar todos os textos preenchidos
     // (campos não personalizados vêm com o texto padrão, pronto pra editar).
@@ -5077,7 +5183,7 @@ app.get('/minha-config', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
-app.post('/minha-config', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-config', exigirLoginEmpresa, exigirGestor, exigirEscopoOferta, async (req, res) => {
   try {
     const configuracaoAtual = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
     const ofertaId = req.query && req.query.oferta;
@@ -5277,10 +5383,12 @@ app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilit
       };
       await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
     }
-    const lista = Object.entries(config.ofertas).map(([id, o]) => ({
+    let lista = Object.entries(config.ofertas).map(([id, o]) => ({
       id, nome: o.nomeOferta || id, ativa: !!o.ativa, criadoEm: o.criadoEm || null,
-      padrao: id === config.ofertaAtivaPadrao
+      padrao: id === config.ofertaAtivaPadrao, acessoLiberado: !!o.acessoLiberado
     })).sort((a, b) => (a.criadoEm || '').localeCompare(b.criadoEm || ''));
+    // Rede de lojas: gestor de loja só enxerga a própria — nunca a lista da rede toda.
+    if (req.usuario && req.usuario.ofertaId) lista = lista.filter(o => o.id === req.usuario.ofertaId);
     res.json({ ok: true, ofertas: lista });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -5289,7 +5397,7 @@ app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilit
 
 // Cria uma oferta nova, vazia (defaults de fábrica do EMPRESA_PADRAO — não copia
 // nada de nenhuma oferta existente). Não mexe em qual é a `ofertaAtivaPadrao`.
-app.post('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
+app.post('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const nome = String((req.body && req.body.nome) || '').trim();
     if (!nome) return res.status(400).json({ ok: false, erro: 'Informe o nome da oferta.' });
@@ -5310,14 +5418,23 @@ app.post('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabili
 // Renomear / ativar / desativar uma oferta. A oferta conectada ao WhatsApp
 // (`ofertaAtivaPadrao`) nunca pode ser desativada nesta fase — reatribuir qual
 // oferta fica "ao vivo" é trabalho da Fase 2 (roteamento).
-app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
+app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, exigirEscopoOferta, async (req, res) => {
   try {
     const id = req.params.id;
     const config = req.empresaLogin.configuracao || {};
     const ofertas = config.ofertas || {};
     if (!ofertas[id]) return res.status(404).json({ ok: false, erro: 'Oferta não encontrada.' });
-    const { nome, ativa } = req.body || {};
+    const { nome, ativa, acessoLiberado } = req.body || {};
     const atualizacoes = {};
+    // Rede de lojas: só a matriz (sem ofertaId) pode liberar/suspender o acesso
+    // de uma loja — mesmo que exigirEscopoOferta deixe o gestor da própria loja
+    // renomear/ativar a si mesmo, esse campo é exclusivo da matriz.
+    if (acessoLiberado !== undefined) {
+      if (req.usuario && req.usuario.ofertaId) {
+        return res.status(403).json({ ok: false, erro: 'Só a matriz pode liberar/suspender o acesso de uma loja.' });
+      }
+      atualizacoes.acessoLiberado = !!acessoLiberado;
+    }
     if (nome !== undefined) {
       const nomeLimpo = String(nome).trim();
       if (!nomeLimpo) return res.status(400).json({ ok: false, erro: 'Informe o nome da oferta.' });
@@ -5339,7 +5456,7 @@ app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasH
     ofertas[id] = { ...ofertas[id], ...atualizacoes };
     config.ofertas = ofertas;
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
-    res.json({ ok: true, oferta: { id, nome: ofertas[id].nomeOferta, ativa: !!ofertas[id].ativa, criadoEm: ofertas[id].criadoEm, padrao: id === config.ofertaAtivaPadrao } });
+    res.json({ ok: true, oferta: { id, nome: ofertas[id].nomeOferta, ativa: !!ofertas[id].ativa, criadoEm: ofertas[id].criadoEm, padrao: id === config.ofertaAtivaPadrao, acessoLiberado: !!ofertas[id].acessoLiberado } });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -5347,7 +5464,7 @@ app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasH
 
 // Remove uma oferta. Bloqueado se for a única, ou se for a `ofertaAtivaPadrao`
 // (a conectada ao WhatsApp — nunca pode sumir nesta fase).
-app.delete('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
+app.delete('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const id = req.params.id;
     const config = req.empresaLogin.configuracao || {};
@@ -5371,7 +5488,7 @@ app.delete('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertas
 });
 
 // Config mesclada de uma oferta específica (mesmo padrão do getEmpresaById, escopado).
-app.get('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
+app.get('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, exigirEscopoOferta, async (req, res) => {
   try {
     const id = req.params.id;
     const config = req.empresaLogin.configuracao || {};
@@ -5386,7 +5503,7 @@ app.get('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, exigirOfe
 // Salva campos "produto" dentro de uma oferta. Se for a `ofertaAtivaPadrao`,
 // espelha os mesmos campos na config de topo — é o que getEmpresaById lê pro
 // robô ao vivo, então sem esse espelho a edição não teria efeito nenhum até a Fase 2.
-app.post('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, async (req, res) => {
+app.post('/minha-ofertas/:id/config', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, exigirEscopoOferta, async (req, res) => {
   try {
     const id = req.params.id;
     const config = req.empresaLogin.configuracao || {};
@@ -5646,7 +5763,7 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) =
 // O cliente cria o app/WABA na Meta, cola aqui o Phone Number ID + token
 // permanente + um verify token (que ele escolhe). A URL de webhook oficial
 // (única por empresa) é mostrada pra ele configurar no app da Meta.
-app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const { oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado,
       oficialTemplateInsistencia, oficialTemplateFollowupCliente, oficialTemplateConvite } = req.body;
@@ -6043,7 +6160,7 @@ app.post('/minha-conversas/:telefone/resetar', exigirLoginEmpresa, exigirGestor,
   }
 });
 
-app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOferta, async (req, res) => {
   try {
     const { quantidade, novaQuantidade, arquivo, link, texto, premio, ativa } = req.body;
     const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
@@ -7129,7 +7246,7 @@ app.get('/minha-saldo', exigirLoginEmpresa, async (req, res) => {
 // Roda em BACKGROUND (não trava o HTTP). Cada envio passa pelo sendTemplate, que
 // cobra do pré-pago e BLOQUEIA quando o saldo acaba. Progresso via /status.
 const _disparoStatus = {};
-app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresa = await getEmpresaById(req.empresaLogin.id);
     if (empresa.whatsappTipo !== 'oficial') {

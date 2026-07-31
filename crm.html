@@ -1203,6 +1203,9 @@ document.getElementById('empresaLogadaNome').textContent = empresaLogada ? empre
 // edita configurações — escondemos a aba Configurações.
 const PAPEL = (empresaLogada && empresaLogada.papel) || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
+// Rede de lojas: presente quando o usuário logado está preso a uma loja
+// específica (null = usuário matriz, vê/edita a rede toda).
+const MEU_OFERTA_ID = (empresaLogada && empresaLogada.ofertaId) || null;
 if (!EH_GESTOR) {
   const cfgTab = document.querySelector('.tab-btn[data-tab="config"]');
   if (cfgTab) cfgTab.style.display = 'none';
@@ -1225,7 +1228,9 @@ document.getElementById('sairBtn').addEventListener('click', () => {
 const OFERTA_CHAVE_LS = 'recomendaleads_oferta_ativa';
 const OFERTA_URL_ID = new URLSearchParams(location.search).get('oferta') || null;
 if (OFERTA_URL_ID) { try { localStorage.setItem(OFERTA_CHAVE_LS, OFERTA_URL_ID); } catch (e) {} }
-const OFERTA_QUERY_ID = OFERTA_URL_ID || (() => { try { return localStorage.getItem(OFERTA_CHAVE_LS); } catch (e) { return null; } })();
+// Usuário preso a uma loja não escolhe nada — MEU_OFERTA_ID sempre manda,
+// ignorando qualquer URL/localStorage de oferta "escolhida".
+const OFERTA_QUERY_ID = MEU_OFERTA_ID || OFERTA_URL_ID || (() => { try { return localStorage.getItem(OFERTA_CHAVE_LS); } catch (e) { return null; } })();
 async function fetchAutenticado(url, options = {}) {
   const { semOferta, ...opts } = options;
   let finalUrl = url;
@@ -1324,10 +1329,12 @@ async function carregarLeads() {
   try {
     const [respLeads, respConfig, respCli, respConv] = await Promise.all([
       fetchAutenticado(`${API_BASE}/minha-leads`),
-      // Kanban/board sempre usa as etapas da oferta PADRÃO (semOferta: true) —
-      // os leads ainda não são vinculados a oferta nenhuma (isso é a Fase 2), então
-      // seguir o seletor aqui faria os cartões sumirem/quebrarem ao trocar de oferta.
-      fetchAutenticado(`${API_BASE}/minha-config`, { semOferta: true }),
+      // Kanban/board: pra matriz, sempre usa as etapas da oferta PADRÃO
+      // (semOferta: true) — os leads ainda não são todos vinculados a oferta
+      // (Fase 2 em andamento), então seguir o seletor faria os cartões sumirem/
+      // quebrarem ao trocar de oferta só de navegar. Pra usuário de loja (preso
+      // à própria oferta), usa as etapas da PRÓPRIA loja — é o Kanban dele.
+      fetchAutenticado(`${API_BASE}/minha-config`, { semOferta: !MEU_OFERTA_ID }),
       fetchAutenticado(`${API_BASE}/minha-clientes-pipeline`),
       fetchAutenticado(`${API_BASE}/minha-conversas`)
     ]);
@@ -3088,8 +3095,10 @@ async function carregarBadgeOferta() {
     badge.title = oferta.padrao
       ? 'Editando a oferta conectada ao WhatsApp agora.'
       : 'Editando esta oferta — ainda não conectada ao WhatsApp.';
-    badge.innerHTML = `<span>${oferta.padrao ? '🟢' : '✏️'} ${esc(oferta.nome)}</span>` +
+    // Usuário preso a uma loja não tem como "sair" — está sempre na própria.
+    const btnSairHtml = MEU_OFERTA_ID ? '' :
       `<button type="button" id="sairOfertaBtn" title="Sair desta oferta (voltar ao normal)" style="background:none;border:none;cursor:pointer;font-weight:800;font-size:0.9rem;line-height:1;color:inherit;padding:0;">✕</button>`;
+    badge.innerHTML = `<span>${oferta.padrao ? '🟢' : '✏️'} ${esc(oferta.nome)}</span>` + btnSairHtml;
     const sairBtn = document.getElementById('sairOfertaBtn');
     if (sairBtn) sairBtn.addEventListener('click', () => {
       try { localStorage.removeItem(OFERTA_CHAVE_LS); } catch (e) {}
