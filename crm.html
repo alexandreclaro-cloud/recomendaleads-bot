@@ -2527,12 +2527,23 @@ function renderCadencia(cadencia) {
   }
 
   cadenciaAtual.forEach((item, index) => {
+    // Valor + unidade (minutos/horas/dias) em vez de só minutos cru — mesmo
+    // padrão já usado em "Avisar os amigos" e "Chamar de novo" nesta mesma tela,
+    // pra evitar confundir "168" pensando que é horas quando o campo é minutos.
+    const u = minParaUnidade(item.esperaMin);
     const linha = document.createElement('div');
     linha.style.cssText = 'display:flex; gap:10px; align-items:flex-start; margin-bottom:12px; padding:12px; background:var(--surface-sunken); border:1px solid var(--border); border-radius:8px;';
     linha.innerHTML = `
-      <div style="flex:0 0 110px;">
-        <label style="margin-top:0;">Esperar (min)</label>
-        <input type="text" data-cadencia-campo="esperaMin" data-index="${index}" value="${item.esperaMin}" style="width:100%;">
+      <div style="flex:0 0 170px;">
+        <label style="margin-top:0;">Esperar</label>
+        <div style="display:flex;gap:6px;">
+          <input type="number" min="0" data-cadencia-campo="valor" data-index="${index}" value="${u.valor}" style="width:72px;">
+          <select data-cadencia-campo="unidade" data-index="${index}" style="flex:1;">
+            <option value="minutos"${u.unidade === 'minutos' ? ' selected' : ''}>minutos</option>
+            <option value="horas"${u.unidade === 'horas' ? ' selected' : ''}>horas</option>
+            <option value="dias"${u.unidade === 'dias' ? ' selected' : ''}>dias</option>
+          </select>
+        </div>
       </div>
       <div style="flex:1;">
         <label style="margin-top:0;">Mensagem ${index + 1}</label>
@@ -2543,11 +2554,20 @@ function renderCadencia(cadencia) {
     container.appendChild(linha);
   });
 
-  container.querySelectorAll('[data-cadencia-campo]').forEach(input => {
+  const sincronizarEspera = (idx) => {
+    const valEl = container.querySelector(`[data-cadencia-campo="valor"][data-index="${idx}"]`);
+    const uniEl = container.querySelector(`[data-cadencia-campo="unidade"][data-index="${idx}"]`);
+    if (!valEl || !uniEl) return;
+    const min = unidadeParaMin(valEl.value, uniEl.value);
+    if (min != null) cadenciaAtual[idx].esperaMin = min;
+  };
+  container.querySelectorAll('[data-cadencia-campo="valor"], [data-cadencia-campo="unidade"]').forEach(input => {
+    input.addEventListener('input', () => sincronizarEspera(parseInt(input.dataset.index)));
+    input.addEventListener('change', () => sincronizarEspera(parseInt(input.dataset.index)));
+  });
+  container.querySelectorAll('[data-cadencia-campo="texto"]').forEach(input => {
     input.addEventListener('input', () => {
-      const idx = parseInt(input.dataset.index);
-      const campo = input.dataset.cadenciaCampo;
-      cadenciaAtual[idx][campo] = campo === 'esperaMin' ? (parseInt(input.value) || 0) : input.value;
+      cadenciaAtual[parseInt(input.dataset.index)].texto = input.value;
     });
   });
 
