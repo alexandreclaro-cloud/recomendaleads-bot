@@ -1138,12 +1138,6 @@
 
             <div id="cadenciaClienteContainer"></div>
 
-            <div id="oficialTemplateClienteInicialBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
-              <label style="margin-top:0;">🟢 Template padrão da cadência</label>
-              <input type="text" id="oficialTemplateClienteInicialInput" placeholder="ex: cliente_sem_resposta">
-              <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Usado nas mensagens acima que não tiverem um "Template desta mensagem" próprio preenchido. Nesta etapa o robô ainda não sabe o nome do cliente — use um template com no máximo {{1}}=nome da empresa. Deixe <b>vazio</b> pra não insistir fora da janela.</div>
-            </div>
-
             <div class="config-row-save">
               <button class="config-save-btn" id="adicionarFollowupClienteBtn" style="background:transparent; border:1px solid var(--gold); color:var(--gold-deep);">+ Adicionar mensagem</button>
             </div>
@@ -1159,12 +1153,6 @@
             </p>
 
             <div id="cadenciaContainer"></div>
-
-            <div id="oficialTemplateInsistenciaBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
-              <label style="margin-top:0;">🟢 Template padrão da cadência</label>
-              <input type="text" id="oficialTemplateInsistenciaInput" placeholder="ex: recomenda_insistencia">
-              <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Usado nas mensagens acima que não tiverem um "Template desta mensagem" próprio preenchido. Se o amigo não respondeu e já passou de 24h, texto livre não entrega — o robô usa o template. Deixe <b>vazio</b> pra não insistir fora da janela.</div>
-            </div>
 
             <div class="config-row-save">
               <button class="config-save-btn" id="adicionarFollowupBtn" style="background:transparent; border:1px solid var(--gold); color:var(--gold-deep);">+ Adicionar mensagem</button>
@@ -2078,12 +2066,6 @@ async function carregarConfiguracao() {
     if (tplRecEl) tplRecEl.value = configuracaoAtual.oficialTemplateRecomendado || '';
     const tplRecBox = document.getElementById('oficialTemplateRecomendadoBox');
     if (tplRecBox) tplRecBox.style.display = (configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
-    const tplInsEl = document.getElementById('oficialTemplateInsistenciaInput');
-    if (tplInsEl) tplInsEl.value = configuracaoAtual.oficialTemplateInsistencia || '';
-    // Visibilidade das caixas oficialTemplateInsistenciaBox/oficialTemplateClienteInicialBox
-    // é decidida por renderCadenciaGenerica (só aparecem com pelo menos 1 mensagem).
-    const tplCliEl = document.getElementById('oficialTemplateClienteInicialInput');
-    if (tplCliEl) tplCliEl.value = configuracaoAtual.oficialTemplateClienteInicial || '';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
     document.getElementById('mensagemPedeNomeInput').value = configuracaoAtual.mensagemPedeNome || '';
@@ -2559,16 +2541,11 @@ let cadenciaClienteAtual = [];
 // Genérica: renderiza uma cadência de follow-up (valor+unidade minutos/horas/dias)
 // dentro de `containerId`. `onChange` recebe o array atual sempre que ele muda,
 // pra quem chamou guardar a referência certa (cadenciaAtual ou cadenciaClienteAtual).
-function renderCadenciaGenerica(containerId, boxId, cadencia, onChange) {
+function renderCadenciaGenerica(containerId, cadencia, onChange) {
   const atual = cadencia.map(item => ({ ...item }));
   onChange(atual);
   const container = document.getElementById(containerId);
   container.innerHTML = '';
-
-  // O template padrão da cadência só faz sentido se existir ao menos 1 mensagem
-  // pra usar ele — some da tela até você adicionar a primeira.
-  const box = document.getElementById(boxId);
-  if (box) box.style.display = (atual.length > 0 && configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
 
   if (atual.length === 0) {
     container.innerHTML = '<p style="font-size:0.82rem; color:var(--text-dim);">Nenhuma mensagem de follow-up configurada ainda.</p>';
@@ -2597,8 +2574,11 @@ function renderCadenciaGenerica(containerId, boxId, cadencia, onChange) {
       <div style="flex:1;">
         <label style="margin-top:0;">Mensagem ${index + 1} <span style="font-weight:400;color:var(--text-dim);">(texto livre — só é usado se NÃO houver template preenchido abaixo)</span></label>
         <input type="text" data-cadencia-campo="texto" data-index="${index}" value="${(item.texto || '').replace(/"/g, '&quot;')}" placeholder="Mensagem enviada como texto livre (dentro da janela de 24h)">
-        <label style="margin-top:8px;font-size:0.78rem;">Template desta mensagem <span style="font-weight:400;color:var(--text-dim);">(opcional — vazio usa o template padrão da cadência, lá embaixo)</span></label>
-        <input type="text" data-cadencia-campo="template" data-index="${index}" value="${(item.template || '').replace(/"/g, '&quot;')}" placeholder="ex: recomenda_insistencia_2">
+        <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 12px;margin-top:8px;">
+          <label style="margin-top:0;font-size:0.8rem;">🟢 Template da API Oficial desta mensagem</label>
+          <input type="text" data-cadencia-campo="template" data-index="${index}" value="${(item.template || '').replace(/"/g, '&quot;')}" placeholder="ex: recomenda_insistencia_2">
+          <div class="hint" style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">Nome exato do template aprovado na Meta. Vazio = essa mensagem só entrega como texto livre (dentro da janela de 24h).</div>
+        </div>
       </div>
       <button type="button" data-remover-index="${index}" style="margin-top:24px; background:transparent; border:1px solid var(--error); color:var(--error); border-radius:8px; padding:8px 12px; cursor:pointer; font-size:0.8rem;">Remover</button>
     `;
@@ -2631,16 +2611,16 @@ function renderCadenciaGenerica(containerId, boxId, cadencia, onChange) {
     btnRemover.addEventListener('click', () => {
       const idx = parseInt(btnRemover.dataset.removerIndex);
       atual.splice(idx, 1);
-      renderCadenciaGenerica(containerId, boxId, atual, onChange);
+      renderCadenciaGenerica(containerId, atual, onChange);
     });
   });
 }
 
 function renderCadencia(cadencia) {
-  renderCadenciaGenerica('cadenciaContainer', 'oficialTemplateInsistenciaBox', cadencia, arr => { cadenciaAtual = arr; });
+  renderCadenciaGenerica('cadenciaContainer', cadencia, arr => { cadenciaAtual = arr; });
 }
 function renderCadenciaCliente(cadencia) {
-  renderCadenciaGenerica('cadenciaClienteContainer', 'oficialTemplateClienteInicialBox', cadencia, arr => { cadenciaClienteAtual = arr; });
+  renderCadenciaGenerica('cadenciaClienteContainer', cadencia, arr => { cadenciaClienteAtual = arr; });
 }
 
 document.getElementById('adicionarFollowupBtn').addEventListener('click', () => {
@@ -2687,10 +2667,12 @@ document.getElementById('salvarCadenciaBtn').addEventListener('click', async () 
   statusEl.className = 'config-status-msg';
 
   try {
-    const tplInsEl = document.getElementById('oficialTemplateInsistenciaInput');
+    // oficialTemplateInsistencia (template "padrão da cadência") foi removido da
+    // tela — cada mensagem já tem o próprio template. Manda vazio pra também
+    // limpar qualquer valor antigo que tenha ficado salvo desse campo.
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ cadenciaFollowupRecomendado: cadenciaAtual, oficialTemplateInsistencia: tplInsEl ? tplInsEl.value.trim() : '' })
+      body: JSON.stringify({ cadenciaFollowupRecomendado: cadenciaAtual, oficialTemplateInsistencia: '' })
     });
     const data = await resp.json();
 
@@ -2720,10 +2702,12 @@ document.getElementById('salvarCadenciaClienteBtn').addEventListener('click', as
   statusEl.className = 'config-status-msg';
 
   try {
-    const tplCliEl = document.getElementById('oficialTemplateClienteInicialInput');
+    // oficialTemplateClienteInicial (template "padrão da cadência") foi removido
+    // da tela — cada mensagem já tem o próprio template. Manda vazio pra também
+    // limpar qualquer valor antigo que tenha ficado salvo desse campo.
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ cadenciaFollowupClienteInicial: cadenciaClienteAtual, oficialTemplateClienteInicial: tplCliEl ? tplCliEl.value.trim() : '' })
+      body: JSON.stringify({ cadenciaFollowupClienteInicial: cadenciaClienteAtual, oficialTemplateClienteInicial: '' })
     });
     const data = await resp.json();
 

@@ -7651,10 +7651,9 @@ async function processarAgendamentoInterno(agendamento) {
       empresa: empresa.nome
     };
     // Insistência com o amigo (recomendado) — pode cair FORA da janela de 24h, então
-    // no oficial usa template. Cada mensagem pode ter o seu próprio (proximo.template);
-    // vazio usa o padrão da cadência (oficialTemplateInsistencia). {{1}} nome do
-    // recomendado, {{2}} quem recomendou, {{3}} vendedor.
-    const templateEscolhido = (proximo.template && String(proximo.template).trim()) || empresa.oficialTemplateInsistencia;
+    // no oficial usa o template desta mensagem (cada uma tem o seu, sem padrão
+    // compartilhado). {{1}} nome do recomendado, {{2}} quem recomendou, {{3}} vendedor.
+    const templateEscolhido = proximo.template && String(proximo.template).trim();
     // Sem texto E sem template = mensagem em branco (linha adicionada mas nunca
     // preenchida) — não manda nada em branco, só avança pra próxima da cadência.
     if ((proximo.texto || '').trim() || templateEscolhido) {
@@ -7694,10 +7693,9 @@ async function processarAgendamentoInterno(agendamento) {
     if (!proximo) return;
 
     // O nome do cliente ainda não é conhecido nesta etapa — só {empresa} disponível.
-    // Cada mensagem pode ter o seu próprio template (proximo.template); vazio usa
-    // o padrão da cadência (oficialTemplateClienteInicial).
+    // Cada mensagem tem o seu próprio template, sem padrão compartilhado.
     const variaveisFollowup = { empresa: empresa.nome };
-    const templateEscolhido = (proximo.template && String(proximo.template).trim()) || empresa.oficialTemplateClienteInicial;
+    const templateEscolhido = proximo.template && String(proximo.template).trim();
     // Sem texto E sem template = mensagem em branco (linha adicionada mas nunca
     // preenchida) — não manda nada em branco, só avança pra próxima da cadência.
     if ((proximo.texto || '').trim() || templateEscolhido) {
