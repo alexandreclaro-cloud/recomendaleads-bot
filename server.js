@@ -7655,12 +7655,18 @@ async function processarAgendamentoInterno(agendamento) {
     // vazio usa o padrão da cadência (oficialTemplateInsistencia). {{1}} nome do
     // recomendado, {{2}} quem recomendou, {{3}} vendedor.
     const templateEscolhido = (proximo.template && String(proximo.template).trim()) || empresa.oficialTemplateInsistencia;
-    await sendTextOuTemplate(
-      telefone,
-      substituirVariaveis(proximo.texto, variaveisFollowup),
-      templateEscolhido,
-      [variaveisFollowup.nomeRecomendado, variaveisFollowup.recomendador, variaveisFollowup.vendedor]
-    );
+    // Sem texto E sem template = mensagem em branco (linha adicionada mas nunca
+    // preenchida) — não manda nada em branco, só avança pra próxima da cadência.
+    if ((proximo.texto || '').trim() || templateEscolhido) {
+      await sendTextOuTemplate(
+        telefone,
+        substituirVariaveis(proximo.texto, variaveisFollowup),
+        templateEscolhido,
+        [variaveisFollowup.nomeRecomendado, variaveisFollowup.recomendador, variaveisFollowup.vendedor]
+      );
+    } else {
+      console.log(`[FOLLOWUP RECOMENDADO] mensagem ${indiceFollowup} vazia (sem texto e sem template) — pulando envio`);
+    }
     const novaMarca = new Date().toISOString();
     await saveSessaoRecomendado(telefone, { ultimaMensagemEm: novaMarca });
     await agendarProximoFollowup(telefone, empresa, novaMarca, indiceFollowup + 1);
@@ -7692,12 +7698,18 @@ async function processarAgendamentoInterno(agendamento) {
     // o padrão da cadência (oficialTemplateClienteInicial).
     const variaveisFollowup = { empresa: empresa.nome };
     const templateEscolhido = (proximo.template && String(proximo.template).trim()) || empresa.oficialTemplateClienteInicial;
-    await sendTextOuTemplate(
-      telefone,
-      substituirVariaveis(proximo.texto, variaveisFollowup),
-      templateEscolhido,
-      [variaveisFollowup.empresa]
-    );
+    // Sem texto E sem template = mensagem em branco (linha adicionada mas nunca
+    // preenchida) — não manda nada em branco, só avança pra próxima da cadência.
+    if ((proximo.texto || '').trim() || templateEscolhido) {
+      await sendTextOuTemplate(
+        telefone,
+        substituirVariaveis(proximo.texto, variaveisFollowup),
+        templateEscolhido,
+        [variaveisFollowup.empresa]
+      );
+    } else {
+      console.log(`[FOLLOWUP CLIENTE] mensagem ${indiceFollowup} vazia (sem texto e sem template) — pulando envio`);
+    }
     // criadoEm não muda enquanto a etapa continuar aguardando_nome — reusa a
     // mesma referência pro próximo passo (diferente do lado Recomendado).
     await agendarProximoFollowupCliente(telefone, empresa, sessaoAtual.criadoEm, indiceFollowup + 1);
