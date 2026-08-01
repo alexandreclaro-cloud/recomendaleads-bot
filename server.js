@@ -7651,12 +7651,14 @@ async function processarAgendamentoInterno(agendamento) {
       empresa: empresa.nome
     };
     // Insistência com o amigo (recomendado) — pode cair FORA da janela de 24h, então
-    // no oficial usa o template configurado (se houver). {{1}} nome do recomendado,
-    // {{2}} quem recomendou, {{3}} vendedor.
+    // no oficial usa template. Cada mensagem pode ter o seu próprio (proximo.template);
+    // vazio usa o padrão da cadência (oficialTemplateInsistencia). {{1}} nome do
+    // recomendado, {{2}} quem recomendou, {{3}} vendedor.
+    const templateEscolhido = (proximo.template && String(proximo.template).trim()) || empresa.oficialTemplateInsistencia;
     await sendTextOuTemplate(
       telefone,
       substituirVariaveis(proximo.texto, variaveisFollowup),
-      empresa.oficialTemplateInsistencia,
+      templateEscolhido,
       [variaveisFollowup.nomeRecomendado, variaveisFollowup.recomendador, variaveisFollowup.vendedor]
     );
     const novaMarca = new Date().toISOString();
@@ -7686,11 +7688,14 @@ async function processarAgendamentoInterno(agendamento) {
     if (!proximo) return;
 
     // O nome do cliente ainda não é conhecido nesta etapa — só {empresa} disponível.
+    // Cada mensagem pode ter o seu próprio template (proximo.template); vazio usa
+    // o padrão da cadência (oficialTemplateClienteInicial).
     const variaveisFollowup = { empresa: empresa.nome };
+    const templateEscolhido = (proximo.template && String(proximo.template).trim()) || empresa.oficialTemplateClienteInicial;
     await sendTextOuTemplate(
       telefone,
       substituirVariaveis(proximo.texto, variaveisFollowup),
-      empresa.oficialTemplateClienteInicial,
+      templateEscolhido,
       [variaveisFollowup.empresa]
     );
     // criadoEm não muda enquanto a etapa continuar aguardando_nome — reusa a

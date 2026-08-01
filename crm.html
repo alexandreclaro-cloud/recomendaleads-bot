@@ -1119,8 +1119,11 @@
       <div class="subtab-panel" id="subtabCadencia">
         <div class="config-card">
           <h2>Follow-up — Sem resposta</h2>
-          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 14px;">
-            Mensagens automáticas via API Oficial pra quem ainda não respondeu e está fora da janela grátis de 24h. Você pode adicionar quantas mensagens quiser em cada cadência.
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
+            Mensagens automáticas via API Oficial pra quem ainda não respondeu e está fora da janela grátis de 24h. Você pode adicionar quantas mensagens quiser em cada cadência, e cada uma pode usar um template diferente.
+          </p>
+          <p style="font-size:0.78rem; color:var(--text-dim); margin:0 0 14px; background:var(--surface-sunken); border-radius:8px; padding:8px 10px;">
+            ⚠️ Quando a mensagem usa um <b>template</b>, o texto que chega no WhatsApp da pessoa é o conteúdo <b>aprovado pela Meta</b> — não o texto digitado aqui. Pra mudar o que o template diz, edite/crie o template no <b>WhatsApp Manager</b> (Meta Business Suite). O campo "Mensagem" abaixo só vale quando NÃO tem template (texto livre, entrega só dentro da janela de 24h).
           </p>
 
           <div style="display:flex; gap:8px; margin-bottom:16px;">
@@ -1136,9 +1139,9 @@
             <div id="cadenciaClienteContainer"></div>
 
             <div id="oficialTemplateClienteInicialBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
-              <label style="margin-top:0;">🟢 Template da API Oficial — cliente sem resposta</label>
+              <label style="margin-top:0;">🟢 Template padrão da cadência</label>
               <input type="text" id="oficialTemplateClienteInicialInput" placeholder="ex: cliente_sem_resposta">
-              <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Nesta etapa o robô ainda não sabe o nome do cliente — use um template com no máximo {{1}}=nome da empresa. Deixe <b>vazio</b> pra não insistir fora da janela.</div>
+              <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Usado nas mensagens acima que não tiverem um "Template desta mensagem" próprio preenchido. Nesta etapa o robô ainda não sabe o nome do cliente — use um template com no máximo {{1}}=nome da empresa. Deixe <b>vazio</b> pra não insistir fora da janela.</div>
             </div>
 
             <div class="config-row-save">
@@ -1158,9 +1161,9 @@
             <div id="cadenciaContainer"></div>
 
             <div id="oficialTemplateInsistenciaBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
-              <label style="margin-top:0;">🟢 Template da API Oficial — insistência (fora da janela de 24h)</label>
+              <label style="margin-top:0;">🟢 Template padrão da cadência</label>
               <input type="text" id="oficialTemplateInsistenciaInput" placeholder="ex: recomenda_insistencia">
-              <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Se o amigo não respondeu e já passou de 24h, texto livre não entrega — o robô usa este template. Deixe <b>vazio</b> pra não insistir fora da janela.</div>
+              <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Usado nas mensagens acima que não tiverem um "Template desta mensagem" próprio preenchido. Se o amigo não respondeu e já passou de 24h, texto livre não entrega — o robô usa o template. Deixe <b>vazio</b> pra não insistir fora da janela.</div>
             </div>
 
             <div class="config-row-save">
@@ -2589,8 +2592,10 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
         </div>
       </div>
       <div style="flex:1;">
-        <label style="margin-top:0;">Mensagem ${index + 1}</label>
-        <input type="text" data-cadencia-campo="texto" data-index="${index}" value="${(item.texto || '').replace(/"/g, '&quot;')}">
+        <label style="margin-top:0;">Mensagem ${index + 1} <span style="font-weight:400;color:var(--text-dim);">(texto livre — só é usado se NÃO houver template preenchido abaixo)</span></label>
+        <input type="text" data-cadencia-campo="texto" data-index="${index}" value="${(item.texto || '').replace(/"/g, '&quot;')}" placeholder="Mensagem enviada como texto livre (dentro da janela de 24h)">
+        <label style="margin-top:8px;font-size:0.78rem;">Template desta mensagem <span style="font-weight:400;color:var(--text-dim);">(opcional — vazio usa o template padrão da cadência, lá embaixo)</span></label>
+        <input type="text" data-cadencia-campo="template" data-index="${index}" value="${(item.template || '').replace(/"/g, '&quot;')}" placeholder="ex: recomenda_insistencia_2">
       </div>
       <button type="button" data-remover-index="${index}" style="margin-top:24px; background:transparent; border:1px solid var(--error); color:var(--error); border-radius:8px; padding:8px 12px; cursor:pointer; font-size:0.8rem;">Remover</button>
     `;
@@ -2611,6 +2616,11 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
   container.querySelectorAll('[data-cadencia-campo="texto"]').forEach(input => {
     input.addEventListener('input', () => {
       atual[parseInt(input.dataset.index)].texto = input.value;
+    });
+  });
+  container.querySelectorAll('[data-cadencia-campo="template"]').forEach(input => {
+    input.addEventListener('input', () => {
+      atual[parseInt(input.dataset.index)].template = input.value;
     });
   });
 
