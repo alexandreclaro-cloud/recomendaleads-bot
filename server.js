@@ -823,6 +823,10 @@ const EMPRESA_PADRAO = {
 
   // ===== Conversa do CLIENTE (quem recomenda) — editável =====
   mensagemPedeNome: 'Pra começar, qual é o seu nome?',
+  // Follow-up — Sem resposta (Cliente): quando o cliente nunca responde ao
+  // "qual é o seu nome?", o robô insiste (via API Oficial, categoria utilidade).
+  // Vazio = não manda nenhum (opt-in, precisa ser configurado no CRM).
+  cadenciaFollowupClienteInicial: [],
   mensagemPedeVendedor: 'Prazer, {nome}! E me diz, quem te atendeu hoje?',
   mensagemPedeContatos: 'Show! Agora me envie o contato dos seus amigos para você receber {premio}.',
   mensagemColeta: 'Me envie {quantidade} recomendações e já garanta seu presente.\n\nVocê pode mandar o contato direto da sua agenda. Então, qual é a primeira pessoa que vem na sua mente?\nLembrando que ela também vai ganhar um presente nosso 🎁',
@@ -857,8 +861,8 @@ const EMPRESA_PADRAO = {
   infoEmail: '',
   infoOutras: '',
 
-  // "Chamar de novo" quem escolheu "receber lembrete depois": 1 lembrete e para.
-  // Editável no CRM (Conversa do Recomendado). Vazio = não manda nenhum.
+  // Follow-up — Sem resposta (Recomendado): amigo indicado que nunca respondeu.
+  // Editável no CRM em "Follow-up — Sem resposta" → Recomendado. Vazio = não manda nenhum.
   cadenciaFollowupRecomendado: [
     { esperaMin: 1440, texto: 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?' }
   ],
@@ -952,7 +956,7 @@ const CAMPOS_PRODUTO_OFERTA = new Set([
   ...Object.keys(EMPRESA_PADRAO).filter(k => !CAMPOS_OPERACAO_EMPRESA.has(k)),
   'oficialTemplateRecomendado', 'oficialTemplateInsistencia',
   'oficialTemplateFollowupCliente', 'oficialTemplateConvite',
-  'oficialTemplateVenda', 'oficialTemplateMarketing'
+  'oficialTemplateVenda', 'oficialTemplateMarketing', 'oficialTemplateClienteInicial'
 ]);
 // Gera um id de oferta a partir do nome (reaproveita o slugify de nichos) + sufixo
 // aleatório curto — evita colisão sem precisar de contador/corrida entre criações.
@@ -1005,6 +1009,7 @@ async function getEmpresaById(empresaId) {
     oficialTemplateInsistencia: cfg.oficialTemplateInsistencia || data.oficialTemplateInsistencia || null,
     oficialTemplateFollowupCliente: cfg.oficialTemplateFollowupCliente || data.oficialTemplateFollowupCliente || null,
     oficialTemplateConvite: cfg.oficialTemplateConvite || data.oficialTemplateConvite || null,
+    oficialTemplateClienteInicial: cfg.oficialTemplateClienteInicial || data.oficialTemplateClienteInicial || null,
     // Pré-pago (só cobra quando prepagoAtivo = true).
     prepagoAtivo: !!data.prepagoAtivo,
     saldoCentavos: data.saldoCentavos || 0,
@@ -1779,7 +1784,7 @@ function faixasAtivas(empresa) {
 
 async function iniciarConversa(telefone) {
   const empresa = await getEmpresa();
-  await getSessao(telefone);
+  const sessao = await getSessao(telefone);
   // Pipeline do cliente: entrou (leu o QR / mandou o gatilho).
   await upsertClientePipeline(telefone, null, 'iniciou');
   // A tela "Conversa do Cliente" anuncia {premio}/{quantidade} como variáveis
@@ -1791,6 +1796,9 @@ async function iniciarConversa(telefone) {
   // Pergunta o nome primeiro; no modo Full, a explicação das 2 fases vem DEPOIS
   // que o cliente responde o nome (ver handler 'aguardando_nome') — mais natural.
   await sendText(telefone, substituirVariaveis(empresa.mensagemPedeNome || EMPRESA_PADRAO.mensagemPedeNome, varsBoasVindas));
+  // Follow-up — Sem resposta (Cliente): agenda o 1º lembrete caso o cliente
+  // nunca responda ao pedido de nome. Vazio na config = não agenda nada.
+  await agendarProximoFollowupCliente(telefone, empresa, sessao.criadoEm, 0);
 }
 
 // Inicia a coleta de contatos (usado após o vendedor, OU direto após o nome
@@ -2560,6 +2568,23 @@ async function agendarProximoFollowup(telefone, empresa, marcaTempo, indiceFollo
   const executarEm = new Date(Date.now() + proximo.esperaMin * 60 * 1000).toISOString();
   await criarAgendamento({
     tipo: 'followup_recomendado',
+    executarEm,
+    marcaTempoReferencia: marcaTempo,
+    dados: { telefone, indiceFollowup }
+  });
+}
+
+// ---- Follow-up — Sem resposta (CLIENTE): nunca respondeu ao "qual é o seu
+// nome?". `marcaTempo` é o `criadoEm` da sessão no momento do agendamento —
+// só muda se a sessão for resetada (ver guard em processarAgendamentoInterno). ----
+async function agendarProximoFollowupCliente(telefone, empresa, marcaTempo, indiceFollowup) {
+  const cadencia = empresa.cadenciaFollowupClienteInicial || [];
+  const proximo = cadencia[indiceFollowup];
+  if (!proximo) return;
+
+  const executarEm = new Date(Date.now() + proximo.esperaMin * 60 * 1000).toISOString();
+  await criarAgendamento({
+    tipo: 'followup_cliente_inicial',
     executarEm,
     marcaTempoReferencia: marcaTempo,
     dados: { telefone, indiceFollowup }
@@ -5165,7 +5190,7 @@ app.get('/minha-config', exigirLoginEmpresa, exigirEscopoOferta, async (req, res
     // Templates oficiais: expõe os 4 pro painel/CRM. Prefere o que já está na
     // `configuracao` (salvo no CRM, junto da mensagem); senão cai pro campo de
     // topo (salvo no painel novo). Assim os dois lugares editam o mesmo template.
-    ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite'].forEach(k => {
+    ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite', 'oficialTemplateClienteInicial'].forEach(k => {
       if (!configuracao[k]) configuracao[k] = req.empresaLogin[k] || '';
     });
     // Múltiplas ofertas: ?oferta=<id> sobrepõe os campos PRODUTO com os da oferta
@@ -5371,7 +5396,7 @@ app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilit
       }
       // Templates oficiais: mesmo fallback que getEmpresaById já usa hoje (prioriza
       // o que estiver dentro de `configuracao`, senão cai pro campo de topo do doc).
-      ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite'].forEach(k => {
+      ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite', 'oficialTemplateClienteInicial'].forEach(k => {
         camposProduto[k] = config[k] || req.empresaLogin[k] || null;
       });
       const agora = new Date().toISOString();
@@ -7637,6 +7662,40 @@ async function processarAgendamentoInterno(agendamento) {
     const novaMarca = new Date().toISOString();
     await saveSessaoRecomendado(telefone, { ultimaMensagemEm: novaMarca });
     await agendarProximoFollowup(telefone, empresa, novaMarca, indiceFollowup + 1);
+    return;
+  }
+
+  // Follow-up — Sem resposta (CLIENTE): nunca respondeu ao "qual é o seu nome?".
+  if (agendamento.tipo === 'followup_cliente_inicial') {
+    const { telefone, indiceFollowup } = agendamento.dados;
+
+    if (await numeroEstaPausado(telefone)) {
+      console.log(`[AGENDAMENTO IGNORADO] ${telefone} está pausado (stop1) — follow-up cliente não enviado`);
+      return;
+    }
+
+    const sessaoAtual = await getSessao(telefone);
+    // Stale se já respondeu (etapa avançou) OU se a conversa foi reiniciada
+    // (resetSessao + novo iniciarConversa gera um criadoEm novo).
+    if (!sessaoAtual || sessaoAtual.etapa !== 'aguardando_nome' || sessaoAtual.criadoEm !== agendamento.marcaTempoReferencia) {
+      return;
+    }
+
+    const cadencia = empresa.cadenciaFollowupClienteInicial || [];
+    const proximo = cadencia[indiceFollowup];
+    if (!proximo) return;
+
+    // O nome do cliente ainda não é conhecido nesta etapa — só {empresa} disponível.
+    const variaveisFollowup = { empresa: empresa.nome };
+    await sendTextOuTemplate(
+      telefone,
+      substituirVariaveis(proximo.texto, variaveisFollowup),
+      empresa.oficialTemplateClienteInicial,
+      [variaveisFollowup.empresa]
+    );
+    // criadoEm não muda enquanto a etapa continuar aguardando_nome — reusa a
+    // mesma referência pro próximo passo (diferente do lado Recomendado).
+    await agendarProximoFollowupCliente(telefone, empresa, sessaoAtual.criadoEm, indiceFollowup + 1);
     return;
   }
 

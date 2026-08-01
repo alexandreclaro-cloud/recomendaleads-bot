@@ -422,6 +422,23 @@
     border-bottom: 1px solid var(--surface);
     font-weight: 600;
   }
+  .followup-pill-btn {
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.84rem;
+    font-weight: 500;
+    padding: 8px 18px;
+    cursor: pointer;
+    border-radius: 20px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .followup-pill-btn:hover { color: var(--text); background: var(--border); }
+  .followup-pill-btn.active {
+    background: var(--gold-deep);
+    color: #fff;
+    border-color: var(--gold-deep);
+  }
   /* conteúdo conectado às abas de pasta */
   .subtab-panel.active { border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; padding: 20px; background: var(--surface); margin-bottom: 20px; }
   .subtab-panel.active .config-card { border: none; box-shadow: none; padding: 0; background: transparent; }
@@ -681,7 +698,7 @@
         <button class="subtab-btn" data-subtab="infoNegocio">ℹ️ Informações do negócio</button>
         <button class="subtab-btn" data-subtab="faixas">Presente Recomendado</button>
         <button class="subtab-btn" data-subtab="venda">Presente Cliente com venda</button>
-        <button class="subtab-btn" data-subtab="cadencia">Insistência (amigo não respondeu)</button>
+        <button class="subtab-btn" data-subtab="cadencia">Follow-up — Sem resposta</button>
         <button class="subtab-btn" data-subtab="marketing">📅 Agenda de Marketing</button>
         <button class="subtab-btn" data-subtab="etapas">Etapas do Pipeline</button>
       </div>
@@ -999,16 +1016,7 @@
           <textarea id="posMenuDepoisInput" rows="5"></textarea>
           <label>Mensagem de "receber lembrete depois"</label>
           <textarea id="posLembreteInput" rows="2"></textarea>
-
-          <label>⏰ Chamar de novo quem escolheu "receber depois" (manda 1 lembrete e para)</label>
-          <div style="display:flex; gap:8px; align-items:center; margin:6px 0 6px; flex-wrap:wrap;">
-            <span style="font-weight:600;">Depois de</span>
-            <input type="number" step="1" min="0" id="reFollowupVal" style="max-width:110px;" placeholder="ex: 1">
-            <select id="reFollowupUni" style="max-width:130px;"><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias" selected>dias</option></select>
-            <span style="color:var(--text-dim);font-size:.82rem;">que ele escolheu "depois"</span>
-          </div>
-          <textarea id="reFollowupTexto" rows="2" placeholder="Mensagem do lembrete que o robô manda depois..."></textarea>
-          <p style="color:var(--text-dim);font-size:.82rem;margin:4px 0 0;">Deixe o tempo <b>vazio</b> pra não mandar lembrete nenhum. Variáveis: {nomeRecomendado}, {empresa}, {premio}.</p>
+          <p style="color:var(--text-dim);font-size:.82rem;margin:4px 0 0;">Pra configurar os lembretes automáticos de quem escolheu "receber depois" (e não respondeu), use a aba <b>Follow-up — Sem resposta → Recomendado</b>.</p>
 
           <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">4) Se escolher "Tenho uma dúvida"</p>
           <label>Menu de dúvidas</label>
@@ -1107,28 +1115,61 @@
         </div>
       </div>
 
-      <!-- Sub-aba: Cadência de Follow-up -->
+      <!-- Sub-aba: Follow-up — Sem resposta (Cliente + Recomendado) -->
       <div class="subtab-panel" id="subtabCadencia">
         <div class="config-card">
-          <h2>Insistência com o AMIGO que não respondeu</h2>
-          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
-            Mensagens enviadas em sequência se o recomendado não responder.
+          <h2>Follow-up — Sem resposta</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 14px;">
+            Mensagens automáticas via API Oficial pra quem ainda não respondeu e está fora da janela grátis de 24h. Você pode adicionar quantas mensagens quiser em cada cadência.
           </p>
 
-          <div id="cadenciaContainer"></div>
-
-          <div id="oficialTemplateInsistenciaBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
-            <label style="margin-top:0;">🟢 Template da API Oficial — insistência (fora da janela de 24h)</label>
-            <input type="text" id="oficialTemplateInsistenciaInput" placeholder="ex: recomenda_insistencia">
-            <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Se o amigo não respondeu e já passou de 24h, texto livre não entrega — o robô usa este template. Deixe <b>vazio</b> pra não insistir fora da janela.</div>
+          <div style="display:flex; gap:8px; margin-bottom:16px;">
+            <button type="button" class="followup-pill-btn active" data-followup-pill="cliente">Cliente</button>
+            <button type="button" class="followup-pill-btn" data-followup-pill="recomendado">Recomendado</button>
           </div>
 
-          <div class="config-row-save">
-            <button class="config-save-btn" id="adicionarFollowupBtn" style="background:transparent; border:1px solid var(--gold); color:var(--gold-deep);">+ Adicionar mensagem</button>
+          <div class="followup-pill-panel" data-followup-pane="cliente">
+            <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
+              Mensagens enviadas em sequência se o <b>Cliente</b> (quem recomenda) não responder ao "qual é o seu nome?".
+            </p>
+
+            <div id="cadenciaClienteContainer"></div>
+
+            <div id="oficialTemplateClienteInicialBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
+              <label style="margin-top:0;">🟢 Template da API Oficial — cliente sem resposta</label>
+              <input type="text" id="oficialTemplateClienteInicialInput" placeholder="ex: cliente_sem_resposta">
+              <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Nesta etapa o robô ainda não sabe o nome do cliente — use um template com no máximo {{1}}=nome da empresa. Deixe <b>vazio</b> pra não insistir fora da janela.</div>
+            </div>
+
+            <div class="config-row-save">
+              <button class="config-save-btn" id="adicionarFollowupClienteBtn" style="background:transparent; border:1px solid var(--gold); color:var(--gold-deep);">+ Adicionar mensagem</button>
+            </div>
+            <div class="config-row-save">
+              <button class="config-save-btn" id="salvarCadenciaClienteBtn">Salvar cadência do cliente</button>
+              <span class="config-status-msg" id="statusCadenciaCliente"></span>
+            </div>
           </div>
-          <div class="config-row-save">
-            <button class="config-save-btn" id="salvarCadenciaBtn">Salvar cadência</button>
-            <span class="config-status-msg" id="statusCadencia"></span>
+
+          <div class="followup-pill-panel" data-followup-pane="recomendado" style="display:none;">
+            <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
+              Mensagens enviadas em sequência se o <b>Recomendado</b> (amigo indicado) não responder.
+            </p>
+
+            <div id="cadenciaContainer"></div>
+
+            <div id="oficialTemplateInsistenciaBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
+              <label style="margin-top:0;">🟢 Template da API Oficial — insistência (fora da janela de 24h)</label>
+              <input type="text" id="oficialTemplateInsistenciaInput" placeholder="ex: recomenda_insistencia">
+              <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Se o amigo não respondeu e já passou de 24h, texto livre não entrega — o robô usa este template. Deixe <b>vazio</b> pra não insistir fora da janela.</div>
+            </div>
+
+            <div class="config-row-save">
+              <button class="config-save-btn" id="adicionarFollowupBtn" style="background:transparent; border:1px solid var(--gold); color:var(--gold-deep);">+ Adicionar mensagem</button>
+            </div>
+            <div class="config-row-save">
+              <button class="config-save-btn" id="salvarCadenciaBtn">Salvar cadência</button>
+              <span class="config-status-msg" id="statusCadencia"></span>
+            </div>
           </div>
         </div>
       </div>
@@ -1296,6 +1337,16 @@ document.querySelectorAll('.subtab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(MAPA_SUBTABS[btn.dataset.subtab]).classList.add('active');
     if (btn.dataset.subtab === 'etapas') renderEtapasConfig(etapas);
+  });
+});
+
+// Follow-up — Sem resposta: pill interna Cliente/Recomendado (dentro da subaba "cadencia").
+document.querySelectorAll('[data-followup-pill]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-followup-pill]').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.followup-pill-panel').forEach(p => p.style.display = 'none');
+    btn.classList.add('active');
+    document.querySelector(`.followup-pill-panel[data-followup-pane="${btn.dataset.followupPill}"]`).style.display = 'block';
   });
 });
 
@@ -2028,6 +2079,10 @@ async function carregarConfiguracao() {
     if (tplInsEl) tplInsEl.value = configuracaoAtual.oficialTemplateInsistencia || '';
     const tplInsBox = document.getElementById('oficialTemplateInsistenciaBox');
     if (tplInsBox) tplInsBox.style.display = (configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
+    const tplCliEl = document.getElementById('oficialTemplateClienteInicialInput');
+    if (tplCliEl) tplCliEl.value = configuracaoAtual.oficialTemplateClienteInicial || '';
+    const tplCliBox = document.getElementById('oficialTemplateClienteInicialBox');
+    if (tplCliBox) tplCliBox.style.display = (configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
     document.getElementById('mensagemPedeNomeInput').value = configuracaoAtual.mensagemPedeNome || '';
@@ -2053,19 +2108,6 @@ async function carregarConfiguracao() {
     document.getElementById('posConfirmacaoCheckInput').value = configuracaoAtual.posConfirmacaoCheck || '';
     document.getElementById('posMenuDepoisInput').value = configuracaoAtual.posMenuDepois || '';
     document.getElementById('posLembreteInput').value = configuracaoAtual.posLembrete || '';
-    // "Chamar de novo" quem pediu lembrete depois (1 lembrete). Mostra o que está
-    // salvo; se nunca foi salvo, mostra o padrão que o robô usa hoje (1 dia).
-    const reCad = (configuracaoAtual.cadenciaFollowupRecomendado || [])[0];
-    if (reCad) {
-      const reU = minParaUnidade(reCad.esperaMin);
-      document.getElementById('reFollowupVal').value = reU.valor;
-      document.getElementById('reFollowupUni').value = reU.unidade;
-      document.getElementById('reFollowupTexto').value = reCad.texto || '';
-    } else if (!Array.isArray(configuracaoAtual.cadenciaFollowupRecomendado)) {
-      document.getElementById('reFollowupVal').value = 1;
-      document.getElementById('reFollowupUni').value = 'dias';
-      document.getElementById('reFollowupTexto').value = 'Olá! 😊 Passei só pra lembrar que o presente recomendado pra você continua disponível 🎁 Posso te explicar?';
-    }
     document.getElementById('posMenuDuvidasInput').value = configuracaoAtual.posMenuDuvidas || '';
     document.getElementById('faqComoFuncionaInput').value = configuracaoAtual.faqComoFunciona || '';
     document.getElementById('faqValidadeInput').value = configuracaoAtual.faqValidade || '';
@@ -2073,6 +2115,7 @@ async function carregarConfiguracao() {
     document.getElementById('numeroAtendenteInput').value = configuracaoAtual.numeroAtendente || '';
 
     renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
+    renderCadenciaCliente(configuracaoAtual.cadenciaFollowupClienteInicial || []);
     renderFaixas(configuracaoAtual.faixasBonus || []);
     carregarFollowupCliente();
   } catch (err) {
@@ -2419,10 +2462,6 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const posConfirmacaoCheck = document.getElementById('posConfirmacaoCheckInput').value.trim() || null;
   const posMenuDepois = document.getElementById('posMenuDepoisInput').value.trim() || null;
   const posLembrete = document.getElementById('posLembreteInput').value.trim() || null;
-  // "Chamar de novo" quem pediu lembrete depois: 1 lembrete. Sem tempo ou sem texto = não manda.
-  const reEspera = unidadeParaMin(document.getElementById('reFollowupVal').value, document.getElementById('reFollowupUni').value);
-  const reTexto = document.getElementById('reFollowupTexto').value.trim();
-  const cadenciaFollowupRecomendado = (reEspera && reTexto) ? [{ esperaMin: reEspera, texto: reTexto }] : [];
   const posMenuDuvidas = document.getElementById('posMenuDuvidasInput').value.trim() || null;
   const faqComoFunciona = document.getElementById('faqComoFuncionaInput').value.trim() || null;
   const faqValidade = document.getElementById('faqValidadeInput').value.trim() || null;
@@ -2446,7 +2485,6 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
         mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
-        cadenciaFollowupRecomendado,
         faqComoFunciona, faqValidade, posAtendente, numeroAtendente,
         oficialTemplateRecomendado, recomendadoAtendimentoHumano, recomendadoHumanoMensagem
       })
@@ -2515,18 +2553,23 @@ document.getElementById('testarAvisoBtn') && document.getElementById('testarAvis
 
 // ===== Cadência =====
 let cadenciaAtual = [];
+let cadenciaClienteAtual = [];
 
-function renderCadencia(cadencia) {
-  cadenciaAtual = cadencia.map(item => ({ ...item }));
-  const container = document.getElementById('cadenciaContainer');
+// Genérica: renderiza uma cadência de follow-up (valor+unidade minutos/horas/dias)
+// dentro de `containerId`. `onChange` recebe o array atual sempre que ele muda,
+// pra quem chamou guardar a referência certa (cadenciaAtual ou cadenciaClienteAtual).
+function renderCadenciaGenerica(containerId, cadencia, onChange) {
+  const atual = cadencia.map(item => ({ ...item }));
+  onChange(atual);
+  const container = document.getElementById(containerId);
   container.innerHTML = '';
 
-  if (cadenciaAtual.length === 0) {
+  if (atual.length === 0) {
     container.innerHTML = '<p style="font-size:0.82rem; color:var(--text-dim);">Nenhuma mensagem de follow-up configurada ainda.</p>';
     return;
   }
 
-  cadenciaAtual.forEach((item, index) => {
+  atual.forEach((item, index) => {
     // Valor + unidade (minutos/horas/dias) em vez de só minutos cru — mesmo
     // padrão já usado em "Avisar os amigos" e "Chamar de novo" nesta mesma tela,
     // pra evitar confundir "168" pensando que é horas quando o campo é minutos.
@@ -2559,7 +2602,7 @@ function renderCadencia(cadencia) {
     const uniEl = container.querySelector(`[data-cadencia-campo="unidade"][data-index="${idx}"]`);
     if (!valEl || !uniEl) return;
     const min = unidadeParaMin(valEl.value, uniEl.value);
-    if (min != null) cadenciaAtual[idx].esperaMin = min;
+    if (min != null) atual[idx].esperaMin = min;
   };
   container.querySelectorAll('[data-cadencia-campo="valor"], [data-cadencia-campo="unidade"]').forEach(input => {
     input.addEventListener('input', () => sincronizarEspera(parseInt(input.dataset.index)));
@@ -2567,22 +2610,33 @@ function renderCadencia(cadencia) {
   });
   container.querySelectorAll('[data-cadencia-campo="texto"]').forEach(input => {
     input.addEventListener('input', () => {
-      cadenciaAtual[parseInt(input.dataset.index)].texto = input.value;
+      atual[parseInt(input.dataset.index)].texto = input.value;
     });
   });
 
   container.querySelectorAll('[data-remover-index]').forEach(btnRemover => {
     btnRemover.addEventListener('click', () => {
       const idx = parseInt(btnRemover.dataset.removerIndex);
-      cadenciaAtual.splice(idx, 1);
-      renderCadencia(cadenciaAtual);
+      atual.splice(idx, 1);
+      renderCadenciaGenerica(containerId, atual, onChange);
     });
   });
+}
+
+function renderCadencia(cadencia) {
+  renderCadenciaGenerica('cadenciaContainer', cadencia, arr => { cadenciaAtual = arr; });
+}
+function renderCadenciaCliente(cadencia) {
+  renderCadenciaGenerica('cadenciaClienteContainer', cadencia, arr => { cadenciaClienteAtual = arr; });
 }
 
 document.getElementById('adicionarFollowupBtn').addEventListener('click', () => {
   cadenciaAtual.push({ esperaMin: 1440, texto: '' });
   renderCadencia(cadenciaAtual);
+});
+document.getElementById('adicionarFollowupClienteBtn').addEventListener('click', () => {
+  cadenciaClienteAtual.push({ esperaMin: 1440, texto: '' });
+  renderCadenciaCliente(cadenciaClienteAtual);
 });
 
 // Teste do template da API Oficial (dentro do card, no CRM).
@@ -2624,6 +2678,39 @@ document.getElementById('salvarCadenciaBtn').addEventListener('click', async () 
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({ cadenciaFollowupRecomendado: cadenciaAtual, oficialTemplateInsistencia: tplInsEl ? tplInsEl.value.trim() : '' })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!';
+      statusEl.className = 'config-status-msg ok';
+      configuracaoAtual = data.empresa;
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      statusEl.className = 'config-status-msg err';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.className = 'config-status-msg err';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
+  }
+});
+
+document.getElementById('salvarCadenciaClienteBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarCadenciaClienteBtn');
+  const statusEl = document.getElementById('statusCadenciaCliente');
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando...';
+  statusEl.className = 'config-status-msg';
+
+  try {
+    const tplCliEl = document.getElementById('oficialTemplateClienteInicialInput');
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ cadenciaFollowupClienteInicial: cadenciaClienteAtual, oficialTemplateClienteInicial: tplCliEl ? tplCliEl.value.trim() : '' })
     });
     const data = await resp.json();
 
