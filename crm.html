@@ -2788,10 +2788,10 @@ function renderFaixas(faixas) {
           <input type="file" id="arquivoFaixaFile_${containerId}_${faixa.quantidade}" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
           <span class="upload-status" id="uploadStatusFaixa_${containerId}_${faixa.quantidade}"></span>
         </div>
-        <label>Link</label>
-        <input type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
         <label>Texto de orientação</label>
         <textarea data-field="texto" rows="3">${faixa.texto || ''}</textarea>
+        <label>Link</label>
+        <input type="text" data-field="link" value="${(faixa.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
         <div class="config-row-save">
           <button class="config-save-btn" data-quantidade="${faixa.quantidade}">Salvar faixa de ${faixa.quantidade}</button>
           <span class="config-status-msg" data-statusfor="${faixa.quantidade}_${containerId}"></span>
