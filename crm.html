@@ -2080,12 +2080,10 @@ async function carregarConfiguracao() {
     if (tplRecBox) tplRecBox.style.display = (configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
     const tplInsEl = document.getElementById('oficialTemplateInsistenciaInput');
     if (tplInsEl) tplInsEl.value = configuracaoAtual.oficialTemplateInsistencia || '';
-    const tplInsBox = document.getElementById('oficialTemplateInsistenciaBox');
-    if (tplInsBox) tplInsBox.style.display = (configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
+    // Visibilidade das caixas oficialTemplateInsistenciaBox/oficialTemplateClienteInicialBox
+    // é decidida por renderCadenciaGenerica (só aparecem com pelo menos 1 mensagem).
     const tplCliEl = document.getElementById('oficialTemplateClienteInicialInput');
     if (tplCliEl) tplCliEl.value = configuracaoAtual.oficialTemplateClienteInicial || '';
-    const tplCliBox = document.getElementById('oficialTemplateClienteInicialBox');
-    if (tplCliBox) tplCliBox.style.display = (configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
     document.getElementById('mensagemPedeNomeInput').value = configuracaoAtual.mensagemPedeNome || '';
@@ -2561,11 +2559,16 @@ let cadenciaClienteAtual = [];
 // Genérica: renderiza uma cadência de follow-up (valor+unidade minutos/horas/dias)
 // dentro de `containerId`. `onChange` recebe o array atual sempre que ele muda,
 // pra quem chamou guardar a referência certa (cadenciaAtual ou cadenciaClienteAtual).
-function renderCadenciaGenerica(containerId, cadencia, onChange) {
+function renderCadenciaGenerica(containerId, boxId, cadencia, onChange) {
   const atual = cadencia.map(item => ({ ...item }));
   onChange(atual);
   const container = document.getElementById(containerId);
   container.innerHTML = '';
+
+  // O template padrão da cadência só faz sentido se existir ao menos 1 mensagem
+  // pra usar ele — some da tela até você adicionar a primeira.
+  const box = document.getElementById(boxId);
+  if (box) box.style.display = (atual.length > 0 && configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
 
   if (atual.length === 0) {
     container.innerHTML = '<p style="font-size:0.82rem; color:var(--text-dim);">Nenhuma mensagem de follow-up configurada ainda.</p>';
@@ -2628,16 +2631,16 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
     btnRemover.addEventListener('click', () => {
       const idx = parseInt(btnRemover.dataset.removerIndex);
       atual.splice(idx, 1);
-      renderCadenciaGenerica(containerId, atual, onChange);
+      renderCadenciaGenerica(containerId, boxId, atual, onChange);
     });
   });
 }
 
 function renderCadencia(cadencia) {
-  renderCadenciaGenerica('cadenciaContainer', cadencia, arr => { cadenciaAtual = arr; });
+  renderCadenciaGenerica('cadenciaContainer', 'oficialTemplateInsistenciaBox', cadencia, arr => { cadenciaAtual = arr; });
 }
 function renderCadenciaCliente(cadencia) {
-  renderCadenciaGenerica('cadenciaClienteContainer', cadencia, arr => { cadenciaClienteAtual = arr; });
+  renderCadenciaGenerica('cadenciaClienteContainer', 'oficialTemplateClienteInicialBox', cadencia, arr => { cadenciaClienteAtual = arr; });
 }
 
 document.getElementById('adicionarFollowupBtn').addEventListener('click', () => {
