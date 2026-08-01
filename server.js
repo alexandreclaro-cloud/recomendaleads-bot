@@ -76,6 +76,9 @@ const limiteAdmin = rateLimit({ windowMs: 5 * 60 * 1000, max: 20, prefix: 'admin
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const stripe = STRIPE_SECRET_KEY ? require('stripe')(STRIPE_SECRET_KEY) : null;
+// App Secret do app da Meta (WhatsApp Business Platform → Configurações básicas)
+// — usado só pra validar a assinatura X-Hub-Signature-256 dos webhooks oficiais.
+const META_APP_SECRET = process.env.META_APP_SECRET || '';
 // Dias de tolerância após o vencimento antes de bloquear o painel.
 const CARENCIA_DIAS = 7;
 
@@ -1039,10 +1042,6 @@ async function getEmpresa() {
   return snapDemo.data();
 }
 
-async function saveEmpresa(empresa) {
-  await EMPRESA_DOC().set(empresa, { merge: true });
-}
-
 async function getSessao(telefone) {
   const snap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
   if (!snap.exists) {
@@ -1065,13 +1064,6 @@ async function saveSessao(telefone, sessao) {
 
 async function resetSessao(telefone) {
   await SESSOES_COL().doc(chaveSessao(telefone)).delete();
-}
-
-async function getTodasSessoes() {
-  const snap = await SESSOES_COL().get();
-  const sessoes = {};
-  snap.forEach(doc => { sessoes[doc.id] = doc.data(); });
-  return sessoes;
 }
 
 // ============================================================
@@ -1103,13 +1095,6 @@ async function criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendado
   };
   const ref = await LEADS_COL().add(lead);
   return { id: ref.id, ...lead };
-}
-
-async function getTodosLeads() {
-  const snap = await LEADS_COL().orderBy('criadoEm', 'desc').get();
-  const leads = [];
-  snap.forEach(doc => leads.push({ id: doc.id, ...doc.data() }));
-  return leads;
 }
 
 async function getLeadsPorEmpresa(empresaId) {
@@ -3992,6 +3977,29 @@ async function metaMensagemParaInterno(value, msg, cfg, empresaId) {
   return base;
 }
 
+// Confere que o POST do webhook realmente veio da Meta (header X-Hub-Signature-256,
+// HMAC-SHA256 do corpo bruto com o App Secret) — sem isso, qualquer um que descubra
+// a URL do webhook e o phone_number_id (visível no perfil público do WhatsApp)
+// conseguiria forjar mensagens. Se META_APP_SECRET ainda não estiver configurado
+// no Render, não bloqueia (só avisa uma vez) pra não derrubar webhooks já em uso.
+let avisouSemMetaAppSecret = false;
+function assinaturaMetaValida(req) {
+  if (!META_APP_SECRET) {
+    if (!avisouSemMetaAppSecret) {
+      console.warn('[WEBHOOK-OFICIAL] META_APP_SECRET não configurado — assinatura da Meta NÃO está sendo verificada.');
+      avisouSemMetaAppSecret = true;
+    }
+    return true;
+  }
+  const assinatura = req.headers['x-hub-signature-256'];
+  if (!assinatura || !req.rawBody) return false;
+  const esperado = 'sha256=' + crypto.createHmac('sha256', META_APP_SECRET).update(req.rawBody).digest('hex');
+  const bufRecebido = Buffer.from(assinatura);
+  const bufEsperado = Buffer.from(esperado);
+  if (bufRecebido.length !== bufEsperado.length) return false;
+  return crypto.timingSafeEqual(bufRecebido, bufEsperado);
+}
+
 async function comWebhookOficial(req, res, empresaId) {
   res.sendStatus(200); // responde rápido; a Meta reentrega se demorar
   try {
@@ -4020,7 +4028,13 @@ async function comWebhookOficial(req, res, empresaId) {
   }
 }
 
-app.post('/webhook-oficial/:empresaId', (req, res) => comWebhookOficial(req, res, req.params.empresaId));
+app.post('/webhook-oficial/:empresaId', (req, res) => {
+  if (!assinaturaMetaValida(req)) {
+    console.warn(`[WEBHOOK-OFICIAL] assinatura inválida/ausente pra empresa ${req.params.empresaId} — requisição rejeitada`);
+    return res.sendStatus(403);
+  }
+  comWebhookOficial(req, res, req.params.empresaId);
+});
 
 // ---- WhatsApp via Baileys: ponte de mensagens recebidas + reconexão ----
 // Mensagens recebidas pelo Baileys entram no MESMO fluxo do webhook Z-API.
@@ -7407,101 +7421,6 @@ app.post('/minha-conversas/upload', exigirLoginEmpresa, uploadChatMiddleware.sin
     res.json({ ok: true, url, mimetype: req.file.mimetype, originalname: req.file.originalname });
   } catch (err) {
     console.error('Erro ao fazer upload (conversas):', err.message);
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-app.get('/status', async (req, res) => {
-  try {
-    const empresa = await getEmpresa();
-    const sessoes = await getTodasSessoes();
-    res.json({
-      empresa: empresa.nome,
-      sessoesAtivas: Object.keys(sessoes).length,
-      sessoes
-    });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
-app.get('/config', async (req, res) => {
-  try {
-    const empresa = await getEmpresa();
-    res.json({ ok: true, empresa });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-app.post('/config', async (req, res) => {
-  try {
-    const empresaAtual = await getEmpresa();
-    const novaEmpresa = { ...empresaAtual, ...req.body };
-    await saveEmpresa(novaEmpresa);
-    res.json({ ok: true, empresa: novaEmpresa });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-app.post('/config/faixa', async (req, res) => {
-  try {
-    const { quantidade, arquivo, link, texto, premio } = req.body;
-    const empresa = await getEmpresa();
-    const faixa = empresa.faixasBonus.find(f => f.quantidade === quantidade);
-    if (!faixa) {
-      return res.status(404).json({ ok: false, erro: 'Faixa não encontrada para essa quantidade' });
-    }
-    if (arquivo !== undefined) faixa.arquivo = arquivo;
-    if (link !== undefined) faixa.link = link;
-    if (texto !== undefined) faixa.texto = texto;
-    if (premio !== undefined) faixa.premio = premio;
-    await saveEmpresa(empresa);
-    res.json({ ok: true, faixa });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// ============================================================
-// ROTAS DO CRM KANBAN (antigas — sem login)
-// ============================================================
-
-app.get('/leads', async (req, res) => {
-  try {
-    const leads = await getTodosLeads();
-    res.json({ ok: true, leads });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-app.patch('/leads/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { etapa, vendedor, bonusPago } = req.body;
-    const dados = {};
-    if (etapa !== undefined) dados.etapa = etapa;
-    if (vendedor !== undefined) dados.vendedor = vendedor;
-    if (bonusPago !== undefined) dados.bonusPago = bonusPago;
-
-    const lead = await atualizarLead(id, dados);
-    if (!lead) {
-      return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
-    }
-    res.json({ ok: true, lead });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-app.post('/leads', async (req, res) => {
-  try {
-    const { nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor } = req.body;
-    const lead = await criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor });
-    res.json({ ok: true, lead });
-  } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
