@@ -6352,7 +6352,12 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOf
     const ofertaId = req.query && req.query.oferta;
     const usaOferta = req.empresaLogin.ofertasHabilitado && ofertaId && configuracao.ofertas && configuracao.ofertas[ofertaId];
     const alvo = usaOferta ? configuracao.ofertas[ofertaId] : configuracao;
-    alvo.faixasBonus = alvo.faixasBonus || (usaOferta ? [] : EMPRESA_PADRAO.faixasBonus);
+    // Oferta nova ainda não tem faixasBonus salvo (POST /minha-ofertas só grava
+    // nome/ativa) — a tela mostra a faixa padrão pro dono editar, então o back
+    // também precisa partir dela; sem isso o find() abaixo nunca acha a faixa
+    // "1" e a 1ª edição de qualquer oferta nova sempre falhava com 404. Copia
+    // (não usa a referência direta) pra não mutar o array padrão compartilhado.
+    alvo.faixasBonus = alvo.faixasBonus || EMPRESA_PADRAO.faixasBonus.map(f => ({ ...f }));
 
     const faixa = alvo.faixasBonus.find(f => f.quantidade === quantidade);
     if (!faixa) {
