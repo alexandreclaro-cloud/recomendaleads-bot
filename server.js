@@ -354,7 +354,7 @@ async function upsertClientePipeline(telefone, nome, etapa, contatos) {
 
 // Grava uma mensagem (recebida ou enviada) no histórico da conversa e atualiza
 // o resumo da conversa. Usado para a caixa de entrada do WhatsApp.
-async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo, midiaUrl, contatosArray }) {
+async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo, midiaUrl, contatosArray, messageId }) {
   if (!db || !telefone) return;
   const agora = new Date().toISOString();
   try {
@@ -370,6 +370,11 @@ async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, ti
       // cada um pra a caixa de entrada mostrar igual o WhatsApp mostra (não só o
       // rótulo genérico "Contato compartilhado").
       contatosArray: (contatosArray && contatosArray.length) ? contatosArray : null,
+      // ID que a Meta devolve no envio (wamid) — usado pra casar com o webhook de
+      // status (sent/delivered/read) e desenhar o risquinho de confirmação, igual
+      // o WhatsApp. Só existe pra mensagens NOSSAS mandadas via API Oficial.
+      messageId: messageId || null,
+      status: (direcao === 'out' && messageId) ? 'enviado' : null,
       criadoEm: agora
     });
     const resumo = {
@@ -1259,16 +1264,23 @@ async function resolverNumeroZapi(cfg, phone) {
   return digitos; // não cacheia falha -> tenta resolver de novo no próximo envio
 }
 
+// Extrai o wamid (ID da mensagem) que a Meta devolve em toda resposta de envio
+// bem-sucedido — precisa disso pra casar com o webhook de status depois.
+function idMensagemMeta(respostaAxios) {
+  try { return (respostaAxios.data.messages && respostaAxios.data.messages[0].id) || null; }
+  catch (e) { return null; }
+}
+
 async function sendText(phone, message) {
   if (tipoWppAtual() === 'oficial') {
     try {
       const cfg = oficialAtual();
-      await axios.post(metaMessagesUrl(cfg), {
+      const r = await axios.post(metaMessagesUrl(cfg), {
         messaging_product: 'whatsapp', to: soDigitos(phone), type: 'text',
         text: { preview_url: true, body: message }
       }, { headers: metaHeaders(cfg) });
       console.log(`[ENVIADO/oficial] para ${phone}: ${message.slice(0, 60)}...`);
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message, messageId: idMensagemMeta(r) });
       return { ok: true, via: 'oficial' };
     } catch (err) { const e = err.response?.data ? JSON.stringify(err.response.data) : err.message; console.error('Erro ao enviar texto (Oficial):', e); return { ok: false, via: 'oficial', erro: e }; }
   }
@@ -1447,11 +1459,11 @@ async function sendImage(phone, imageUrl, caption) {
       let image;
       if (d) { const id = await metaUploadMedia(cfg, d.buffer, d.mimetype, 'imagem'); image = { id, caption: caption || '' }; }
       else { image = { link: imageUrl, caption: caption || '' }; }
-      await axios.post(metaMessagesUrl(cfg), {
+      const r = await axios.post(metaMessagesUrl(cfg), {
         messaging_product: 'whatsapp', to: soDigitos(phone), type: 'image', image
       }, { headers: metaHeaders(cfg) });
       console.log(`[IMAGEM ENVIADA/oficial] para ${phone}`);
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem', midiaUrl: urlParaRegistro(imageUrl) });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem', midiaUrl: urlParaRegistro(imageUrl), messageId: idMensagemMeta(r) });
     } catch (err) { console.error('Erro ao enviar imagem (Oficial):', err.response?.data || err.message); }
     return;
   }
@@ -1476,11 +1488,11 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
       let document;
       if (d) { const id = await metaUploadMedia(cfg, d.buffer, d.mimetype, nomeArq); document = { id, filename: nomeArq }; }
       else { document = { link: base64OrUrl, filename: nomeArq }; }
-      await axios.post(metaMessagesUrl(cfg), {
+      const r = await axios.post(metaMessagesUrl(cfg), {
         messaging_product: 'whatsapp', to: soDigitos(phone), type: 'document', document
       }, { headers: metaHeaders(cfg) });
       console.log(`[DOCUMENTO ENVIADO/oficial] para ${phone}: ${nomeArq}`);
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento', midiaUrl: urlParaRegistro(base64OrUrl) });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento', midiaUrl: urlParaRegistro(base64OrUrl), messageId: idMensagemMeta(r) });
     } catch (err) { console.error('Erro ao enviar documento (Oficial):', err.response?.data || err.message); }
     return;
   }
@@ -1506,11 +1518,11 @@ async function sendAudio(phone, audioUrl) {
       let audio;
       if (d) { const id = await metaUploadMedia(cfg, d.buffer, d.mimetype || 'audio/ogg', 'audio'); audio = { id }; }
       else { audio = { link: audioUrl }; }
-      await axios.post(metaMessagesUrl(cfg), {
+      const r = await axios.post(metaMessagesUrl(cfg), {
         messaging_product: 'whatsapp', to: soDigitos(phone), type: 'audio', audio
       }, { headers: metaHeaders(cfg) });
       console.log(`[AUDIO ENVIADO/oficial] para ${phone}`);
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: '🎤 Áudio', tipo: 'audio', midiaUrl: urlParaRegistro(audioUrl) });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: '🎤 Áudio', tipo: 'audio', midiaUrl: urlParaRegistro(audioUrl), messageId: idMensagemMeta(r) });
     } catch (err) { console.error('Erro ao enviar áudio (Oficial):', err.response?.data || err.message); }
     return;
   }
@@ -1532,11 +1544,11 @@ async function sendVideo(phone, videoUrl, caption) {
       let video;
       if (d) { const id = await metaUploadMedia(cfg, d.buffer, d.mimetype || 'video/mp4', 'video'); video = { id, caption: caption || '' }; }
       else { video = { link: videoUrl, caption: caption || '' }; }
-      await axios.post(metaMessagesUrl(cfg), {
+      const r = await axios.post(metaMessagesUrl(cfg), {
         messaging_product: 'whatsapp', to: soDigitos(phone), type: 'video', video
       }, { headers: metaHeaders(cfg) });
       console.log(`[VIDEO ENVIADO/oficial] para ${phone}`);
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '🎬 Vídeo', tipo: 'video', midiaUrl: urlParaRegistro(videoUrl) });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '🎬 Vídeo', tipo: 'video', midiaUrl: urlParaRegistro(videoUrl), messageId: idMensagemMeta(r) });
     } catch (err) { console.error('Erro ao enviar vídeo (Oficial):', err.response?.data || err.message); }
     return;
   }
@@ -1572,12 +1584,12 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
     const components = bodyParams.length
       ? [{ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) }]
       : [];
-    await axios.post(metaMessagesUrl(cfg), {
+    const r = await axios.post(metaMessagesUrl(cfg), {
       messaging_product: 'whatsapp', to: soDigitos(phone), type: 'template',
       template: { name: templateName, language: { code: lang }, components }
     }, { headers: metaHeaders(cfg) });
     console.log(`[TEMPLATE ENVIADO/oficial] ${templateName} → ${phone}`);
-    registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: `[template: ${templateName}]` });
+    registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: `[template: ${templateName}]`, messageId: idMensagemMeta(r) });
     return true;
   } catch (err) {
     console.error('Erro ao enviar template (Oficial):', err.response?.data || err.message);
@@ -4044,6 +4056,28 @@ async function metaMensagemParaInterno(value, msg, cfg, empresaId) {
   return base;
 }
 
+// Risquinho de confirmação: atualiza o status (enviado/entregue/lido/falhou) da
+// mensagem NOSSA que a Meta identifica pelo wamid — casa por messageId (gravado
+// no envio, ver idMensagemMeta). Nunca REGRIDE o status (ex.: um "delivered"
+// que chegue atrasado depois do "read" não deve voltar o risquinho pra trás).
+async function atualizarStatusMensagem(messageId, statusMeta) {
+  if (!messageId) return;
+  const mapa = { sent: 'enviado', delivered: 'entregue', read: 'lido', failed: 'falhou' };
+  const status = mapa[statusMeta];
+  if (!status) return; // status desconhecido — ignora
+  try {
+    const snap = await MENSAGENS_CHAT_COL().where('messageId', '==', messageId).limit(1).get();
+    if (snap.empty) return;
+    const doc = snap.docs[0];
+    const ordem = { enviado: 1, entregue: 2, lido: 3 };
+    const atual = doc.data().status;
+    if (atual && ordem[atual] > (ordem[status] || 0)) return;
+    await doc.ref.update({ status });
+  } catch (e) {
+    console.error('[WEBHOOK-OFICIAL] erro ao atualizar status da mensagem:', e.message);
+  }
+}
+
 // Confere que o POST do webhook realmente veio da Meta (header X-Hub-Signature-256,
 // HMAC-SHA256 do corpo bruto com o App Secret) — sem isso, qualquer um que descubra
 // a URL do webhook e o phone_number_id (visível no perfil público do WhatsApp)
@@ -4101,6 +4135,11 @@ async function comWebhookOficial(req, res, empresaId) {
           const contexto = { empresa, empresaId: empresa.id, zapi: zapiDaEmpresa(empresa), oficial: oficialCfg };
           const fakeRes = { sendStatus() {}, status() { return this; }, json() {}, send() {} };
           await tenantContext.run(contexto, () => tratarWebhook({ body: interno }, fakeRes));
+        }
+        // Risquinho de confirmação (✓✓): a Meta avisa aqui quando uma mensagem NOSSA
+        // foi enviada/entregue/lida (ou falhou) pelo destinatário.
+        for (const st of (value.statuses || [])) {
+          await atualizarStatusMensagem(st.id, st.status);
         }
       }
     }

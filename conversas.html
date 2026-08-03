@@ -300,6 +300,18 @@ function renderConteudoMsg(m) {
   return esc(m.texto);
 }
 
+// Risquinho de confirmação (só pra mensagens NOSSAS, via API Oficial — Z-API e
+// mensagens de antes dessa feature não têm messageId, então ficam sem risquinho
+// em vez de inventar um status que a gente não sabe de verdade).
+function ticksMsg(m) {
+  if (m.direcao !== 'out') return '';
+  if (m.status === 'falhou') return ' <span title="Não entregou">⚠️</span>';
+  if (m.status === 'lido') return ' <span title="Lida" style="color:#34B7F1;">✓✓</span>';
+  if (m.status === 'entregue') return ' <span title="Entregue">✓✓</span>';
+  if (m.status === 'enviado') return ' <span title="Enviada" style="opacity:.6;">✓</span>';
+  return '';
+}
+
 let _atendentesAlertados = new Set();
 let _tituloOriginal = document.title;
 let _flashTitulo = null;
@@ -524,7 +536,7 @@ async function carregarMensagens(scroll) {
     const msgs = document.getElementById('msgs');
     const estavaNoFim = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
     msgs.innerHTML = (data.mensagens || []).map(m => `
-      <div class="bubble ${m.direcao === 'out' ? 'out' : 'in'}">${renderConteudoMsg(m)}<small>${horaCurta(m.criadoEm)}</small></div>
+      <div class="bubble ${m.direcao === 'out' ? 'out' : 'in'}">${renderConteudoMsg(m)}<small>${horaCurta(m.criadoEm)}${ticksMsg(m)}</small></div>
     `).join('') || '<div class="chat-empty">Nenhuma mensagem ainda.</div>';
     if (scroll || estavaNoFim) msgs.scrollTop = msgs.scrollHeight;
   } catch (e) {}
