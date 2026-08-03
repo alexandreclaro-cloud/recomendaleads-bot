@@ -712,8 +712,13 @@ function respostaEhNegativa(texto) {
   ].some(frase => normalizado.includes(frase));
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'recomendaleads-segredo-trocar-em-producao';
-const ADMIN_SECRET = process.env.ADMIN_SECRET || 'troque-esta-chave';
+// Sem fallback fraco: se a env var não estiver configurada, quebra alto no
+// boot (visível no log do Render) em vez de rodar em produção com um segredo
+// previsível que qualquer um lendo o código consegue forjar.
+if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET não configurado (env var obrigatória)');
+if (!process.env.ADMIN_SECRET) throw new Error('ADMIN_SECRET não configurado (env var obrigatória)');
+const JWT_SECRET = process.env.JWT_SECRET;
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
 
 // ============================================================
 // CONFIGURAÇÃO — API Claude (interpretação de respostas do recomendado)
