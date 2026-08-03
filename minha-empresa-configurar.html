@@ -553,6 +553,10 @@
               <label class="label">WABA ID (opcional)</label>
               <input class="input" type="text" id="oficialWabaIdInput" placeholder="ID da WhatsApp Business Account (opcional)">
 
+              <label class="label">App Secret (opcional, mas recomendado)</label>
+              <input class="input" type="text" id="oficialAppSecretInput" placeholder="Chave secreta do app, em Configurações do app → Básico na Meta">
+              <div class="hint">Usado só pra confirmar que as mensagens recebidas realmente vieram da Meta (segurança). Cada empresa tem o <b>seu próprio</b> App Secret — não é o mesmo token de acesso, nem é compartilhado entre empresas. Fica em <b>developers.facebook.com → [seu app] → Configurações do app → Básico → Chave Secreta do Aplicativo</b>. Deixe vazio pra não verificar (funciona normalmente, só sem essa camada extra).</div>
+
               <label class="label">Nome do template do recomendado (aprovado na Meta)</label>
               <input class="input" type="text" id="oficialTemplateInput" placeholder="Ex: recomendacao_presente">
               <div class="hint">Obrigatório no modo oficial pra falar com quem foi recomendado. O template precisa ter 3 variáveis no corpo, <b>nesta ordem</b>: <b>{{1}}</b> nome do recomendado (quem recebe) · <b>{{2}}</b> quem recomendou · <b>{{3}}</b> vendedor/atendente. O <b>nome da sua empresa</b> você escreve direto no texto (fixo) — não precisa ser variável. <i>(Sem vendedor cadastrado, o {{3}} usa o nome da empresa automaticamente.)</i></div>
@@ -1552,7 +1556,8 @@ async function carregarWhatsapp() {
       document.getElementById('oficialWabaIdInput').value = cfg.oficialWabaId || '';
       document.getElementById('oficialTokenInput').placeholder = cfg.temOficialToken ? '•••••• (já salvo — preencha para trocar)' : 'Token permanente do app da Meta';
       document.getElementById('oficialVerifyTokenInput').placeholder = cfg.temOficialVerifyToken ? '•••••• (já salvo — preencha para trocar)' : 'Ex: recomendaleads-2026';
-      // Guarda se Token/Verify JÁ estão salvos — assim o "Salvar" não exige recolar.
+      document.getElementById('oficialAppSecretInput').placeholder = cfg.temOficialAppSecret ? '•••••• (já salvo — preencha para trocar)' : 'Chave secreta do app, em Configurações do app → Básico na Meta';
+      // Guarda se Token/Verify/App Secret JÁ estão salvos — assim o "Salvar" não exige recolar.
       oficialTemToken = !!cfg.temOficialToken;
       oficialTemVerify = !!cfg.temOficialVerifyToken;
       document.getElementById('oficialTemplateInput').value = cfg.oficialTemplateRecomendado || '';
@@ -1728,6 +1733,7 @@ document.getElementById('salvarOficialBtn').addEventListener('click', async () =
   const oficialToken = document.getElementById('oficialTokenInput').value.trim();
   const oficialVerifyToken = document.getElementById('oficialVerifyTokenInput').value.trim();
   const oficialWabaId = document.getElementById('oficialWabaIdInput').value.trim();
+  const oficialAppSecret = document.getElementById('oficialAppSecretInput').value.trim();
   const oficialTemplateRecomendado = document.getElementById('oficialTemplateInput').value.trim();
   const oficialTemplateInsistencia = document.getElementById('oficialTemplateInsistenciaInput').value.trim();
   const oficialTemplateFollowupCliente = document.getElementById('oficialTemplateFollowupInput').value.trim();
@@ -1738,11 +1744,12 @@ document.getElementById('salvarOficialBtn').addEventListener('click', async () =
   if (!oficialVerifyToken && !oficialTemVerify) { statusEl.textContent = '❌ Preencha o Verify Token'; statusEl.className = 'status-msg err'; return; }
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/oficial`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado, oficialTemplateInsistencia, oficialTemplateFollowupCliente, oficialTemplateConvite }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/oficial`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialAppSecret, oficialTemplateRecomendado, oficialTemplateInsistencia, oficialTemplateFollowupCliente, oficialTemplateConvite }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       statusEl.textContent = '✅ Salvo! Modo oficial ativado.'; statusEl.className = 'status-msg ok';
       document.getElementById('oficialTokenInput').value = '';
+      document.getElementById('oficialAppSecretInput').value = '';
       carregarWhatsapp();
     } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }

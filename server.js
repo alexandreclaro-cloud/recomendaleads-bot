@@ -75,9 +75,6 @@ const limiteAdmin = rateLimit({ windowMs: 5 * 60 * 1000, max: 20, prefix: 'admin
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const stripe = STRIPE_SECRET_KEY ? require('stripe')(STRIPE_SECRET_KEY) : null;
-// App Secret do app da Meta (WhatsApp Business Platform → Configurações básicas)
-// — usado só pra validar a assinatura X-Hub-Signature-256 dos webhooks oficiais.
-const META_APP_SECRET = process.env.META_APP_SECRET || '';
 // Dias de tolerância após o vencimento antes de bloquear o painel.
 const CARENCIA_DIAS = 7;
 
@@ -1008,6 +1005,10 @@ async function getEmpresaById(empresaId) {
     oficialToken: data.oficialToken || null,
     oficialVerifyToken: data.oficialVerifyToken || null,
     oficialWabaId: data.oficialWabaId || null,
+    // App Secret do app da Meta DESTA empresa — cada empresa pode ter seu próprio
+    // app (Phone Number ID/Token/WABA diferentes), então o App Secret também
+    // precisa ser por empresa, nunca uma env var global (ver assinaturaMetaValida).
+    oficialAppSecret: data.oficialAppSecret || null,
     // Templates oficiais: preferem o valor salvo na `configuracao` (editável no CRM,
     // junto de cada mensagem) e caem pro campo de topo (salvo no painel novo) — assim
     // dá pra configurar nos DOIS lugares sem quebrar quem já salvou no painel novo.
@@ -3943,27 +3944,33 @@ async function metaMensagemParaInterno(value, msg, cfg, empresaId) {
 // a URL do webhook e o phone_number_id (visível no perfil público do WhatsApp)
 // conseguiria forjar mensagens.
 //
-// ⚠️ 2026-08-03: rodou em modo bloqueante por ~1h e rejeitou 100% das mensagens
-// reais (o valor de META_APP_SECRET no Render não está batendo com a assinatura
-// da Meta — causa exata ainda não diagnosticada). Voltou a ser SÓ DIAGNÓSTICO
-// (nunca bloqueia) até confirmarmos nos logs que a assinatura calculada aqui
-// bate com a recebida. NÃO reative o bloqueio (`return false`) sem antes ver
-// nos logs "[WEBHOOK-OFICIAL] assinatura OK" pelo menos uma vez em produção.
-function assinaturaMetaValida(req) {
-  if (!META_APP_SECRET) return true;
+// O App Secret é POR EMPRESA (`empresa.oficialAppSecret`), nunca uma env var
+// global — cada empresa pode ter seu próprio app na Meta (Phone Number ID/Token/
+// WABA diferentes), então um segredo único nunca bateria pra mais de uma ao
+// mesmo tempo.
+//
+// ⚠️ 2026-08-03: rodou em modo bloqueante com um META_APP_SECRET global por ~1h
+// e rejeitou 100% das mensagens reais de TODAS as empresas (exatamente o motivo
+// acima). Voltou a ser SÓ DIAGNÓSTICO (nunca bloqueia) até confirmarmos nos logs
+// que a assinatura calculada aqui bate com a recebida pra pelo menos uma empresa
+// com `oficialAppSecret` configurado. NÃO reative o bloqueio sem antes ver
+// "[WEBHOOK-OFICIAL] assinatura OK" nos logs em produção.
+function assinaturaMetaValida(req, empresa) {
+  const secret = empresa && empresa.oficialAppSecret;
+  if (!secret) return true;
   const assinatura = req.headers['x-hub-signature-256'];
   if (!assinatura || !req.rawBody) {
-    console.warn(`[WEBHOOK-OFICIAL] sem assinatura ou sem corpo bruto (assinatura=${!!assinatura}, rawBody=${!!req.rawBody})`);
+    console.warn(`[WEBHOOK-OFICIAL] sem assinatura ou sem corpo bruto (empresa=${empresa.id}, assinatura=${!!assinatura}, rawBody=${!!req.rawBody})`);
     return true;
   }
-  const esperado = 'sha256=' + crypto.createHmac('sha256', META_APP_SECRET).update(req.rawBody).digest('hex');
+  const esperado = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody).digest('hex');
   const bufRecebido = Buffer.from(assinatura);
   const bufEsperado = Buffer.from(esperado);
   const bate = bufRecebido.length === bufEsperado.length && crypto.timingSafeEqual(bufRecebido, bufEsperado);
   if (bate) {
-    console.log('[WEBHOOK-OFICIAL] assinatura OK');
+    console.log(`[WEBHOOK-OFICIAL] assinatura OK (empresa=${empresa.id})`);
   } else {
-    console.warn(`[WEBHOOK-OFICIAL] assinatura não bate (só log, não bloqueia) — recebida=${assinatura.slice(0, 25)}... esperada=${esperado.slice(0, 25)}... tamanhos=${bufRecebido.length}/${bufEsperado.length}`);
+    console.warn(`[WEBHOOK-OFICIAL] assinatura não bate (só log, não bloqueia) — empresa=${empresa.id} recebida=${assinatura.slice(0, 25)}... esperada=${esperado.slice(0, 25)}... tamanhos=${bufRecebido.length}/${bufEsperado.length}`);
   }
   return true;
 }
@@ -3973,6 +3980,7 @@ async function comWebhookOficial(req, res, empresaId) {
   try {
     const empresa = await getEmpresaById(empresaId);
     if (!empresa) { console.warn(`[WEBHOOK-OFICIAL] empresaId desconhecido: ${empresaId}`); return; }
+    assinaturaMetaValida(req, empresa); // só loga por enquanto (ver comentário na função)
     const oficialCfg = oficialDaEmpresa(empresa);
     for (const entry of ((req.body && req.body.entry) || [])) {
       for (const change of (entry.changes || [])) {
@@ -3996,10 +4004,7 @@ async function comWebhookOficial(req, res, empresaId) {
   }
 }
 
-app.post('/webhook-oficial/:empresaId', (req, res) => {
-  assinaturaMetaValida(req); // só loga (ver comentário acima da função) — nunca bloqueia por enquanto
-  comWebhookOficial(req, res, req.params.empresaId);
-});
+app.post('/webhook-oficial/:empresaId', (req, res) => comWebhookOficial(req, res, req.params.empresaId));
 
 // ============================================================
 // WEBHOOK DO STRIPE — eventos de pagamento/assinatura
@@ -5694,6 +5699,7 @@ app.get('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
       oficialWabaId: e.oficialWabaId || '',
       temOficialToken: !!e.oficialToken,
       temOficialVerifyToken: !!e.oficialVerifyToken,
+      temOficialAppSecret: !!e.oficialAppSecret,
       oficialTemplateRecomendado: e.oficialTemplateRecomendado || '',
       oficialTemplateInsistencia: e.oficialTemplateInsistencia || '',
       oficialTemplateFollowupCliente: e.oficialTemplateFollowupCliente || '',
@@ -5739,17 +5745,19 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) =
 // (única por empresa) é mostrada pra ele configurar no app da Meta.
 app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
-    const { oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialTemplateRecomendado,
+    const { oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialAppSecret, oficialTemplateRecomendado,
       oficialTemplateInsistencia, oficialTemplateFollowupCliente, oficialTemplateConvite } = req.body;
 
-    // Campos "já salvos" (Token, Verify Token) podem vir VAZIOS do painel — ele mostra
-    // "já salvo — preencha para trocar". Nesse caso, MANTÉM o valor gravado em vez de
-    // exigir re-colar. Assim dá pra mudar só o nome do template (ou o WABA) sem precisar
-    // colar de novo o token permanente. Mesma ideia pro WABA e o template (não apaga se vier vazio).
+    // Campos "já salvos" (Token, Verify Token, App Secret) podem vir VAZIOS do painel —
+    // ele mostra "já salvo — preencha para trocar". Nesse caso, MANTÉM o valor gravado
+    // em vez de exigir re-colar. Assim dá pra mudar só o nome do template (ou o WABA)
+    // sem precisar colar de novo o token permanente. Mesma ideia pro WABA e o template
+    // (não apaga se vier vazio).
     const snapAtual = await EMPRESAS_COL().doc(req.empresaLogin.id).get();
     const atual = snapAtual.exists ? snapAtual.data() : {};
     const tokenFinal = (oficialToken && String(oficialToken).trim()) || atual.oficialToken || '';
     const verifyFinal = (oficialVerifyToken && String(oficialVerifyToken).trim()) || atual.oficialVerifyToken || '';
+    const appSecretFinal = (oficialAppSecret && String(oficialAppSecret).trim()) || atual.oficialAppSecret || null;
 
     if (!oficialPhoneId || !tokenFinal || !verifyFinal) {
       return res.status(400).json({ ok: false, erro: 'Informe Phone Number ID, Token e Verify Token (Token e Verify Token podem ficar em branco se já estiverem salvos).' });
@@ -5762,6 +5770,7 @@ app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, exigirUsua
       oficialToken: tokenFinal,
       oficialVerifyToken: verifyFinal,
       oficialWabaId: (oficialWabaId && String(oficialWabaId).trim()) || atual.oficialWabaId || null,
+      oficialAppSecret: appSecretFinal,
       // NOTA (múltiplas ofertas — Fase 1): estes 4 templates ainda gravam aqui, no
       // topo do doc, compartilhados — só passam a ser por oferta quando esta tela
       // (e as demais de mensagens/prêmios) forem religadas ao endpoint por oferta,
