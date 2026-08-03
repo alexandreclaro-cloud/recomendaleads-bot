@@ -128,6 +128,7 @@
       </select>
       <a href="/minha-empresa/configurar" title="Voltar ao painel"><i data-lucide="arrow-left" style="width:18px;height:18px;vertical-align:-4px"></i></a>
     </div>
+    <div id="convOfertaBadge" style="display:none;margin:0 12px 8px;padding:6px 10px;border-radius:8px;font-size:0.78rem;font-weight:700;align-items:center;gap:8px;"></div>
     <div class="conv-search">
       <input class="input" type="text" id="buscaConv" placeholder="Buscar contato ou telefone...">
     </div>
@@ -243,6 +244,14 @@ if (!TOKEN) window.location.href = '/login';
 const EMPRESA_LOGADA_CONV = JSON.parse(localStorage.getItem('recomendaleads_empresa') || 'null');
 const MEU_OFERTA_ID = (EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.ofertaId) || null;
 const EH_GESTOR_CONV = (EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.papel) === 'gestor';
+// Rede de lojas: mesmo padrão do crm.html — usuário preso a uma loja sempre vê
+// só a própria (MEU_OFERTA_ID manda); matriz herda a oferta que estava editando
+// por último no CRM (?oferta= na URL, "grudado" via localStorage) pra Conversas
+// já abrir filtrada na mesma loja, sem precisar escolher de novo.
+const OFERTA_CHAVE_LS = 'recomendaleads_oferta_ativa';
+const OFERTA_URL_ID = new URLSearchParams(location.search).get('oferta') || null;
+if (OFERTA_URL_ID) { try { localStorage.setItem(OFERTA_CHAVE_LS, OFERTA_URL_ID); } catch (e) {} }
+const OFERTA_QUERY_ID = MEU_OFERTA_ID || OFERTA_URL_ID || (() => { try { return localStorage.getItem(OFERTA_CHAVE_LS); } catch (e) { return null; } })();
 function icons() { try { lucide.createIcons(); } catch (e) {} }
 
 async function fetchAut(url, opts = {}) {
@@ -374,7 +383,10 @@ function atualizarAlertaAtendente() {
 let _filtroAtendenteGestor = '';
 async function carregarConversas() {
   try {
-    const qs = _filtroAtendenteGestor ? `?atendenteId=${encodeURIComponent(_filtroAtendenteGestor)}` : '';
+    const params = new URLSearchParams();
+    if (_filtroAtendenteGestor) params.set('atendenteId', _filtroAtendenteGestor);
+    if (OFERTA_QUERY_ID) params.set('oferta', OFERTA_QUERY_ID);
+    const qs = params.toString() ? `?${params.toString()}` : '';
     const resp = await fetchAut(`${API_BASE}/minha-conversas${qs}`);
     const data = await resp.json();
     if (!data.ok) return;
@@ -985,6 +997,32 @@ document.getElementById('transferirSelect').addEventListener('change', async (e)
   finally { e.target.value = ''; }
 });
 carregarEquipeParaTransferir();
+
+// Mostra qual loja está filtrando a lista (quando veio do CRM editando uma
+// oferta, ou o usuário está preso a uma) — mesmo badge do crm.html, com opção
+// de sair do filtro (só pra matriz; quem está preso à loja não tem como sair).
+async function carregarOfertaBadgeConv() {
+  const badge = document.getElementById('convOfertaBadge');
+  if (!badge || !OFERTA_QUERY_ID) return;
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-ofertas`);
+    const d = await r.json();
+    const oferta = d.ok && (d.ofertas || []).find(o => o.id === OFERTA_QUERY_ID);
+    if (!oferta) return;
+    badge.style.display = 'flex';
+    badge.style.background = oferta.padrao ? 'var(--success-soft,#DCFCE7)' : '#FEF3C7';
+    badge.style.color = oferta.padrao ? 'var(--success-dark,#166534)' : '#92400E';
+    const btnSairHtml = MEU_OFERTA_ID ? '' :
+      `<button type="button" id="sairOfertaConvBtn" title="Ver conversas de todas as lojas" style="margin-left:auto;background:none;border:none;cursor:pointer;font-weight:800;color:inherit;padding:0;">✕</button>`;
+    badge.innerHTML = `<span>${oferta.padrao ? '🟢' : '✏️'} ${esc(oferta.nome)}</span>${btnSairHtml}`;
+    const sairBtn = document.getElementById('sairOfertaConvBtn');
+    if (sairBtn) sairBtn.addEventListener('click', () => {
+      try { localStorage.removeItem(OFERTA_CHAVE_LS); } catch (e) {}
+      window.location.href = '/conversas';
+    });
+  } catch (e) {}
+}
+carregarOfertaBadgeConv();
 
 // Gestor: dropdown "ver de..." pra olhar as conversas de um atendente específico
 // por vez (o resto da equipe continua vendo só as suas, sem esse seletor).

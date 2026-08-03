@@ -6088,6 +6088,16 @@ app.get('/minha-conversas', exigirLoginEmpresa, async (req, res) => {
     const snap = await CONVERSAS_COL().where('empresaId', '==', req.empresaLogin.id).get();
     let conversas = [];
     snap.forEach(d => conversas.push({ id: d.id, ...d.data() }));
+
+    // Rede de lojas: filtro por oferta — usuário preso a uma loja (ofertaId no
+    // próprio login) SEMPRE vê só a dele, mesmo que peça outra por engano;
+    // matriz pode filtrar por qualquer loja via ?oferta= (ex.: veio do CRM
+    // editando uma oferta específica), ou ver tudo sem o parâmetro.
+    const ofertaFiltro = (req.usuario && req.usuario.ofertaId) || (req.query && req.query.oferta) || null;
+    if (ofertaFiltro) {
+      conversas = conversas.filter(c => c.ofertaId === ofertaFiltro);
+    }
+
     // Atendente (não-gestor) — em ordem de prioridade:
     // 1) Já foi assumida (atendenteId setado, via /pausar, /enviar, /enviar-midia
     //    ou /transferir) — só o dono vê, ponto final, não importa quem o rodízio
