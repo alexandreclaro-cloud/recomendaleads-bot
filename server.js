@@ -3960,6 +3960,14 @@ async function tratarWebhook(req, res) {
       await resetSessao(telefone);
       await iniciarConversa(telefone);
       if (nichoEfetivo) await saveSessao(telefone, { nicho: nichoEfetivo });
+      // Rede de lojas: carimba a oferta na sessão que ACABOU de ser criada aqui.
+      // O carimbo lá em cima (perto de resolverOfertaSilenciosa) só cobre sessão
+      // JÁ existente — numa conversa nova (o caso mais comum: 1ª mensagem =
+      // gatilho), sessaoExiste era false naquele momento e o carimbo não rolava.
+      // Sem isso, a 2ª mensagem em diante perdia a oferta (resolverOfertaSilenciosa
+      // não tinha mais como saber qual era) e a conversa passava a usar o
+      // conteúdo real da oferta Padrão pro resto do fluxo.
+      if (ofertaEfetivaId) await saveSessao(telefone, { ofertaId: ofertaEfetivaId });
     } else if (clienteAtivo) {
       await processarMensagem(telefone, texto, vCard, contatosMultiplos);
     } else if (recomendadoAtivo) {
