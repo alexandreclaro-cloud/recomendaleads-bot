@@ -270,6 +270,8 @@
   .atendente-tag { margin-top: 8px; font-size: 0.74rem; font-weight: 600; color: var(--gold-deep); }
   .card-pegar-btn { margin-top: 8px; width: 100%; background: transparent; border: 1px solid var(--gold); color: var(--gold-deep); font-size: 0.76rem; font-weight: 600; border-radius: 8px; padding: 6px 8px; cursor: pointer; transition: background 0.15s; }
   .card-pegar-btn:hover { background: var(--surface-sunken); }
+  .card-conversa-link { display: inline-block; margin-top: 8px; font-size: 0.72rem; font-weight: 600; color: var(--brand, #2563eb); text-decoration: none; }
+  .card-conversa-link:hover { text-decoration: underline; }
 
   .lead-card .nome { font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; color: var(--text); }
   .lead-card .meta {
@@ -1655,6 +1657,7 @@ function renderBoard() {
       card.draggable = true;
       card.dataset.id = lead.id;
 
+      const telLimpoCard = (lead.telefoneRecomendado || '').replace(/\D/g, '');
       card.innerHTML = `
         <button type="button" class="card-del-btn" data-id="${lead.id}" title="Excluir este card (ex: teste)">🗑️</button>
         <div class="nome">${esc(lead.nomeRecomendado) || 'Sem nome'}</div>
@@ -1666,6 +1669,7 @@ function renderBoard() {
           <span class="vendedor-tag">${esc(lead.vendedor) || 'Sem vendedor'}</span>
           <span class="data-tag">🕒 ${esc(ultimaComCard(lead.telefoneRecomendado, lead.criadoEm))}</span>
         </div>
+        ${telLimpoCard ? `<a class="card-conversa-link" href="/conversas?tel=${telLimpoCard}" target="_blank" title="Abrir a conversa desta pessoa">💬 Ver conversa</a>` : ''}
         ${lead.valorCompra != null ? `<div class="valor-compra" style="margin-top:8px; font-weight:700; color:var(--success, #1d9e75);">💰 ${fmtBRL(lead.valorCompra)}</div>` : ''}
         ${lead.atendenteId
           ? `<div class="atendente-tag">🙋 ${esc(lead.atendenteNome) || 'Atendente'}</div>`
@@ -1682,7 +1686,7 @@ function renderBoard() {
       });
       card.addEventListener('click', (e) => {
         if (foiArrastado) { foiArrastado = false; return; }
-        if (e.target.closest('.card-del-btn') || e.target.closest('.card-pegar-btn')) return;
+        if (e.target.closest('.card-del-btn') || e.target.closest('.card-pegar-btn') || e.target.closest('.card-conversa-link')) return;
         abrirModalLead(lead.id);
       });
       card.querySelector('.card-del-btn').addEventListener('click', async (e) => {
@@ -1732,6 +1736,7 @@ function renderClientesPipeline() {
       card.className = 'lead-card';
       const amigos = recomendadosDoCliente(c);
       const qtd = amigos.length;
+      const telLimpoCli = (c.telefone || '').replace(/\D/g, '');
       card.style.cursor = 'pointer';
       card.innerHTML = `
         <button type="button" class="card-del-btn" data-tel="${esc(c.telefone)}" title="Excluir este card (ex: teste)">🗑️</button>
@@ -1742,9 +1747,10 @@ function renderClientesPipeline() {
         </div>
         <div class="meta">
           <span class="data-tag">🕒 ${esc(ultimaComCard(c.telefone, c.atualizadoEm || c.criadoEm))}</span>
-        </div>`;
+        </div>
+        ${telLimpoCli ? `<a class="card-conversa-link" href="/conversas?tel=${telLimpoCli}" target="_blank" title="Abrir a conversa desta pessoa">💬 Ver conversa</a>` : ''}`;
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.card-del-btn')) return;
+        if (e.target.closest('.card-del-btn') || e.target.closest('.card-conversa-link')) return;
         abrirRecomendadosDoCliente(c);
       });
       card.querySelector('.card-del-btn').addEventListener('click', async (e) => {
@@ -1932,7 +1938,7 @@ function abrirRecomendadosDoCliente(cliente) {
   const modalContainer = document.getElementById('modalContainer');
   const linhas = amigos.length ? amigos.map(a => {
     const tel = (a.telefone || '').replace(/\D/g, '');
-    const wa = tel ? ` · <a href="https://wa.me/${tel}" target="_blank" style="color:var(--brand,#2563eb)">WhatsApp</a>` : '';
+    const wa = tel ? ` · <a href="https://wa.me/${tel}" target="_blank" style="color:var(--brand,#2563eb)">WhatsApp</a> · <a href="/conversas?tel=${tel}" target="_blank" style="color:var(--brand,#2563eb)">💬 Conversa</a>` : '';
     const status = a.lead
       ? `<span style="color:var(--text-dim)">— ${esc(nomeEtapa(a.lead.etapa))} · 🕒 ${esc(ultimaComCard(tel, a.lead.criadoEm))}</span>`
       : `<span style="color:var(--danger-dark,#b91c1c);font-weight:600">— ⏳ ainda não recebeu (na fila)</span>`;
