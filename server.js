@@ -831,6 +831,10 @@ const EMPRESA_PADRAO = {
   // "qual é o seu nome?", o robô insiste (via API Oficial, categoria utilidade).
   // Vazio = não manda nenhum (opt-in, precisa ser configurado no CRM).
   cadenciaFollowupClienteInicial: [],
+  // Follow-up — Sem resposta (Cliente): quando o cliente já deu o nome mas
+  // trava em "coletando_contatos" (pedimos as indicações e ele some sem
+  // mandar nenhuma). Mesma lógica opt-in — vazio não manda nada.
+  cadenciaFollowupClienteContatos: [],
   mensagemPedeVendedor: 'Prazer, {nome}! E me diz, quem te atendeu hoje?',
   mensagemPedeContatos: 'Show! Agora me envie o contato dos seus amigos para você receber {premio}.',
   mensagemColeta: 'Me envie {quantidade} recomendações e já garanta seu presente.\n\nVocê pode mandar o contato direto da sua agenda. Então, qual é a primeira pessoa que vem na sua mente?\nLembrando que ela também vai ganhar um presente nosso 🎁',
@@ -960,7 +964,8 @@ const CAMPOS_PRODUTO_OFERTA = new Set([
   ...Object.keys(EMPRESA_PADRAO).filter(k => !CAMPOS_OPERACAO_EMPRESA.has(k)),
   'oficialTemplateRecomendado', 'oficialTemplateInsistencia',
   'oficialTemplateFollowupCliente', 'oficialTemplateConvite',
-  'oficialTemplateVenda', 'oficialTemplateMarketing', 'oficialTemplateClienteInicial'
+  'oficialTemplateVenda', 'oficialTemplateMarketing', 'oficialTemplateClienteInicial',
+  'oficialTemplateClienteContatos'
 ]);
 // Gera um id de oferta a partir do nome (reaproveita o slugify de nichos) + sufixo
 // aleatório curto — evita colisão sem precisar de contador/corrida entre criações.
@@ -1018,6 +1023,7 @@ async function getEmpresaById(empresaId) {
     oficialTemplateFollowupCliente: cfg.oficialTemplateFollowupCliente || data.oficialTemplateFollowupCliente || null,
     oficialTemplateConvite: cfg.oficialTemplateConvite || data.oficialTemplateConvite || null,
     oficialTemplateClienteInicial: cfg.oficialTemplateClienteInicial || data.oficialTemplateClienteInicial || null,
+    oficialTemplateClienteContatos: cfg.oficialTemplateClienteContatos || data.oficialTemplateClienteContatos || null,
     // Pré-pago (só cobra quando prepagoAtivo = true).
     prepagoAtivo: !!data.prepagoAtivo,
     saldoCentavos: data.saldoCentavos || 0,
@@ -1759,6 +1765,8 @@ async function iniciarColetaContatos(telefone, sessao, empresa) {
   sessao.etapa = 'coletando_contatos';
   sessao.indiceFaixaAtual = 0;
   sessao.contatosFaixaAtual = [];
+  const marcaContatos = new Date().toISOString();
+  sessao.ultimaAtividadeContatosEm = marcaContatos;
   await saveSessao(telefone, sessao);
   const primeiraFaixa = faixasAtivas(empresa)[0];
   const varsCliente = { nomeRecomendado: (sessao.clienteNome || '').split(' ')[0], empresa: empresa.nome, premio: primeiraFaixa.premio, quantidade: primeiraFaixa.quantidade };
@@ -1767,6 +1775,9 @@ async function iniciarColetaContatos(telefone, sessao, empresa) {
   }
   await sendText(telefone, substituirVariaveis(empresa.mensagemPedeContatos || EMPRESA_PADRAO.mensagemPedeContatos, varsCliente));
   await sendText(telefone, substituirVariaveis(empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta, varsCliente));
+  // Follow-up — Sem resposta (Cliente): agenda o 1º lembrete caso ele trave
+  // aqui sem mandar nenhuma indicação. Vazio na config = não agenda nada.
+  await agendarProximoFollowupClienteContatos(telefone, empresa, marcaContatos, 0);
 }
 
 // Serializa o processamento por número: se chegam 2 mensagens quase juntas do
@@ -1890,7 +1901,13 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
 
       if (contatosFaixaAtual.length < faixaAtual.quantidade) {
         sessao.contatosFaixaAtual = contatosFaixaAtual;
+        // Reancora o follow-up "sem enviar contatos": ele acabou de mandar um,
+        // então reinicia a régua a partir daqui — não faz sentido cutucar quem
+        // já está respondendo.
+        const marcaContatos = new Date().toISOString();
+        sessao.ultimaAtividadeContatosEm = marcaContatos;
         await saveSessao(telefone, sessao);
+        await agendarProximoFollowupClienteContatos(telefone, empresa, marcaContatos, 0);
 
         const faltam = faixaAtual.quantidade - contatosFaixaAtual.length;
         const nomesAdicionados = novosContatos.map(c => c.nome).join(', ');
@@ -1932,9 +1949,13 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
         sessao.contatosFaixaAtual = [];
         await finalizarFaixa(telefone, sessao, proximaFaixa, empresa, contatosDestaFaixa, novoExcedente);
       } else {
+        const marcaContatos = new Date().toISOString();
+        sessao.ultimaAtividadeContatosEm = marcaContatos;
         await saveSessao(telefone, sessao);
         const faltam = proximaFaixa.quantidade - excedentePendente.length;
         await sendText(telefone, `Show! Faltam ${faltam} recomendações para você garantir "${proximaFaixa.premio}". Quem mais vem na sua mente?`);
+        // Nova faixa, mesma trava possível — agenda o follow-up de novo.
+        await agendarProximoFollowupClienteContatos(telefone, empresa, marcaContatos, 0);
       }
     } else {
       sessao.excedentePendente = [];
@@ -2544,6 +2565,25 @@ async function agendarProximoFollowupCliente(telefone, empresa, marcaTempo, indi
   const executarEm = new Date(Date.now() + proximo.esperaMin * 60 * 1000).toISOString();
   await criarAgendamento({
     tipo: 'followup_cliente_inicial',
+    executarEm,
+    marcaTempoReferencia: marcaTempo,
+    dados: { telefone, indiceFollowup }
+  });
+}
+
+// ---- Follow-up — Sem resposta (CLIENTE): já deu o nome mas trava pedindo as
+// indicações ("coletando_contatos") sem mandar nenhuma. `marcaTempo` é
+// `ultimaAtividadeContatosEm` — reancorado a cada vez que o cliente manda um
+// contato (mesmo que ainda não complete a faixa), pra não cutucar quem já tá
+// respondendo. Muda também se a etapa for além (faixa completa) ou resetar. ----
+async function agendarProximoFollowupClienteContatos(telefone, empresa, marcaTempo, indiceFollowup) {
+  const cadencia = empresa.cadenciaFollowupClienteContatos || [];
+  const proximo = cadencia[indiceFollowup];
+  if (!proximo) return;
+
+  const executarEm = new Date(Date.now() + proximo.esperaMin * 60 * 1000).toISOString();
+  await criarAgendamento({
+    tipo: 'followup_cliente_contatos',
     executarEm,
     marcaTempoReferencia: marcaTempo,
     dados: { telefone, indiceFollowup }
@@ -5186,7 +5226,7 @@ app.get('/minha-config', exigirLoginEmpresa, exigirEscopoOferta, async (req, res
     // Templates oficiais: expõe os 4 pro painel/CRM. Prefere o que já está na
     // `configuracao` (salvo no CRM, junto da mensagem); senão cai pro campo de
     // topo (salvo no painel novo). Assim os dois lugares editam o mesmo template.
-    ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite', 'oficialTemplateClienteInicial'].forEach(k => {
+    ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite', 'oficialTemplateClienteInicial', 'oficialTemplateClienteContatos'].forEach(k => {
       if (!configuracao[k]) configuracao[k] = req.empresaLogin[k] || '';
     });
     // Múltiplas ofertas: ?oferta=<id> sobrepõe os campos PRODUTO com os da oferta
@@ -5392,7 +5432,7 @@ app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilit
       }
       // Templates oficiais: mesmo fallback que getEmpresaById já usa hoje (prioriza
       // o que estiver dentro de `configuracao`, senão cai pro campo de topo do doc).
-      ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite', 'oficialTemplateClienteInicial'].forEach(k => {
+      ['oficialTemplateRecomendado', 'oficialTemplateInsistencia', 'oficialTemplateFollowupCliente', 'oficialTemplateConvite', 'oficialTemplateClienteInicial', 'oficialTemplateClienteContatos'].forEach(k => {
         camposProduto[k] = config[k] || req.empresaLogin[k] || null;
       });
       const agora = new Date().toISOString();
@@ -7700,6 +7740,56 @@ async function processarAgendamentoInterno(agendamento) {
     // criadoEm não muda enquanto a etapa continuar aguardando_nome — reusa a
     // mesma referência pro próximo passo (diferente do lado Recomendado).
     await agendarProximoFollowupCliente(telefone, empresa, sessaoAtual.criadoEm, indiceFollowup + 1);
+    return;
+  }
+
+  // Follow-up — Sem resposta (CLIENTE): deu o nome mas travou sem mandar as
+  // indicações ("coletando_contatos"). Referência é ultimaAtividadeContatosEm,
+  // reancorada a cada contato parcial que ele manda (ver processarMensagem) —
+  // stale se ele terminar a faixa (etapa avança) ou mandar mais um contato
+  // nesse meio tempo (marca muda).
+  if (agendamento.tipo === 'followup_cliente_contatos') {
+    const { telefone, indiceFollowup } = agendamento.dados;
+
+    if (await numeroEstaPausado(telefone)) {
+      console.log(`[AGENDAMENTO IGNORADO] ${telefone} está pausado (stop1) — follow-up contatos não enviado`);
+      return;
+    }
+
+    const sessaoAtual = await getSessao(telefone);
+    if (!sessaoAtual || sessaoAtual.etapa !== 'coletando_contatos' || sessaoAtual.ultimaAtividadeContatosEm !== agendamento.marcaTempoReferencia) {
+      return;
+    }
+
+    const cadencia = empresa.cadenciaFollowupClienteContatos || [];
+    const proximo = cadencia[indiceFollowup];
+    if (!proximo) return;
+
+    const faixaAtual = faixasAtivas(empresa)[sessaoAtual.indiceFaixaAtual || 0] || {};
+    const jaMandou = (sessaoAtual.contatosFaixaAtual || []).length;
+    const variaveisFollowup = {
+      nomeRecomendado: sessaoAtual.clienteNome ? sessaoAtual.clienteNome.split(' ')[0] : '',
+      empresa: empresa.nome,
+      premio: faixaAtual.premio || '',
+      quantidade: faixaAtual.quantidade || '',
+      faltam: faixaAtual.quantidade ? Math.max(faixaAtual.quantidade - jaMandou, 0) : ''
+    };
+    const templateEscolhido = proximo.template && String(proximo.template).trim();
+    // Sem texto E sem template = mensagem em branco (linha adicionada mas nunca
+    // preenchida) — não manda nada em branco, só avança pra próxima da cadência.
+    if ((proximo.texto || '').trim() || templateEscolhido) {
+      await sendTextOuTemplate(
+        telefone,
+        substituirVariaveis(proximo.texto, variaveisFollowup),
+        templateEscolhido,
+        [variaveisFollowup.nomeRecomendado, variaveisFollowup.premio, variaveisFollowup.faltam]
+      );
+    } else {
+      console.log(`[FOLLOWUP CLIENTE CONTATOS] mensagem ${indiceFollowup} vazia (sem texto e sem template) — pulando envio`);
+    }
+    // Não reancora sozinho aqui — reusa a mesma marca (nada mudou desde que
+    // agendamos), só avança pro próximo índice da cadência.
+    await agendarProximoFollowupClienteContatos(telefone, empresa, sessaoAtual.ultimaAtividadeContatosEm, indiceFollowup + 1);
     return;
   }
 

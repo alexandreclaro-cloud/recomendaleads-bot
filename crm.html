@@ -1185,6 +1185,22 @@
               <button class="config-save-btn" id="salvarCadenciaClienteBtn">Salvar cadência do cliente</button>
               <span class="config-status-msg" id="statusCadenciaCliente"></span>
             </div>
+
+            <hr style="border:none; border-top:1px solid var(--border); margin:22px 0 16px;">
+            <p style="font-weight:600;color:var(--gold-deep);margin:0 0 4px;">Já deu o nome, mas não mandou as indicações</p>
+            <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
+              Mensagens enviadas em sequência se o <b>Cliente</b> já respondeu o nome mas trava pedindo as indicações (não manda nenhum contato). Variáveis: <code class="var-chip">{nomeRecomendado}</code> <code class="var-chip">{premio}</code> <code class="var-chip">{quantidade}</code> <code class="var-chip">{faltam}</code> <code class="var-chip">{empresa}</code>
+            </p>
+
+            <div id="cadenciaClienteContatosContainer"></div>
+
+            <div class="config-row-save">
+              <button class="config-save-btn" id="adicionarFollowupClienteContatosBtn" style="background:transparent; border:1px solid var(--gold); color:var(--gold-deep);">+ Adicionar mensagem</button>
+            </div>
+            <div class="config-row-save">
+              <button class="config-save-btn" id="salvarCadenciaClienteContatosBtn">Salvar cadência</button>
+              <span class="config-status-msg" id="statusCadenciaClienteContatos"></span>
+            </div>
           </div>
 
           <div class="followup-pill-panel" data-followup-pane="recomendado" style="display:none;">
@@ -2260,6 +2276,7 @@ async function carregarConfiguracao() {
 
     renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
     renderCadenciaCliente(configuracaoAtual.cadenciaFollowupClienteInicial || []);
+    renderCadenciaClienteContatos(configuracaoAtual.cadenciaFollowupClienteContatos || []);
     renderFaixas(configuracaoAtual.faixasBonus || []);
     carregarFollowupCliente();
   } catch (err) {
@@ -2698,6 +2715,7 @@ document.getElementById('testarAvisoBtn') && document.getElementById('testarAvis
 // ===== Cadência =====
 let cadenciaAtual = [];
 let cadenciaClienteAtual = [];
+let cadenciaClienteContatosAtual = [];
 
 // Genérica: renderiza uma cadência de follow-up (valor+unidade minutos/horas/dias)
 // dentro de `containerId`. `onChange` recebe o array atual sempre que ele muda,
@@ -2783,6 +2801,9 @@ function renderCadencia(cadencia) {
 function renderCadenciaCliente(cadencia) {
   renderCadenciaGenerica('cadenciaClienteContainer', cadencia, arr => { cadenciaClienteAtual = arr; });
 }
+function renderCadenciaClienteContatos(cadencia) {
+  renderCadenciaGenerica('cadenciaClienteContatosContainer', cadencia, arr => { cadenciaClienteContatosAtual = arr; });
+}
 
 document.getElementById('adicionarFollowupBtn').addEventListener('click', () => {
   cadenciaAtual.push({ esperaMin: 1440, texto: '' });
@@ -2791,6 +2812,10 @@ document.getElementById('adicionarFollowupBtn').addEventListener('click', () => 
 document.getElementById('adicionarFollowupClienteBtn').addEventListener('click', () => {
   cadenciaClienteAtual.push({ esperaMin: 1440, texto: '' });
   renderCadenciaCliente(cadenciaClienteAtual);
+});
+document.getElementById('adicionarFollowupClienteContatosBtn').addEventListener('click', () => {
+  cadenciaClienteContatosAtual.push({ esperaMin: 1440, texto: '' });
+  renderCadenciaClienteContatos(cadenciaClienteContatosAtual);
 });
 
 // Teste do template da API Oficial (dentro do card, no CRM).
@@ -2869,6 +2894,38 @@ document.getElementById('salvarCadenciaClienteBtn').addEventListener('click', as
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({ cadenciaFollowupClienteInicial: cadenciaClienteAtual, oficialTemplateClienteInicial: '' })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!';
+      statusEl.className = 'config-status-msg ok';
+      configuracaoAtual = data.empresa;
+    } else {
+      statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar');
+      statusEl.className = 'config-status-msg err';
+    }
+  } catch (err) {
+    statusEl.textContent = '❌ Erro de conexão';
+    statusEl.className = 'config-status-msg err';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000);
+  }
+});
+
+document.getElementById('salvarCadenciaClienteContatosBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarCadenciaClienteContatosBtn');
+  const statusEl = document.getElementById('statusCadenciaClienteContatos');
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando...';
+  statusEl.className = 'config-status-msg';
+
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ cadenciaFollowupClienteContatos: cadenciaClienteContatosAtual })
     });
     const data = await resp.json();
 
