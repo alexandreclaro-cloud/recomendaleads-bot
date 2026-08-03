@@ -5896,13 +5896,24 @@ app.get('/minha-conversas', exigirLoginEmpresa, async (req, res) => {
     const snap = await CONVERSAS_COL().where('empresaId', '==', req.empresaLogin.id).get();
     let conversas = [];
     snap.forEach(d => conversas.push({ id: d.id, ...d.data() }));
-    // Atendente (não-gestor): depois que alguém assume a conversa (atendenteId
-    // setado, via /pausar, /enviar ou /enviar-midia), ela some da lista de quem
-    // NÃO foi quem assumiu — só o dono continua vendo. Enquanto ninguém assumiu
-    // (atendenteId vazio), todo mundo vê normalmente, pra poder pegar. Gestor
-    // sempre vê tudo, sem filtro.
+    // Atendente (não-gestor) — em ordem de prioridade:
+    // 1) Já foi assumida (atendenteId setado, via /pausar, /enviar, /enviar-midia
+    //    ou /transferir) — só o dono vê, ponto final, não importa quem o rodízio
+    //    tinha chamado antes.
+    // 2) Ainda não foi assumida, mas o rodízio já escolheu UM atendente específico
+    //    pra avisar (atendenteAtribuidoId, em avisarAtendenteRevezamento) — só esse
+    //    escolhido vê (senão o rodízio vira decoração: todo mundo vê e qualquer um
+    //    pega, ignorando quem foi chamado). Se não responder a tempo, escala pro
+    //    próximo e a visibilidade acompanha automaticamente.
+    // 3) Nem foi assumida nem tem rodízio rolando — visível pra todo mundo, pra
+    //    poder pegar livremente.
+    // Gestor sempre vê tudo, sem filtro.
     if (req.papel !== 'gestor' && req.usuario) {
-      conversas = conversas.filter(c => !c.atendenteId || c.atendenteId === req.usuario.id);
+      conversas = conversas.filter(c => {
+        if (c.atendenteId) return c.atendenteId === req.usuario.id;
+        if (c.atendenteAtribuidoId) return c.atendenteAtribuidoId === req.usuario.id;
+        return true;
+      });
     }
     conversas.sort((a, b) => new Date(b.ultimaEm || 0) - new Date(a.ultimaEm || 0));
     res.json({ ok: true, conversas });
