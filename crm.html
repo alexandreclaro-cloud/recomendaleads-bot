@@ -267,6 +267,9 @@
   }
   .lead-card:hover .card-del-btn { opacity: 1; }
   .card-del-btn:hover { color: var(--error, #dc2626); background: var(--surface-sunken); }
+  .atendente-tag { margin-top: 8px; font-size: 0.74rem; font-weight: 600; color: var(--gold-deep); }
+  .card-pegar-btn { margin-top: 8px; width: 100%; background: transparent; border: 1px solid var(--gold); color: var(--gold-deep); font-size: 0.76rem; font-weight: 600; border-radius: 8px; padding: 6px 8px; cursor: pointer; transition: background 0.15s; }
+  .card-pegar-btn:hover { background: var(--surface-sunken); }
 
   .lead-card .nome { font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; color: var(--text); }
   .lead-card .meta {
@@ -645,6 +648,10 @@
     </div>
     <label>Vendedor:</label>
     <select id="filtroVendedor">
+      <option value="">Todos</option>
+    </select>
+    <label id="filtroAtendenteLabel" style="display:none;">Atendente:</label>
+    <select id="filtroAtendente" style="display:none;">
       <option value="">Todos</option>
     </select>
   </div>
@@ -1587,8 +1594,11 @@ function parseValor(str) {
 
 function leadsFiltrados() {
   const vendedor = document.getElementById('filtroVendedor').value;
+  const atendenteSel = document.getElementById('filtroAtendente');
+  const atendenteId = atendenteSel ? atendenteSel.value : '';
   const termo = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
   let res = vendedor ? leads.filter(l => l.vendedor === vendedor) : leads;
+  if (atendenteId) res = res.filter(l => l.atendenteId === atendenteId);
   if (termo) {
     res = res.filter(l =>
       (l.nomeRecomendado || '').toLowerCase().includes(termo) ||
@@ -1657,6 +1667,9 @@ function renderBoard() {
           <span class="data-tag">🕒 ${esc(ultimaComCard(lead.telefoneRecomendado, lead.criadoEm))}</span>
         </div>
         ${lead.valorCompra != null ? `<div class="valor-compra" style="margin-top:8px; font-weight:700; color:var(--success, #1d9e75);">💰 ${fmtBRL(lead.valorCompra)}</div>` : ''}
+        ${lead.atendenteId
+          ? `<div class="atendente-tag">🙋 ${esc(lead.atendenteNome) || 'Atendente'}</div>`
+          : `<button type="button" class="card-pegar-btn" data-id="${lead.id}">🙋 Pegar este lead</button>`}
       `;
 
       let foiArrastado = false;
@@ -1669,7 +1682,7 @@ function renderBoard() {
       });
       card.addEventListener('click', (e) => {
         if (foiArrastado) { foiArrastado = false; return; }
-        if (e.target.closest('.card-del-btn')) return;
+        if (e.target.closest('.card-del-btn') || e.target.closest('.card-pegar-btn')) return;
         abrirModalLead(lead.id);
       });
       card.querySelector('.card-del-btn').addEventListener('click', async (e) => {
@@ -1680,6 +1693,16 @@ function renderBoard() {
           const data = await resp.json();
           if (resp.ok && data.ok) await carregarLeads();
           else alert('❌ ' + (data.erro || 'Erro ao excluir'));
+        } catch (err) { alert('❌ Erro de conexão'); }
+      });
+      const pegarBtn = card.querySelector('.card-pegar-btn');
+      if (pegarBtn) pegarBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          const resp = await fetchAutenticado(`${API_BASE}/minha-leads/${lead.id}/assumir`, { method: 'POST' });
+          const data = await resp.json();
+          if (resp.ok && data.ok) await carregarLeads();
+          else alert('❌ ' + (data.erro || 'Erro ao pegar'));
         } catch (err) { alert('❌ Erro de conexão'); }
       });
 
@@ -1843,6 +1866,13 @@ function abrirModalLead(leadId) {
           <select id="modalVendedorSelect">${opcoesVendedor}</select>
         </div>
         <div class="modal-field">
+          <label>Atendente responsável</label>
+          <div class="valor">${lead.atendenteId ? '🙋 ' + esc(lead.atendenteNome) : '— (sem dono, qualquer atendente pode pegar)'}</div>
+          <select id="modalAtendenteSelect" style="margin-top:6px;">
+            <option value="">↪ Atribuir/transferir para...</option>
+          </select>
+        </div>
+        <div class="modal-field">
           <label>Criado em</label>
           <div class="valor">${formatarData(lead.criadoEm)}</div>
         </div>
@@ -1867,6 +1897,33 @@ function abrirModalLead(leadId) {
   });
   document.getElementById('modalSalvarBtn').addEventListener('click', () => salvarVendedorModal(leadId));
   document.getElementById('modalExcluirBtn').addEventListener('click', () => excluirLeadModal(leadId));
+  carregarEquipeParaModalLead(leadId);
+}
+
+// Popula o seletor de atendente do modal (id + nome) e liga a transferência.
+async function carregarEquipeParaModalLead(leadId) {
+  const select = document.getElementById('modalAtendenteSelect');
+  if (!select) return;
+  try {
+    const r = await fetchAutenticado(`${API_BASE}/minha-equipe/lista`);
+    const d = await r.json();
+    if (!d.ok) return;
+    select.innerHTML = '<option value="">↪ Atribuir/transferir para...</option>' +
+      (d.usuarios || []).map(u => `<option value="${u.id}">${esc(u.nome || 'Atendente')}</option>`).join('');
+  } catch (e) {}
+  select.addEventListener('change', async (e) => {
+    const novoId = e.target.value;
+    if (!novoId) return;
+    const nomeAlvo = e.target.selectedOptions[0].textContent;
+    if (!confirm(`Atribuir este lead pra ${nomeAlvo}?`)) { e.target.value = ''; return; }
+    const st = document.getElementById('modalStatus');
+    try {
+      const resp = await fetchAutenticado(`${API_BASE}/minha-leads/${leadId}/transferir`, { method: 'POST', body: JSON.stringify({ atendenteId: novoId }) });
+      const data = await resp.json();
+      if (resp.ok && data.ok) { fecharModal(); await carregarLeads(); }
+      else if (st) { st.textContent = '❌ ' + (data.erro || 'Erro ao transferir'); }
+    } catch (err) { if (st) st.textContent = '❌ Erro de conexão'; }
+  });
 }
 
 // Modal: lista os amigos que um cliente (recomendador) indicou.
@@ -2008,6 +2065,24 @@ boardEl.addEventListener('drop', async (e) => {
 });
 
 document.getElementById('filtroVendedor').addEventListener('change', renderBoard);
+
+// Filtro "ver leads de: atendente X" — só faz sentido pro gestor (atendente já
+// só enxerga os próprios leads + os sem dono, filtrado direto no backend).
+if (EH_GESTOR) {
+  document.getElementById('filtroAtendenteLabel').style.display = '';
+  document.getElementById('filtroAtendente').style.display = '';
+  (async () => {
+    try {
+      const r = await fetchAutenticado(`${API_BASE}/minha-equipe/lista`);
+      const d = await r.json();
+      if (!d.ok) return;
+      const select = document.getElementById('filtroAtendente');
+      select.innerHTML = '<option value="">Todos</option>' +
+        (d.usuarios || []).map(u => `<option value="${u.id}">${esc(u.nome || 'Atendente')}</option>`).join('');
+    } catch (e) {}
+  })();
+  document.getElementById('filtroAtendente').addEventListener('change', renderBoard);
+}
 const _buscaInput = document.getElementById('buscaLead');
 const _buscaClear = document.getElementById('buscaClear');
 _buscaInput.addEventListener('input', () => {
