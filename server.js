@@ -685,7 +685,21 @@ function aplicarOferta(empresa, ofertaId) {
   const oferta = empresa.ofertas[ofertaId];
   const camposProduto = {};
   for (const k of CAMPOS_PRODUTO_OFERTA) {
-    if (oferta[k] !== undefined) camposProduto[k] = oferta[k];
+    if (oferta[k] !== undefined) {
+      camposProduto[k] = oferta[k];
+    } else if (EMPRESA_PADRAO[k] !== undefined) {
+      // Campo que essa oferta ainda não personalizou: cai no exemplo GENÉRICO do
+      // sistema, não no valor que `empresa` já carrega (que é o texto REAL da
+      // oferta Padrão/matriz em uso agora). Sem isso, uma oferta nova "vazava"
+      // prêmio/mensagem de outra oferta da mesma empresa — ex.: o robô oferecendo
+      // o prêmio da Padrão pra quem ativou a oferta da Alef.
+      camposProduto[k] = EMPRESA_PADRAO[k];
+    } else {
+      // Sem default genérico pra esse campo (ex.: oficialTemplate* — só existe no
+      // topo). Fica vazio de propósito: nunca usar o template/config de OUTRA
+      // oferta por engano.
+      camposProduto[k] = null;
+    }
   }
   // ofertaId fica carimbado no próprio objeto — assim quem já recebe `empresa`
   // (criarLead, iniciarConversaRecomendado, registrarMensagem via contexto) acha
@@ -5369,7 +5383,11 @@ app.get('/minha-config', exigirLoginEmpresa, exigirEscopoOferta, async (req, res
     let ofertaAtiva = null;
     const ofertaId = req.query && req.query.oferta;
     if (req.empresaLogin.ofertasHabilitado && ofertaId && configTop.ofertas && configTop.ofertas[ofertaId]) {
-      configuracao = { ...configuracao, ...configTop.ofertas[ofertaId] };
+      // Mesma regra que o robô ao vivo usa (aplicarOferta): campo que essa
+      // oferta ainda não personalizou cai no exemplo GENÉRICO do sistema, nunca
+      // no texto real de OUTRA oferta da mesma empresa — a tela de edição
+      // precisa mostrar exatamente o que vai ser enviado, sem vazar conteúdo.
+      configuracao = aplicarOferta({ ...configuracao, ofertas: configTop.ofertas }, ofertaId);
       ofertaAtiva = { id: ofertaId, nome: configTop.ofertas[ofertaId].nomeOferta || ofertaId, padrao: ofertaId === configTop.ofertaAtivaPadrao };
     }
     res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN, ofertasHabilitado: !!req.empresaLogin.ofertasHabilitado, ofertaAtiva });
