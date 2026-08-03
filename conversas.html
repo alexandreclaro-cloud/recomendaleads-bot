@@ -290,6 +290,13 @@ function renderConteudoMsg(m) {
   if (url && m.tipo === 'documento') {
     return `<a class="midia-doc" href="${esc(url)}" target="_blank">📎 ${esc(m.texto || 'Documento')}</a>`;
   }
+  if (m.contatosArray && m.contatosArray.length) {
+    return m.contatosArray.map(c => {
+      const tel = (c.telefone || '').replace(/\D/g, '');
+      const linkWa = tel ? `<a href="https://wa.me/${tel}" target="_blank" style="color:inherit;text-decoration:underline;">${esc(c.telefone)}</a>` : '<i>sem telefone</i>';
+      return `<div class="midia-doc" style="display:flex;align-items:center;gap:8px;">👤 <div><b>${esc(c.nome) || 'Sem nome'}</b><br><small>${linkWa}</small></div></div>`;
+    }).join('');
+  }
   return esc(m.texto);
 }
 

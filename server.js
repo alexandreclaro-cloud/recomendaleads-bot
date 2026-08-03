@@ -354,7 +354,7 @@ async function upsertClientePipeline(telefone, nome, etapa, contatos) {
 
 // Grava uma mensagem (recebida ou enviada) no histórico da conversa e atualiza
 // o resumo da conversa. Usado para a caixa de entrada do WhatsApp.
-async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo, midiaUrl }) {
+async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo, midiaUrl, contatosArray }) {
   if (!db || !telefone) return;
   const agora = new Date().toISOString();
   try {
@@ -366,6 +366,10 @@ async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, ti
       texto: texto || '',
       tipo: tipo || 'texto', // 'texto' | 'imagem' | 'audio' | 'video' | 'documento'
       midiaUrl: midiaUrl || null, // URL pra renderizar a mídia no painel (imagem/áudio/vídeo/doc)
+      // Contato(s) da agenda compartilhados com a gente — guarda nome+telefone de
+      // cada um pra a caixa de entrada mostrar igual o WhatsApp mostra (não só o
+      // rótulo genérico "Contato compartilhado").
+      contatosArray: (contatosArray && contatosArray.length) ? contatosArray : null,
       criadoEm: agora
     });
     const resumo = {
@@ -3573,11 +3577,16 @@ async function tratarWebhook(req, res) {
 
     // Registra a mensagem recebida no histórico da conversa (caixa de entrada)
     const nomeContato = body.senderName || body.chatName || body.pushname || null;
+    // Contato(s) da agenda compartilhados — guarda nome+telefone de cada um pra a
+    // caixa de entrada mostrar igual o WhatsApp (não só um rótulo genérico).
+    let contatosParaChat = null;
+    if (contatosMultiplos && contatosMultiplos.length) contatosParaChat = contatosMultiplos;
+    else if (vCard) contatosParaChat = [parseVCard(vCard)];
     let textoChat = texto;
     let midiaTipoChat = null, midiaUrlChat = null;
     if (!textoChat) {
-      if (contatosMultiplos && contatosMultiplos.length) textoChat = '👤 Contato(s) compartilhado(s)';
-      else if (vCard) textoChat = '👤 Contato compartilhado';
+      if (contatosParaChat && contatosParaChat.length === 1) textoChat = `👤 ${contatosParaChat[0].nome || 'Contato compartilhado'}`;
+      else if (contatosParaChat && contatosParaChat.length > 1) textoChat = `👤 ${contatosParaChat.length} contatos compartilhados`;
       else if (body.midia) {
         // Mídia recebida via API Oficial (já baixada da Meta e resolvida em
         // metaMensagemParaInterno) — tem URL permanente pro painel exibir.
@@ -3607,7 +3616,7 @@ async function tratarWebhook(req, res) {
         }
       } catch (e) { ehDoBot = false; }
       if (ehDoBot) {
-        registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat, tipo: midiaTipoChat, midiaUrl: midiaUrlChat });
+        registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat, tipo: midiaTipoChat, midiaUrl: midiaUrlChat, contatosArray: contatosParaChat });
       }
     }
 
@@ -4018,8 +4027,19 @@ async function metaMensagemParaInterno(value, msg, cfg, empresaId) {
       if (!p0.wa_id && (tel.length === 10 || tel.length === 11) && !tel.startsWith('55')) tel = '55' + tel;
       return { nome: (c.name && c.name.formatted_name) || '', telefone: tel };
     });
+  } else if (msg.type === 'location' && msg.location) {
+    const loc = msg.location;
+    const link = `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
+    base.text = { message: `📍 ${loc.name || 'Localização compartilhada'}${loc.address ? ' — ' + loc.address : ''}\n${link}` };
+  } else if (msg.type === 'sticker') {
+    base.text = { message: '🌟 Figurinha' };
+  } else if (msg.type === 'reaction' && msg.reaction) {
+    // Reação a uma mensagem antiga — sem o emoji (removeu a reação) não vale nada
+    // registrar, ignora silenciosamente.
+    if (!msg.reaction.emoji) return null;
+    base.text = { message: `reagiu com ${msg.reaction.emoji}` };
   } else {
-    return null; // tipos não tratados (localização, figurinha, reação, etc.)
+    return null; // outros tipos não tratados
   }
   return base;
 }
