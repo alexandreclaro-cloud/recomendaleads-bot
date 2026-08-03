@@ -247,6 +247,7 @@
   .column-body.drag-over { background: var(--gold-soft); border-radius: 10px; }
 
   .lead-card {
+    position: relative;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -258,6 +259,14 @@
   .lead-card:active { cursor: grabbing; transform: scale(0.98); }
   .lead-card:hover { box-shadow: var(--shadow-md); border-color: var(--gold); }
   .lead-card.dragging { opacity: 0.4; }
+  .card-del-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: transparent; border: none; color: var(--text-faint);
+    font-size: 0.85rem; line-height: 1; padding: 3px 5px; border-radius: 6px;
+    cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s;
+  }
+  .lead-card:hover .card-del-btn { opacity: 1; }
+  .card-del-btn:hover { color: var(--error, #dc2626); background: var(--surface-sunken); }
 
   .lead-card .nome { font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; color: var(--text); }
   .lead-card .meta {
@@ -1637,6 +1646,7 @@ function renderBoard() {
       card.dataset.id = lead.id;
 
       card.innerHTML = `
+        <button type="button" class="card-del-btn" data-id="${lead.id}" title="Excluir este card (ex: teste)">🗑️</button>
         <div class="nome">${esc(lead.nomeRecomendado) || 'Sem nome'}</div>
         <div class="card-info">
           <div><span class="ci-label">Cliente:</span> ${esc(lead.nomeRecomendador) || '—'}</div>
@@ -1659,7 +1669,18 @@ function renderBoard() {
       });
       card.addEventListener('click', (e) => {
         if (foiArrastado) { foiArrastado = false; return; }
+        if (e.target.closest('.card-del-btn')) return;
         abrirModalLead(lead.id);
+      });
+      card.querySelector('.card-del-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Excluir este card? Não dá pra desfazer.')) return;
+        try {
+          const resp = await fetchAutenticado(`${API_BASE}/minha-leads/${lead.id}`, { method: 'DELETE' });
+          const data = await resp.json();
+          if (resp.ok && data.ok) await carregarLeads();
+          else alert('❌ ' + (data.erro || 'Erro ao excluir'));
+        } catch (err) { alert('❌ Erro de conexão'); }
       });
 
       col.appendChild(card);
@@ -1690,6 +1711,7 @@ function renderClientesPipeline() {
       const qtd = amigos.length;
       card.style.cursor = 'pointer';
       card.innerHTML = `
+        <button type="button" class="card-del-btn" data-tel="${esc(c.telefone)}" title="Excluir este card (ex: teste)">🗑️</button>
         <div class="nome">${esc(c.nome) || 'Sem nome ainda'}</div>
         <div class="card-info">
           <div><span class="ci-label">Telefone:</span> ${esc(c.telefone) || '—'}</div>
@@ -1698,7 +1720,20 @@ function renderClientesPipeline() {
         <div class="meta">
           <span class="data-tag">🕒 ${esc(ultimaComCard(c.telefone, c.atualizadoEm || c.criadoEm))}</span>
         </div>`;
-      card.addEventListener('click', () => abrirRecomendadosDoCliente(c));
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.card-del-btn')) return;
+        abrirRecomendadosDoCliente(c);
+      });
+      card.querySelector('.card-del-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Excluir este card? Não dá pra desfazer.')) return;
+        try {
+          const resp = await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/${c.telefone}`, { method: 'DELETE' });
+          const data = await resp.json();
+          if (resp.ok && data.ok) await carregarLeads();
+          else alert('❌ ' + (data.erro || 'Erro ao excluir'));
+        } catch (err) { alert('❌ Erro de conexão'); }
+      });
       col.appendChild(card);
     });
   });

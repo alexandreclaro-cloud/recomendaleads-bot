@@ -6156,6 +6156,18 @@ app.get('/minha-clientes-pipeline', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Remove um card do funil do cliente (ex.: limpar teste). O id do doc já é
+// `empresaId__telefone`, então o próprio empresaLogin.id na chave garante que
+// só apaga dentro da empresa de quem está logado.
+app.delete('/minha-clientes-pipeline/:telefone', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    await CLIENTES_PIPELINE_COL().doc(`${req.empresaLogin.id}__${req.params.telefone}`).delete();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Backfill: cria os cards do funil do cliente a partir das conversas (sessões) que já
 // existem, pra o funil não ficar vazio com quem começou ANTES da função existir.
 app.post('/minha-clientes-pipeline/backfill', exigirLoginEmpresa, exigirGestor, async (req, res) => {
