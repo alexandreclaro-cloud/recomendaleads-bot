@@ -211,6 +211,26 @@
     .board { grid-auto-columns: minmax(240px, 85%); }
   }
 
+  /* Setas fixas nas laterais pra rolar as colunas do Kanban sem precisar
+     arrastar a barra de rolagem horizontal (aparecem só na aba Leads, e
+     só quando o board realmente estoura a largura da tela). */
+  .board-scroll-btn {
+    position: fixed; top: 50%; transform: translateY(-50%);
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--surface); border: 1px solid var(--border);
+    box-shadow: var(--shadow-md); color: var(--text-dim);
+    font-size: 1.3rem; line-height: 1; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    z-index: 50; transition: background 0.15s, color 0.15s;
+  }
+  .board-scroll-btn.show { display: flex; }
+  .board-scroll-btn:hover { background: var(--surface-sunken); color: var(--text); }
+  .board-scroll-left { left: 244px; }
+  .board-scroll-right { right: 16px; }
+  @media (max-width: 860px) {
+    .board-scroll-left { left: 8px; }
+  }
+
   .column {
     background: var(--surface-sunken);
     border-radius: 14px;
@@ -679,6 +699,8 @@
 
   <div id="loadMsg" class="load-msg">Carregando leads...</div>
   <div class="board" id="board" style="display:none"></div>
+  <button type="button" class="board-scroll-btn board-scroll-left" id="boardScrollLeft" title="Rolar colunas pra esquerda">‹</button>
+  <button type="button" class="board-scroll-btn board-scroll-right" id="boardScrollRight" title="Rolar colunas pra direita">›</button>
 </div>
 
 <!-- ===================== ABA RANKING ===================== -->
@@ -1311,6 +1333,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
     if (btn.dataset.tab === 'leads') {
       document.getElementById('tabLeads').classList.add('active');
+      atualizarSetasBoard();
     } else if (btn.dataset.tab === 'ranking') {
       document.getElementById('tabRanking').classList.add('active');
       renderRanking();
@@ -1715,7 +1738,29 @@ function renderBoard() {
   });
 
   renderClientesPipeline();
+  atualizarSetasBoard();
 }
+
+// Mostra/esconde as setas de rolar o board: só quando ele realmente estoura
+// a largura da tela (senão fica setinha decorativa sem fazer nada), e desliga
+// a que já bateu na ponta (esquerda no início, direita no fim).
+function atualizarSetasBoard() {
+  const board = document.getElementById('board');
+  const btnE = document.getElementById('boardScrollLeft');
+  const btnD = document.getElementById('boardScrollRight');
+  if (!board || !btnE || !btnD) return;
+  const estoura = board.scrollWidth > board.clientWidth + 4;
+  btnE.classList.toggle('show', estoura && board.scrollLeft > 4);
+  btnD.classList.toggle('show', estoura && board.scrollLeft < board.scrollWidth - board.clientWidth - 4);
+}
+document.getElementById('board').addEventListener('scroll', atualizarSetasBoard);
+window.addEventListener('resize', atualizarSetasBoard);
+document.getElementById('boardScrollLeft').addEventListener('click', () => {
+  document.getElementById('board').scrollBy({ left: -320, behavior: 'smooth' });
+});
+document.getElementById('boardScrollRight').addEventListener('click', () => {
+  document.getElementById('board').scrollBy({ left: 320, behavior: 'smooth' });
+});
 
 // Renderiza os cards do CLIENTE (recomendador) nas 3 colunas fixas do funil.
 function renderClientesPipeline() {
