@@ -4765,6 +4765,25 @@ app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   }
 });
 
+// Lista enxuta (id + nome) da equipe — pra popular seletor de "transferir
+// atendimento"/"quem é o dono deste card". Ao contrário de GET /minha-equipe,
+// QUALQUER usuário logado pode chamar (não só gestor), pois todo atendente
+// pode transferir e precisa ver os nomes dos colegas pra quem transferir.
+app.get('/minha-equipe/lista', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const snap = await USUARIOS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const meuOfertaId = req.usuario && req.usuario.ofertaId;
+    let usuarios = snap.docs
+      .map(d => ({ id: d.id, nome: d.data().nome, ativo: d.data().ativo !== false, ofertaId: d.data().ofertaId || null }))
+      .filter(u => u.ativo);
+    if (meuOfertaId) usuarios = usuarios.filter(u => u.ofertaId === meuOfertaId);
+    usuarios.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    res.json({ ok: true, usuarios: usuarios.map(u => ({ id: u.id, nome: u.nome })) });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Heartbeat de presença (o painel manda a cada 30s enquanto a aba fica aberta) —
 // usado pelo revezamento de atendimento pra saber quem está online agora.
 app.post('/minha-equipe/heartbeat', exigirLoginEmpresa, async (req, res) => {
@@ -6109,6 +6128,33 @@ app.post('/minha-conversas/:telefone/pausar', exigirLoginEmpresa, async (req, re
   }
 });
 
+// Transfere a conversa pra outro atendente da equipe. Quem enxerga a conversa
+// (o dono atual, ou o gestor vendo tudo) pode transferir — mesma regra de
+// visibilidade do GET /minha-conversas.
+app.post('/minha-conversas/:telefone/transferir', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    const { atendenteId: novoId } = req.body || {};
+    if (!novoId) return res.status(400).json({ ok: false, erro: 'Escolha pra quem transferir.' });
+    const chave = `${req.empresaLogin.id}__${telefone}`;
+    const ref = CONVERSAS_COL().doc(chave);
+    const snap = await ref.get();
+    const atual = snap.exists ? snap.data() : {};
+    const souDono = atual.atendenteId && req.usuario && atual.atendenteId === req.usuario.id;
+    if (req.papel !== 'gestor' && !souDono && atual.atendenteId) {
+      return res.status(403).json({ ok: false, erro: 'Só o dono da conversa ou um gestor pode transferir.' });
+    }
+    const uDoc = await USUARIOS_COL().doc(novoId).get();
+    if (!uDoc.exists || uDoc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Atendente de destino não encontrado' });
+    }
+    await ref.set({ botPausado: true, atendenteId: novoId, atendenteNome: uDoc.data().nome || 'Atendente', atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
+    res.json({ ok: true, atendenteNome: uDoc.data().nome || 'Atendente' });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Reset total do contato (zera sessões, agendamentos e conversa — igual "stop1",
 // mas pelo painel, sem digitar comando nem vazar nada pro cliente).
 app.post('/minha-conversas/:telefone/resetar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
@@ -6174,8 +6220,64 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOf
 
 app.get('/minha-leads', exigirLoginEmpresa, async (req, res) => {
   try {
-    const leads = await getLeadsPorEmpresa(req.empresaLogin.id);
+    let leads = await getLeadsPorEmpresa(req.empresaLogin.id);
+    // Atendente (não-gestor): só vê leads sem dono (pra poder pegar) ou que ele
+    // mesmo pegou — mesma regra das Conversas. Gestor vê tudo, sem filtro; o
+    // parâmetro ?atendenteId=X deixa o gestor filtrar "um de cada" mesmo assim.
+    if (req.papel !== 'gestor' && req.usuario) {
+      leads = leads.filter(l => !l.atendenteId || l.atendenteId === req.usuario.id);
+    } else if (req.query.atendenteId) {
+      leads = leads.filter(l => l.atendenteId === req.query.atendenteId);
+    }
     res.json({ ok: true, leads });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Atendente pega um lead sem dono pra si (vira o responsável por ele).
+app.post('/minha-leads/:id/assumir', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const ref = LEADS_COL().doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
+    }
+    if (snap.data().atendenteId && snap.data().atendenteId !== (req.usuario && req.usuario.id)) {
+      return res.status(409).json({ ok: false, erro: 'Este lead já foi pego por outro atendente.' });
+    }
+    const atendenteId = (req.usuario && req.usuario.id) || null;
+    const atendenteNome = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
+    await ref.set({ atendenteId, atendenteNome }, { merge: true });
+    res.json({ ok: true, atendenteId, atendenteNome });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Transfere um lead pra outro atendente da equipe. Qualquer um que enxergue o
+// lead (o dono atual, ou o gestor vendo tudo) pode transferir — mesma regra de
+// visibilidade do GET acima.
+app.post('/minha-leads/:id/transferir', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const { atendenteId: novoId } = req.body || {};
+    if (!novoId) return res.status(400).json({ ok: false, erro: 'Escolha pra quem transferir.' });
+    const ref = LEADS_COL().doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
+    }
+    const atual = snap.data();
+    const souDono = atual.atendenteId && req.usuario && atual.atendenteId === req.usuario.id;
+    if (req.papel !== 'gestor' && !souDono && atual.atendenteId) {
+      return res.status(403).json({ ok: false, erro: 'Só o dono do lead ou um gestor pode transferir.' });
+    }
+    const uDoc = await USUARIOS_COL().doc(novoId).get();
+    if (!uDoc.exists || uDoc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Atendente de destino não encontrado' });
+    }
+    await ref.set({ atendenteId: novoId, atendenteNome: uDoc.data().nome || 'Atendente' }, { merge: true });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

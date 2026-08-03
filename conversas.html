@@ -150,6 +150,9 @@
         <span class="bot-flag on" id="botFlag">Agente I.A. ativo</span>
         <button class="btn btn-secondary" id="pausarBtn" style="display:none;padding:8px 12px;font-size:0.8rem">🙋 Assumir (sou eu)</button>
         <button class="btn btn-secondary" id="devolverBtn" style="display:none;padding:8px 12px;font-size:0.8rem">Devolver ao Agente I.A.</button>
+        <select id="transferirSelect" title="Transferir este atendimento pra outro atendente" style="padding:7px 10px;font-size:0.8rem;border-radius:8px;border:1px solid var(--border);background:var(--surface);max-width:170px;">
+          <option value="">↪ Transferir para...</option>
+        </select>
         <select id="etapaSelect" title="Mover esse lead pra outra etapa do CRM" style="display:none;padding:7px 10px;font-size:0.8rem;border-radius:8px;border:1px solid var(--border);background:var(--surface);"></select>
         <button class="btn btn-ghost" id="resetarBtn" title="Zerar este contato: apaga a conversa e reinicia a pessoa do zero (mantém os leads no CRM)" style="padding:8px 12px;font-size:0.8rem;color:#c0392b">Resetar</button>
       </div>
@@ -928,6 +931,33 @@ document.getElementById('statusAtendBtn').addEventListener('change', async (e) =
 carregarMeuStatus();
 enviarHeartbeat();
 setInterval(enviarHeartbeat, 30000); // mantém "online" enquanto a aba fica aberta
+
+// Popula o seletor de transferência com a equipe (nome + id) — carrega uma vez.
+async function carregarEquipeParaTransferir() {
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-equipe/lista`);
+    const d = await r.json();
+    if (!d.ok) return;
+    const sel = document.getElementById('transferirSelect');
+    const usuarios = (d.usuarios || []).filter(u => u.id !== MEU_USUARIO_ID);
+    sel.innerHTML = '<option value="">↪ Transferir para...</option>' +
+      usuarios.map(u => `<option value="${u.id}">${esc(u.nome || 'Atendente')}</option>`).join('');
+  } catch (e) {}
+}
+document.getElementById('transferirSelect').addEventListener('change', async (e) => {
+  const novoId = e.target.value;
+  if (!novoId || !atual) { e.target.value = ''; return; }
+  const nomeAlvo = e.target.selectedOptions[0].textContent;
+  if (!confirm(`Transferir este atendimento pra ${nomeAlvo}?`)) { e.target.value = ''; return; }
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-conversas/${atual}/transferir`, { method: 'POST', body: JSON.stringify({ atendenteId: novoId }) });
+    const d = await r.json();
+    if (d.ok) { await carregarMensagens(false); await carregarConversas(); }
+    else alert('❌ ' + (d.erro || 'Erro ao transferir'));
+  } catch (err) { alert('❌ Erro de conexão'); }
+  finally { e.target.value = ''; }
+});
+carregarEquipeParaTransferir();
 
 icons();
 carregarConversas();
