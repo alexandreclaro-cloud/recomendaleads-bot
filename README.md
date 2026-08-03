@@ -1,46 +1,31 @@
 # RecomendaLeads Bot
 
-Servidor de automação WhatsApp que conduz o roteiro de neurovendas do
-Método Poder da Recomendação, integrado à Z-API.
+SaaS multi-tenant de automação de programa de indicação via WhatsApp
+(Método Poder da Recomendação). Node.js + Express + Firebase Firestore,
+hospedado no Render, deploy automático a cada push na branch `main`.
 
-## Variáveis de ambiente necessárias
+**Leia [`PROJETO.md`](./PROJETO.md) primeiro** — é o documento de
+continuidade completo (arquitetura, modelo de dados, conceitos-chave,
+decisões importantes, checklist de acessos externos). Este README é só um
+resumo rápido.
 
-Configure estas 3 variáveis no painel do Render (ou no arquivo `.env` localmente):
+## Variáveis de ambiente (Render → Environment)
 
-- `ZAPI_INSTANCE_ID` — ID da sua instância Z-API
-- `ZAPI_TOKEN` — Token da sua instância Z-API
-- `ZAPI_CLIENT_TOKEN` — Client-Token (Security Token) da sua conta Z-API,
-  encontrado em "Segurança" no painel da Z-API
+Obrigatórias: `JWT_SECRET`, `ADMIN_SECRET`, `FIREBASE_SERVICE_ACCOUNT`.
+Conforme a integração usada: `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`,
+`ANTHROPIC_API_KEY`, `META_APP_SECRET` (assinatura do webhook da Meta),
+`ZAPI_INSTANCE_ID` / `ZAPI_TOKEN` / `ZAPI_CLIENT_TOKEN` (por empresa, salvos
+no banco — não são globais). Sem `JWT_SECRET`/`ADMIN_SECRET` configuradas, o
+servidor recusa subir de propósito (ver seção de Segurança no PROJETO.md).
 
-## Como configurar o webhook na Z-API
+## Deploy
 
-1. No painel da Z-API, vá em "Webhooks e configurações gerais"
-2. Em "Ao receber", cole a URL exibida no painel admin de cada empresa
-   (formato `https://www.recomendaleads.com.br/webhook/ID-DA-EMPRESA`)
-3. Salve
+`git push origin main` → Render detecta e faz o deploy sozinho. Não existe
+staging; `main` é produção.
 
-## Rotas disponíveis
+## Estrutura
 
-- `GET /` — health check, confirma que o servidor está no ar
-- `GET /status` — mostra a configuração da empresa e as sessões ativas
-- `POST /config` — atualiza a configuração da empresa (vendedores, faixas de bônus, mensagens)
-- `POST /webhook` — recebida pela Z-API a cada mensagem nova
-
-## Roteiro implementado
-
-1. Cliente envia "quero meu presente" (ou qualquer mensagem, se for o primeiro contato)
-2. Bot agradece e pergunta o nome
-3. Bot pergunta quem atendeu (lista numerada de vendedores)
-4. Bot pede recomendações até atingir a primeira faixa de bônus configurada
-5. Bot aceita contatos via cartão da agenda (vCard) ou texto livre ("Nome - telefone")
-6. Ao atingir a meta, bot entrega o voucher e avisa para o cliente avisar os amigos
-7. Após o tempo configurado (padrão 60 min), cada amigo recebe a mensagem de conversão
-   automaticamente, citando quem o recomendou e o presente que ganhou
-
-## Limitações desta primeira versão
-
-- Armazenamento em arquivo local (`db.json`) — funciona para validar, mas os dados
-  não persistem entre deploys no Render free tier (o disco é efêmero). Para uso em
-  produção real, migrar para um banco como Firebase Firestore ou PostgreSQL.
-- Suporta uma única empresa por instância (não é multi-tenant ainda).
-- Followup automático por inatividade ainda não implementado nesta versão.
+Ver seção 3 do `PROJETO.md` para o mapa completo de arquivos. Resumo:
+`server.js` é o backend inteiro (rotas + lógica do bot + integrações);
+`crm.html` e `minha-empresa-configurar.html` são os painéis principais dos
+clientes; `admin.html` é o painel do dono da plataforma.

@@ -1,7 +1,7 @@
 # Migração para a API Oficial do WhatsApp (Meta Cloud API)
 
 > Guia de execução. O **código já está pronto** (modo `whatsappTipo: 'oficial'`,
-> commit `f40ee4c`), isolado do Z-API/Baileys. Quando decidirem migrar um cliente,
+> commit `f40ee4c`), isolado do Z-API. Quando decidirem migrar um cliente,
 > basta seguir os passos abaixo. Nada aqui afeta quem está no Z-API hoje.
 
 ## Decisão de rota (já tomada)
@@ -47,7 +47,7 @@ Logado como a empresa → **WhatsApp → "API Oficial"**:
   escolhe uma frase qualquer, ex.: `recomendaleads-2026`), **WABA ID** (opcional),
   **Nome do template do recomendado**.
 - Copiar a **URL de Webhook** mostrada (formato `.../webhook-oficial/<empresaId>`).
-- Clicar **Salvar API Oficial** → isso ativa o modo `oficial` e desliga o Baileys.
+- Clicar **Salvar API Oficial** → isso ativa o modo `oficial`.
 
 ### 4. Configurar o webhook no app da Meta
 No App da Meta → WhatsApp → Configuração → **Webhook**:
