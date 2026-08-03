@@ -5892,6 +5892,34 @@ app.get('/minha-conversas', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Preenche o papel (Cliente/Recomendado) das conversas que já existiam antes
+// dessa marcação existir — cruza com as sessões (sessoes = cliente,
+// sessoes_recomendado = recomendado) pra descobrir quem é quem. Rodar uma vez
+// é suficiente; conversas que já têm papel não são mexidas.
+app.post('/minha-conversas/backfill-papel', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const empresaId = req.empresaLogin.id;
+    const snap = await CONVERSAS_COL().where('empresaId', '==', empresaId).get();
+    let atualizados = 0;
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      if (data.papel || !data.telefone) continue;
+      const chave = empresaId === EMPRESA_ID_PDN ? data.telefone : `${empresaId}__${data.telefone}`;
+      const [sRec, sCli] = await Promise.all([
+        SESSOES_RECOMENDADO_COL().doc(chave).get(),
+        SESSOES_COL().doc(chave).get()
+      ]);
+      let papel = null;
+      if (sRec.exists) papel = 'recomendado';
+      else if (sCli.exists) papel = 'cliente';
+      if (papel) { await doc.ref.set({ papel }, { merge: true }); atualizados++; }
+    }
+    res.json({ ok: true, atualizados, total: snap.size });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Mensagens de uma conversa (e marca como lida).
 app.get('/minha-conversas/:telefone/mensagens', exigirLoginEmpresa, async (req, res) => {
   try {

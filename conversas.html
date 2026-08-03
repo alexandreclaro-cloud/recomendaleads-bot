@@ -131,10 +131,11 @@
     <div class="conv-search">
       <input class="input" type="text" id="buscaConv" placeholder="Buscar contato ou telefone...">
     </div>
-    <div class="conv-filtro-papel" style="display:flex;gap:6px;padding:0 12px 8px;">
+    <div class="conv-filtro-papel" style="display:flex;gap:6px;align-items:center;padding:0 12px 8px;flex-wrap:wrap;">
       <button type="button" class="filtro-papel-btn active" data-papel="">Todos</button>
       <button type="button" class="filtro-papel-btn" data-papel="cliente">Cliente</button>
       <button type="button" class="filtro-papel-btn" data-papel="recomendado">Recomendado</button>
+      <button type="button" id="backfillPapelBtn" title="Classifica em Cliente/Recomendado as conversas de antes desse filtro existir" style="margin-left:auto;background:none;border:none;color:var(--text-faint);font-size:0.72rem;cursor:pointer;text-decoration:underline;">Classificar conversas antigas</button>
     </div>
     <div class="conv-items" id="convItems"><div class="chat-empty" style="padding:30px">Carregando...</div></div>
   </aside>
@@ -423,6 +424,22 @@ document.querySelectorAll('.filtro-papel-btn').forEach(btn => {
     _filtroPapel = btn.dataset.papel || '';
     renderConversas();
   });
+});
+document.getElementById('backfillPapelBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('backfillPapelBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Classificando...';
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-conversas/backfill-papel`, { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      btn.textContent = `✅ ${d.atualizados} classificada(s)`;
+      await carregarConversas();
+    } else {
+      btn.textContent = '❌ ' + (d.erro || 'Erro');
+    }
+  } catch (e) { btn.textContent = '❌ Erro de conexão'; }
+  finally { setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 4000); }
 });
 
 async function abrirConversa(telefone, nome) {
