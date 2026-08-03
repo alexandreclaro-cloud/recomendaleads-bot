@@ -5914,6 +5914,10 @@ app.get('/minha-conversas', exigirLoginEmpresa, async (req, res) => {
         if (c.atendenteAtribuidoId) return c.atendenteAtribuidoId === req.usuario.id;
         return true;
       });
+    } else if (req.query.atendenteId) {
+      // Gestor pode "ver como" um atendente específico (um de cada vez), mesmo
+      // filtro que já existe em GET /minha-leads.
+      conversas = conversas.filter(c => c.atendenteId === req.query.atendenteId);
     }
     conversas.sort((a, b) => new Date(b.ultimaEm || 0) - new Date(a.ultimaEm || 0));
     res.json({ ok: true, conversas });

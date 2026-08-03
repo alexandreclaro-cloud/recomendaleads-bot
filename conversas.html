@@ -137,6 +137,11 @@
       <button type="button" class="filtro-papel-btn" data-papel="recomendado">Recomendado</button>
       <button type="button" id="backfillPapelBtn" title="Classifica em Cliente/Recomendado as conversas de antes desse filtro existir" style="margin-left:auto;background:none;border:none;color:var(--text-faint);font-size:0.72rem;cursor:pointer;text-decoration:underline;">Classificar conversas antigas</button>
     </div>
+    <div id="filtroAtendenteBox" style="display:none;padding:0 12px 8px;">
+      <select id="filtroAtendenteConv" class="input" style="width:100%;font-size:0.8rem;padding:6px 8px;">
+        <option value="">👥 Ver de: todo mundo</option>
+      </select>
+    </div>
     <div class="conv-items" id="convItems"><div class="chat-empty" style="padding:30px">Carregando...</div></div>
   </aside>
 
@@ -237,6 +242,7 @@ if (!TOKEN) window.location.href = '/login';
 // mas o conteúdo por-oferta (Script de vendas) já precisa saber qual é a loja.
 const EMPRESA_LOGADA_CONV = JSON.parse(localStorage.getItem('recomendaleads_empresa') || 'null');
 const MEU_OFERTA_ID = (EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.ofertaId) || null;
+const EH_GESTOR_CONV = (EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.papel) === 'gestor';
 function icons() { try { lucide.createIcons(); } catch (e) {} }
 
 async function fetchAut(url, opts = {}) {
@@ -346,9 +352,11 @@ function atualizarAlertaAtendente() {
     clearInterval(_flashTitulo); _flashTitulo = null; document.title = _tituloOriginal;
   }
 }
+let _filtroAtendenteGestor = '';
 async function carregarConversas() {
   try {
-    const resp = await fetchAut(`${API_BASE}/minha-conversas`);
+    const qs = _filtroAtendenteGestor ? `?atendenteId=${encodeURIComponent(_filtroAtendenteGestor)}` : '';
+    const resp = await fetchAut(`${API_BASE}/minha-conversas${qs}`);
     const data = await resp.json();
     if (!data.ok) return;
     conversas = data.conversas || [];
@@ -958,6 +966,28 @@ document.getElementById('transferirSelect').addEventListener('change', async (e)
   finally { e.target.value = ''; }
 });
 carregarEquipeParaTransferir();
+
+// Gestor: dropdown "ver de..." pra olhar as conversas de um atendente específico
+// por vez (o resto da equipe continua vendo só as suas, sem esse seletor).
+if (EH_GESTOR_CONV) {
+  (async () => {
+    const box = document.getElementById('filtroAtendenteBox');
+    const sel = document.getElementById('filtroAtendenteConv');
+    box.style.display = '';
+    try {
+      const r = await fetchAut(`${API_BASE}/minha-equipe/lista`);
+      const d = await r.json();
+      if (d.ok) {
+        sel.innerHTML = '<option value="">👥 Ver de: todo mundo</option>' +
+          (d.usuarios || []).map(u => `<option value="${u.id}">👤 Ver de: ${esc(u.nome || 'Atendente')}</option>`).join('');
+      }
+    } catch (e) {}
+    sel.addEventListener('change', async () => {
+      _filtroAtendenteGestor = sel.value;
+      await carregarConversas();
+    });
+  })();
+}
 
 icons();
 carregarConversas();
