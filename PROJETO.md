@@ -275,7 +275,27 @@ Alexandre, não ficam no código:
   direto em produção pelo Alexandre após cada deploy.
 - **Sem suíte de testes automatizados** — validação é manual.
 
-## 11. Pendências conhecidas (em 2026-08-03)
+## 11. Changelog — onde ver o histórico de mudanças
+
+**Não existe um `CHANGELOG.md` separado.** Todo o histórico de mudanças fica
+registrado direto no **histórico de commits do Git** (`git log`) — cada
+commit tem uma mensagem em português explicando **o que mudou e por quê**
+(não só "o quê", mas o motivo/contexto da mudança, incluindo referência a
+bugs/incidentes que ela corrige quando é o caso). Essa é a fonte confiável
+pra entender a evolução do projeto ao longo do tempo:
+
+```
+git log --oneline          # lista resumida
+git log -p <arquivo>       # histórico detalhado de um arquivo específico
+git show <hash-do-commit>  # ver uma mudança específica por completo
+```
+
+Essa prática (mensagem de commit detalhada, explicando o porquê) deve
+continuar sendo seguida por quem mantiver o projeto daqui pra frente —
+é o que garante que o histórico continue navegável sem depender de nenhuma
+ferramenta ou conversa externa ao repositório.
+
+## 12. Pendências conhecidas (em 2026-08-03)
 
 - README.md precisa ser reescrito (está descrevendo uma versão antiga do
   sistema).
