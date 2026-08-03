@@ -2752,7 +2752,7 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
       </div>
       <div style="flex:1;">
         <label style="margin-top:0;">Mensagem ${index + 1} <span style="font-weight:400;color:var(--text-dim);">(texto livre)</span></label>
-        <input type="text" data-cadencia-campo="texto" data-index="${index}" value="${(item.texto || '').replace(/"/g, '&quot;')}" placeholder="Mensagem enviada como texto livre (dentro da janela de 24h)">
+        <textarea rows="4" data-cadencia-campo="texto" data-index="${index}" placeholder="Mensagem enviada como texto livre (dentro da janela de 24h)">${esc(item.texto || '')}</textarea>
         <p data-tpl-aviso="${index}" class="hint" style="font-size:0.74rem;color:var(--text-dim);margin:6px 0 0;${item.esperaMin >= 1440 ? 'display:none;' : ''}">🔓 Espera menor que 24h — entrega sempre como texto livre, sem precisar de template. Passa a pedir template só se aumentar a espera pra 24h ou mais.</p>
         <div data-tpl-box="${index}" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 12px;margin-top:8px;${item.esperaMin >= 1440 ? '' : 'display:none;'}">
           <label style="margin-top:0;font-size:0.8rem;">🟢 Template da API Oficial desta mensagem</label>
