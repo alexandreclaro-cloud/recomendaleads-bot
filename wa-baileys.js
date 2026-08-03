@@ -121,13 +121,21 @@ async function useFirestoreAuthState(empresaId) {
   return { state: { creds, keys }, saveCreds, restaurada };
 }
 
-// Apaga toda a sessão salva (usado no logout/reset).
+// Apaga toda a sessão salva (usado no logout/reset). Fragmenta em lotes de
+// 450 (limite do Firestore é 500 operações/commit) — sessões antigas
+// acumulam muitas chaves, e um único commit gigante falha com "Transaction
+// too big", deixando a credencial inválida presa e travando em loop de 401.
 async function limparSessaoFirestore(empresaId) {
   const base = _db.collection('wa_sessions').doc(empresaId);
   try {
     const keysSnap = await base.collection('keys').get();
-    const batch = _db.batch();
-    keysSnap.forEach(d => batch.delete(d.ref));
+    let batch = _db.batch();
+    let n = 0;
+    for (const d of keysSnap.docs) {
+      batch.delete(d.ref);
+      n++;
+      if (n % 450 === 0) { await batch.commit(); batch = _db.batch(); }
+    }
     batch.delete(base);
     await batch.commit();
   } catch (e) { console.error('[BAILEYS] erro ao limpar sessão:', e.message); }
