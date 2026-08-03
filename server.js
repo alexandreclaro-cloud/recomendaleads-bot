@@ -1732,6 +1732,11 @@ function faixasAtivas(empresa) {
 async function iniciarConversa(telefone) {
   const empresa = await getEmpresa();
   const sessao = await getSessao(telefone);
+  // Marca esta conversa como CLIENTE (recomendador) — usado pra separar Cliente
+  // x Recomendado na aba Conversas. Se o mesmo número já tiver sido marcado
+  // como Recomendado antes (raro — normalmente é gente diferente), prevalece
+  // o papel mais recente.
+  try { await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ papel: 'cliente' }, { merge: true }); } catch (e) {}
   // Pipeline do cliente: entrou (leu o QR / mandou o gatilho).
   await upsertClientePipeline(telefone, null, 'iniciou');
   // A tela "Conversa do Cliente" anuncia {premio}/{quantidade} como variáveis
@@ -2627,6 +2632,11 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
     console.log(`[OPT-OUT] ${contato.telefone} descadastrado — não inicia conversa.`);
     return;
   }
+  // Marca esta conversa como RECOMENDADO (amigo indicado) — usado pra separar
+  // Cliente x Recomendado na aba Conversas. Se o mesmo número já tiver sido
+  // marcado como Cliente antes (raro — normalmente é gente diferente), prevalece
+  // o papel mais recente.
+  try { await CONVERSAS_COL().doc(`${empresa.id}__${contato.telefone}`).set({ papel: 'recomendado' }, { merge: true }); } catch (e) {}
 
   const primeiroNomeRecomendado = (contato.nome && contato.nome.trim() && contato.nome !== 'Contato sem nome')
     ? contato.nome.split(' ')[0]
