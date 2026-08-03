@@ -2751,12 +2751,13 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
         </div>
       </div>
       <div style="flex:1;">
-        <label style="margin-top:0;">Mensagem ${index + 1} <span style="font-weight:400;color:var(--text-dim);">(texto livre — só é usado se NÃO houver template preenchido abaixo)</span></label>
+        <label style="margin-top:0;">Mensagem ${index + 1} <span style="font-weight:400;color:var(--text-dim);">(texto livre)</span></label>
         <input type="text" data-cadencia-campo="texto" data-index="${index}" value="${(item.texto || '').replace(/"/g, '&quot;')}" placeholder="Mensagem enviada como texto livre (dentro da janela de 24h)">
-        <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 12px;margin-top:8px;">
+        <p data-tpl-aviso="${index}" class="hint" style="font-size:0.74rem;color:var(--text-dim);margin:6px 0 0;${item.esperaMin >= 1440 ? 'display:none;' : ''}">🔓 Espera menor que 24h — entrega sempre como texto livre, sem precisar de template. Passa a pedir template só se aumentar a espera pra 24h ou mais.</p>
+        <div data-tpl-box="${index}" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 12px;margin-top:8px;${item.esperaMin >= 1440 ? '' : 'display:none;'}">
           <label style="margin-top:0;font-size:0.8rem;">🟢 Template da API Oficial desta mensagem</label>
           <input type="text" data-cadencia-campo="template" data-index="${index}" value="${(item.template || '').replace(/"/g, '&quot;')}" placeholder="ex: recomenda_insistencia_2">
-          <div class="hint" style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">Nome exato do template aprovado na Meta. Só é usado se a pessoa já estiver <b>fora da janela de 24h</b> — enquanto ela ainda pode receber texto livre, o sistema manda a Mensagem ao lado em vez do template. Vazio = essa mensagem só entrega como texto livre (não chega se já estiver fora da janela).</div>
+          <div class="hint" style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">Nome exato do template aprovado na Meta. Só é usado se a pessoa já estiver <b>fora da janela de 24h</b> — enquanto ela ainda pode receber texto livre, o sistema manda a Mensagem acima em vez do template. Vazio = essa mensagem só entrega como texto livre (não chega se já estiver fora da janela).</div>
         </div>
       </div>
       <button type="button" data-remover-index="${index}" style="margin-top:24px; background:transparent; border:1px solid var(--error); color:var(--error); border-radius:8px; padding:8px 12px; cursor:pointer; font-size:0.8rem;">Remover</button>
@@ -2769,7 +2770,15 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
     const uniEl = container.querySelector(`[data-cadencia-campo="unidade"][data-index="${idx}"]`);
     if (!valEl || !uniEl) return;
     const min = unidadeParaMin(valEl.value, uniEl.value);
-    if (min != null) atual[idx].esperaMin = min;
+    if (min == null) return;
+    atual[idx].esperaMin = min;
+    // Template só faz sentido pra espera de 24h+ (senão a mensagem já entrega
+    // como texto livre de qualquer jeito) — mostra/esconde a caixa ao vivo.
+    const tplBox = container.querySelector(`[data-tpl-box="${idx}"]`);
+    const tplAviso = container.querySelector(`[data-tpl-aviso="${idx}"]`);
+    const foraDe24h = min >= 1440;
+    if (tplBox) tplBox.style.display = foraDe24h ? '' : 'none';
+    if (tplAviso) tplAviso.style.display = foraDe24h ? 'none' : '';
   };
   container.querySelectorAll('[data-cadencia-campo="valor"], [data-cadencia-campo="unidade"]').forEach(input => {
     input.addEventListener('input', () => sincronizarEspera(parseInt(input.dataset.index)));
