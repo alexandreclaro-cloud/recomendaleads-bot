@@ -2240,10 +2240,15 @@ async function finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDest
 // Agenda o disparo escalonado (anti-rajada) pros recomendados. Reutilizável:
 // chamado na hora (Basic normal) ou depois da confirmação (Basic com confirmação).
 async function dispararRecomendados(nomeRecomendador, vendedorNome, contatos, empresa, telefoneRecomendador) {
-  console.log(`[DISPARO] chamado: ${(contatos || []).length} contato(s) | empresa=${empresa.nome} | tempoEspera=${empresa.tempoEsperaConversaoMin || 0}min | contatos=${JSON.stringify((contatos || []).map(c => c && c.telefone))}`);
-  const baseMs = Math.max(0, empresa.tempoEsperaConversaoMin || 0) * 60 * 1000;
-  const gapMinMs = Math.max(0, (empresa.recomendadoGapMinMin != null ? empresa.recomendadoGapMinMin : 3)) * 60 * 1000;
-  const gapMaxMs = Math.max(gapMinMs, (empresa.recomendadoGapMaxMin != null ? empresa.recomendadoGapMaxMin : 8) * 60 * 1000);
+  // O atraso base + intervalo aleatório entre contatos existem só como anti-ban
+  // pro Z-API (automação não-oficial, risco de shadow ban em rajada). Na API
+  // Oficial o envio passa pelo canal oficial da Meta, sem esse risco — dispara
+  // pra todo mundo imediatamente.
+  const ehOficial = empresa.whatsappTipo === 'oficial';
+  console.log(`[DISPARO] chamado: ${(contatos || []).length} contato(s) | empresa=${empresa.nome} | tempoEspera=${ehOficial ? 0 : (empresa.tempoEsperaConversaoMin || 0)}min | contatos=${JSON.stringify((contatos || []).map(c => c && c.telefone))}`);
+  const baseMs = ehOficial ? 0 : Math.max(0, empresa.tempoEsperaConversaoMin || 0) * 60 * 1000;
+  const gapMinMs = ehOficial ? 0 : Math.max(0, (empresa.recomendadoGapMinMin != null ? empresa.recomendadoGapMinMin : 3)) * 60 * 1000;
+  const gapMaxMs = ehOficial ? 0 : Math.max(gapMinMs, (empresa.recomendadoGapMaxMin != null ? empresa.recomendadoGapMaxMin : 8) * 60 * 1000);
   let offsetMs = 0;
   for (const contato of (contatos || [])) {
     try {
