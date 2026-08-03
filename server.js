@@ -3941,24 +3941,31 @@ async function metaMensagemParaInterno(value, msg, cfg, empresaId) {
 // Confere que o POST do webhook realmente veio da Meta (header X-Hub-Signature-256,
 // HMAC-SHA256 do corpo bruto com o App Secret) — sem isso, qualquer um que descubra
 // a URL do webhook e o phone_number_id (visível no perfil público do WhatsApp)
-// conseguiria forjar mensagens. Se META_APP_SECRET ainda não estiver configurado
-// no Render, não bloqueia (só avisa uma vez) pra não derrubar webhooks já em uso.
-let avisouSemMetaAppSecret = false;
+// conseguiria forjar mensagens.
+//
+// ⚠️ 2026-08-03: rodou em modo bloqueante por ~1h e rejeitou 100% das mensagens
+// reais (o valor de META_APP_SECRET no Render não está batendo com a assinatura
+// da Meta — causa exata ainda não diagnosticada). Voltou a ser SÓ DIAGNÓSTICO
+// (nunca bloqueia) até confirmarmos nos logs que a assinatura calculada aqui
+// bate com a recebida. NÃO reative o bloqueio (`return false`) sem antes ver
+// nos logs "[WEBHOOK-OFICIAL] assinatura OK" pelo menos uma vez em produção.
 function assinaturaMetaValida(req) {
-  if (!META_APP_SECRET) {
-    if (!avisouSemMetaAppSecret) {
-      console.warn('[WEBHOOK-OFICIAL] META_APP_SECRET não configurado — assinatura da Meta NÃO está sendo verificada.');
-      avisouSemMetaAppSecret = true;
-    }
+  if (!META_APP_SECRET) return true;
+  const assinatura = req.headers['x-hub-signature-256'];
+  if (!assinatura || !req.rawBody) {
+    console.warn(`[WEBHOOK-OFICIAL] sem assinatura ou sem corpo bruto (assinatura=${!!assinatura}, rawBody=${!!req.rawBody})`);
     return true;
   }
-  const assinatura = req.headers['x-hub-signature-256'];
-  if (!assinatura || !req.rawBody) return false;
   const esperado = 'sha256=' + crypto.createHmac('sha256', META_APP_SECRET).update(req.rawBody).digest('hex');
   const bufRecebido = Buffer.from(assinatura);
   const bufEsperado = Buffer.from(esperado);
-  if (bufRecebido.length !== bufEsperado.length) return false;
-  return crypto.timingSafeEqual(bufRecebido, bufEsperado);
+  const bate = bufRecebido.length === bufEsperado.length && crypto.timingSafeEqual(bufRecebido, bufEsperado);
+  if (bate) {
+    console.log('[WEBHOOK-OFICIAL] assinatura OK');
+  } else {
+    console.warn(`[WEBHOOK-OFICIAL] assinatura não bate (só log, não bloqueia) — recebida=${assinatura.slice(0, 25)}... esperada=${esperado.slice(0, 25)}... tamanhos=${bufRecebido.length}/${bufEsperado.length}`);
+  }
+  return true;
 }
 
 async function comWebhookOficial(req, res, empresaId) {
@@ -3990,10 +3997,7 @@ async function comWebhookOficial(req, res, empresaId) {
 }
 
 app.post('/webhook-oficial/:empresaId', (req, res) => {
-  if (!assinaturaMetaValida(req)) {
-    console.warn(`[WEBHOOK-OFICIAL] assinatura inválida/ausente pra empresa ${req.params.empresaId} — requisição rejeitada`);
-    return res.sendStatus(403);
-  }
+  assinaturaMetaValida(req); // só loga (ver comentário acima da função) — nunca bloqueia por enquanto
   comWebhookOficial(req, res, req.params.empresaId);
 });
 
