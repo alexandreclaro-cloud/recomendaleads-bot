@@ -553,6 +553,19 @@ function ehGatilhoPresente(texto, empresa) {
   return frasesGatilhoPresente(empresa).some(f => t.includes(f));
 }
 
+// Igual ehGatilhoPresente, mas TAMBÉM aceita a frase própria de qualquer OFERTA
+// ativa (rede de lojas — cada loja pode ter sua própria frase-gatilho). Sem
+// isso, a checagem só olhava pra frase do topo (a oferta padrão) e uma loja
+// com frase diferente nunca disparava nada, mesmo já configurada — era essa a
+// peça que faltava pro roteamento por oferta funcionar de ponta a ponta
+// (resolverOfertaSilenciosa/aplicarOferta/menu de desambiguação já existiam,
+// só nunca eram alcançados porque o gatilho inicial não reconhecia a frase).
+function ehGatilhoPresenteQualquerOferta(texto, empresa) {
+  if (ehGatilhoPresente(texto, empresa)) return true;
+  if (!empresa || !empresa.ofertasHabilitado || !empresa.ofertas) return false;
+  return Object.values(empresa.ofertas).some(o => o && o.ativa && ehGatilhoPresente(texto, o));
+}
+
 // Detecta a intenção do cliente de RECOMENDAR mais pessoas depois que já
 // terminou (ex: "quero indicar mais", "quero recomendar meu amigo"). Por
 // palavras-chave (determinístico, sem IA). Exige mencionar indicar/recomendar
@@ -953,13 +966,16 @@ const EMPRESA_PADRAO = {
 };
 
 // ============================================================
-// MÚLTIPLAS OFERTAS — Fase 1 (fundação). Uma empresa pode ter mais de um
-// lançamento/evento rodando no mesmo número de WhatsApp/login, cada um com
-// mensagens, prêmios, templates e Kanban 100% independentes. A oferta marcada
-// como `ofertaAtivaPadrao` fica sempre espelhada nos campos de topo de
-// `configuracao` (getEmpresaById NÃO muda) — é ela que o robô ao vivo usa até
-// a Fase 2 (roteamento de verdade) existir. As demais ofertas só existem
-// dentro de `configuracao.ofertas`, sem efeito no robô por enquanto.
+// MÚLTIPLAS OFERTAS. Uma empresa pode ter mais de um lançamento/evento rodando
+// no mesmo número de WhatsApp/login, cada um com mensagens, prêmios, templates,
+// Kanban e frase-gatilho 100% independentes. A oferta marcada como
+// `ofertaAtivaPadrao` fica sempre espelhada nos campos de topo de `configuracao`
+// (getEmpresaById NÃO muda) — é ela que o robô usa quando a mensagem não bate
+// com a frase-gatilho de nenhuma outra oferta ativa. As demais ofertas (dentro
+// de `configuracao.ofertas`) já respondem normalmente se estiverem `ativa` e
+// com a própria frase configurada — ver ehGatilhoPresenteQualquerOferta,
+// resolverOfertaSilenciosa e o menu de desambiguação em tratarWebhook (quando
+// 2+ ofertas estão ativas e a mensagem não bate com frase nenhuma).
 // ============================================================
 
 // Campos de OPERAÇÃO/CONEXÃO da empresa — nunca entram dentro de uma oferta,
@@ -3655,7 +3671,7 @@ async function tratarWebhook(req, res) {
         else if ((await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).get()).exists) ehDoBot = true;
         else {
           const empLog = await getEmpresa();
-          ehDoBot = ehGatilhoPresente(texto, empLog) || !!detectarNichoDemo(texto, empLog) || !!detectarResgateFull(texto) || ehOptOut(texto);
+          ehDoBot = ehGatilhoPresenteQualquerOferta(texto, empLog) || !!detectarNichoDemo(texto, empLog) || !!detectarResgateFull(texto) || ehOptOut(texto);
         }
       } catch (e) { ehDoBot = false; }
       if (ehDoBot) {
@@ -3735,7 +3751,7 @@ async function tratarWebhook(req, res) {
     }
 
     // Se o número está pausado, só reage ao gatilho de ativação do presente
-    const ehGatilhoInicialParaPausa = ehGatilhoPresente(texto, empGatilho) || !!detectarNichoDemo(texto, empGatilho);
+    const ehGatilhoInicialParaPausa = ehGatilhoPresenteQualquerOferta(texto, empGatilho) || !!detectarNichoDemo(texto, empGatilho);
     if (!ehGatilhoInicialParaPausa && await numeroEstaPausado(telefone)) {
       console.log(`[PAUSA MANUAL] Mensagem ignorada — ${telefone} está pausado`);
       return res.sendStatus(200);
@@ -3764,7 +3780,7 @@ async function tratarWebhook(req, res) {
     // Cliente "ativo" = sessão em andamento (não finalizada). Uma sessão de
     // cliente finalizada não deve bloquear o fluxo de recomendado.
     const clienteAtivo = sessaoExiste && sessaoClienteEtapa !== 'finalizado';
-    const ehGatilhoInicial = ehGatilhoPresente(texto, empGatilho);
+    const ehGatilhoInicial = ehGatilhoPresenteQualquerOferta(texto, empGatilho);
 
     // Um mesmo número pode ter sido cliente/recomendador antes e agora estar
     // recebendo o roteiro como RECOMENDADO. Se a sessão de cliente já está

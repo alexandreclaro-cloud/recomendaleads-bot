@@ -2195,7 +2195,7 @@ async function carregarConfiguracao() {
           banner.innerHTML = `🟢 Editando a oferta <b>${esc(data.ofertaAtiva.nome)}</b> — conectada ao WhatsApp agora.`;
         } else {
           banner.style.background = '#FFFBEB'; banner.style.color = '#92400E';
-          banner.innerHTML = `✏️ Editando a oferta <b>${esc(data.ofertaAtiva.nome)}</b> — ainda não conectada ao WhatsApp (o robô continua usando a oferta padrão até o roteamento automático entre ofertas ficar pronto).`;
+          banner.innerHTML = `✏️ Editando a oferta <b>${esc(data.ofertaAtiva.nome)}</b> — não é a padrão (a 🟢 abre quando ninguém usa uma frase específica). Mas se estiver <b>ativa</b> e com a própria frase-gatilho configurada, ela já responde normalmente pra quem mandar essa frase.`;
         }
       } else {
         banner.style.display = 'none';
@@ -3425,7 +3425,7 @@ async function carregarBadgeOferta() {
     badge.className = oferta.padrao ? 'padrao' : 'extra';
     badge.title = oferta.padrao
       ? 'Editando a oferta conectada ao WhatsApp agora.'
-      : 'Editando esta oferta — ainda não conectada ao WhatsApp.';
+      : 'Editando esta oferta — não é a padrão, mas já responde normalmente se estiver ativa e tiver frase-gatilho própria.';
     // Usuário preso a uma loja não tem como "sair" — está sempre na própria.
     const btnSairHtml = MEU_OFERTA_ID ? '' :
       `<button type="button" id="sairOfertaBtn" title="Sair desta oferta (voltar ao normal)" style="background:none;border:none;cursor:pointer;font-weight:800;font-size:0.9rem;line-height:1;color:inherit;padding:0;">✕</button>`;
