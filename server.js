@@ -7213,6 +7213,26 @@ app.get('/minha-disparo/status', exigirLoginEmpresa, (req, res) => {
   res.json({ ok: true, status: _disparoStatus[req.empresaLogin.id] || null });
 });
 
+// Cancela agendamentos ainda pendentes de "chamar o recomendado" desta empresa —
+// útil pra abortar disparos de teste antes de saírem (evita cobrança à toa na
+// API Oficial). Não afeta o que já foi enviado, só o que ainda está na fila.
+app.post('/minha-disparo/cancelar-recomendados-pendentes', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const snap = await AGENDAMENTOS_COL()
+      .where('status', '==', 'pendente')
+      .where('empresaId', '==', req.empresaLogin.id)
+      .where('tipo', '==', 'iniciar_conversa_recomendado')
+      .get();
+    const batch = db.batch();
+    let n = 0;
+    snap.forEach(doc => { batch.update(doc.ref, { status: 'cancelado' }); n++; });
+    if (n) await batch.commit();
+    res.json({ ok: true, cancelados: n });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // ============================================================
 // UPLOAD DE ARQUIVO — Firebase Storage
 // ============================================================

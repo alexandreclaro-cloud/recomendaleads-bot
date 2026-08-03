@@ -471,6 +471,13 @@
           <span id="whatsappStatus" class="badge badge-danger">Verificando conexão...</span>
           <div id="whatsappStatusHint" class="hint" style="margin-top:8px; display:none; color:var(--danger,#dc2626);"></div>
 
+          <div style="margin-top:14px; background:#FEF2F2; border:1px solid #FCA5A5; border-radius:12px; padding:14px;">
+            <b style="font-size:0.88rem;">🛑 Cancelar disparos pendentes pros recomendados</b>
+            <p class="sub" style="margin:4px 0 10px;">Cancela quem ainda está na fila esperando pra ser chamado (ex.: um teste que você não quer que saia). Não afeta quem já recebeu mensagem.</p>
+            <button class="btn btn-secondary" id="cancelarPendentesBtn" type="button">Cancelar pendentes</button>
+            <span class="status-msg" id="cancelarPendentesMsg"></span>
+          </div>
+
           <!-- Conectado -->
           <div id="conectadoArea" style="margin-top:16px; display:none;">
             <p class="sub">✅ Seu WhatsApp está <b>conectado</b> e pronto para enviar mensagens.</p>
@@ -1572,6 +1579,20 @@ async function carregarWhatsapp() {
 
 let oficialTemToken = false;
 let oficialTemVerify = false;
+
+document.getElementById('cancelarPendentesBtn').addEventListener('click', async () => {
+  if (!confirm('Cancelar todos os disparos de recomendados que ainda estão esperando na fila? Quem já recebeu mensagem não é afetado.')) return;
+  const btn = document.getElementById('cancelarPendentesBtn');
+  const msg = document.getElementById('cancelarPendentesMsg');
+  btn.disabled = true; msg.textContent = 'Cancelando...'; msg.className = 'status-msg';
+  try {
+    const r = await fetchAutenticado(`${API_BASE}/minha-disparo/cancelar-recomendados-pendentes`, { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) { msg.textContent = `✅ ${d.cancelados} cancelado(s).`; msg.className = 'status-msg ok'; }
+    else { msg.textContent = '❌ ' + (d.erro || 'Erro ao cancelar'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
+  finally { btn.disabled = false; }
+});
 
 document.getElementById('testeEntregaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('testeEntregaBtn');
