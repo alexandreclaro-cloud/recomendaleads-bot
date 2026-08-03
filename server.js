@@ -2284,7 +2284,9 @@ async function agendarConfirmacaoDisparo(telefone, empresa, indice) {
   const cad = empresa.basicConfirmacaoCadencia || EMPRESA_PADRAO.basicConfirmacaoCadencia || [];
   const item = cad[indice];
   if (!item) return;
-  const executarEm = new Date(Date.now() + Math.max(1, parseInt(item.esperaMin, 10) || 120) * 60000).toISOString();
+  const esperaMinUsado = Math.max(1, parseInt(item.esperaMin, 10) || 120);
+  const executarEm = new Date(Date.now() + esperaMinUsado * 60000).toISOString();
+  console.log(`[BASIC-CONFIRM] agendando lembrete indice=${indice} pra ${telefone}: esperaMin salvo=${item.esperaMin} (usado=${esperaMinUsado}) executarEm=${executarEm}`);
   await criarAgendamento({ tipo: 'confirmar_disparo', executarEm, dados: { telefone, indice } });
 }
 async function cancelarConfirmacoesDisparo(telefone) {
@@ -5863,8 +5865,16 @@ app.get('/minha-whatsapp/qr', exigirLoginEmpresa, async (req, res) => {
 app.get('/minha-conversas', exigirLoginEmpresa, async (req, res) => {
   try {
     const snap = await CONVERSAS_COL().where('empresaId', '==', req.empresaLogin.id).get();
-    const conversas = [];
+    let conversas = [];
     snap.forEach(d => conversas.push({ id: d.id, ...d.data() }));
+    // Atendente (não-gestor): depois que alguém assume a conversa (atendenteId
+    // setado, via /pausar, /enviar ou /enviar-midia), ela some da lista de quem
+    // NÃO foi quem assumiu — só o dono continua vendo. Enquanto ninguém assumiu
+    // (atendenteId vazio), todo mundo vê normalmente, pra poder pegar. Gestor
+    // sempre vê tudo, sem filtro.
+    if (req.papel !== 'gestor' && req.usuario) {
+      conversas = conversas.filter(c => !c.atendenteId || c.atendenteId === req.usuario.id);
+    }
     conversas.sort((a, b) => new Date(b.ultimaEm || 0) - new Date(a.ultimaEm || 0));
     res.json({ ok: true, conversas });
   } catch (err) {
@@ -5921,8 +5931,9 @@ app.post('/minha-conversas/:telefone/enviar', exigirLoginEmpresa, async (req, re
       await pausarNumero(telefone);      // assume o atendimento: bot para nesse contato
       await sendText(telefone, mensagem); // envia e já registra a mensagem
     });
+    const atendenteId = (req.usuario && req.usuario.id) || null;
     const nomeAt = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
-    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteId, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -5950,8 +5961,9 @@ app.post('/minha-conversas/:telefone/enviar-midia', exigirLoginEmpresa, async (r
       else if (tipo === 'video') await sendVideo(telefone, url, caption || '');
       else await sendDocument(telefone, url, fileName || 'arquivo', extension || '');
     });
+    const atendenteId = (req.usuario && req.usuario.id) || null;
     const nomeAt = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
-    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteId, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -6036,7 +6048,7 @@ app.post('/minha-conversas/:telefone/devolver', exigirLoginEmpresa, async (req, 
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
     await tenantContext.run(contexto, async () => { await despausarNumero(telefone); });
-    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: false, atendenteNome: null, atendenteEm: null }, { merge: true });
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: false, atendenteId: null, atendenteNome: null, atendenteEm: null }, { merge: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -6050,8 +6062,9 @@ app.post('/minha-conversas/:telefone/pausar', exigirLoginEmpresa, async (req, re
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
     await tenantContext.run(contexto, async () => { await pausarNumero(telefone); });
+    const atendenteId = (req.usuario && req.usuario.id) || null;
     const nomeAt = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
-    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteId, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
     res.json({ ok: true, atendenteNome: nomeAt });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -7601,6 +7614,7 @@ async function processarAgendamentoInterno(agendamento) {
     const item = cad[indice];
     const nome = (sessao.clienteNome || '').split(' ')[0] || 'você';
     if (item) {
+      console.log(`[BASIC-CONFIRM] disparando lembrete indice=${indice} pra ${telefone} agora (executarEm era ${agendamento.executarEm})`);
       await sendText(telefone, substituirVariaveis(item.texto, { nomeRecomendado: nome, recomendador: nome, empresa: empresa.nome }));
       await agendarConfirmacaoDisparo(telefone, empresa, indice + 1);
     } else {
