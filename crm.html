@@ -1163,7 +1163,7 @@
             Mensagens automáticas via API Oficial pra quem ainda não respondeu e está fora da janela grátis de 24h. Você pode adicionar quantas mensagens quiser em cada cadência, e cada uma pode usar um template diferente.
           </p>
           <p style="font-size:0.78rem; color:var(--text-dim); margin:0 0 14px; background:var(--surface-sunken); border-radius:8px; padding:8px 10px;">
-            ⚠️ Quando a mensagem usa um <b>template</b>, o texto que chega no WhatsApp da pessoa é o conteúdo <b>aprovado pela Meta</b> — não o texto digitado aqui. Pra mudar o que o template diz, edite/crie o template no <b>WhatsApp Manager</b> (Meta Business Suite). O campo "Mensagem" abaixo só vale quando NÃO tem template (texto livre, entrega só dentro da janela de 24h).
+            💬 Se a pessoa ainda estiver <b>dentro da janela de 24h</b> (falou com a gente recentemente), o sistema manda a <b>Mensagem</b> (texto livre) automaticamente, mesmo que o template esteja preenchido — é conversa normal aberta, não precisa de template. O <b>template</b> só entra em ação quando a janela já fechou (a pessoa não fala com a gente há mais de 24h). Nesse caso o texto que chega é o conteúdo <b>aprovado pela Meta</b>, não o que está digitado aqui — pra mudar o que o template diz, edite/crie o template no <b>WhatsApp Manager</b> (Meta Business Suite).
           </p>
 
           <div style="display:flex; gap:8px; margin-bottom:16px;">
@@ -2756,7 +2756,7 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
         <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 12px;margin-top:8px;">
           <label style="margin-top:0;font-size:0.8rem;">🟢 Template da API Oficial desta mensagem</label>
           <input type="text" data-cadencia-campo="template" data-index="${index}" value="${(item.template || '').replace(/"/g, '&quot;')}" placeholder="ex: recomenda_insistencia_2">
-          <div class="hint" style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">Nome exato do template aprovado na Meta. Vazio = essa mensagem só entrega como texto livre (dentro da janela de 24h).</div>
+          <div class="hint" style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">Nome exato do template aprovado na Meta. Só é usado se a pessoa já estiver <b>fora da janela de 24h</b> — enquanto ela ainda pode receber texto livre, o sistema manda a Mensagem ao lado em vez do template. Vazio = essa mensagem só entrega como texto livre (não chega se já estiver fora da janela).</div>
         </div>
       </div>
       <button type="button" data-remover-index="${index}" style="margin-top:24px; background:transparent; border:1px solid var(--error); color:var(--error); border-radius:8px; padding:8px 12px; cursor:pointer; font-size:0.8rem;">Remover</button>

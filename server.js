@@ -376,7 +376,13 @@ async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, ti
       ultimaDirecao: direcao
     };
     if (nome) resumo.nome = nome;
-    if (direcao === 'in') resumo.naoLidas = admin.firestore.FieldValue.increment(1);
+    if (direcao === 'in') {
+      resumo.naoLidas = admin.firestore.FieldValue.increment(1);
+      // Carimba quando o contato falou com a gente por ÚLTIMO — é o que abre/renova
+      // a janela de 24h da API Oficial (mensagens NOSSAS não contam). Usado por
+      // dentroJanela24h() pra decidir texto livre vs template nos follow-ups.
+      resumo.ultimaInboundEm = agora;
+    }
     // Rede de lojas: carimba ofertaId quando já resolvido no contexto da requisição
     // (best-effort — nunca sobrescreve com null/undefined um valor já gravado antes).
     try {
@@ -1579,13 +1585,35 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
   }
 }
 
+// A janela de atendimento de 24h da API Oficial: abre/renova toda vez que o
+// CONTATO manda uma mensagem pra gente (mensagens nossas não contam). Dentro
+// dela, texto livre entrega normal — não precisa de template aprovado.
+async function dentroJanela24h(telefone) {
+  try {
+    const doc = await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).get();
+    if (!doc.exists) return false;
+    const ultimaInboundEm = doc.data().ultimaInboundEm;
+    if (!ultimaInboundEm) return false;
+    return (Date.now() - new Date(ultimaInboundEm).getTime()) < 24 * 60 * 60 * 1000;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Envia como TEMPLATE (se estiver no modo oficial E houver um nome de template
 // configurado) — funciona FORA da janela de 24h. Senão, manda texto livre (o
 // comportamento de sempre, que só entrega dentro das 24h no oficial). Os `params`
 // preenchem {{1}}, {{2}}... na ordem; a quantidade é ajustada ao template.
 async function sendTextOuTemplate(telefone, textoLivre, templateName, params) {
   const tpl = templateName && String(templateName).trim();
+  const temTextoLivre = (textoLivre || '').trim().length > 0;
   if (tpl && tipoWppAtual() === 'oficial') {
+    // Ainda dentro da janela de 24h (o contato falou com a gente recentemente):
+    // manda como conversa normal aberta, sem gastar/precisar do template — mais
+    // natural e mais barato. O template só entra quando a janela já fechou.
+    if (temTextoLivre && await dentroJanela24h(telefone)) {
+      return await sendText(telefone, textoLivre);
+    }
     let n = await getTemplateVarCount(oficialAtual(), tpl);
     if (n === null || n === undefined) n = (params || []).length;
     const enviou = await sendTemplate(telefone, tpl, (params || []).slice(0, n));
