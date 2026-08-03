@@ -2552,13 +2552,44 @@ async function encerrarSessaoRecomendado(telefone) {
 }
 
 // ============================================================
+// SILÊNCIO NOTURNO (22h–08h, horário de Brasília) — nenhum follow-up PROATIVO
+// sai nesse período, pra não queimar o lead denunciando mensagem de madrugada.
+// Resposta a quem chama a gente primeiro NUNCA passa por aqui (só disparo
+// agendado). Regra fixa pra toda empresa (não configurável ainda).
+//
+// Brasil não tem mais horário de verão desde 2019 — America/Sao_Paulo é sempre
+// UTC-3, fixo o ano todo. Dá pra fazer a conta direto, sem lib de timezone: só
+// deslocar o timestamp em 3h e ler os campos UTC do resultado.
+// ============================================================
+const OFFSET_BRASILIA_MS = 3 * 60 * 60 * 1000;
+function paraBrasilia(data) { return new Date(data.getTime() - OFFSET_BRASILIA_MS); }
+function deBrasiliaParaUTC(dataDeslocada) { return new Date(dataDeslocada.getTime() + OFFSET_BRASILIA_MS); }
+
+// Tipos de agendamento que NÃO mandam mensagem pra um lead/cliente (avisam a
+// própria equipe) — não faz sentido segurar isso até de manhã.
+const AGENDAMENTOS_SEM_SILENCIO = new Set(['escalar_aviso_atendente']);
+
+// Se `quandoISO` cai dentro do silêncio, empurra pro 08:00 de Brasília seguinte
+// (mesmo dia se já passou da meia-noite, dia seguinte se ainda é noite) —
+// contando a partir DAQUELE horário: quando esse agendamento disparar às 08:00
+// e a cadência calcular o próximo passo, a espera já é medida a partir de lá.
+function empurrarParaForaDoSilencio(quandoISO) {
+  const b = paraBrasilia(new Date(quandoISO));
+  const h = b.getUTCHours();
+  if (h < 8) { b.setUTCHours(8, 0, 0, 0); return deBrasiliaParaUTC(b).toISOString(); }
+  if (h >= 22) { b.setUTCDate(b.getUTCDate() + 1); b.setUTCHours(8, 0, 0, 0); return deBrasiliaParaUTC(b).toISOString(); }
+  return quandoISO;
+}
+
+// ============================================================
 // AGENDAMENTOS PERSISTIDOS — substituem setTimeout em memória
 // ============================================================
 
 async function criarAgendamento({ tipo, executarEm, dados, marcaTempoReferencia }) {
+  const executarEmFinal = AGENDAMENTOS_SEM_SILENCIO.has(tipo) ? executarEm : empurrarParaForaDoSilencio(executarEm);
   await AGENDAMENTOS_COL().add({
     tipo,
-    executarEm,
+    executarEm: executarEmFinal,
     status: 'pendente',
     // Registra a empresa dona deste agendamento, pra que o follow-up depois
     // seja enviado pelo WhatsApp dela (e não pelo número global).
