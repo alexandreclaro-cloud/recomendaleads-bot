@@ -6353,11 +6353,16 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOf
     const usaOferta = req.empresaLogin.ofertasHabilitado && ofertaId && configuracao.ofertas && configuracao.ofertas[ofertaId];
     const alvo = usaOferta ? configuracao.ofertas[ofertaId] : configuracao;
     // Oferta nova ainda não tem faixasBonus salvo (POST /minha-ofertas só grava
-    // nome/ativa) — a tela mostra a faixa padrão pro dono editar, então o back
-    // também precisa partir dela; sem isso o find() abaixo nunca acha a faixa
-    // "1" e a 1ª edição de qualquer oferta nova sempre falhava com 404. Copia
-    // (não usa a referência direta) pra não mutar o array padrão compartilhado.
-    alvo.faixasBonus = alvo.faixasBonus || EMPRESA_PADRAO.faixasBonus.map(f => ({ ...f }));
+    // nome/ativa) — a tela (GET /minha-config) mostra nesse caso o faixasBonus
+    // do TOPO da própria empresa (herdado, spread não sobrescreve chave ausente),
+    // e só cai no exemplo genérico se nem isso existir. O back precisa partir da
+    // MESMA fonte, senão o find() abaixo procura a quantidade errada e a 1ª
+    // edição de qualquer oferta nova sempre falha com 404 (era isso que ainda
+    // estava quebrado: a correção anterior usava só o exemplo genérico, que pode
+    // ter uma quantidade diferente da que a empresa já usa). Copia os itens (não
+    // usa a referência direta) pra não mutar um array compartilhado.
+    const faixasBase = configuracao.faixasBonus || EMPRESA_PADRAO.faixasBonus;
+    alvo.faixasBonus = alvo.faixasBonus || faixasBase.map(f => ({ ...f }));
 
     const faixa = alvo.faixasBonus.find(f => f.quantidade === quantidade);
     if (!faixa) {
