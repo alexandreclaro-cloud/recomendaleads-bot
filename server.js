@@ -13,7 +13,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const multer = require('multer');
-const baileys = require('./wa-baileys.js');
 const nodemailer = require('nodemailer');
 
 const app = express();
@@ -181,7 +180,7 @@ function zapiAtual() {
   return (ctx && ctx.zapi) ? ctx.zapi : ZAPI_GLOBAL;
 }
 
-// Tipo de WhatsApp da empresa no contexto: 'baileys' (conexão própria) ou 'zapi'.
+// Tipo de WhatsApp da empresa no contexto: 'oficial' (Meta) ou 'zapi'.
 function tipoWppAtual() {
   const ctx = tenantContext.getStore();
   if (ctx && ctx.empresa && ctx.empresa.whatsappTipo) return ctx.empresa.whatsappTipo;
@@ -205,7 +204,7 @@ function zapiBaseUrl(cfg) {
 // ============================================================
 // Modo 'oficial': a empresa cadastra as credenciais da própria conta na Meta
 // (Phone Number ID + token permanente + verify token do webhook). Fica tudo
-// atrás do whatsappTipo, sem afetar Z-API/Baileys.
+// atrás do whatsappTipo, sem afetar Z-API.
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 
 // Credenciais oficiais da empresa (null se não cadastradas).
@@ -1244,14 +1243,6 @@ async function resolverNumeroZapi(cfg, phone) {
 }
 
 async function sendText(phone, message) {
-  if (tipoWppAtual() === 'baileys') {
-    try {
-      await baileys.enviarTexto(empresaIdAtual(), phone, message);
-      console.log(`[ENVIADO/baileys] para ${phone}: ${message.slice(0, 60)}...`);
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
-      return { ok: true, via: 'baileys' };
-    } catch (err) { console.error('Erro ao enviar texto (Baileys):', err.message); return { ok: false, via: 'baileys', erro: err.message }; }
-  }
   if (tipoWppAtual() === 'oficial') {
     try {
       const cfg = oficialAtual();
@@ -1293,7 +1284,6 @@ async function enviarSemLog(phone, message) {
       await axios.post(metaMessagesUrl(cfg), { messaging_product: 'whatsapp', to: soDigitos(phone), type: 'text', text: { body: message } }, { headers: metaHeaders(cfg) });
       return true;
     }
-    if (tipoWppAtual() === 'baileys') { await baileys.enviarTexto(empresaIdAtual(), phone, message); return true; }
     const cfg = zapiAtual();
     await axios.post(`${zapiBaseUrl(cfg)}/send-text`, { phone, message }, { headers: zapiHeaders(cfg) });
     return true;
@@ -1433,15 +1423,6 @@ function urlParaRegistro(s) {
 }
 
 async function sendImage(phone, imageUrl, caption) {
-  if (tipoWppAtual() === 'baileys') {
-    try {
-      const d = dataUriParaBuffer(imageUrl);
-      if (d) await baileys.enviarMidia(empresaIdAtual(), phone, d.buffer, d.mimetype, caption || '', false);
-      else { await baileys.enviarTexto(empresaIdAtual(), phone, (caption ? caption + '\n' : '') + imageUrl); }
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem', midiaUrl: urlParaRegistro(imageUrl) });
-    } catch (err) { console.error('Erro ao enviar imagem (Baileys):', err.message); }
-    return;
-  }
   if (tipoWppAtual() === 'oficial') {
     try {
       const cfg = oficialAtual();
@@ -1470,15 +1451,6 @@ async function sendImage(phone, imageUrl, caption) {
 }
 
 async function sendDocument(phone, base64OrUrl, fileName, extension) {
-  if (tipoWppAtual() === 'baileys') {
-    try {
-      const d = dataUriParaBuffer(base64OrUrl);
-      if (d) await baileys.enviarMidia(empresaIdAtual(), phone, d.buffer, d.mimetype, '', true, `${fileName || 'arquivo'}.${extension || ''}`);
-      else { await baileys.enviarTexto(empresaIdAtual(), phone, base64OrUrl); }
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento', midiaUrl: urlParaRegistro(base64OrUrl) });
-    } catch (err) { console.error('Erro ao enviar documento (Baileys):', err.message); }
-    return;
-  }
   if (tipoWppAtual() === 'oficial') {
     try {
       const cfg = oficialAtual();
@@ -1508,16 +1480,8 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
 }
 
 // Áudio (mensagem de voz — ptt) e vídeo. Mesmo padrão de sendImage/sendDocument,
-// cobrindo os 3 canais (Baileys/Oficial/Z-API).
+// cobrindo os 2 canais (Oficial/Z-API).
 async function sendAudio(phone, audioUrl) {
-  if (tipoWppAtual() === 'baileys') {
-    try {
-      const d = dataUriParaBuffer(audioUrl);
-      if (d) await baileys.enviarMidia(empresaIdAtual(), phone, d.buffer, d.mimetype || 'audio/ogg', '', false, null, 'audio');
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: '🎤 Áudio', tipo: 'audio', midiaUrl: urlParaRegistro(audioUrl) });
-    } catch (err) { console.error('Erro ao enviar áudio (Baileys):', err.message); }
-    return;
-  }
   if (tipoWppAtual() === 'oficial') {
     try {
       const cfg = oficialAtual();
@@ -1544,14 +1508,6 @@ async function sendAudio(phone, audioUrl) {
 }
 
 async function sendVideo(phone, videoUrl, caption) {
-  if (tipoWppAtual() === 'baileys') {
-    try {
-      const d = dataUriParaBuffer(videoUrl);
-      if (d) await baileys.enviarMidia(empresaIdAtual(), phone, d.buffer, d.mimetype || 'video/mp4', caption || '', false, null, 'video');
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '🎬 Vídeo', tipo: 'video', midiaUrl: urlParaRegistro(videoUrl) });
-    } catch (err) { console.error('Erro ao enviar vídeo (Baileys):', err.message); }
-    return;
-  }
   if (tipoWppAtual() === 'oficial') {
     try {
       const cfg = oficialAtual();
@@ -1581,7 +1537,7 @@ async function sendVideo(phone, videoUrl, caption) {
 // não te falou nas últimas 24h (ex.: o recomendado). Só existe no modo oficial.
 // bodyParams: strings que preenchem {{1}}, {{2}}... do corpo do template.
 // Retorna true se enviou por template; false se não estava em modo oficial (o
-// chamador então segue com o envio de texto normal — Baileys/Z-API).
+// chamador então segue com o envio de texto normal — Z-API).
 async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR') {
   if (tipoWppAtual() !== 'oficial') return false;
   const cfg = oficialAtual();
@@ -2038,7 +1994,7 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
 // que o cliente encaminha) NÃO se aplica no oficial — decisão do Alexandre 2026-07-29
 // ("só vamos usar a api oficial, não vai existir mais o basic vs full"). A estratégia
 // de "confirmar antes de disparar" fica no card "Avisar os amigos" (basicConfirmar...).
-// Fora do oficial (Z-API/Baileys), respeita a escolha Basic/Full do painel.
+// Fora do oficial (Z-API), respeita a escolha Basic/Full do painel.
 function modoRecAtual(empresa) {
   if (empresa && empresa.whatsappTipo === 'oficial') return 'basic';
   const m = empresa && empresa.modoRecomendacao;
@@ -4041,25 +3997,6 @@ app.post('/webhook-oficial/:empresaId', (req, res) => {
   comWebhookOficial(req, res, req.params.empresaId);
 });
 
-// ---- WhatsApp via Baileys: ponte de mensagens recebidas + reconexão ----
-// Mensagens recebidas pelo Baileys entram no MESMO fluxo do webhook Z-API.
-baileys.init(db, async (empresaId, body) => {
-  const fakeRes = { sendStatus() {}, status() { return this; }, json() {}, send() {} };
-  try { await comWebhook({ body, params: { empresaId } }, fakeRes, empresaId); }
-  catch (e) { console.error('[BAILEYS] ponte erro:', e.message); }
-});
-
-// Após reiniciar o servidor, reconecta as empresas que usam Baileys (sessão no Firestore).
-async function reconectarSessoesBaileys() {
-  if (!db) return;
-  try {
-    const snap = await EMPRESAS_COL().where('whatsappTipo', '==', 'baileys').get();
-    snap.forEach(doc => { baileys.iniciarSessao(doc.id).catch(e => console.error('[BAILEYS] reconectar', doc.id, e.message)); });
-    if (!snap.empty) console.log(`[BAILEYS] reconectando ${snap.size} sessão(ões) salvas`);
-  } catch (e) { console.error('[BAILEYS] erro ao reconectar sessões:', e.message); }
-}
-setTimeout(reconectarSessoesBaileys, 5000);
-
 // ============================================================
 // WEBHOOK DO STRIPE — eventos de pagamento/assinatura
 // ============================================================
@@ -4278,11 +4215,6 @@ app.get('/configurar-vouchers', (req, res) => {
 
 app.get('/minha-empresa/configurar', (req, res) => {
   res.sendFile(path.join(__dirname, 'minha-empresa-configurar.html'));
-});
-
-// Página de diagnóstico do WhatsApp (usa o token do login guardado no navegador).
-app.get('/minha-whatsapp/debug', (req, res) => {
-  res.sendFile(path.join(__dirname, 'whatsapp-debug.html'));
 });
 
 app.get('/crm', (req, res) => {
@@ -5778,18 +5710,12 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) =
     }
 
     // Ao cadastrar credenciais Z-API, a empresa passa a operar em modo 'zapi'.
-    // Sem isto, quem estava em Baileys continuaria ENVIANDO pelo Baileys (o
-    // whatsappTipo não mudava) e o bot ficaria mudo mesmo com Z-API salva.
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({
       whatsappTipo: 'zapi',
       zapiInstanceId: String(zapiInstanceId).trim(),
       zapiToken: String(zapiToken).trim(),
       zapiClientToken: zapiClientToken ? String(zapiClientToken).trim() : null
     }, { merge: true });
-
-    // Encerra a sessão Baileys (se houver) pra os dois não brigarem pelo número.
-    // Best-effort: nunca deixa a falha aqui derrubar o salvamento das credenciais.
-    try { await baileys.desconectar(req.empresaLogin.id); } catch (e) {}
 
     res.json({
       ok: true,
@@ -5846,9 +5772,6 @@ app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, exigirUsua
     }, { merge: true });
     // Zera o cache em memória do número (senão o valor antigo persiste até expirar).
     try { delete _numeroConectadoCache[req.empresaLogin.id]; } catch (e) {}
-
-    // Encerra o Baileys (se houver) pra não brigar pelo número.
-    try { await baileys.desconectar(req.empresaLogin.id); } catch (e) {}
 
     res.json({
       ok: true,
@@ -5911,79 +5834,6 @@ app.get('/minha-whatsapp/qr', exigirLoginEmpresa, async (req, res) => {
   } catch (err) {
     // Z-API costuma responder erro quando já está conectado.
     res.json({ ok: false, erro: err.response?.data?.error || err.message });
-  }
-});
-
-// ============================================================
-// WHATSAPP GRÁTIS (Baileys) — conexão própria por QR Code
-// ============================================================
-
-// Ativa o modo Baileys para a empresa e inicia a sessão (gera o QR).
-app.post('/minha-whatsapp/baileys/conectar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
-  try {
-    const id = req.empresaLogin.id;
-    await EMPRESAS_COL().doc(id).set({ whatsappTipo: 'baileys' }, { merge: true });
-    await baileys.iniciarSessao(id);
-    res.json({ ok: true, ...baileys.getStatus(id) });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// Status + QR (imagem em dataURL) da sessão Baileys da empresa.
-app.get('/minha-whatsapp/baileys/status', exigirLoginEmpresa, async (req, res) => {
-  try {
-    const id = req.empresaLogin.id;
-    const st = baileys.getStatus(id);
-    // Se o modo é baileys mas a sessão não está na memória (ex: pós-deploy), tenta subir.
-    if (st.status === 'desconectado' && req.empresaLogin.whatsappTipo === 'baileys') {
-      baileys.iniciarSessao(id).catch(() => {});
-    }
-    res.json({ ok: true, ...st });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// Diagnóstico: últimas mensagens RECEBIDAS por esta empresa via Baileys, com
-// detalhes (remoteJid, @lid, senderPn, número resolvido, ação). Ajuda a ver
-// por que o bot não respondeu.
-app.get('/minha-whatsapp/baileys/debug', exigirLoginEmpresa, async (req, res) => {
-  try {
-    const id = req.empresaLogin.id;
-    let st = baileys.getStatus(id);
-    // Auto-reparo: se caiu (ex.: após deploy) e a empresa usa baileys, tenta subir.
-    if (st.status === 'desconectado' && req.empresaLogin.whatsappTipo === 'baileys') {
-      baileys.iniciarSessao(id).catch(() => {});
-      st = baileys.getStatus(id);
-    }
-    res.json({ ok: true, empresaId: id, status: st, recebidas: baileys.getDebug(id) });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// Teste de envio (diagnóstico): manda uma mensagem e devolve o que aconteceu.
-app.post('/minha-whatsapp/baileys/teste', exigirLoginEmpresa, exigirGestor, async (req, res) => {
-  try {
-    const id = req.empresaLogin.id;
-    const tel = String((req.body && req.body.telefone) || '').replace(/\D/g, '');
-    if (tel.length < 8) return res.status(400).json({ ok: false, erro: 'Informe um telefone válido (com DDD).' });
-    const r = await baileys.diagnosticarEnvio(id, tel, 'Mensagem de teste do RecomendaLeads ✅');
-    res.json(r);
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// Desconecta/desvincula o número (logout). O modo (definido pelo admin) é mantido,
-// então o painel volta a oferecer o QR para reconectar.
-app.post('/minha-whatsapp/baileys/desconectar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
-  try {
-    await baileys.desconectar(req.empresaLogin.id);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
   }
 });
 
@@ -6467,8 +6317,6 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
       trialDias,
       // vendedor da comissão (informado pelo dono; vendedor é forçado abaixo)
       vendedorComissao,
-      // modo de WhatsApp: 'baileys' (QR grátis) ou 'zapi' (padrão)
-      whatsappTipo,
       // autocadastro do cliente: plano escolhido + aceite do contrato
       plano, aceiteContrato
     } = req.body;
@@ -6562,7 +6410,6 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
       criadoEm: new Date().toISOString(),
       configuracao: configuracaoInicial,
       ...(vendedorVinc ? { vendedorComissao: vendedorVinc } : {}),
-      ...(whatsappTipo === 'baileys' ? { whatsappTipo: 'baileys' } : {}),
       ...(assinatura ? { assinatura } : {})
     });
 

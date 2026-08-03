@@ -769,10 +769,10 @@ function abrirEdicao(id) {
           <label>Modo de conexão</label>
           <select class="input" id="e_whatsappTipo">
             <option value="zapi" ${(e.whatsappTipo || 'zapi') === 'zapi' ? 'selected' : ''}>Z-API (cliente contrata)</option>
-            <option value="baileys" ${e.whatsappTipo === 'baileys' ? 'selected' : ''}>QR grátis — DESCONTINUADO, não usar em clientes novos</option>
             <option value="oficial" ${e.whatsappTipo === 'oficial' ? 'selected' : ''}>API Oficial da Meta (selo verde)</option>
           </select>
-          <div class="muted" style="font-size:0.76rem;margin-top:4px;">O modo "QR grátis" (Baileys) está descontinuado — sessões antigas acumulam erro e caem sozinhas. Não selecione em clientes novos; quem já está nele, migrar pra Z-API ou API Oficial quando possível. No modo "API Oficial", as credenciais (Phone Number ID, Token, etc.) são preenchidas no painel do próprio cliente em <b>WhatsApp → API Oficial</b>.</div>
+          ${e.whatsappTipo === 'baileys' ? '<div class="muted" style="font-size:0.76rem;margin-top:4px;color:#B91C1C;">⚠️ Esta empresa ainda está marcada como "QR grátis" (removido do sistema) — troque pra Z-API ou API Oficial e salve.</div>' : ''}
+          <div class="muted" style="font-size:0.76rem;margin-top:4px;">No modo "API Oficial", as credenciais (Phone Number ID, Token, etc.) são preenchidas no painel do próprio cliente em <b>WhatsApp → API Oficial</b>.</div>
         </div>
         <div class="grid2" style="margin-top:8px;">
           ${inpL('e_inst','Instance ID (Z-API)', e.zapiInstanceId)}

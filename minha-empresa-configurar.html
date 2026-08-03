@@ -471,36 +471,6 @@
           <span id="whatsappStatus" class="badge badge-danger">Verificando conexão...</span>
           <div id="whatsappStatusHint" class="hint" style="margin-top:8px; display:none; color:var(--danger,#dc2626);"></div>
 
-          <!-- Conexão grátis (QR, sem Z-API) -->
-          <div id="baileysBox" style="margin-top:16px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:14px;">
-            <b style="font-size:0.92rem;">📲 Conectar grátis pelo QR Code <span style="font-weight:600;color:#15803d;">(sem Z-API)</span></b>
-            <p class="sub" style="margin:6px 0 10px;">Conecte seu WhatsApp lendo um QR Code, igual ao WhatsApp Web. Use um número dedicado ao Agente I.A..</p>
-            <div id="baileysDesconectado" style="display:none;">
-              <button class="btn btn-action" id="baileysConectarBtn">Conectar por QR Code</button>
-            </div>
-            <div id="baileysQrArea" style="display:none; text-align:center; margin-top:10px;">
-              <p class="sub" style="margin-bottom:10px;">No celular: <b>WhatsApp → Aparelhos conectados → Conectar aparelho</b> e aponte para o código.</p>
-              <img id="baileysQrImg" alt="QR Code do WhatsApp" style="width:240px; height:240px; border:1px solid var(--border); border-radius:14px; background:#fff; padding:10px; object-fit:contain; display:none;">
-              <div class="hint" id="baileysQrHint">Gerando o QR Code… aguarde alguns segundos.</div>
-              <div style="margin-top:10px;">
-                <button class="btn btn-secondary" id="baileysResetBtn" type="button">Gerar novo QR Code</button>
-              </div>
-            </div>
-            <div id="baileysConectadoArea" style="display:none; margin-top:8px;">
-              <p class="sub">✅ Conectado pelo número <b id="baileysNumero">—</b>.</p>
-              <div style="margin:10px 0; padding:12px; background:#fff; border:1px solid var(--border); border-radius:10px;">
-                <div style="font-size:0.85rem; font-weight:700; margin-bottom:6px;">🧪 Testar envio</div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                  <input id="baileysTesteTel" placeholder="Seu WhatsApp com DDD (ex: 11999998888)" style="flex:1; min-width:200px; padding:9px 11px; border:1px solid var(--border); border-radius:8px;">
-                  <button class="btn btn-secondary" id="baileysTesteBtn">Enviar teste</button>
-                </div>
-                <div id="baileysTesteRes" style="font-size:0.82rem; margin-top:8px;"></div>
-              </div>
-              <button class="btn btn-secondary" id="baileysDesconectarBtn">Desconectar este número</button>
-            </div>
-            <span class="status-msg" id="baileysMsg"></span>
-          </div>
-
           <!-- Conectado -->
           <div id="conectadoArea" style="margin-top:16px; display:none;">
             <p class="sub">✅ Seu WhatsApp está <b>conectado</b> e pronto para enviar mensagens.</p>
@@ -1572,8 +1542,6 @@ async function carregarWhatsapp() {
     // Provisionamento + webhook (config avançada)
     const respCfg = await fetchAutenticado(`${API_BASE}/minha-whatsapp`);
     const cfg = await respCfg.json();
-    const ehBaileys = cfg.ok && cfg.whatsappTipo === 'baileys';
-    modoBaileys = ehBaileys;
     if (cfg.ok) {
       document.getElementById('zapiInstanceInput').value = cfg.zapiInstanceId || '';
       document.getElementById('zapiTokenInput').placeholder = cfg.temToken ? '•••••• (já salvo — preencha para trocar)' : 'Token da sua instância Z-API';
@@ -1593,106 +1561,12 @@ async function carregarWhatsapp() {
       document.getElementById('oficialTemplateConviteInput').value = cfg.oficialTemplateConvite || '';
       document.getElementById('oficialWebhookUrlText').textContent = cfg.oficialWebhookUrl || '—';
     }
-    // Modo QR grátis (Baileys): mostra só o QR; esconde as configs de API.
-    document.getElementById('baileysBox').style.display = ehBaileys ? 'block' : 'none';
-    document.querySelectorAll('#view-whatsapp details').forEach(d => { d.style.display = ehBaileys ? 'none' : ''; });
-    if (ehBaileys) {
-      mostrarAreaWhats('');
-      await atualizarBaileys();
-    } else {
-      baileysOn = false; pararPollBaileys();
-      await atualizarEstadoWhats();
-    }
+    await atualizarEstadoWhats();
   } catch (err) {}
 }
 
-let baileysOn = false;
-let modoBaileys = false;
 let oficialTemToken = false;
 let oficialTemVerify = false;
-let baileysPollTimer = null;
-function pararPollBaileys() { if (baileysPollTimer) { clearInterval(baileysPollTimer); baileysPollTimer = null; } }
-
-async function atualizarBaileys() {
-  try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/status`);
-    const data = await resp.json();
-    const st = data.status || 'desconectado';
-    const dDesc = document.getElementById('baileysDesconectado');
-    const dQr = document.getElementById('baileysQrArea');
-    const dCon = document.getElementById('baileysConectadoArea');
-    const qrImg = document.getElementById('baileysQrImg');
-    const qrHint = document.getElementById('baileysQrHint');
-    // Enquanto está em baileys e não conectou, o servidor já sobe a sessão
-    // sozinho (endpoint de status). Então mostramos SEMPRE a área do QR e
-    // ficamos aguardando o código aparecer — sem depender de clicar num botão.
-    if (st === 'conectado') {
-      baileysOn = true;
-      dDesc.style.display = 'none'; dQr.style.display = 'none'; dCon.style.display = 'block';
-      document.getElementById('baileysNumero').textContent = data.numero || '—';
-      setBadgeWhats(true); mostrarAreaWhats(''); pararPollQr(); pararPollBaileys();
-    } else {
-      baileysOn = false;
-      dDesc.style.display = 'none'; dCon.style.display = 'none'; dQr.style.display = 'block';
-      if (data.qrDataUrl) {
-        qrImg.src = data.qrDataUrl; qrImg.style.display = '';
-        if (qrHint) qrHint.textContent = 'Aponte a câmera do WhatsApp. O código atualiza sozinho; assim que escanear, conecta.';
-      } else {
-        qrImg.removeAttribute('src'); qrImg.style.display = 'none';
-        if (data.erro) {
-          if (qrHint) qrHint.innerHTML = '<span style="color:#DC2626">⚠️ ' + data.erro + '</span><br><span style="color:#64748B;font-size:0.78rem">Clique em "Gerar novo QR Code" para tentar de novo.</span>';
-        } else if (qrHint) {
-          qrHint.textContent = 'Gerando o QR Code… aguarde alguns segundos.';
-        }
-      }
-      if (!baileysPollTimer) baileysPollTimer = setInterval(atualizarBaileys, 3000);
-    }
-  } catch (e) {}
-}
-
-document.getElementById('baileysConectarBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('baileysConectarBtn');
-  const msg = document.getElementById('baileysMsg'); msg.textContent = 'Iniciando…'; msg.className = 'status-msg'; btn.disabled = true;
-  try {
-    await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/conectar`, { method: 'POST' });
-    msg.textContent = '';
-    document.getElementById('baileysDesconectado').style.display = 'none';
-    document.getElementById('baileysQrArea').style.display = 'block';
-    if (!baileysPollTimer) baileysPollTimer = setInterval(atualizarBaileys, 2500);
-    setTimeout(atualizarBaileys, 800);
-  } catch (e) { msg.textContent = 'Erro ao iniciar.'; msg.className = 'status-msg err'; }
-  finally { btn.disabled = false; }
-});
-
-// Gera um QR novo do zero: limpa a sessão salva e reinicia (resolve QR travado).
-document.getElementById('baileysResetBtn').addEventListener('click', async () => {
-  const qrImg = document.getElementById('baileysQrImg');
-  const qrHint = document.getElementById('baileysQrHint');
-  qrImg.removeAttribute('src'); qrImg.style.display = 'none';
-  if (qrHint) qrHint.textContent = 'Gerando novo QR Code…';
-  try {
-    await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/desconectar`, { method: 'POST' });
-    await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/conectar`, { method: 'POST' });
-    if (!baileysPollTimer) baileysPollTimer = setInterval(atualizarBaileys, 2500);
-    setTimeout(atualizarBaileys, 800);
-  } catch (e) { if (qrHint) qrHint.textContent = 'Não foi possível gerar agora. Tente novamente.'; }
-});
-
-document.getElementById('baileysTesteBtn').addEventListener('click', async () => {
-  const tel = document.getElementById('baileysTesteTel').value.replace(/\D/g, '');
-  const res = document.getElementById('baileysTesteRes');
-  if (tel.length < 8) { res.innerHTML = '<span style="color:#DC2626">Informe um número com DDD.</span>'; return; }
-  res.innerHTML = 'Enviando teste...';
-  try {
-    const r = await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/teste`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telefone: tel }) });
-    const d = await r.json();
-    if (d.ok) {
-      res.innerHTML = '<span style="color:#16A34A">✅ Enviado! Confira o WhatsApp ' + tel + '.</span><br><span style="color:#64748B;font-size:0.76rem">jid: ' + (d.jid || '?') + (d.existe === false ? ' · ⚠️ número não encontrado no WhatsApp' : '') + '</span>';
-    } else {
-      res.innerHTML = '<span style="color:#DC2626">❌ Falhou (' + (d.etapa || '?') + '): ' + (d.erro || 'erro') + '</span>' + (d.status ? '<br><span style="color:#64748B;font-size:0.76rem">status: ' + d.status + (d.jid ? ' · jid: ' + d.jid : '') + '</span>' : '');
-    }
-  } catch (e) { res.innerHTML = '<span style="color:#DC2626">Erro de conexão.</span>'; }
-});
 
 document.getElementById('testeEntregaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('testeEntregaBtn');
@@ -1749,22 +1623,7 @@ document.getElementById('testeEntregaBtn').addEventListener('click', async () =>
   finally { btn.disabled = false; btn.textContent = rotulo; }
 });
 
-document.getElementById('baileysDesconectarBtn').addEventListener('click', async () => {
-  if (!confirm('Desconectar este número do Agente I.A.? Você precisará ler o QR de novo para reconectar.')) return;
-  try {
-    await fetchAutenticado(`${API_BASE}/minha-whatsapp/baileys/desconectar`, { method: 'POST' });
-    baileysOn = false; pararPollBaileys();
-    document.getElementById('baileysConectadoArea').style.display = 'none';
-    document.getElementById('baileysDesconectado').style.display = 'block';
-    setBadgeWhats(false);
-  } catch (e) {}
-});
-
 async function atualizarEstadoWhats() {
-  // No modo QR grátis (Baileys) o estado é gerido por atualizarBaileys();
-  // não rodamos o fluxo Z-API (senão aparece "número sendo preparado" por engano).
-  if (modoBaileys) { pararPollQr(); if (typeof atualizarBaileys === 'function') atualizarBaileys(); return; }
-  if (baileysOn) { pararPollQr(); return; }
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/status`);
     const data = await resp.json();
