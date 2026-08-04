@@ -6555,6 +6555,23 @@ app.delete('/minha-clientes-pipeline/:telefone', exigirLoginEmpresa, exigirGesto
   }
 });
 
+// Backfill único: move retroativamente pra "Recebeu o Prêmio" quem já estava
+// em "Recomendou" ANTES dessa coluna existir (a entrega do voucher já rodava
+// automática logo ao completar a faixa — só faltava o card andar no funil).
+app.post('/minha-clientes-pipeline/backfill-recebeu-premio', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const empresaId = req.empresaLogin.id;
+    const snap = await CLIENTES_PIPELINE_COL().where('empresaId', '==', empresaId).where('etapa', '==', 'recomendou').get();
+    if (snap.empty) return res.json({ ok: true, atualizados: 0 });
+    const batch = db.batch();
+    snap.forEach(doc => batch.update(doc.ref, { etapa: 'recebeu_premio' }));
+    await batch.commit();
+    res.json({ ok: true, atualizados: snap.size });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Backfill: cria os cards do funil do cliente a partir das conversas (sessões) que já
 // existem, pra o funil não ficar vazio com quem começou ANTES da função existir.
 app.post('/minha-clientes-pipeline/backfill', exigirLoginEmpresa, exigirGestor, async (req, res) => {

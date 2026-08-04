@@ -695,6 +695,7 @@
     <button type="button" class="periodo-btn" id="baixarClientesBtn">⬇️ Baixar clientes (.csv)</button>
     <button type="button" class="periodo-btn" id="baixarRecomendadosBtn">⬇️ Baixar recomendados (.csv)</button>
     <button type="button" class="periodo-btn" id="backfillFunilBtn" title="Cria os cards do funil a partir das conversas que já existem">🔄 Preencher funil com quem já existe</button>
+    <button type="button" class="periodo-btn" id="backfillRecebeuPremioBtn" title="Move pra 'Recebeu o Prêmio' quem já estava em 'Recomendou' antes dessa coluna existir">🎁 Mover quem já recomendou pro Recebeu o Prêmio</button>
   </div>
 
   <div id="loadMsg" class="load-msg">Carregando leads...</div>
@@ -1552,6 +1553,18 @@ document.getElementById('backfillFunilBtn') && document.getElementById('backfill
     if (resp.ok && data.ok) { alert(`Pronto! ${data.criados} card(s) criado(s) e ${data.atualizados} atualizado(s) no funil.`); await carregarLeads(); }
     else alert('Erro: ' + (data.erro || 'falha ao preencher o funil'));
   } catch (err) { alert('Erro de conexão ao preencher o funil.'); }
+  finally { btn.disabled = false; btn.textContent = txt; }
+});
+document.getElementById('backfillRecebeuPremioBtn') && document.getElementById('backfillRecebeuPremioBtn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (!confirm('Vou mover pra "Recebeu o Prêmio" todo mundo que já está em "Recomendou" (a entrega do voucher já rodava automática, só o card não andava). Continuar?')) return;
+  const txt = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Movendo...';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/backfill-recebeu-premio`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { alert(`Pronto! ${data.atualizados} card(s) movido(s) pra "Recebeu o Prêmio".`); await carregarLeads(); }
+    else alert('Erro: ' + (data.erro || 'falha ao mover'));
+  } catch (err) { alert('Erro de conexão.'); }
   finally { btn.disabled = false; btn.textContent = txt; }
 });
 
