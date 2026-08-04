@@ -7667,45 +7667,122 @@ app.get('/minha-disparos', exigirLoginEmpresa, exigirGestor, async (req, res) =>
 // status de entrega/leitura (MENSAGENS_CHAT_COL, casado por campanhaId), se
 // responderam depois (CONVERSAS_COL.ultimaInboundEm posterior ao disparo) e se
 // já recomendaram algum amigo (LEADS_COL.telefoneRecomendador).
+// Nome de cada "momento" do pipeline — usado tanto no relatório quanto no
+// disparo por coluna, pra não dessincronizar os rótulos.
+const COLUNAS_PIPELINE_DISPARO = {
+  nao_entregou: 'Não entregou',
+  sem_resposta: 'Entregue, sem resposta',
+  respondeu_sem_nome: 'Respondeu, mas não deu o nome',
+  deu_nome_sem_indicar: 'Deu o nome, mas não indicou ninguém',
+  recomendou: 'Recomendou pelo menos 1 amigo'
+};
+
+// Classifica cada contato do disparo no "momento" atual dele — cruza status de
+// entrega (MENSAGENS_CHAT_COL), se respondeu depois (CONVERSAS_COL) e em que
+// pé está a conversa (SESSOES_COL.etapa) e se já recomendou (LEADS_COL). É
+// exatamente essa granularidade que permite um follow-up DIFERENTE pra quem
+// nunca respondeu vs. quem respondeu mas travou no meio do fluxo.
+async function calcularPipelineDisparo(disparo, empresaId) {
+  const campanhaId = disparo._id;
+  const msgsSnap = await MENSAGENS_CHAT_COL().where('campanhaId', '==', campanhaId).get();
+  const statusPorTelefone = {};
+  msgsSnap.forEach(d => { const m = d.data(); statusPorTelefone[m.telefone] = m.status || 'enviado'; });
+
+  const convSnap = await CONVERSAS_COL().where('empresaId', '==', empresaId).get();
+  const ultimaInboundPorTelefone = {};
+  convSnap.forEach(d => { const c = d.data(); if (c.telefone) ultimaInboundPorTelefone[c.telefone] = c.ultimaInboundEm || null; });
+
+  const leadsSnap = await LEADS_COL().where('empresaId', '==', empresaId).get();
+  const recomendouTelefones = new Set();
+  leadsSnap.forEach(d => { const l = d.data(); if (l.telefoneRecomendador) recomendouTelefones.add(soDigitos(l.telefoneRecomendador)); });
+
+  const contatos = disparo.contatos || [];
+  const chave = (tel) => (empresaId === EMPRESA_ID_PDN ? tel : `${empresaId}__${tel}`);
+  const sessoes = await Promise.all(contatos.map(c => SESSOES_COL().doc(chave(c.telefone)).get()));
+  const etapaPorTelefone = {};
+  sessoes.forEach((snap, i) => { if (snap.exists) etapaPorTelefone[contatos[i].telefone] = snap.data().etapa; });
+
+  const colunas = {}; Object.keys(COLUNAS_PIPELINE_DISPARO).forEach(k => { colunas[k] = []; });
+  let entregues = 0, lidos = 0, falharam = 0, responderam = 0, recomendaram = 0;
+
+  for (const c of contatos) {
+    const st = statusPorTelefone[c.telefone];
+    if (st === 'entregue' || st === 'lido') entregues++;
+    if (st === 'lido') lidos++;
+    if (st === 'falhou') falharam++;
+    const ultimaInbound = ultimaInboundPorTelefone[c.telefone];
+    const respondeu = !!(ultimaInbound && disparo.criadoEm && new Date(ultimaInbound) > new Date(disparo.criadoEm));
+    if (respondeu) responderam++;
+    const jaRecomendou = recomendouTelefones.has(c.telefone);
+    if (jaRecomendou) recomendaram++;
+
+    const item = { telefone: c.telefone, nome: (c.params && c.params[0]) || null };
+    let coluna;
+    if (st === 'falhou') coluna = 'nao_entregou';
+    else if (!respondeu) coluna = 'sem_resposta';
+    else if (jaRecomendou) coluna = 'recomendou';
+    else if (etapaPorTelefone[c.telefone] === 'coletando_contatos') coluna = 'deu_nome_sem_indicar';
+    else coluna = 'respondeu_sem_nome';
+    colunas[coluna].push(item);
+  }
+
+  return {
+    resumo: { total: contatos.length, entregues, lidos, falharam, responderam, recomendaram },
+    colunas: Object.entries(COLUNAS_PIPELINE_DISPARO).map(([id, nome]) => ({ id, nome, contatos: colunas[id] }))
+  };
+}
+
 app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const doc = await DISPAROS_COL().doc(req.params.id).get();
     if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
       return res.status(404).json({ ok: false, erro: 'Disparo não encontrado' });
     }
-    const disparo = doc.data();
-
-    const msgsSnap = await MENSAGENS_CHAT_COL().where('campanhaId', '==', req.params.id).get();
-    const statusPorTelefone = {};
-    msgsSnap.forEach(d => { const m = d.data(); statusPorTelefone[m.telefone] = m.status || 'enviado'; });
-
-    const convSnap = await CONVERSAS_COL().where('empresaId', '==', req.empresaLogin.id).get();
-    const ultimaInboundPorTelefone = {};
-    convSnap.forEach(d => { const c = d.data(); if (c.telefone) ultimaInboundPorTelefone[c.telefone] = c.ultimaInboundEm || null; });
-
-    const leadsSnap = await LEADS_COL().where('empresaId', '==', req.empresaLogin.id).get();
-    const recomendouTelefones = new Set();
-    leadsSnap.forEach(d => { const l = d.data(); if (l.telefoneRecomendador) recomendouTelefones.add(soDigitos(l.telefoneRecomendador)); });
-
-    let entregues = 0, lidos = 0, falharam = 0, responderam = 0, recomendaram = 0;
-    const naoResponderam = [];
-    for (const c of (disparo.contatos || [])) {
-      const st = statusPorTelefone[c.telefone];
-      if (st === 'entregue' || st === 'lido') entregues++;
-      if (st === 'lido') lidos++;
-      if (st === 'falhou') falharam++;
-      const ultimaInbound = ultimaInboundPorTelefone[c.telefone];
-      const respondeu = !!(ultimaInbound && disparo.criadoEm && new Date(ultimaInbound) > new Date(disparo.criadoEm));
-      if (respondeu) responderam++; else naoResponderam.push({ telefone: c.telefone, nome: (c.params && c.params[0]) || null });
-      if (recomendouTelefones.has(c.telefone)) recomendaram++;
-    }
+    const disparo = { ...doc.data(), _id: doc.id };
+    const { resumo, colunas } = await calcularPipelineDisparo(disparo, req.empresaLogin.id);
 
     res.json({
       ok: true,
       disparo: { id: doc.id, template: disparo.template, total: disparo.total, criadoEm: disparo.criadoEm, status: disparo.status },
-      resumo: { total: disparo.total, entregues, lidos, falharam, responderam, recomendaram, naoResponderam: naoResponderam.length },
-      naoResponderam
+      resumo,
+      colunas
     });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Disparo por COLUNA do pipeline — dá pra usar um template DIFERENTE pra quem
+// nunca respondeu vs. quem respondeu mas travou no meio do fluxo. Recalcula a
+// coluna na hora (não confia em cache) e cria uma campanha NOVA (rastreável
+// como qualquer outra), sem mexer no disparo original.
+app.post('/minha-disparos/:id/pipeline/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') {
+      return res.status(400).json({ ok: false, erro: 'O disparo em massa só funciona no modo API Oficial da Meta.' });
+    }
+    const coluna = String((req.body && req.body.coluna) || '');
+    if (!COLUNAS_PIPELINE_DISPARO[coluna]) return res.status(400).json({ ok: false, erro: 'Coluna inválida.' });
+    const template = String((req.body && req.body.template) || '').trim();
+    if (!template) return res.status(400).json({ ok: false, erro: 'Informe o template.' });
+
+    const doc = await DISPAROS_COL().doc(req.params.id).get();
+    if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Disparo não encontrado' });
+    }
+    const disparo = { ...doc.data(), _id: doc.id };
+
+    const rodando = _disparoStatus[empresa.id];
+    if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
+
+    const { colunas } = await calcularPipelineDisparo(disparo, req.empresaLogin.id);
+    const alvo = colunas.find(c => c.id === coluna);
+    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
+    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém nessa coluna agora — nada pra disparar.' });
+
+    const resultado = await iniciarDisparoMassa(empresa, template, contatos);
+    res.json({ ok: true, ...resultado, coluna, disparadoDe: req.params.id });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
