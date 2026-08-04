@@ -6482,6 +6482,42 @@ app.get('/minha-leads', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Cria um lead MANUALMENTE — pra quando alguém recomendou por fora do fluxo
+// automático (ligou, foi pessoalmente etc.) e o dono/atendente precisa
+// registrar mesmo assim pra não esquecer de chamar. Nasce na 1ª etapa do
+// Kanban, igual um lead que veio do robô, e já fica com quem cadastrou.
+app.post('/minha-leads', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const nomeRecomendado = String((req.body && req.body.nomeRecomendado) || '').trim();
+    const telefoneRecomendado = soDigitos((req.body && req.body.telefoneRecomendado) || '');
+    if (!nomeRecomendado) return res.status(400).json({ ok: false, erro: 'Informe o nome do recomendado.' });
+    if (telefoneRecomendado.length < 10) return res.status(400).json({ ok: false, erro: 'Informe um telefone válido com DDD.' });
+    const nomeRecomendador = String((req.body && req.body.nomeRecomendador) || '').trim() || null;
+    const telefoneRecomendadorRaw = (req.body && req.body.telefoneRecomendador) || '';
+    const telefoneRecomendador = telefoneRecomendadorRaw ? soDigitos(telefoneRecomendadorRaw) : null;
+    const vendedor = (req.body && req.body.vendedor) || null;
+
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    let lead = null;
+    await tenantContext.run({ empresa, empresaId: req.empresaLogin.id }, async () => {
+      lead = await criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor, empresaId: req.empresaLogin.id });
+    });
+
+    // Quem cadastrou já vira o responsável — foi ele que soube da recomendação
+    // e vai chamar a pessoa, mesmo padrão de "pegar" um lead sem dono.
+    const atendenteId = (req.usuario && req.usuario.id) || null;
+    const atendenteNome = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
+    if (atendenteId) {
+      await LEADS_COL().doc(lead.id).set({ atendenteId, atendenteNome }, { merge: true });
+      lead.atendenteId = atendenteId; lead.atendenteNome = atendenteNome;
+    }
+
+    res.status(201).json({ ok: true, lead });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Atendente pega um lead sem dono pra si (vira o responsável por ele).
 app.post('/minha-leads/:id/assumir', exigirLoginEmpresa, async (req, res) => {
   try {

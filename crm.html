@@ -692,6 +692,7 @@
   <div class="periodo-stat" id="periodoStatLeads"></div>
 
   <div class="download-bar" style="display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px;">
+    <button type="button" class="periodo-btn" id="adicionarLeadBtn" title="Cadastra manualmente quem recomendou por fora do fluxo automático (ligou, foi pessoalmente etc.)" style="background:var(--gold,#c9a227);color:#fff;border-color:var(--gold,#c9a227);">➕ Adicionar lead</button>
     <button type="button" class="periodo-btn" id="baixarClientesBtn">⬇️ Baixar clientes (.csv)</button>
     <button type="button" class="periodo-btn" id="baixarRecomendadosBtn">⬇️ Baixar recomendados (.csv)</button>
     <button type="button" class="periodo-btn" id="backfillFunilBtn" title="Cria os cards do funil a partir das conversas que já existem">🔄 Preencher funil com quem já existe</button>
@@ -1567,6 +1568,83 @@ document.getElementById('backfillRecebeuPremioBtn') && document.getElementById('
   } catch (err) { alert('Erro de conexão.'); }
   finally { btn.disabled = false; btn.textContent = txt; }
 });
+
+// Cadastro manual de lead — pra quando alguém recomendou por fora do fluxo
+// automático (ligou, foi pessoalmente etc.) e precisa entrar no Kanban pra
+// não ser esquecido.
+function abrirModalNovoLead() {
+  const modalContainer = document.getElementById('modalContainer');
+  const vendedoresUnicos = [...new Set(leads.map(l => l.vendedor).filter(Boolean))].sort();
+  const opcoesVendedor = ['', ...vendedoresUnicos].map(v => `<option value="${v}">${v || 'Sem vendedor'}</option>`).join('');
+
+  modalContainer.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h2>➕ Adicionar lead</h2>
+          <button class="modal-close" id="modalCloseBtn">✕</button>
+        </div>
+        <p style="font-size:0.82rem;color:var(--text-dim);margin:0 0 12px;">Pra quando alguém recomendou por fora do fluxo automático (ligou, foi pessoalmente etc.) — entra direto no Kanban pra você chamar.</p>
+        <div class="modal-field">
+          <label>Nome do recomendado *</label>
+          <input type="text" id="novoLeadNome" placeholder="Nome de quem foi recomendado">
+        </div>
+        <div class="modal-field">
+          <label>Telefone do recomendado * (com DDD)</label>
+          <input type="text" id="novoLeadTelefone" placeholder="11999998888">
+        </div>
+        <div class="modal-field">
+          <label>Nome de quem recomendou</label>
+          <input type="text" id="novoLeadNomeRecomendador" placeholder="Quem indicou essa pessoa">
+        </div>
+        <div class="modal-field">
+          <label>Telefone de quem recomendou (opcional)</label>
+          <input type="text" id="novoLeadTelRecomendador" placeholder="11999998888">
+        </div>
+        <div class="modal-field">
+          <label>Vendedor responsável (opcional)</label>
+          <select id="novoLeadVendedor">${opcoesVendedor}</select>
+        </div>
+        <div class="row-save" style="margin-top:14px;display:flex;gap:8px;">
+          <button class="save-vendedor-btn" id="novoLeadSalvarBtn">Adicionar</button>
+        </div>
+        <div class="modal-status" id="novoLeadStatus"></div>
+      </div>
+    </div>`;
+  document.getElementById('modalCloseBtn').addEventListener('click', fecharModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') fecharModal(); });
+  document.getElementById('novoLeadSalvarBtn').addEventListener('click', salvarNovoLead);
+  document.getElementById('novoLeadNome').focus();
+}
+
+async function salvarNovoLead() {
+  const btn = document.getElementById('novoLeadSalvarBtn');
+  const st = document.getElementById('novoLeadStatus');
+  const nomeRecomendado = document.getElementById('novoLeadNome').value.trim();
+  const telefoneRecomendado = document.getElementById('novoLeadTelefone').value.trim();
+  const nomeRecomendador = document.getElementById('novoLeadNomeRecomendador').value.trim();
+  const telefoneRecomendador = document.getElementById('novoLeadTelRecomendador').value.trim();
+  const vendedor = document.getElementById('novoLeadVendedor').value;
+
+  if (!nomeRecomendado) { st.textContent = '❌ Informe o nome do recomendado.'; st.className = 'modal-status err'; return; }
+  if (telefoneRecomendado.replace(/\D/g, '').length < 10) { st.textContent = '❌ Telefone inválido — precisa ter DDD.'; st.className = 'modal-status err'; return; }
+
+  btn.disabled = true; st.textContent = 'Salvando...'; st.className = 'modal-status';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-leads`, {
+      method: 'POST',
+      body: JSON.stringify({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      fecharModal();
+      await carregarLeads();
+    } else {
+      st.textContent = '❌ ' + (data.erro || 'Erro ao adicionar'); st.className = 'modal-status err'; btn.disabled = false;
+    }
+  } catch (err) { st.textContent = '❌ Erro de conexão'; st.className = 'modal-status err'; btn.disabled = false; }
+}
+document.getElementById('adicionarLeadBtn') && document.getElementById('adicionarLeadBtn').addEventListener('click', abrirModalNovoLead);
 
 function montarColunas() {
   const board = document.getElementById('board');
