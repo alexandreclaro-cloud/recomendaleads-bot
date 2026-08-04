@@ -436,6 +436,7 @@
           <div id="oficialTemplateFollowupBox2" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
             <label class="label" style="margin-top:0;">🟢 Template da API Oficial — lembrete do cliente (dias depois = fora das 24h)</label>
             <input class="input" type="text" id="oficialTemplateFollowupInput2" placeholder="ex: lembrete_cliente" style="max-width:420px;">
+            <div id="oficialTemplateFollowupBadge2" style="margin:2px 0;"></div>
             <div class="hint" style="font-size:0.76rem;margin-top:4px;">Os lembretes costumam sair dias depois → fora das 24h → precisam de template. Variáveis: <b>{{1}}</b> nome do cliente · <b>{{2}}</b> empresa. Vazio = não lembra no oficial. <i>(É o mesmo template do painel WhatsApp → API Oficial.)</i></div>
           </div>
           <div class="row-save">
@@ -566,6 +567,7 @@
 
               <label class="label">Nome do template do recomendado (aprovado na Meta)</label>
               <input class="input" type="text" id="oficialTemplateInput" placeholder="Ex: recomendacao_presente">
+              <div id="oficialTemplateBadge" style="margin:2px 0;"></div>
               <div class="hint">Obrigatório no modo oficial pra falar com quem foi recomendado. O template precisa ter 3 variáveis no corpo, <b>nesta ordem</b>: <b>{{1}}</b> nome do recomendado (quem recebe) · <b>{{2}}</b> quem recomendou · <b>{{3}}</b> vendedor/atendente. O <b>nome da sua empresa</b> você escreve direto no texto (fixo) — não precisa ser variável. <i>(Sem vendedor cadastrado, o {{3}} usa o nome da empresa automaticamente.)</i></div>
 
               <div style="margin-top:14px;padding:12px;border:1px dashed var(--border);border-radius:12px;background:var(--brand-soft,#f7faff);">
@@ -574,14 +576,17 @@
 
                 <label class="label" style="margin-top:0;">Template da insistência (amigo não respondeu)</label>
                 <input class="input" type="text" id="oficialTemplateInsistenciaInput" placeholder="Ex: lembrete_recomendado">
+                <div id="oficialTemplateInsistenciaBadge" style="margin:2px 0;"></div>
                 <div class="hint">Variáveis: <b>{{1}}</b> nome do recomendado · <b>{{2}}</b> quem recomendou · <b>{{3}}</b> vendedor.</div>
 
                 <label class="label">Template do follow-up do cliente (lembrar de avisar os amigos)</label>
                 <input class="input" type="text" id="oficialTemplateFollowupInput" placeholder="Ex: lembrete_cliente">
+                <div id="oficialTemplateFollowupBadge" style="margin:2px 0;"></div>
                 <div class="hint">Variáveis: <b>{{1}}</b> nome do cliente · <b>{{2}}</b> empresa.</div>
 
                 <label class="label">Template do convite (campanha pro cliente indicar)</label>
                 <input class="input" type="text" id="oficialTemplateConviteInput" placeholder="Ex: pdn_convite_indicar">
+                <div id="oficialTemplateConviteBadge" style="margin:2px 0;"></div>
                 <div class="hint">Fica salvo como padrão e <b>já vem preenchido</b> na aba "Disparo em massa".</div>
               </div>
 
@@ -637,6 +642,7 @@
             <button type="button" class="btn btn-secondary" id="salvarTemplateDisparoBtn">💾 Salvar template</button>
             <span class="status-msg" id="statusTemplateDisparo"></span>
           </div>
+          <div id="disparoTemplateBadge" style="margin:2px 0;"></div>
           <div class="hint">Tem que ser um template <b>Ativo</b> na sua conta da Meta. As variáveis vão na ordem das colunas abaixo. Pode salvar o template agora e montar a lista depois — fica guardado aqui.</div>
 
           <div style="margin-top:12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;">
@@ -929,6 +935,49 @@ function tempoRelativo(iso) {
   return `há ${Math.floor(diff/86400)}d`;
 }
 
+// ===================== BADGE Marketing/Utilidade nos campos de template =====================
+// A Meta cobra diferente por categoria (Marketing é bem mais caro que Utility) —
+// esse badge mostra ao lado de QUALQUER campo onde se digita um nome de template
+// qual categoria ele tem lá na Meta, pra não escolher errado sem querer.
+let _tplMetaCache = null;
+let _tplBadgeRegistry = [];
+async function carregarTemplatesMeta() {
+  if (_tplMetaCache) return _tplMetaCache;
+  try {
+    const r = await fetchAutenticado(`${API_BASE}/minha-templates`);
+    const d = await r.json();
+    _tplMetaCache = (d.ok && d.templates) || [];
+  } catch (e) { _tplMetaCache = []; }
+  atualizarTodosBadgesTemplate();
+  return _tplMetaCache;
+}
+function categoriaBadgeHtml(nome) {
+  const n = (nome || '').trim();
+  if (!n) return '';
+  if (!_tplMetaCache) return '<span style="color:var(--text-dim);font-size:0.72rem;">verificando...</span>';
+  const t = _tplMetaCache.find(x => x.name === n);
+  if (!t) return '<span style="color:var(--text-dim);font-size:0.72rem;">— não achei esse nome na Meta</span>';
+  const mapa = {
+    marketing: { emoji: '🟠', label: 'Marketing (mais caro)', cor: '#c2410c' },
+    utility: { emoji: '🟢', label: 'Utilidade (mais barato)', cor: '#166534' },
+    authentication: { emoji: '🔵', label: 'Autenticação', cor: '#1d4ed8' }
+  };
+  const c = mapa[t.categoria] || { emoji: '⚪', label: t.categoria || '?', cor: 'var(--text-dim)' };
+  return `<span style="color:${c.cor};font-size:0.72rem;font-weight:600;">${c.emoji} ${c.label}</span>`;
+}
+function atualizarBadgeTemplate(inputId, badgeId) {
+  const inp = document.getElementById(inputId), badge = document.getElementById(badgeId);
+  if (!inp || !badge) return;
+  badge.innerHTML = categoriaBadgeHtml(inp.value);
+}
+function atualizarTodosBadgesTemplate() { _tplBadgeRegistry.forEach(r => atualizarBadgeTemplate(r.inputId, r.badgeId)); }
+function registrarBadgeTemplate(inputId, badgeId) {
+  _tplBadgeRegistry.push({ inputId, badgeId });
+  const inp = document.getElementById(inputId);
+  if (inp) inp.addEventListener('input', () => atualizarBadgeTemplate(inputId, badgeId));
+  atualizarBadgeTemplate(inputId, badgeId);
+}
+
 // ===================== DISPARO EM MASSA + SALDO (pré-pago) =====================
 function fmtReaisCliente(c) { return 'R$ ' + ((c || 0) / 100).toFixed(2).replace('.', ','); }
 let disparoPollTimer = null;
@@ -943,6 +992,7 @@ async function carregarDisparo() {
   if (tplInp && !tplInp.value && configuracaoAtual) {
     tplInp.value = configuracaoAtual.disparoTemplateSalvo || configuracaoAtual.oficialTemplateConvite || '';
   }
+  atualizarBadgeTemplate('disparoTemplate', 'disparoTemplateBadge');
   atualizarResumoDisparo();
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-saldo`);
@@ -1036,7 +1086,8 @@ async function abrirRelatorioDisparo(id) {
           ${col.contatos.length ? col.contatos.map(c => `<div style="padding:3px 0;border-top:1px solid var(--border);">${(c.nome ? c.nome.replace(/[<>]/g, '') + ' — ' : '')}${c.telefone}</div>`).join('') : '<span class="sub">Ninguém aqui.</span>'}
         </div>
         ${col.contatos.length ? `
-          <input class="input" type="text" data-pipeline-template="${col.id}" placeholder="Template pra esta coluna" style="font-size:0.78rem;padding:6px 8px;margin-bottom:6px;">
+          <input class="input" type="text" data-pipeline-template="${col.id}" placeholder="Template pra esta coluna" style="font-size:0.78rem;padding:6px 8px;margin-bottom:2px;">
+          <div data-pipeline-badge="${col.id}" style="margin-bottom:6px;"></div>
           <button type="button" class="btn btn-action" data-pipeline-disparar="${col.id}" style="padding:6px 10px;font-size:0.78rem;">🚀 Disparar pra esta coluna</button>
           <span class="status-msg" data-pipeline-status="${col.id}" style="font-size:0.72rem;"></span>
         ` : ''}
@@ -1044,6 +1095,13 @@ async function abrirRelatorioDisparo(id) {
 
     document.getElementById('disparoRelPipeline').querySelectorAll('[data-pipeline-disparar]').forEach(btn => {
       btn.addEventListener('click', () => dispararColunaPipeline(btn.dataset.pipelineDisparar));
+    });
+    await carregarTemplatesMeta();
+    document.getElementById('disparoRelPipeline').querySelectorAll('[data-pipeline-template]').forEach(inp => {
+      const badgeId = `[data-pipeline-badge="${inp.dataset.pipelineTemplate}"]`;
+      const atualizar = () => { const b = document.querySelector(badgeId); if (b) b.innerHTML = categoriaBadgeHtml(inp.value); };
+      inp.addEventListener('input', atualizar);
+      atualizar();
     });
   } catch (e) { document.getElementById('disparoRelTitulo').textContent = '❌ Erro de conexão'; }
 }
@@ -1724,6 +1782,7 @@ async function carregarWhatsapp() {
       document.getElementById('oficialTemplateFollowupInput').value = cfg.oficialTemplateFollowupCliente || '';
       document.getElementById('oficialTemplateConviteInput').value = cfg.oficialTemplateConvite || '';
       document.getElementById('oficialWebhookUrlText').textContent = cfg.oficialWebhookUrl || '—';
+      atualizarTodosBadgesTemplate();
     }
     await atualizarEstadoWhats();
   } catch (err) {}
@@ -2267,6 +2326,7 @@ function carregarBasicConf() {
   // Template do lembrete (só aparece no oficial). É o mesmo do painel API Oficial.
   const tplFupEl = document.getElementById('oficialTemplateFollowupInput2');
   if (tplFupEl) tplFupEl.value = c.oficialTemplateFollowupCliente || '';
+  atualizarBadgeTemplate('oficialTemplateFollowupInput2', 'oficialTemplateFollowupBadge2');
   const tplFupBox = document.getElementById('oficialTemplateFollowupBox2');
   if (tplFupBox) tplFupBox.style.display = (c.whatsappTipo === 'oficial') ? 'block' : 'none';
   basicCad = JSON.parse(JSON.stringify(c.basicConfirmacaoCadencia || c.cadenciaFollowupRecomendador || []));
@@ -3038,6 +3098,16 @@ carregarVisaoGeral();
 verificarContrato();
 verificarAcesso();
 carregarAvisos();
+
+[
+  ['oficialTemplateInput', 'oficialTemplateBadge'],
+  ['oficialTemplateInsistenciaInput', 'oficialTemplateInsistenciaBadge'],
+  ['oficialTemplateFollowupInput', 'oficialTemplateFollowupBadge'],
+  ['oficialTemplateConviteInput', 'oficialTemplateConviteBadge'],
+  ['oficialTemplateFollowupInput2', 'oficialTemplateFollowupBadge2'],
+  ['disparoTemplate', 'disparoTemplateBadge']
+].forEach(([inputId, badgeId]) => registrarBadgeTemplate(inputId, badgeId));
+carregarTemplatesMeta();
 
 // ===================== MENSAGENS DO SISTEMA (inbox + sininho) =====================
 let avisosCache = [];

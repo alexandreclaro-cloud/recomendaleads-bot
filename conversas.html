@@ -956,6 +956,17 @@ document.getElementById('cancelarLembreteBtn').addEventListener('click', async (
 // já tiver fechado (ou puxando assunto com quem nunca respondeu).
 let _templates = null; // null = ainda não carregou
 let _templateSelecionado = null;
+// A Meta cobra bem mais caro por Marketing que por Utility — badge coloridinho
+// pra bater o olho na hora de escolher qual template mandar.
+function categoriaBadgeCurto(categoria) {
+  const mapa = {
+    marketing: { emoji: '🟠', label: 'Marketing', cor: '#c2410c' },
+    utility: { emoji: '🟢', label: 'Utilidade', cor: '#166534' },
+    authentication: { emoji: '🔵', label: 'Autenticação', cor: '#1d4ed8' }
+  };
+  const c = mapa[categoria] || { emoji: '⚪', label: categoria || '?', cor: 'var(--text-dim)' };
+  return `<span style="color:${c.cor};font-weight:600;">${c.emoji} ${esc(c.label)}</span>`;
+}
 async function carregarTemplates() {
   if (_templates) return _templates;
   try {
@@ -990,7 +1001,7 @@ function renderListaTemplates(filtro) {
   cont.innerHTML = lista.map(t => `
     <div class="tpl-item" data-name="${esc(t.name)}" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-bottom:2px;${_templateSelecionado && _templateSelecionado.name === t.name ? 'background:var(--brand-soft,#eff4ff);' : ''}">
       <div style="font-weight:600;font-size:0.86rem;">${esc(t.name)}</div>
-      <div style="font-size:0.72rem;color:var(--text-dim);text-transform:capitalize;">${esc(t.categoria)} · ${esc(t.idioma)}</div>
+      <div style="font-size:0.72rem;margin-top:1px;">${categoriaBadgeCurto(t.categoria)} · ${esc(t.idioma)}</div>
       <div style="font-size:0.76rem;color:var(--text-dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.texto)}</div>
     </div>`).join('');
   cont.querySelectorAll('.tpl-item').forEach(el => {
@@ -1017,7 +1028,8 @@ function selecionarTemplate(tpl) {
       </div>`);
   }
   document.getElementById('tplPreview').innerHTML = `
-    <div style="font-weight:700;margin-bottom:8px;">${esc(tpl.name)}</div>
+    <div style="font-weight:700;margin-bottom:2px;">${esc(tpl.name)}</div>
+    <div style="font-size:0.76rem;margin-bottom:8px;">${categoriaBadgeCurto(tpl.categoria)}</div>
     ${varsHtml.length ? varsHtml.join('') + '<hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">' : ''}
     <div style="font-size:0.78rem;color:var(--text-faint);margin-bottom:4px;">Prévia da mensagem</div>
     <div id="tplPreviewTexto" style="white-space:pre-wrap;background:var(--bg,#f7f8fa);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:0.88rem;"></div>`;

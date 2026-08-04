@@ -2370,6 +2370,7 @@ async function carregarConfiguracao() {
     renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
     renderCadenciaCliente(configuracaoAtual.cadenciaFollowupClienteInicial || []);
     renderCadenciaClienteContatos(configuracaoAtual.cadenciaFollowupClienteContatos || []);
+    carregarTemplatesMeta();
     renderFaixas(configuracaoAtual.faixasBonus || []);
     carregarFollowupCliente();
   } catch (err) {
@@ -2813,6 +2814,38 @@ let cadenciaClienteContatosAtual = [];
 // Genérica: renderiza uma cadência de follow-up (valor+unidade minutos/horas/dias)
 // dentro de `containerId`. `onChange` recebe o array atual sempre que ele muda,
 // pra quem chamou guardar a referência certa (cadenciaAtual ou cadenciaClienteAtual).
+// Badge Marketing/Utilidade nos campos de template da cadência — a Meta cobra
+// bem mais caro por Marketing que por Utility, então mostra a categoria real
+// (buscada na Meta) ao lado do nome digitado, pra não escolher errado sem ver.
+let _tplMetaCache = null;
+async function carregarTemplatesMeta() {
+  if (_tplMetaCache) return _tplMetaCache;
+  try {
+    const r = await fetchAutenticado(`${API_BASE}/minha-templates`);
+    const d = await r.json();
+    _tplMetaCache = (d.ok && d.templates) || [];
+  } catch (e) { _tplMetaCache = []; }
+  document.querySelectorAll('[data-cadencia-campo="template"]').forEach(inp => {
+    const badge = inp.parentElement.querySelector(`[data-tpl-cat-badge="${inp.dataset.index}"]`);
+    if (badge) badge.innerHTML = categoriaBadgeHtml(inp.value);
+  });
+  return _tplMetaCache;
+}
+function categoriaBadgeHtml(nome) {
+  const n = (nome || '').trim();
+  if (!n) return '';
+  if (!_tplMetaCache) return '<span style="color:var(--text-dim);font-size:0.72rem;">verificando...</span>';
+  const t = _tplMetaCache.find(x => x.name === n);
+  if (!t) return '<span style="color:var(--text-dim);font-size:0.72rem;">— não achei esse nome na Meta</span>';
+  const mapa = {
+    marketing: { emoji: '🟠', label: 'Marketing (mais caro)', cor: '#c2410c' },
+    utility: { emoji: '🟢', label: 'Utilidade (mais barato)', cor: '#166534' },
+    authentication: { emoji: '🔵', label: 'Autenticação', cor: '#1d4ed8' }
+  };
+  const c = mapa[t.categoria] || { emoji: '⚪', label: t.categoria || '?', cor: 'var(--text-dim)' };
+  return `<span style="color:${c.cor};font-size:0.72rem;font-weight:600;">${c.emoji} ${c.label}</span>`;
+}
+
 function renderCadenciaGenerica(containerId, cadencia, onChange) {
   const atual = cadencia.map(item => ({ ...item }));
   onChange(atual);
@@ -2850,6 +2883,7 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
         <div data-tpl-box="${index}" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 12px;margin-top:8px;${item.esperaMin >= 1440 ? '' : 'display:none;'}">
           <label style="margin-top:0;font-size:0.8rem;">🟢 Template da API Oficial desta mensagem</label>
           <input type="text" data-cadencia-campo="template" data-index="${index}" value="${(item.template || '').replace(/"/g, '&quot;')}" placeholder="ex: recomenda_insistencia_2">
+          <div data-tpl-cat-badge="${index}" style="margin:4px 0 0;"></div>
           <div class="hint" style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">Nome exato do template aprovado na Meta. Só é usado se a pessoa já estiver <b>fora da janela de 24h</b> — enquanto ela ainda pode receber texto livre, o sistema manda a Mensagem acima em vez do template. Vazio = essa mensagem só entrega como texto livre (não chega se já estiver fora da janela).</div>
         </div>
       </div>
@@ -2883,9 +2917,16 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
     });
   });
   container.querySelectorAll('[data-cadencia-campo="template"]').forEach(input => {
+    const idx = input.dataset.index;
+    const atualizarBadge = () => {
+      const b = container.querySelector(`[data-tpl-cat-badge="${idx}"]`);
+      if (b) b.innerHTML = categoriaBadgeHtml(input.value);
+    };
     input.addEventListener('input', () => {
-      atual[parseInt(input.dataset.index)].template = input.value;
+      atual[parseInt(idx)].template = input.value;
+      atualizarBadge();
     });
+    atualizarBadge();
   });
 
   container.querySelectorAll('[data-remover-index]').forEach(btnRemover => {
