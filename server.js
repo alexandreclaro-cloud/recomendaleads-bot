@@ -307,6 +307,7 @@ const SESSOES_COL = () => db.collection('sessoes');
 const LEADS_COL = () => db.collection('leads');
 const SESSOES_RECOMENDADO_COL = () => db.collection('sessoes_recomendado');
 const AGENDAMENTOS_COL = () => db.collection('agendamentos');
+const DISPAROS_COL = () => db.collection('disparos_massa');
 const MENSAGENS_PROCESSADAS_COL = () => db.collection('mensagens_processadas');
 const NUMEROS_PAUSADOS_COL = () => db.collection('numeros_pausados');
 // Caixa de entrada: cada mensagem trocada + um resumo por conversa
@@ -354,7 +355,7 @@ async function upsertClientePipeline(telefone, nome, etapa, contatos) {
 
 // Grava uma mensagem (recebida ou enviada) no histórico da conversa e atualiza
 // o resumo da conversa. Usado para a caixa de entrada do WhatsApp.
-async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo, midiaUrl, contatosArray, messageId }) {
+async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo, midiaUrl, contatosArray, messageId, campanhaId }) {
   if (!db || !telefone) return;
   const agora = new Date().toISOString();
   try {
@@ -375,6 +376,9 @@ async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, ti
       // o WhatsApp. Só existe pra mensagens NOSSAS mandadas via API Oficial.
       messageId: messageId || null,
       status: (direcao === 'out' && messageId) ? 'enviado' : null,
+      // Marca de qual disparo em massa esta mensagem veio (ver DISPAROS_COL) —
+      // usado só pro relatório da campanha, cruzando com o status acima.
+      campanhaId: campanhaId || null,
       criadoEm: agora
     });
     const resumo = {
@@ -1597,7 +1601,7 @@ async function sendVideo(phone, videoUrl, caption) {
 // bodyParams: strings que preenchem {{1}}, {{2}}... do corpo do template.
 // Retorna true se enviou por template; false se não estava em modo oficial (o
 // chamador então segue com o envio de texto normal — Z-API).
-async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR') {
+async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR', opts = {}) {
   if (tipoWppAtual() !== 'oficial') return false;
   const cfg = oficialAtual();
   const empresaId = empresaIdAtual();
@@ -1619,7 +1623,7 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
       template: { name: templateName, language: { code: lang }, components }
     }, { headers: metaHeaders(cfg) });
     console.log(`[TEMPLATE ENVIADO/oficial] ${templateName} → ${phone}`);
-    registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: `[template: ${templateName}]`, messageId: idMensagemMeta(r) });
+    registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: `[template: ${templateName}]`, messageId: idMensagemMeta(r), campanhaId: opts.campanhaId || null });
     return true;
   } catch (err) {
     console.error('Erro ao enviar template (Oficial):', err.response?.data || err.message);
@@ -7554,7 +7558,61 @@ app.get('/minha-saldo', exigirLoginEmpresa, async (req, res) => {
 // ============================================================
 // Roda em BACKGROUND (não trava o HTTP). Cada envio passa pelo sendTemplate, que
 // cobra do pré-pago e BLOQUEIA quando o saldo acaba. Progresso via /status.
+// Cada campanha é PERSISTIDA em DISPAROS_COL (com a lista de contatos) — é o
+// que permite o relatório depois (entregues/lidos/responderam/recomendaram) e
+// redisparar só pra quem não respondeu, sem precisar montar a lista nova à mão.
 const _disparoStatus = {};
+
+// Dispara em background e devolve na hora (campanhaId, total) — usado tanto
+// pelo disparo normal quanto pelo "redisparar pra quem não respondeu".
+async function iniciarDisparoMassa(empresa, template, contatos) {
+  const agora = new Date().toISOString();
+  const disparoRef = await DISPAROS_COL().add({
+    empresaId: empresa.id, template, contatos, total: contatos.length,
+    status: 'em_andamento', criadoEm: agora, terminadoEm: null
+  });
+  const campanhaId = disparoRef.id;
+
+  const status = { campanhaId, total: contatos.length, enviados: 0, bloqueados: 0, falhas: 0, optout: 0, terminado: false, semSaldo: false, template, em: agora };
+  _disparoStatus[empresa.id] = status;
+
+  // Background: dispara com um pequeno intervalo entre mensagens (anti-flood).
+  (async () => {
+    const oficial = oficialDaEmpresa(empresa);
+    for (const c of contatos) {
+      try {
+        if (await estaDescadastrado(c.telefone)) { status.optout++; continue; }
+        let ok = false;
+        await tenantContext.run({ empresa, empresaId: empresa.id, oficial }, async () => {
+          ok = await sendTemplate(c.telefone, template, c.params, 'pt_BR', { campanhaId });
+        });
+        if (ok) { status.enviados++; }
+        else {
+          // Distingue "sem saldo" (para tudo) de falha pontual (segue).
+          const snap = await EMPRESAS_COL().doc(empresa.id).get();
+          const d = snap.exists ? snap.data() : {};
+          const preco = precoDaCategoria(d, 'marketing');
+          if (d.prepagoAtivo && (d.saldoCentavos || 0) < preco) { status.semSaldo = true; break; }
+          status.falhas++;
+        }
+      } catch (e) { status.falhas++; }
+      await new Promise(r => setTimeout(r, 350));
+    }
+    const processados = status.enviados + status.falhas + status.optout + status.bloqueados;
+    if (status.semSaldo && processados < status.total) status.bloqueados += (status.total - processados);
+    status.terminado = true; status.fimEm = new Date().toISOString();
+    try {
+      await disparoRef.set({
+        status: 'concluido', terminadoEm: status.fimEm,
+        enviados: status.enviados, bloqueados: status.bloqueados, falhas: status.falhas, optout: status.optout
+      }, { merge: true });
+    } catch (e) { console.error('[DISPARO] erro ao salvar resumo final:', e.message); }
+    console.log(`[DISPARO] empresa=${empresa.id} enviados=${status.enviados} bloqueados=${status.bloqueados} falhas=${status.falhas} optout=${status.optout}`);
+  })().catch(e => { status.terminado = true; console.error('[DISPARO] erro no loop:', e.message); });
+
+  return { campanhaId, total: contatos.length };
+}
+
 app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresa = await getEmpresaById(req.empresaLogin.id);
@@ -7573,37 +7631,8 @@ app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOfe
     const rodando = _disparoStatus[empresa.id];
     if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
 
-    const status = { total: contatos.length, enviados: 0, bloqueados: 0, falhas: 0, optout: 0, terminado: false, semSaldo: false, template, em: new Date().toISOString() };
-    _disparoStatus[empresa.id] = status;
-    res.json({ ok: true, total: contatos.length });
-
-    // Background: dispara com um pequeno intervalo entre mensagens (anti-flood).
-    (async () => {
-      const oficial = oficialDaEmpresa(empresa);
-      for (const c of contatos) {
-        try {
-          if (await estaDescadastrado(c.telefone)) { status.optout++; continue; }
-          let ok = false;
-          await tenantContext.run({ empresa, empresaId: empresa.id, oficial }, async () => {
-            ok = await sendTemplate(c.telefone, template, c.params);
-          });
-          if (ok) { status.enviados++; }
-          else {
-            // Distingue "sem saldo" (para tudo) de falha pontual (segue).
-            const snap = await EMPRESAS_COL().doc(empresa.id).get();
-            const d = snap.exists ? snap.data() : {};
-            const preco = precoDaCategoria(d, 'marketing');
-            if (d.prepagoAtivo && (d.saldoCentavos || 0) < preco) { status.semSaldo = true; break; }
-            status.falhas++;
-          }
-        } catch (e) { status.falhas++; }
-        await new Promise(r => setTimeout(r, 350));
-      }
-      const processados = status.enviados + status.falhas + status.optout + status.bloqueados;
-      if (status.semSaldo && processados < status.total) status.bloqueados += (status.total - processados);
-      status.terminado = true; status.fimEm = new Date().toISOString();
-      console.log(`[DISPARO] empresa=${empresa.id} enviados=${status.enviados} bloqueados=${status.bloqueados} falhas=${status.falhas} optout=${status.optout}`);
-    })().catch(e => { status.terminado = true; console.error('[DISPARO] erro no loop:', e.message); });
+    const resultado = await iniciarDisparoMassa(empresa, template, contatos);
+    res.json({ ok: true, ...resultado });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -7611,6 +7640,110 @@ app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOfe
 
 app.get('/minha-disparo/status', exigirLoginEmpresa, (req, res) => {
   res.json({ ok: true, status: _disparoStatus[req.empresaLogin.id] || null });
+});
+
+// Histórico de campanhas (mais recente primeiro) — pra listar na tela e abrir
+// o relatório de cada uma.
+app.get('/minha-disparos', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const snap = await DISPAROS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const disparos = [];
+    snap.forEach(d => {
+      const x = d.data();
+      disparos.push({
+        id: d.id, template: x.template, total: x.total, status: x.status,
+        criadoEm: x.criadoEm, terminadoEm: x.terminadoEm,
+        enviados: x.enviados || 0, falhas: x.falhas || 0, optout: x.optout || 0, bloqueados: x.bloqueados || 0
+      });
+    });
+    disparos.sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, disparos });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Relatório de uma campanha: cruza os contatos que foram no disparo com o
+// status de entrega/leitura (MENSAGENS_CHAT_COL, casado por campanhaId), se
+// responderam depois (CONVERSAS_COL.ultimaInboundEm posterior ao disparo) e se
+// já recomendaram algum amigo (LEADS_COL.telefoneRecomendador).
+app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const doc = await DISPAROS_COL().doc(req.params.id).get();
+    if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Disparo não encontrado' });
+    }
+    const disparo = doc.data();
+
+    const msgsSnap = await MENSAGENS_CHAT_COL().where('campanhaId', '==', req.params.id).get();
+    const statusPorTelefone = {};
+    msgsSnap.forEach(d => { const m = d.data(); statusPorTelefone[m.telefone] = m.status || 'enviado'; });
+
+    const convSnap = await CONVERSAS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const ultimaInboundPorTelefone = {};
+    convSnap.forEach(d => { const c = d.data(); if (c.telefone) ultimaInboundPorTelefone[c.telefone] = c.ultimaInboundEm || null; });
+
+    const leadsSnap = await LEADS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const recomendouTelefones = new Set();
+    leadsSnap.forEach(d => { const l = d.data(); if (l.telefoneRecomendador) recomendouTelefones.add(soDigitos(l.telefoneRecomendador)); });
+
+    let entregues = 0, lidos = 0, falharam = 0, responderam = 0, recomendaram = 0;
+    const naoResponderam = [];
+    for (const c of (disparo.contatos || [])) {
+      const st = statusPorTelefone[c.telefone];
+      if (st === 'entregue' || st === 'lido') entregues++;
+      if (st === 'lido') lidos++;
+      if (st === 'falhou') falharam++;
+      const ultimaInbound = ultimaInboundPorTelefone[c.telefone];
+      const respondeu = !!(ultimaInbound && disparo.criadoEm && new Date(ultimaInbound) > new Date(disparo.criadoEm));
+      if (respondeu) responderam++; else naoResponderam.push({ telefone: c.telefone, nome: (c.params && c.params[0]) || null });
+      if (recomendouTelefones.has(c.telefone)) recomendaram++;
+    }
+
+    res.json({
+      ok: true,
+      disparo: { id: doc.id, template: disparo.template, total: disparo.total, criadoEm: disparo.criadoEm, status: disparo.status },
+      resumo: { total: disparo.total, entregues, lidos, falharam, responderam, recomendaram, naoResponderam: naoResponderam.length },
+      naoResponderam
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Redispara SÓ pra quem ainda não respondeu essa campanha (recalcula na hora,
+// não confia em cache) — cria uma campanha NOVA, não mexe na original.
+app.post('/minha-disparos/:id/redisparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') {
+      return res.status(400).json({ ok: false, erro: 'O disparo em massa só funciona no modo API Oficial da Meta.' });
+    }
+    const doc = await DISPAROS_COL().doc(req.params.id).get();
+    if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Disparo não encontrado' });
+    }
+    const disparo = doc.data();
+    const template = String((req.body && req.body.template) || disparo.template || '').trim();
+    if (!template) return res.status(400).json({ ok: false, erro: 'Informe o template.' });
+
+    const rodando = _disparoStatus[empresa.id];
+    if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
+
+    const convSnap = await CONVERSAS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const ultimaInboundPorTelefone = {};
+    convSnap.forEach(d => { const c = d.data(); if (c.telefone) ultimaInboundPorTelefone[c.telefone] = c.ultimaInboundEm || null; });
+    const contatos = (disparo.contatos || []).filter(c => {
+      const ultimaInbound = ultimaInboundPorTelefone[c.telefone];
+      return !(ultimaInbound && disparo.criadoEm && new Date(ultimaInbound) > new Date(disparo.criadoEm));
+    });
+    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Todo mundo dessa campanha já respondeu — nada pra redisparar.' });
+
+    const resultado = await iniciarDisparoMassa(empresa, template, contatos);
+    res.json({ ok: true, ...resultado, redisparadoDe: req.params.id });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
 });
 
 // Cancela agendamentos ainda pendentes de "chamar o recomendado" desta empresa —
