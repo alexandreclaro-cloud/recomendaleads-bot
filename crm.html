@@ -1410,7 +1410,8 @@ let ultimaComMap = {}; // telefone(dígitos) → ISO da última mensagem da conv
 const CLI_ETAPAS = [
   { id: 'cli_iniciou', nome: '🚪 Iniciou (leu o QR)' },
   { id: 'cli_deu_nome', nome: '✍️ Deu o nome' },
-  { id: 'cli_recomendou', nome: '✅ Recomendou' }
+  { id: 'cli_recomendou', nome: '✅ Recomendou' },
+  { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' }
 ];
 
 const ETAPAS_PADRAO = [
@@ -1781,7 +1782,7 @@ document.getElementById('boardScrollRight').addEventListener('click', () => {
 // Renderiza os cards do CLIENTE (recomendador) nas 3 colunas fixas do funil.
 function renderClientesPipeline() {
   const termo = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
-  const mapa = { iniciou: 'cli_iniciou', deu_nome: 'cli_deu_nome', recomendou: 'cli_recomendou' };
+  const mapa = { iniciou: 'cli_iniciou', deu_nome: 'cli_deu_nome', recomendou: 'cli_recomendou', recebeu_premio: 'cli_recebeu_premio' };
   let lista = clientesPipeline || [];
   if (termo) lista = lista.filter(c => (c.nome || '').toLowerCase().includes(termo) || (c.telefone || '').includes(termo));
   CLI_ETAPAS.forEach(etapa => {

@@ -319,7 +319,7 @@ const CLIENTES_PIPELINE_COL = () => db.collection('clientes_pipeline');
 
 // Cria/atualiza o card do cliente no pipeline (só avança de estágio, nunca volta).
 // etapa: 'iniciou' -> 'deu_nome' -> 'recomendou'.
-const _RANK_CLI_ETAPA = { iniciou: 1, deu_nome: 2, recomendou: 3 };
+const _RANK_CLI_ETAPA = { iniciou: 1, deu_nome: 2, recomendou: 3, recebeu_premio: 4 };
 async function upsertClientePipeline(telefone, nome, etapa, contatos) {
   if (!db || !telefone) return;
   try {
@@ -2059,6 +2059,9 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
       else if (faixa.premio) await sendText(telefone, faixa.premio);
       if (faixa.texto) await sendText(telefone, faixa.texto);
       if (faixa.link) await sendText(telefone, faixa.link);
+      // Pipeline do cliente: só agora o presente foi entregue de verdade (modo
+      // Full segura até essa confirmação) — mesmo carimbo do fluxo normal.
+      await upsertClientePipeline(telefone, sessao.clienteNome, 'recebeu_premio');
       sessao.etapa = 'finalizado';
       sessao.premioPendente = null;
       await saveSessao(telefone, sessao);
@@ -2482,6 +2485,11 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   if (faixa.link) {
     await sendText(telefone, faixa.link);
   }
+
+  // Pipeline do cliente: só avança pra "recebeu o prêmio" AQUI, depois que o
+  // voucher/presente já foi mandado de verdade — não lá em cima (onde só marca
+  // "recomendou", ao completar a faixa, antes de qualquer coisa ser entregue).
+  await upsertClientePipeline(telefone, sessao.clienteNome, 'recebeu_premio');
 
   const msgValidarAmigo = empresa.mensagemValidarAmigo ?? EMPRESA_PADRAO.mensagemValidarAmigo;
   if (msgValidarAmigo && msgValidarAmigo.trim()) {
