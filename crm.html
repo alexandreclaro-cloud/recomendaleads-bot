@@ -379,7 +379,7 @@
     font-weight: 500;
   }
   .modal-field .valor { font-size: 0.95rem; color: var(--text); }
-  .modal-field select {
+  .modal-field select, .modal-field input[type="text"] {
     width: 100%;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -388,6 +388,7 @@
     color: var(--text);
     font-size: 0.9rem;
     font-family: inherit;
+    box-sizing: border-box;
   }
 
   .modal-historico {
@@ -1605,7 +1606,7 @@ function abrirModalNovoLead() {
           <label>Vendedor responsável (opcional)</label>
           <select id="novoLeadVendedor">${opcoesVendedor}</select>
         </div>
-        <div class="row-save" style="margin-top:14px;display:flex;gap:8px;">
+        <div class="modal-actions">
           <button class="save-vendedor-btn" id="novoLeadSalvarBtn">Adicionar</button>
         </div>
         <div class="modal-status" id="novoLeadStatus"></div>
