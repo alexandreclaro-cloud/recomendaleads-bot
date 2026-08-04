@@ -516,11 +516,33 @@ async function carregarEtapaLead() {
     sel.style.display = 'inline-block';
   } catch (e) {}
 }
+// Mesma regra do CRM (ehColunaComprou): mover pro estágio de compra/venda
+// pergunta o valor, senão o "Vendas R$X" do topo do CRM nunca soma nada vindo
+// por aqui — antes só o arrastar de card no Kanban perguntava isso.
+function parseValorConv(str) {
+  if (str == null) return null;
+  let s = String(str).trim().replace(/[^\d.,-]/g, '');
+  if (!s) return null;
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
 document.getElementById('etapaSelect').addEventListener('change', async (e) => {
   if (!_leadAtualId) return;
   const novaEtapa = e.target.value;
+  const nomeEtapa = (e.target.selectedOptions[0] && e.target.selectedOptions[0].textContent) || '';
+  let valorCompra;
+  if (/comprou|comprar|vendeu|venda|fechou/i.test(nomeEtapa) || /comprou|comprar|vendeu|venda|fechou/i.test(novaEtapa)) {
+    const entrada = prompt('Quanto essa pessoa gastou na compra? (R$)');
+    if (entrada === null) { await carregarEtapaLead(); return; } // cancelou — desfaz a seleção visual
+    valorCompra = parseValorConv(entrada);
+  }
   try {
-    const r = await fetchAut(`${API_BASE}/minha-leads/${_leadAtualId}`, { method: 'PATCH', body: JSON.stringify({ etapa: novaEtapa }) });
+    const r = await fetchAut(`${API_BASE}/minha-leads/${_leadAtualId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ etapa: novaEtapa, ...(valorCompra !== undefined ? { valorCompra } : {}) })
+    });
     const d = await r.json();
     if (!r.ok || !d.ok) alert('❌ ' + (d.erro || 'Não foi possível mover o lead.'));
   } catch (err) { alert('Erro de conexão.'); }
