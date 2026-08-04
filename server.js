@@ -7746,6 +7746,55 @@ app.post('/minha-disparos/:id/redisparar', exigirLoginEmpresa, exigirGestor, exi
   }
 });
 
+// Reconstrói RETROATIVAMENTE o último disparo em massa que rodou ANTES desse
+// rastreio por campanha existir — as mensagens de template já ficavam salvas
+// (registrarMensagem sempre gravou), só não tinham campanhaId. Agrupa os envios
+// de template mais recentes desse empresa que ainda não pertencem a nenhuma
+// campanha, pelo mesmo nome de template + dentro de uma janela de tempo, cria
+// um DISPAROS_COL retroativo com esse lote e carimba campanhaId nas mensagens
+// — depois disso o relatório funciona igual a qualquer campanha nova. Rodar de
+// novo não duplica: mensagem já tagueada nunca entra de novo no cálculo.
+app.post('/minha-disparos/reconstruir-ultimo', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const empresaId = req.empresaLogin.id;
+    const snap = await MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'out').get();
+    const candidatas = [];
+    snap.forEach(d => {
+      const m = d.data();
+      if (m.campanhaId) return; // já pertence a uma campanha rastreada
+      if (typeof m.texto === 'string' && m.texto.startsWith('[template: ') && m.texto.endsWith(']')) {
+        candidatas.push({ ref: d.ref, telefone: m.telefone, criadoEm: m.criadoEm, template: m.texto.slice(11, -1) });
+      }
+    });
+    if (!candidatas.length) return res.status(404).json({ ok: false, erro: 'Não encontrei nenhum disparo de template antigo, sem campanha, pra reconstruir.' });
+    candidatas.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+    const maisRecente = candidatas[0];
+    // Um disparo em lote manda tudo em minutos (350ms de intervalo entre cada);
+    // 3h de janela é folga generosa sem misturar com um disparo antigo diferente.
+    const limite = new Date(maisRecente.criadoEm).getTime() - 3 * 60 * 60 * 1000;
+    const lote = candidatas.filter(c => c.template === maisRecente.template && new Date(c.criadoEm).getTime() >= limite);
+    const vistos = new Set();
+    const unicos = lote.filter(c => { if (vistos.has(c.telefone)) return false; vistos.add(c.telefone); return true; });
+    unicos.sort((a, b) => new Date(a.criadoEm) - new Date(b.criadoEm));
+
+    const disparoRef = await DISPAROS_COL().add({
+      empresaId, template: maisRecente.template,
+      contatos: unicos.map(c => ({ telefone: c.telefone, params: [] })),
+      total: unicos.length, status: 'concluido',
+      criadoEm: unicos[0].criadoEm, terminadoEm: unicos[unicos.length - 1].criadoEm,
+      reconstruido: true
+    });
+    const campanhaId = disparoRef.id;
+    const batch = db.batch();
+    unicos.forEach(c => batch.update(c.ref, { campanhaId }));
+    await batch.commit();
+
+    res.json({ ok: true, campanhaId, total: unicos.length, template: maisRecente.template });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Cancela agendamentos ainda pendentes de "chamar o recomendado" desta empresa —
 // útil pra abortar disparos de teste antes de saírem (evita cobrança à toa na
 // API Oficial). Não afeta o que já foi enviado, só o que ainda está na fila.

@@ -679,6 +679,10 @@
           <div class="block-title"><i data-lucide="bar-chart-3"></i> Histórico de campanhas</div>
           <p class="sub">Quantos entregaram, leram, responderam e recomendaram amigos em cada disparo — e quem ainda não respondeu, pra redisparar só pra eles.</p>
           <div id="disparosHistLista">Carregando...</div>
+          <div style="margin-top:10px;">
+            <button type="button" class="btn btn-secondary" id="reconstruirUltimoBtn" style="padding:6px 12px;font-size:0.82rem;">🕓 Recuperar relatório de um disparo antigo (antes desse histórico existir)</button>
+            <span class="status-msg" id="reconstruirUltimoStatus"></span>
+          </div>
         </div>
       </section>
 
@@ -1050,6 +1054,22 @@ document.getElementById('disparoRedispararBtn').addEventListener('click', async 
     document.getElementById('disparoProgresso').style.display = 'block';
     document.getElementById('disparoBtn').disabled = true;
     pollDisparo();
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { btn.disabled = false; }
+});
+
+document.getElementById('reconstruirUltimoBtn').addEventListener('click', async () => {
+  if (!confirm('Isso vai procurar o disparo de template mais recente que ainda não tem relatório e montar a campanha com ele. Continuar?')) return;
+  const st = document.getElementById('reconstruirUltimoStatus');
+  const btn = document.getElementById('reconstruirUltimoBtn');
+  btn.disabled = true; st.textContent = 'Procurando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-disparos/reconstruir-ultimo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) { st.textContent = '❌ ' + (d.erro || 'Erro'); st.className = 'status-msg err'; return; }
+    st.textContent = `✅ Encontrado: ${d.total} contato(s) do template "${d.template}"`; st.className = 'status-msg ok';
+    await carregarDisparosHistorico();
+    abrirRelatorioDisparo(d.campanhaId);
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
   finally { btn.disabled = false; }
 });
