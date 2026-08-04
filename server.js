@@ -2306,7 +2306,14 @@ async function salvarRefFull(code, telefoneRecomendador, sessao) {
     await REFS_COL().doc(`${empresaIdAtual()}__${code}`).set({
       codigo: code, empresaId: empresaIdAtual(),
       telefoneRecomendador, nomeRecomendador: sessao.clienteNome || '',
-      vendedorNome: sessao.vendedorNome || '', criadoEm: new Date().toISOString()
+      vendedorNome: sessao.vendedorNome || '',
+      // Rede de lojas: sem isso, quando o amigo clica no link (chega com
+      // "#r<código>", que não bate com frase-gatilho de oferta nenhuma), o
+      // sistema não tem como saber de qual loja veio — e ele recebia sempre o
+      // conteúdo da oferta Padrão, mesmo tendo sido indicado por alguém de
+      // outra loja.
+      ofertaId: sessao.ofertaId || null,
+      criadoEm: new Date().toISOString()
     }, { merge: true });
   } catch (e) { console.error('salvarRefFull:', e.message); }
 }
@@ -2629,6 +2636,7 @@ function empurrarParaForaDoSilencio(quandoISO) {
 
 async function criarAgendamento({ tipo, executarEm, dados, marcaTempoReferencia }) {
   const executarEmFinal = AGENDAMENTOS_SEM_SILENCIO.has(tipo) ? executarEm : empurrarParaForaDoSilencio(executarEm);
+  const ctx = tenantContext.getStore();
   await AGENDAMENTOS_COL().add({
     tipo,
     executarEm: executarEmFinal,
@@ -2636,6 +2644,12 @@ async function criarAgendamento({ tipo, executarEm, dados, marcaTempoReferencia 
     // Registra a empresa dona deste agendamento, pra que o follow-up depois
     // seja enviado pelo WhatsApp dela (e não pelo número global).
     empresaId: empresaIdAtual(),
+    // Rede de lojas: qual oferta estava "no ar" quando isso foi agendado. Sem
+    // isso, quando o job dispara minutos/horas depois — já fora do contexto
+    // HTTP original — o executor não tinha como saber, e todo follow-up/
+    // disparo agendado saía sempre com o conteúdo da oferta Padrão, nunca da
+    // loja certa (ver aplicarOferta() em processarAgendamento).
+    ofertaId: (ctx && ctx.empresa && ctx.empresa.ofertaId) || null,
     dados,
     marcaTempoReferencia: marcaTempoReferencia || null,
     criadoEm: new Date().toISOString()
@@ -3006,10 +3020,13 @@ async function enviarMenuPrincipalRec(telefone, sessao, marca) {
   await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', ultimaMensagemEm: marca || new Date().toISOString() });
 }
 
-// Agenda a checagem de confirmação ~3 min após o agendamento.
-async function agendarCheckConfirmacao(telefone) {
+// Agenda a checagem de confirmação ~3 min após o agendamento. marcaTempoReferencia
+// é o ultimaMensagemEm gravado junto com etapa:'finalizado' — se a sessão mudar
+// antes do check disparar (reset, novo agendamento, etc.), o guard no executor
+// detecta a divergência e não manda a mensagem à toa.
+async function agendarCheckConfirmacao(telefone, marcaTempoReferencia) {
   const executarEm = new Date(Date.now() + 3 * 60 * 1000).toISOString();
-  await criarAgendamento({ tipo: 'confirmar_agendamento_check', executarEm, dados: { telefone } });
+  await criarAgendamento({ tipo: 'confirmar_agendamento_check', executarEm, marcaTempoReferencia, dados: { telefone } });
 }
 
 // Inicia o agendamento: se a empresa configurou um link de agendamento,
@@ -3023,8 +3040,9 @@ async function iniciarAgendamentoRec(telefone, empresa, sessao, fluxo) {
     await sendText(telefone, intro);
     await sendText(telefone, empresa.linkAgendamento.trim());
     await registrarEscolhaNoLead(telefone, { agendamentoLink: empresa.linkAgendamento.trim(), agendamentoEm: new Date().toISOString() }, empresa, true);
-    await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
-    await agendarCheckConfirmacao(telefone);
+    const marcaFinalizado = new Date().toISOString();
+    await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: marcaFinalizado });
+    await agendarCheckConfirmacao(telefone, marcaFinalizado);
     return;
   }
   await enviarPerguntaPeriodoRec(telefone, empresa, fluxo);
@@ -3186,8 +3204,9 @@ async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, 
     agendamentoDia: diaLabel,
     agendamentoEm: new Date().toISOString()
   }, empresa, true);
-  await saveSessaoRecomendado(telefone, { etapa: 'finalizado' });
-  await agendarCheckConfirmacao(telefone);
+  const marcaFinalizado = new Date().toISOString();
+  await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: marcaFinalizado });
+  await agendarCheckConfirmacao(telefone, marcaFinalizado);
   console.log(`[RECOMENDADO AGENDOU] ${telefone} — ${diaLabel} (${periodoLabel})`);
 }
 
@@ -3941,7 +3960,11 @@ async function tratarWebhook(req, res) {
     if (codResgate && !clienteAtivo && !recomendadoAtivo) {
       const ref = await buscarRefFull(codResgate);
       if (ref) {
-        const empresaFull = await getEmpresa();
+        // Rede de lojas: aplica a oferta de quem indicou (carimbada em
+        // salvarRefFull) — sem isso, o amigo sempre recebia o conteúdo da
+        // oferta Padrão, mesmo tendo sido indicado por alguém de outra loja.
+        let empresaFull = await getEmpresa();
+        if (ref.ofertaId) empresaFull = aplicarOferta(empresaFull, ref.ofertaId);
         const contato = { nome: nomeContato || 'você', telefone };
         await iniciarConversaRecomendado(contato, ref.nomeRecomendador || 'seu amigo', ref.vendedorNome || empresaFull.nome, empresaFull);
         console.log(`[FULL RESGATE] ${telefone} chegou pelo link de ${ref.telefoneRecomendador} (cod ${codResgate})`);
@@ -4150,7 +4173,11 @@ async function atualizarStatusMensagem(messageId, statusMeta) {
     const snap = await MENSAGENS_CHAT_COL().where('messageId', '==', messageId).limit(1).get();
     if (snap.empty) return;
     const doc = snap.docs[0];
-    const ordem = { enviado: 1, entregue: 2, lido: 3 };
+    // 'falhou' fica no mesmo nível de 'enviado': substitui um "enviado" que não
+    // foi entregue, mas nunca regride um "entregue"/"lido" que chegou depois
+    // (webhook fora de ordem). Sem isso 'falhou' nunca era persistido — ordem[status]
+    // caía em 0 (chave ausente) e "enviado"(1) > 0 sempre bloqueava a atualização.
+    const ordem = { enviado: 1, falhou: 1, entregue: 2, lido: 3 };
     const atual = doc.data().status;
     if (atual && ordem[atual] > (ordem[status] || 0)) return;
     await doc.ref.update({ status });
@@ -6176,10 +6203,23 @@ app.post('/minha-conversas/backfill-papel', exigirLoginEmpresa, exigirGestor, as
   }
 });
 
+// Rede de lojas: um atendente preso a uma loja só pode ver/mexer nas conversas
+// da PRÓPRIA loja. Sem trava, ele acessava qualquer conversa da empresa via
+// telefone direto (as rotas abaixo não filtravam por ofertaId, só empresaId).
+// Não é loja-locked (ofertaId vazio) => acessa tudo, igual sempre foi.
+async function podeAcessarConversaDaLoja(req, telefone) {
+  if (!req.usuario || !req.usuario.ofertaId) return true;
+  const chave = `${req.empresaLogin.id}__${telefone}`;
+  const snap = await CONVERSAS_COL().doc(chave).get();
+  const conv = snap.exists ? snap.data() : {};
+  return conv.ofertaId === req.usuario.ofertaId;
+}
+
 // Mensagens de uma conversa (e marca como lida).
 app.get('/minha-conversas/:telefone/mensagens', exigirLoginEmpresa, async (req, res) => {
   try {
     const telefone = req.params.telefone;
+    if (!(await podeAcessarConversaDaLoja(req, telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
     const chave = `${req.empresaLogin.id}__${telefone}`;
     const snap = await MENSAGENS_CHAT_COL().where('chaveConversa', '==', chave).get();
     const mensagens = [];
@@ -6201,6 +6241,7 @@ app.get('/minha-conversas/:telefone/mensagens', exigirLoginEmpresa, async (req, 
 // etapa do Kanban direto da conversa (sem precisar ir no CRM arrastar o card).
 app.get('/minha-conversas/:telefone/lead', exigirLoginEmpresa, async (req, res) => {
   try {
+    if (!(await podeAcessarConversaDaLoja(req, req.params.telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id };
     let lead = null;
@@ -6260,6 +6301,7 @@ app.post('/minha-conversas/:telefone/enviar-template', exigirLoginEmpresa, async
     const template = String((req.body && req.body.template) || '').trim();
     if (!template) return res.status(400).json({ ok: false, erro: 'Escolha um template.' });
     const params = Array.isArray(req.body && req.body.params) ? req.body.params.map(x => String(x == null ? '' : x)) : [];
+    if (!(await podeAcessarConversaDaLoja(req, telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
 
     const empresa = await getEmpresaById(req.empresaLogin.id);
     if (empresa.whatsappTipo !== 'oficial') return res.status(400).json({ ok: false, erro: 'Disparo por template só funciona no modo API Oficial.' });
@@ -6286,6 +6328,7 @@ app.post('/minha-conversas/:telefone/enviar', exigirLoginEmpresa, async (req, re
     const telefone = req.params.telefone;
     const mensagem = (req.body && req.body.mensagem || '').trim();
     if (!mensagem) return res.status(400).json({ ok: false, erro: 'Mensagem vazia' });
+    if (!(await podeAcessarConversaDaLoja(req, telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
 
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
@@ -6313,6 +6356,7 @@ app.post('/minha-conversas/:telefone/enviar-midia', exigirLoginEmpresa, async (r
     if (!['imagem', 'audio', 'video', 'documento'].includes(tipo)) {
       return res.status(400).json({ ok: false, erro: 'Tipo de mídia inválido' });
     }
+    if (!(await podeAcessarConversaDaLoja(req, telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
 
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
@@ -6342,15 +6386,19 @@ app.post('/minha-conversas/:telefone/agendar-retorno', exigirLoginEmpresa, async
     const mensagem = (req.body && req.body.mensagem) ? String(req.body.mensagem).trim() : '';
     if (!quando || isNaN(new Date(quando).getTime())) return res.status(400).json({ ok: false, erro: 'Data/hora inválida' });
     if (new Date(quando).getTime() <= Date.now()) return res.status(400).json({ ok: false, erro: 'Escolha um horário no futuro' });
+    if (!(await podeAcessarConversaDaLoja(req, telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
     const atendenteId = (req.usuario && req.usuario.id) || null;
     const atendenteNome = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
     const chave = `${req.empresaLogin.id}__${telefone}`;
     await CONVERSAS_COL().doc(chave).set({ lembreteRetorno: { quando, atendenteId, atendenteNome, mensagem } }, { merge: true });
-    await AGENDAMENTOS_COL().add({
-      tipo: 'lembrete_retorno_atendente', executarEm: quando, status: 'pendente',
-      empresaId: req.empresaLogin.id,
-      dados: { telefone, atendenteId, atendenteNome, mensagem },
-      criadoEm: new Date().toISOString()
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const contexto = { empresa, empresaId: req.empresaLogin.id };
+    await tenantContext.run(contexto, async () => {
+      await criarAgendamento({
+        tipo: 'lembrete_retorno_atendente',
+        executarEm: quando,
+        dados: { telefone, atendenteId, atendenteNome, mensagem }
+      });
     });
     res.json({ ok: true });
   } catch (err) {
@@ -6362,6 +6410,7 @@ app.post('/minha-conversas/:telefone/agendar-retorno', exigirLoginEmpresa, async
 // o executor checa `lembreteRetorno` antes de notificar, então limpar aqui basta.
 app.post('/minha-conversas/:telefone/cancelar-lembrete', exigirLoginEmpresa, async (req, res) => {
   try {
+    if (!(await podeAcessarConversaDaLoja(req, req.params.telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
     const chave = `${req.empresaLogin.id}__${req.params.telefone}`;
     await CONVERSAS_COL().doc(chave).set({ lembreteRetorno: null }, { merge: true });
     res.json({ ok: true });
@@ -6407,6 +6456,7 @@ app.post('/minha-respostas-rapidas', exigirLoginEmpresa, async (req, res) => {
 app.post('/minha-conversas/:telefone/devolver', exigirLoginEmpresa, async (req, res) => {
   try {
     const telefone = req.params.telefone;
+    if (!(await podeAcessarConversaDaLoja(req, telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
     await tenantContext.run(contexto, async () => { await despausarNumero(telefone); });
@@ -6421,6 +6471,7 @@ app.post('/minha-conversas/:telefone/devolver', exigirLoginEmpresa, async (req, 
 app.post('/minha-conversas/:telefone/pausar', exigirLoginEmpresa, async (req, res) => {
   try {
     const telefone = req.params.telefone;
+    if (!(await podeAcessarConversaDaLoja(req, telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
     await tenantContext.run(contexto, async () => { await pausarNumero(telefone); });
@@ -6441,6 +6492,7 @@ app.post('/minha-conversas/:telefone/transferir', exigirLoginEmpresa, async (req
     const telefone = req.params.telefone;
     const { atendenteId: novoId } = req.body || {};
     if (!novoId) return res.status(400).json({ ok: false, erro: 'Escolha pra quem transferir.' });
+    if (!(await podeAcessarConversaDaLoja(req, telefone))) return res.status(404).json({ ok: false, erro: 'Conversa não encontrada' });
     const chave = `${req.empresaLogin.id}__${telefone}`;
     const ref = CONVERSAS_COL().doc(chave);
     const snap = await ref.get();
@@ -6452,6 +6504,10 @@ app.post('/minha-conversas/:telefone/transferir', exigirLoginEmpresa, async (req
     const uDoc = await USUARIOS_COL().doc(novoId).get();
     if (!uDoc.exists || uDoc.data().empresaId !== req.empresaLogin.id) {
       return res.status(404).json({ ok: false, erro: 'Atendente de destino não encontrado' });
+    }
+    // Não deixa transferir pra alguém de outra loja (conversa ficaria órfã pro novo dono).
+    if (atual.ofertaId && uDoc.data().ofertaId && uDoc.data().ofertaId !== atual.ofertaId) {
+      return res.status(400).json({ ok: false, erro: 'Esse atendente é de outra loja.' });
     }
     await ref.set({ botPausado: true, atendenteId: novoId, atendenteNome: uDoc.data().nome || 'Atendente', atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
     res.json({ ok: true, atendenteNome: uDoc.data().nome || 'Atendente' });
@@ -6536,6 +6592,15 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOf
 app.get('/minha-leads', exigirLoginEmpresa, async (req, res) => {
   try {
     let leads = await getLeadsPorEmpresa(req.empresaLogin.id);
+
+    // Rede de lojas: usuário preso a uma loja só vê leads DAQUELA loja, mesmo
+    // que peça outra por engano — mesmo padrão do GET /minha-conversas. Matriz
+    // pode filtrar por qualquer loja via ?oferta=, ou ver tudo sem o parâmetro.
+    const ofertaFiltro = (req.usuario && req.usuario.ofertaId) || (req.query && req.query.oferta) || null;
+    if (ofertaFiltro) {
+      leads = leads.filter(l => l.ofertaId === ofertaFiltro);
+    }
+
     // Atendente (não-gestor): só vê leads sem dono (pra poder pegar) ou que ele
     // mesmo pegou — mesma regra das Conversas. Gestor vê tudo, sem filtro; o
     // parâmetro ?atendenteId=X deixa o gestor filtrar "um de cada" mesmo assim.
@@ -6565,7 +6630,11 @@ app.post('/minha-leads', exigirLoginEmpresa, async (req, res) => {
     const telefoneRecomendador = telefoneRecomendadorRaw ? soDigitos(telefoneRecomendadorRaw) : null;
     const vendedor = (req.body && req.body.vendedor) || null;
 
-    const empresa = await getEmpresaById(req.empresaLogin.id);
+    // Rede de lojas: quem está preso a uma loja cadastra o lead já carimbado
+    // com ela — sem isso, criarLead() gravava sempre ofertaId: null, mesmo
+    // pra atendente de loja específica.
+    let empresa = await getEmpresaById(req.empresaLogin.id);
+    if (req.usuario && req.usuario.ofertaId) empresa = aplicarOferta(empresa, req.usuario.ofertaId);
     let lead = null;
     await tenantContext.run({ empresa, empresaId: req.empresaLogin.id }, async () => {
       lead = await criarLead({ nomeRecomendado, telefoneRecomendado, nomeRecomendador, telefoneRecomendador, vendedor, empresaId: req.empresaLogin.id });
@@ -6594,6 +6663,10 @@ app.post('/minha-leads/:id/assumir', exigirLoginEmpresa, async (req, res) => {
     if (!snap.exists || snap.data().empresaId !== req.empresaLogin.id) {
       return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
     }
+    // Rede de lojas: preso a uma loja só pode pegar lead da própria loja.
+    if (req.usuario && req.usuario.ofertaId && snap.data().ofertaId !== req.usuario.ofertaId) {
+      return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
+    }
     if (snap.data().atendenteId && snap.data().atendenteId !== (req.usuario && req.usuario.id)) {
       return res.status(409).json({ ok: false, erro: 'Este lead já foi pego por outro atendente.' });
     }
@@ -6619,6 +6692,10 @@ app.post('/minha-leads/:id/transferir', exigirLoginEmpresa, async (req, res) => 
       return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
     }
     const atual = snap.data();
+    // Rede de lojas: preso a uma loja só mexe em lead da própria loja.
+    if (req.usuario && req.usuario.ofertaId && atual.ofertaId !== req.usuario.ofertaId) {
+      return res.status(404).json({ ok: false, erro: 'Lead não encontrado' });
+    }
     const souDono = atual.atendenteId && req.usuario && atual.atendenteId === req.usuario.id;
     if (req.papel !== 'gestor' && !souDono && atual.atendenteId) {
       return res.status(403).json({ ok: false, erro: 'Só o dono do lead ou um gestor pode transferir.' });
@@ -6626,6 +6703,10 @@ app.post('/minha-leads/:id/transferir', exigirLoginEmpresa, async (req, res) => 
     const uDoc = await USUARIOS_COL().doc(novoId).get();
     if (!uDoc.exists || uDoc.data().empresaId !== req.empresaLogin.id) {
       return res.status(404).json({ ok: false, erro: 'Atendente de destino não encontrado' });
+    }
+    // Não deixa transferir pra alguém de outra loja (lead ficaria órfão pro novo dono).
+    if (atual.ofertaId && uDoc.data().ofertaId && uDoc.data().ofertaId !== atual.ofertaId) {
+      return res.status(400).json({ ok: false, erro: 'Esse atendente é de outra loja.' });
     }
     await ref.set({ atendenteId: novoId, atendenteNome: uDoc.data().nome || 'Atendente' }, { merge: true });
     res.json({ ok: true });
@@ -7773,7 +7854,7 @@ app.get('/minha-disparo/status', exigirLoginEmpresa, (req, res) => {
 
 // Histórico de campanhas (mais recente primeiro) — pra listar na tela e abrir
 // o relatório de cada uma.
-app.get('/minha-disparos', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.get('/minha-disparos', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const snap = await DISPAROS_COL().where('empresaId', '==', req.empresaLogin.id).get();
     const disparos = [];
@@ -7861,7 +7942,7 @@ async function calcularPipelineDisparo(disparo, empresaId) {
   };
 }
 
-app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const doc = await DISPAROS_COL().doc(req.params.id).get();
     if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
@@ -7960,7 +8041,7 @@ app.post('/minha-disparos/:id/redisparar', exigirLoginEmpresa, exigirGestor, exi
 // um DISPAROS_COL retroativo com esse lote e carimba campanhaId nas mensagens
 // — depois disso o relatório funciona igual a qualquer campanha nova. Rodar de
 // novo não duplica: mensagem já tagueada nunca entra de novo no cálculo.
-app.post('/minha-disparos/reconstruir-ultimo', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-disparos/reconstruir-ultimo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresaId = req.empresaLogin.id;
     const snap = await MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'out').get();
@@ -8120,6 +8201,14 @@ async function processarAgendamento(agendamento) {
   }
   if (!empresa) empresa = await getEmpresa();
 
+  // Rede de lojas: reaplica a oferta que estava ativa quando o agendamento foi
+  // criado (carimbada em criarAgendamento) — sem isso, todo follow-up/disparo
+  // agendado saía com o conteúdo cru da empresa (a oferta Padrão), mesmo
+  // quando quem originou o agendamento estava numa loja diferente.
+  if (agendamento.ofertaId) {
+    empresa = aplicarOferta(empresa, agendamento.ofertaId);
+  }
+
   const contexto = {
     empresa,
     empresaId: empresa.id || empresaId,
@@ -8135,6 +8224,9 @@ async function processarAgendamentoInterno(agendamento) {
     const { telefone } = agendamento.dados;
     if (await numeroEstaPausado(telefone)) return;
     const sessao = await getSessaoRecomendado(telefone);
+    // Guard de staleness: se a sessão mudou desde que o check foi agendado
+    // (resetou, marcou outro agendamento, etc.), não manda mensagem à toa.
+    if (!sessao || sessao.etapa !== 'finalizado' || sessao.ultimaMensagemEm !== agendamento.marcaTempoReferencia) return;
     await sendText(telefone, substituirVariaveis(empresa.posConfirmacaoCheck || EMPRESA_PADRAO.posConfirmacaoCheck, variaveisRec(sessao, empresa)));
     return;
   }
