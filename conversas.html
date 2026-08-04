@@ -244,14 +244,15 @@ if (!TOKEN) window.location.href = '/login';
 const EMPRESA_LOGADA_CONV = JSON.parse(localStorage.getItem('recomendaleads_empresa') || 'null');
 const MEU_OFERTA_ID = (EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.ofertaId) || null;
 const EH_GESTOR_CONV = (EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.papel) === 'gestor';
-// Rede de lojas: mesmo padrão do crm.html — usuário preso a uma loja sempre vê
-// só a própria (MEU_OFERTA_ID manda); matriz herda a oferta que estava editando
-// por último no CRM (?oferta= na URL, "grudado" via localStorage) pra Conversas
-// já abrir filtrada na mesma loja, sem precisar escolher de novo.
-const OFERTA_CHAVE_LS = 'recomendaleads_oferta_ativa';
+// Rede de lojas: usuário preso a uma loja sempre vê só a própria (MEU_OFERTA_ID
+// manda). Matriz só filtra quando o link TEM ?oferta= agora mesmo (ex.: clicou
+// num aviso específico de uma loja) — de propósito SEM persistir em localStorage
+// feito o crm.html: Conversas é a caixa de entrada principal, filtrar sozinho
+// sem aviso claro escondendo tudo é perigoso demais (já aconteceu: o filtro
+// "grudado" de uma sessão de teste da Alef fez sumir 100% das conversas da
+// Padrão pro usuário, parecendo perda de dados). Sem o parâmetro, mostra tudo.
 const OFERTA_URL_ID = new URLSearchParams(location.search).get('oferta') || null;
-if (OFERTA_URL_ID) { try { localStorage.setItem(OFERTA_CHAVE_LS, OFERTA_URL_ID); } catch (e) {} }
-const OFERTA_QUERY_ID = MEU_OFERTA_ID || OFERTA_URL_ID || (() => { try { return localStorage.getItem(OFERTA_CHAVE_LS); } catch (e) { return null; } })();
+const OFERTA_QUERY_ID = MEU_OFERTA_ID || OFERTA_URL_ID;
 function icons() { try { lucide.createIcons(); } catch (e) {} }
 
 async function fetchAut(url, opts = {}) {
@@ -1016,10 +1017,7 @@ async function carregarOfertaBadgeConv() {
       `<button type="button" id="sairOfertaConvBtn" title="Ver conversas de todas as lojas" style="margin-left:auto;background:none;border:none;cursor:pointer;font-weight:800;color:inherit;padding:0;">✕</button>`;
     badge.innerHTML = `<span>${oferta.padrao ? '🟢' : '✏️'} ${esc(oferta.nome)}</span>${btnSairHtml}`;
     const sairBtn = document.getElementById('sairOfertaConvBtn');
-    if (sairBtn) sairBtn.addEventListener('click', () => {
-      try { localStorage.removeItem(OFERTA_CHAVE_LS); } catch (e) {}
-      window.location.href = '/conversas';
-    });
+    if (sairBtn) sairBtn.addEventListener('click', () => { window.location.href = '/conversas'; });
   } catch (e) {}
 }
 carregarOfertaBadgeConv();
