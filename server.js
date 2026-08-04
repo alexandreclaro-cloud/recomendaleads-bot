@@ -6212,6 +6212,74 @@ app.get('/minha-conversas/:telefone/lead', exigirLoginEmpresa, async (req, res) 
   }
 });
 
+// Lista os templates APROVADOS na Meta pra essa empresa, com o TEXTO real (não
+// só o nome) — pra usar num disparo individual direto de dentro da conversa
+// (ex.: reabrir uma janela de 24h fechada, ou puxar assunto com quem nunca
+// respondeu). Cacheia 10min por WABA — a lista de templates muda pouco.
+const _todosTemplatesCache = {};
+app.get('/minha-templates', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') return res.json({ ok: true, templates: [] });
+    const oficial = oficialDaEmpresa(empresa);
+    if (!oficial || !oficial.wabaId || !oficial.token) return res.json({ ok: true, templates: [] });
+
+    const cacheKey = oficial.wabaId;
+    const cache = _todosTemplatesCache[cacheKey];
+    if (cache && (Date.now() - cache.em) < 10 * 60 * 1000) return res.json({ ok: true, templates: cache.templates });
+
+    const resp = await axios.get(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${oficial.wabaId}/message_templates`,
+      { params: { limit: 250 }, headers: { Authorization: `Bearer ${oficial.token}` }, timeout: 8000 }
+    );
+    const arr = (resp.data && resp.data.data) || [];
+    const templates = arr
+      .filter(t => String(t.status || '').toUpperCase() === 'APPROVED')
+      .map(t => {
+        const body = (t.components || []).find(c => String(c.type || '').toUpperCase() === 'BODY');
+        const texto = (body && body.text) || '';
+        const nums = (texto.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map(m => parseInt(m.replace(/\D/g, ''), 10));
+        const variaveis = nums.length ? Math.max(...nums) : 0;
+        return { name: t.name, categoria: String(t.category || '').toLowerCase(), idioma: t.language || '', texto, variaveis };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    _todosTemplatesCache[cacheKey] = { templates, em: Date.now() };
+    res.json({ ok: true, templates });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.response ? JSON.stringify(err.response.data).slice(0, 200) : err.message });
+  }
+});
+
+// Dispara um template ESCOLHIDO NA HORA direto pra uma conversa (disparo
+// individual, diferente do disparo em massa) — serve pra reabrir a janela de
+// 24h já fechada, ou puxar assunto com quem nunca respondeu. Mesmo padrão de
+// "assume o atendimento" do /enviar (texto livre).
+app.post('/minha-conversas/:telefone/enviar-template', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const telefone = req.params.telefone;
+    const template = String((req.body && req.body.template) || '').trim();
+    if (!template) return res.status(400).json({ ok: false, erro: 'Escolha um template.' });
+    const params = Array.isArray(req.body && req.body.params) ? req.body.params.map(x => String(x == null ? '' : x)) : [];
+
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') return res.status(400).json({ ok: false, erro: 'Disparo por template só funciona no modo API Oficial.' });
+    const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa), oficial: oficialDaEmpresa(empresa) };
+    let ok = false;
+    await tenantContext.run(contexto, async () => {
+      await pausarNumero(telefone); // assume o atendimento: bot para nesse contato
+      ok = await sendTemplate(telefone, template, params);
+    });
+    if (!ok) return res.status(400).json({ ok: false, erro: 'A Meta recusou o envio — confira o template e as variáveis.' });
+
+    const atendenteId = (req.usuario && req.usuario.id) || null;
+    const nomeAt = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
+    await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteId, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Envia uma mensagem manual e pausa o bot para esse contato.
 app.post('/minha-conversas/:telefone/enviar', exigirLoginEmpresa, async (req, res) => {
   try {

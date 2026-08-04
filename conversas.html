@@ -175,6 +175,7 @@
         <button class="btn btn-ghost" id="anexoBtn" title="Anexar arquivo" style="padding:8px 10px;"><i data-lucide="paperclip"></i></button>
         <button class="btn btn-ghost" id="audioBtn" title="Gravar áudio" style="padding:8px 10px;"><i data-lucide="mic"></i></button>
         <button class="btn btn-ghost" id="agendarBtn" title="Agendar um lembrete de retorno pra esta conversa" style="padding:8px 10px;"><i data-lucide="calendar"></i></button>
+        <button class="btn btn-ghost" id="templatesBtn" title="Modelos de mensagem (disparo individual, reabre a janela de 24h se já tiver fechado)" style="padding:8px 10px;"><i data-lucide="file-text"></i></button>
         <button class="btn btn-action" id="enviarBtn"><i data-lucide="send"></i></button>
       </div>
     </div>
@@ -228,6 +229,27 @@
       <span style="flex:1;"></span>
       <span id="agendarModalStatus" style="font-size:0.8rem;color:var(--text-dim);"></span>
       <button id="agendarModalConfirmar" class="btn btn-action" style="padding:8px 16px;">Agendar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modelos de mensagem: disparo individual (template avulso, direto pra conversa aberta) -->
+<div id="tplModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--surface);border-radius:14px;width:760px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+      <b style="flex:1;font-size:1rem;">📋 Modelos de mensagem</b>
+      <button id="tplModalFechar" class="btn btn-ghost" style="padding:4px 10px;">✕</button>
+    </div>
+    <div style="padding:10px 18px;border-bottom:1px solid var(--border);">
+      <input class="input" type="text" id="tplBusca" placeholder="Buscar template..." style="width:100%;">
+    </div>
+    <div style="flex:1;overflow:hidden;display:flex;min-height:320px;">
+      <div id="tplLista" style="width:44%;overflow-y:auto;border-right:1px solid var(--border);padding:8px;"></div>
+      <div id="tplPreview" style="flex:1;overflow-y:auto;padding:16px;font-size:0.86rem;color:var(--text-dim);">Escolha um template à esquerda pra ver o texto real antes de mandar.</div>
+    </div>
+    <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;">
+      <span id="tplModalStatus" style="font-size:0.82rem;color:var(--text-dim);flex:1;"></span>
+      <button id="tplEnviarBtn" class="btn btn-action" style="padding:8px 18px;" disabled>Enviar</button>
     </div>
   </div>
 </div>
@@ -926,6 +948,127 @@ document.getElementById('agendarModalConfirmar').addEventListener('click', async
 document.getElementById('cancelarLembreteBtn').addEventListener('click', async () => {
   if (!atual) return;
   try { await fetchAut(`${API_BASE}/minha-conversas/${atual}/cancelar-lembrete`, { method: 'POST' }); await carregarLembrete(); } catch (e) {}
+});
+
+// ===== Modelos de mensagem (disparo individual) =====
+// Lista os templates aprovados na Meta, com o TEXTO REAL (não só o nome) — pra
+// disparar um avulso direto na conversa aberta, reabrindo a janela de 24h se
+// já tiver fechado (ou puxando assunto com quem nunca respondeu).
+let _templates = null; // null = ainda não carregou
+let _templateSelecionado = null;
+async function carregarTemplates() {
+  if (_templates) return _templates;
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-templates`);
+    const d = await r.json();
+    _templates = (d.ok && d.templates) || [];
+  } catch (e) { _templates = []; }
+  return _templates;
+}
+async function abrirModalTemplates() {
+  if (!atual) return;
+  document.getElementById('tplModalOverlay').style.display = 'flex';
+  document.getElementById('tplBusca').value = '';
+  document.getElementById('tplLista').innerHTML = '<div style="padding:16px;color:var(--text-dim);font-size:0.85rem;">Carregando...</div>';
+  _templateSelecionado = null;
+  document.getElementById('tplPreview').innerHTML = 'Escolha um template à esquerda pra ver o texto real antes de mandar.';
+  document.getElementById('tplEnviarBtn').disabled = true;
+  document.getElementById('tplModalStatus').textContent = '';
+  await carregarTemplates();
+  renderListaTemplates('');
+  document.getElementById('tplBusca').focus();
+}
+function fecharModalTemplates() { document.getElementById('tplModalOverlay').style.display = 'none'; }
+function renderListaTemplates(filtro) {
+  const f = (filtro || '').toLowerCase();
+  const lista = (_templates || []).filter(t => t.name.toLowerCase().includes(f) || (t.texto || '').toLowerCase().includes(f));
+  const cont = document.getElementById('tplLista');
+  if (!lista.length) {
+    cont.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-size:0.85rem;">${(_templates||[]).length ? 'Nenhum template com esse termo.' : 'Nenhum template aprovado encontrado (só funciona no modo API Oficial).'}</div>`;
+    return;
+  }
+  cont.innerHTML = lista.map(t => `
+    <div class="tpl-item" data-name="${esc(t.name)}" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-bottom:2px;${_templateSelecionado && _templateSelecionado.name === t.name ? 'background:var(--brand-soft,#eff4ff);' : ''}">
+      <div style="font-weight:600;font-size:0.86rem;">${esc(t.name)}</div>
+      <div style="font-size:0.72rem;color:var(--text-dim);text-transform:capitalize;">${esc(t.categoria)} · ${esc(t.idioma)}</div>
+      <div style="font-size:0.76rem;color:var(--text-dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.texto)}</div>
+    </div>`).join('');
+  cont.querySelectorAll('.tpl-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const tpl = lista.find(t => t.name === el.dataset.name);
+      selecionarTemplate(tpl);
+      renderListaTemplates(document.getElementById('tplBusca').value);
+    });
+  });
+}
+document.getElementById('tplBusca').addEventListener('input', (e) => renderListaTemplates(e.target.value));
+
+function selecionarTemplate(tpl) {
+  _templateSelecionado = tpl;
+  const nomeContato = (document.getElementById('chatNome').textContent || '').trim();
+  const varsHtml = [];
+  for (let i = 1; i <= (tpl.variaveis || 0); i++) {
+    const valorInicial = (i === 1 && nomeContato && !/^\d+$/.test(nomeContato.replace(/\D/g, '')) && nomeContato !== atual)
+      ? esc(nomeContato.split(' ')[0]) : '';
+    varsHtml.push(`
+      <div style="margin-bottom:8px;">
+        <label style="font-size:0.76rem;color:var(--text-dim);display:block;margin-bottom:3px;">Variável {{${i}}}</label>
+        <input class="input tpl-var" data-i="${i}" value="${valorInicial}" placeholder="Preencha {{${i}}}" style="width:100%;padding:6px 8px;font-size:0.86rem;">
+      </div>`);
+  }
+  document.getElementById('tplPreview').innerHTML = `
+    <div style="font-weight:700;margin-bottom:8px;">${esc(tpl.name)}</div>
+    ${varsHtml.length ? varsHtml.join('') + '<hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">' : ''}
+    <div style="font-size:0.78rem;color:var(--text-faint);margin-bottom:4px;">Prévia da mensagem</div>
+    <div id="tplPreviewTexto" style="white-space:pre-wrap;background:var(--bg,#f7f8fa);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:0.88rem;"></div>`;
+  const atualizarPreview = () => {
+    let txt = tpl.texto || '';
+    document.querySelectorAll('.tpl-var').forEach(inp => {
+      const val = inp.value.trim();
+      txt = txt.replace(new RegExp(`\\{\\{\\s*${inp.dataset.i}\\s*\\}\\}`, 'g'), val || `{{${inp.dataset.i}}}`);
+    });
+    document.getElementById('tplPreviewTexto').textContent = txt;
+  };
+  atualizarPreview();
+  document.querySelectorAll('.tpl-var').forEach(inp => inp.addEventListener('input', atualizarPreview));
+  const ultimo = document.querySelector('.tpl-var:last-of-type');
+  if (ultimo) { ultimo.addEventListener('keydown', e => { if (e.key === 'Enter') enviarTemplateEscolhido(); }); ultimo.focus(); }
+  document.getElementById('tplEnviarBtn').disabled = false;
+}
+
+async function enviarTemplateEscolhido() {
+  if (!_templateSelecionado || !atual) return;
+  const params = [];
+  for (let i = 1; i <= (_templateSelecionado.variaveis || 0); i++) {
+    const inp = document.querySelector(`.tpl-var[data-i="${i}"]`);
+    params.push(inp ? inp.value.trim() : '');
+  }
+  const st = document.getElementById('tplModalStatus');
+  const btn = document.getElementById('tplEnviarBtn');
+  btn.disabled = true; st.textContent = 'Enviando...'; st.style.color = 'var(--text-dim)';
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-conversas/${atual}/enviar-template`, {
+      method: 'POST',
+      body: JSON.stringify({ template: _templateSelecionado.name, params })
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      fecharModalTemplates();
+      await carregarMensagens(true);
+      await carregarConversas();
+    } else {
+      st.textContent = '❌ ' + (d.erro || 'Não foi possível enviar.'); st.style.color = '#c0392b'; btn.disabled = false;
+    }
+  } catch (e) { st.textContent = '❌ Erro de conexão.'; st.style.color = '#c0392b'; btn.disabled = false; }
+}
+document.getElementById('templatesBtn').addEventListener('click', abrirModalTemplates);
+document.getElementById('tplModalFechar').addEventListener('click', fecharModalTemplates);
+document.getElementById('tplModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'tplModalOverlay') fecharModalTemplates(); });
+document.getElementById('tplEnviarBtn').addEventListener('click', enviarTemplateEscolhido);
+document.getElementById('tplModalOverlay').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { fecharModalTemplates(); return; }
+  // Enter fora de um campo de variável (ex.: template sem variáveis, ou busca) já dispara o envio.
+  if (e.key === 'Enter' && !e.target.classList.contains('tpl-var') && _templateSelecionado) enviarTemplateEscolhido();
 });
 
 document.getElementById('devolverBtn').addEventListener('click', async () => {
