@@ -725,7 +725,12 @@ function resolverOfertaSilenciosa(empresa, texto, ofertaIdConhecida) {
     const porGatilho = ativas.find(([, o]) => o.gatilhoPresente && t.includes(String(o.gatilhoPresente).toLowerCase()));
     if (porGatilho) return porGatilho[0];
   }
-  if (ativas.length === 1) return ativas[0][0];
+  // NÃO auto-seleciona a oferta quando só existe 1 alternativa ativa e a frase
+  // não bateu com o gatilho específico dela — Padrão continua sendo uma opção
+  // válida mesmo com só 1 loja extra cadastrada (não é "sem ambiguidade": são
+  // sempre 2 destinos possíveis, Padrão ou a loja). Regressão real: desde que
+  // isso existia, criar UMA oferta extra ativa já bastava pra roubar TODO
+  // contato novo que mandasse a frase geral — mesmo sem citar a loja.
   return null;
 }
 
