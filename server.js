@@ -1231,6 +1231,30 @@ async function baixarMidiaMetaEUpload(cfg, mediaId, empresaId) {
   }
 }
 
+// Mesma ideia, mas pro canal Z-API: ali a mídia que o cliente manda já chega com
+// uma URL direta no corpo do webhook (não precisa de um passo de "resolver o
+// media id" como na Meta) — mas baixamos e subimos pro nosso Storage do mesmo
+// jeito, pra ter um link permanente (a URL que a Z-API dá não é garantida pra
+// sempre) e o painel conseguir exibir. Antes disso essas mensagens eram
+// registradas só como o rótulo genérico ("🎤 Áudio"), sem link nenhum.
+async function baixarMidiaZapiEUpload(urlOrigem, empresaId, mimetypeSugerido) {
+  try {
+    if (!urlOrigem) return null;
+    const resp = await axios.get(urlOrigem, { responseType: 'arraybuffer', timeout: 15000 });
+    const mimetype = resp.headers['content-type'] || mimetypeSugerido || 'application/octet-stream';
+    const ext = (mimetype || '').split('/')[1]?.split(';')[0] || 'bin';
+    const nomeArquivo = `conversas-recebidas/${empresaId}/${Date.now()}_zapi.${ext}`;
+    const bucket = admin.storage().bucket();
+    const fileRef = bucket.file(nomeArquivo);
+    await fileRef.save(Buffer.from(resp.data), { metadata: { contentType: mimetype } });
+    const [urlPermanente] = await fileRef.getSignedUrl({ action: 'read', expires: '01-01-2125' });
+    return { url: urlPermanente, mimetype };
+  } catch (e) {
+    console.warn('[MIDIA-RECEBIDA] falha ao baixar da Z-API:', e.response ? JSON.stringify(e.response.data).slice(0, 160) : e.message);
+    return null;
+  }
+}
+
 // Ritmo humano por telefone: guarda até quando a janela do último envio vai,
 // pra ESPAÇAR mensagens seguidas (não chegar tudo junto = cara de robô/rajada).
 const _ritmoEnvio = {};
@@ -3598,7 +3622,32 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       return true;
     }
     const ok = await responderDuvidaRec(telefone, op, empresa);
-    if (!ok) await sendText(telefone, 'Me responde com o número da dúvida 😊 (1 a 5), ou *0* se estiver tudo certo.');
+    if (ok) return true;
+
+    // Não bateu com nenhuma opção do menu (1-5/0) — a pessoa escreveu uma
+    // pergunta livre (ex.: "quanto é?", "faz reconstrução?"). Se o atendimento
+    // com IA estiver ligado (mesma infra do pós-fluxo do Cliente, usando só as
+    // infos cadastradas em "Informações do negócio"), tenta responder antes de
+    // só repetir o menu — senão cai no comportamento de sempre.
+    if (empresa.infoAtendimentoAtivo && texto) {
+      let resposta = await responderPerguntaNegocio(texto, empresa);
+      if (resposta && /##TRANSFERIR##/.test(resposta)) {
+        resposta = resposta.replace(/##TRANSFERIR##/g, '').trim();
+        if (resposta) await sendText(telefone, resposta);
+        await pausarNumero(telefone);
+        await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
+        await avisarAtendente(telefone, sessao.nomeRecomendado, empresa);
+        await sendText(telefone, substituirVariaveis(empresa.posAtendente || EMPRESA_PADRAO.posAtendente, variaveisRec(sessao, empresa)));
+        await saveSessaoRecomendado(telefone, { etapa: 'finalizado_atendente' });
+        return true;
+      }
+      if (resposta) {
+        await sendText(telefone, resposta);
+        await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona\n*2* — Validade\n*3* — Endereço\n*4* — Horários\n*5* — Falar com atendente\n\nOu responda *0* se estiver tudo certo 👍`);
+        return true;
+      }
+    }
+    await sendText(telefone, 'Me responde com o número da dúvida 😊 (1 a 5), ou *0* se estiver tudo certo.');
     return true;
   }
 
@@ -3699,9 +3748,25 @@ async function tratarWebhook(req, res) {
         midiaUrlChat = body.midia.url || null;
         textoChat = body.midia.caption || rotulos[body.midia.tipo] || '📎 Anexo';
       }
-      else if (body.image) textoChat = '📷 Imagem';
-      else if (body.audio) textoChat = '🎤 Áudio';
-      else if (body.document) textoChat = '📎 Documento';
+      else if (body.image || body.audio || body.video || body.document) {
+        // Mídia recebida via Z-API — o payload já traz uma URL direta (não precisa
+        // resolver media id como na Meta), mas baixamos e subimos pro nosso Storage
+        // do mesmo jeito, pra ter link permanente e o painel conseguir exibir/tocar.
+        // Antes disso ficava só o rótulo genérico, sem link nenhum — nem imagem nem
+        // áudio apareciam de verdade em Conversas.
+        const rotulos = { imagem: '📷 Imagem', audio: '🎤 Áudio', video: '🎬 Vídeo', documento: '📎 Documento' };
+        let tipo = null, urlOrigem = null, caption = null, mimetype = null;
+        if (body.image) { tipo = 'imagem'; urlOrigem = body.image.imageUrl || body.image.url; caption = body.image.caption; mimetype = body.image.mimeType; }
+        else if (body.audio) { tipo = 'audio'; urlOrigem = body.audio.audioUrl || body.audio.url; mimetype = body.audio.mimeType; }
+        else if (body.video) { tipo = 'video'; urlOrigem = body.video.videoUrl || body.video.url; caption = body.video.caption; mimetype = body.video.mimeType; }
+        else if (body.document) { tipo = 'documento'; urlOrigem = body.document.documentUrl || body.document.url; caption = body.document.fileName; mimetype = body.document.mimeType; }
+        midiaTipoChat = tipo;
+        textoChat = caption || rotulos[tipo] || '📎 Anexo';
+        if (urlOrigem) {
+          const baixada = await baixarMidiaZapiEUpload(urlOrigem, empresaIdAtual(), mimetype);
+          midiaUrlChat = baixada ? baixada.url : null;
+        }
+      }
     }
     // PRIVACIDADE: só registra a mensagem na caixa de entrada se for uma conversa
     // do BOT (tem sessão, é um gatilho/opt-out, ou já existe conversa do bot).
@@ -3804,16 +3869,24 @@ async function tratarWebhook(req, res) {
 
     const ehEventoVazio = !texto && !vCard && !contatosMultiplos;
     if (ehEventoVazio) {
+      // Imagem/áudio/vídeo/documento também caem aqui (não têm "texto"). Nesse
+      // caso a mensagem de "não entendi, responda em texto" é enganosa — a
+      // pessoa JÁ mandou algo, só que o robô não consegue interpretar arquivo.
+      const recebeuMidiaSemTexto = !!(body.midia || body.image || body.audio || body.video || body.document);
       const sessaoExistenteSnap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
       if (sessaoExistenteSnap.exists) {
         const sessao = sessaoExistenteSnap.data();
         const empresa = await getEmpresa();
-        const msg = mensagemNaoEntendiPorEtapa(sessao.etapa, empresa);
+        const msg = recebeuMidiaSemTexto
+          ? 'Recebi seu arquivo por aqui, mas ainda não consigo "ler" imagem/áudio 🙂 Pode me contar em texto o que você precisa?'
+          : mensagemNaoEntendiPorEtapa(sessao.etapa, empresa);
         if (msg) await sendText(telefone, msg);
       } else {
         const sessaoRecomendado = await getSessaoRecomendado(telefone);
         if (sessaoRecomendado && sessaoRecomendado.etapa !== 'finalizado' && sessaoRecomendado.etapa !== 'finalizado_negativo') {
-          await sendText(telefone, 'Acho que não entendi essa última mensagem 🙂 Pode me responder em texto?');
+          await sendText(telefone, recebeuMidiaSemTexto
+            ? 'Recebi seu arquivo por aqui, mas ainda não consigo "ler" imagem/áudio 🙂 Pode me contar em texto o que você precisa?'
+            : 'Acho que não entendi essa última mensagem 🙂 Pode me responder em texto?');
         }
       }
       return res.sendStatus(200);
