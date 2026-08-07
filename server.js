@@ -2164,7 +2164,11 @@ async function getTemplateInfo(oficial, templateName) {
     const nums = (txt.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map(m => parseInt(m.replace(/\D/g, ''), 10));
     const n = nums.length ? Math.max(...nums) : 0;
     const categoria = String(tpl.category || 'MARKETING').toLowerCase();
-    const info = { n, categoria };
+    // Idioma real aprovado na Meta (ex.: "en_US" pro hello_world de exemplo) — o
+    // botão de teste mandava sempre 'pt_BR' fixo, então testar um template que
+    // não é português (ex.: o hello_world de amostra) sempre dava "does not
+    // exist in pt_BR", mesmo o template existindo — só existia noutro idioma.
+    const info = { n, categoria, idioma: tpl.language || 'pt_BR' };
     _templateInfoCache[key] = { info, em: Date.now() };
     console.log(`[TEMPLATE-INFO] ${templateName}: ${n} variável(is), categoria=${categoria}`);
     return info;
@@ -5289,12 +5293,19 @@ app.post('/minha-entrega/testar', exigirLoginEmpresa, exigirGestor, async (req, 
       const tpl = (req.body && req.body.template && String(req.body.template).trim()) || empresa.oficialTemplateRecomendado;
       let payload;
       if (tpl) {
-        let nVars = await getTemplateVarCount(oficial, tpl);
+        const info = await getTemplateInfo(oficial, tpl);
+        let nVars = info ? info.n : null;
         if (nVars === null || nVars === undefined) nVars = 3;
+        // Usa o idioma REAL aprovado na Meta pra esse template — antes mandava
+        // sempre 'pt_BR' fixo, então testar um template aprovado noutro idioma
+        // (ex.: hello_world, que é en_US) sempre dava "does not exist in
+        // pt_BR", mesmo o template existindo (só existia noutro idioma).
+        const idioma = (info && info.idioma) || 'pt_BR';
         const exemplo = ['Teste', 'RecomendaLeads', 'Equipe'].slice(0, Math.min(nVars, 3));
         const components = exemplo.length ? [{ type: 'body', parameters: exemplo.map(t => ({ type: 'text', text: t })) }] : [];
-        payload = { messaging_product: 'whatsapp', to: soDigitos(numero), type: 'template', template: { name: tpl, language: { code: 'pt_BR' }, components } };
+        payload = { messaging_product: 'whatsapp', to: soDigitos(numero), type: 'template', template: { name: tpl, language: { code: idioma }, components } };
         out.template = tpl;
+        out.idioma = idioma;
       } else {
         payload = { messaging_product: 'whatsapp', to: soDigitos(numero), type: 'text', text: { body: `🧪 Teste RecomendaLeads (API Oficial) — ${new Date().toLocaleTimeString('pt-BR')}` } };
       }

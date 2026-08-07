@@ -2981,6 +2981,7 @@ document.getElementById('adicionarFollowupClienteContatosBtn').addEventListener(
       else { st.textContent = '❌ Meta recusou — veja abaixo.'; st.className = 'config-status-msg err'; }
       out.style.display = 'block';
       out.textContent = (x.aceitou ? '✅ ACEITO' : '❌ RECUSADO') + '\nTemplate: ' + (x.template || template) +
+        '\nIdioma usado no teste: ' + (x.idioma || 'pt_BR') +
         '\nPhone Number ID usado no teste: ' + (x.phoneId || '?') +
         '\nHTTP: ' + (x.httpStatus != null ? x.httpStatus : '?') + '\n\nResposta da Meta:\n' + JSON.stringify(x.zapiResposta || d, null, 2) +
         (x.aceitou ? '' : '\n\n💡 Se o erro for "template does not exist": confira se o Phone Number ID acima é o MESMO número onde você criou/vê esse template no Gerenciador do WhatsApp da Meta (Ferramentas da conta → Números de telefone). Se for diferente, o template existe numa conta/WABA diferente da que está configurada aqui.');
