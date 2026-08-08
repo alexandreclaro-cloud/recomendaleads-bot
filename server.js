@@ -4246,7 +4246,7 @@ async function metaMensagemParaInterno(value, msg, cfg, empresaId) {
 // mensagem NOSSA que a Meta identifica pelo wamid — casa por messageId (gravado
 // no envio, ver idMensagemMeta). Nunca REGRIDE o status (ex.: um "delivered"
 // que chegue atrasado depois do "read" não deve voltar o risquinho pra trás).
-async function atualizarStatusMensagem(messageId, statusMeta) {
+async function atualizarStatusMensagem(messageId, statusMeta, errosMeta) {
   if (!messageId) return;
   const mapa = { sent: 'enviado', delivered: 'entregue', read: 'lido', failed: 'falhou' };
   const status = mapa[statusMeta];
@@ -4262,7 +4262,14 @@ async function atualizarStatusMensagem(messageId, statusMeta) {
     const ordem = { enviado: 1, falhou: 1, entregue: 2, lido: 3 };
     const atual = doc.data().status;
     if (atual && ordem[atual] > (ordem[status] || 0)) return;
-    await doc.ref.update({ status });
+    const upd = { status };
+    // Guarda o MOTIVO da falha (a Meta manda em statuses[].errors) — sem isso o
+    // painel só mostrava "⚠️ Não entregou", sem dizer por quê, obrigando a
+    // caçar nos logs do servidor toda vez que alguém perguntava "por que falhou?".
+    if (status === 'falhou' && Array.isArray(errosMeta) && errosMeta[0]) {
+      upd.erroEntrega = errosMeta[0].title || errosMeta[0].message || `Erro ${errosMeta[0].code || ''}`.trim();
+    }
+    await doc.ref.update(upd);
   } catch (e) {
     console.error('[WEBHOOK-OFICIAL] erro ao atualizar status da mensagem:', e.message);
   }
@@ -4329,7 +4336,7 @@ async function comWebhookOficial(req, res, empresaId) {
         // Risquinho de confirmação (✓✓): a Meta avisa aqui quando uma mensagem NOSSA
         // foi enviada/entregue/lida (ou falhou) pelo destinatário.
         for (const st of (value.statuses || [])) {
-          await atualizarStatusMensagem(st.id, st.status);
+          await atualizarStatusMensagem(st.id, st.status, st.errors);
         }
       }
     }

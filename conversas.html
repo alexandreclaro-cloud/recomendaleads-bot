@@ -337,7 +337,7 @@ function renderConteudoMsg(m) {
 // em vez de inventar um status que a gente não sabe de verdade).
 function ticksMsg(m) {
   if (m.direcao !== 'out') return '';
-  if (m.status === 'falhou') return ' <span title="Não entregou">⚠️</span>';
+  if (m.status === 'falhou') return ` <span title="${esc(m.erroEntrega || 'Não entregou')}">⚠️</span>`;
   if (m.status === 'lido') return ' <span title="Lida" style="color:#34B7F1;">✓✓</span>';
   if (m.status === 'entregue') return ' <span title="Entregue">✓✓</span>';
   if (m.status === 'enviado') return ' <span title="Enviada" style="opacity:.6;">✓</span>';
