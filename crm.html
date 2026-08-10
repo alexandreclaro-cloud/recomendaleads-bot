@@ -1026,51 +1026,48 @@
           <input type="text" id="posMensagemConexaoInput" placeholder="E aí, gostou? 😍">
 
           <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">1) Menu de opções (enviado após a reação)</p>
-          <label>Introdução (antes da lista de opções)</label>
-          <textarea id="posMenuPrincipalIntroInput" rows="4"></textarea>
-          <div class="hint" style="margin:4px 0 10px;">A lista numerada abaixo do texto acima é montada <b>sozinha</b>, a partir das 3 opções — cada uma tem sua <b>pergunta</b> (o que a pessoa vê) e sua <b>resposta</b> (o que acontece de verdade). Não precisa mais escrever o menu inteiro à mão.</div>
-          <div id="menuOpcoesAcoesBox" style="display:flex;flex-direction:column;gap:12px;margin-bottom:10px;">
-            <div style="padding:12px;background:var(--surface-sunken,#f7f8fa);border:1px solid var(--border);border-radius:8px;">
-              <div style="font-weight:700;margin-bottom:8px;">Opção 1</div>
-              <label style="margin-top:0;">Pergunta (rótulo — o que ela vê no menu)</label>
-              <input type="text" id="menuOpcao1Rotulo" class="input" placeholder="Ex: Quero usar meu presente">
-              <label>Resposta (o que acontece quando ela escolher)</label>
-              <select id="menuOpcao1Acao" class="input">
-                <option value="agendamento">📅 Abrir agendamento</option>
-                <option value="usar_depois">🕓 Abrir menu "usar depois"</option>
-                <option value="duvidas">❓ Abrir menu de dúvidas</option>
-                <option value="atendente">🙋 Transferir pra atendente</option>
-                <option value="mensagem">💬 Mandar uma mensagem e encerrar</option>
-              </select>
-              <textarea id="menuOpcao1Mensagem" rows="2" placeholder="Mensagem que será enviada nessa opção..." style="margin-top:6px;display:none;"></textarea>
+          <label>Menu principal</label>
+          <textarea id="posMenuPrincipalInput" rows="6"></textarea>
+          <div class="hint" style="margin:4px 0 10px;">O texto acima é só o <b>rótulo</b> que a pessoa vê (pode escrever o que quiser, ex.: "1 — Vou Ler o E-book"). Abaixo você escolhe o que <b>de verdade acontece</b> quando ela escolhe cada número — os dois são independentes.</div>
+          <div id="menuOpcoesAcoesBox" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
+            <div style="display:flex;gap:10px;align-items:flex-start;padding:10px;background:var(--surface-sunken,#f7f8fa);border:1px solid var(--border);border-radius:8px;">
+              <div style="flex:0 0 78px;font-weight:600;padding-top:7px;">Opção 1</div>
+              <div style="flex:1;">
+                <select id="menuOpcao1Acao" class="input">
+                  <option value="agendamento">📅 Abrir agendamento</option>
+                  <option value="usar_depois">🕓 Abrir menu "usar depois"</option>
+                  <option value="duvidas">❓ Abrir menu de dúvidas</option>
+                  <option value="atendente">🙋 Transferir pra atendente</option>
+                  <option value="mensagem">💬 Mandar mensagem e encerrar</option>
+                </select>
+                <textarea id="menuOpcao1Mensagem" rows="2" placeholder="Mensagem que será enviada nessa opção..." style="margin-top:6px;display:none;"></textarea>
+              </div>
             </div>
-            <div style="padding:12px;background:var(--surface-sunken,#f7f8fa);border:1px solid var(--border);border-radius:8px;">
-              <div style="font-weight:700;margin-bottom:8px;">Opção 2</div>
-              <label style="margin-top:0;">Pergunta (rótulo — o que ela vê no menu)</label>
-              <input type="text" id="menuOpcao2Rotulo" class="input" placeholder="Ex: Vou usar depois">
-              <label>Resposta (o que acontece quando ela escolher)</label>
-              <select id="menuOpcao2Acao" class="input">
-                <option value="agendamento">📅 Abrir agendamento</option>
-                <option value="usar_depois">🕓 Abrir menu "usar depois"</option>
-                <option value="duvidas">❓ Abrir menu de dúvidas</option>
-                <option value="atendente">🙋 Transferir pra atendente</option>
-                <option value="mensagem">💬 Mandar uma mensagem e encerrar</option>
-              </select>
-              <textarea id="menuOpcao2Mensagem" rows="2" placeholder="Mensagem que será enviada nessa opção..." style="margin-top:6px;display:none;"></textarea>
+            <div style="display:flex;gap:10px;align-items:flex-start;padding:10px;background:var(--surface-sunken,#f7f8fa);border:1px solid var(--border);border-radius:8px;">
+              <div style="flex:0 0 78px;font-weight:600;padding-top:7px;">Opção 2</div>
+              <div style="flex:1;">
+                <select id="menuOpcao2Acao" class="input">
+                  <option value="agendamento">📅 Abrir agendamento</option>
+                  <option value="usar_depois">🕓 Abrir menu "usar depois"</option>
+                  <option value="duvidas">❓ Abrir menu de dúvidas</option>
+                  <option value="atendente">🙋 Transferir pra atendente</option>
+                  <option value="mensagem">💬 Mandar mensagem e encerrar</option>
+                </select>
+                <textarea id="menuOpcao2Mensagem" rows="2" placeholder="Mensagem que será enviada nessa opção..." style="margin-top:6px;display:none;"></textarea>
+              </div>
             </div>
-            <div style="padding:12px;background:var(--surface-sunken,#f7f8fa);border:1px solid var(--border);border-radius:8px;">
-              <div style="font-weight:700;margin-bottom:8px;">Opção 3</div>
-              <label style="margin-top:0;">Pergunta (rótulo — o que ela vê no menu)</label>
-              <input type="text" id="menuOpcao3Rotulo" class="input" placeholder="Ex: Tenho uma dúvida">
-              <label>Resposta (o que acontece quando ela escolher)</label>
-              <select id="menuOpcao3Acao" class="input">
-                <option value="agendamento">📅 Abrir agendamento</option>
-                <option value="usar_depois">🕓 Abrir menu "usar depois"</option>
-                <option value="duvidas">❓ Abrir menu de dúvidas</option>
-                <option value="atendente">🙋 Transferir pra atendente</option>
-                <option value="mensagem">💬 Mandar uma mensagem e encerrar</option>
-              </select>
-              <textarea id="menuOpcao3Mensagem" rows="2" placeholder="Mensagem que será enviada nessa opção..." style="margin-top:6px;display:none;"></textarea>
+            <div style="display:flex;gap:10px;align-items:flex-start;padding:10px;background:var(--surface-sunken,#f7f8fa);border:1px solid var(--border);border-radius:8px;">
+              <div style="flex:0 0 78px;font-weight:600;padding-top:7px;">Opção 3</div>
+              <div style="flex:1;">
+                <select id="menuOpcao3Acao" class="input">
+                  <option value="agendamento">📅 Abrir agendamento</option>
+                  <option value="usar_depois">🕓 Abrir menu "usar depois"</option>
+                  <option value="duvidas">❓ Abrir menu de dúvidas</option>
+                  <option value="atendente">🙋 Transferir pra atendente</option>
+                  <option value="mensagem">💬 Mandar mensagem e encerrar</option>
+                </select>
+                <textarea id="menuOpcao3Mensagem" rows="2" placeholder="Mensagem que será enviada nessa opção..." style="margin-top:6px;display:none;"></textarea>
+              </div>
             </div>
           </div>
 
@@ -2392,7 +2389,7 @@ async function carregarConfiguracao() {
     if (typeof carregarCrmSegurar === 'function') carregarCrmSegurar();
     document.getElementById('tempoEsperaConversaoMinInput').value = configuracaoAtual.tempoEsperaConversaoMin || 60;
     document.getElementById('posMensagemConexaoInput').value = configuracaoAtual.posMensagemConexao ?? '';
-    document.getElementById('posMenuPrincipalIntroInput').value = configuracaoAtual.posMenuPrincipalIntro || '';
+    document.getElementById('posMenuPrincipalInput').value = configuracaoAtual.posMenuPrincipal || '';
     carregarMenuOpcoes(configuracaoAtual.menuPrincipalOpcoes);
     document.getElementById('linkAgendamentoInput').value = configuracaoAtual.linkAgendamento || '';
     document.getElementById('posLinkAgendamentoInput').value = configuracaoAtual.posLinkAgendamento || '';
@@ -2753,14 +2750,12 @@ function alternarCampoMensagemMenuOpcao(i) {
 }
 function carregarMenuOpcoes(opcoes) {
   const lista = (Array.isArray(opcoes) && opcoes.length) ? opcoes : [
-    { rotulo: 'Quero usar meu presente', acao: 'agendamento', mensagem: null },
-    { rotulo: 'Vou usar depois', acao: 'usar_depois', mensagem: null },
-    { rotulo: 'Tenho uma dúvida', acao: 'duvidas', mensagem: null }
+    { acao: 'agendamento', mensagem: null },
+    { acao: 'usar_depois', mensagem: null },
+    { acao: 'duvidas', mensagem: null }
   ];
   for (let i = 1; i <= 3; i++) {
-    const item = lista[i - 1] || { rotulo: '', acao: 'mensagem', mensagem: '' };
-    const rot = document.getElementById(`menuOpcao${i}Rotulo`);
-    if (rot) rot.value = item.rotulo || '';
+    const item = lista[i - 1] || { acao: 'mensagem', mensagem: '' };
     const sel = document.getElementById(`menuOpcao${i}Acao`);
     if (sel) sel.value = item.acao || 'mensagem';
     const txt = document.getElementById(`menuOpcao${i}Mensagem`);
@@ -2771,14 +2766,9 @@ function carregarMenuOpcoes(opcoes) {
 function coletarMenuOpcoes() {
   const out = [];
   for (let i = 1; i <= 3; i++) {
-    const rot = document.getElementById(`menuOpcao${i}Rotulo`);
     const sel = document.getElementById(`menuOpcao${i}Acao`);
     const txt = document.getElementById(`menuOpcao${i}Mensagem`);
-    out.push({
-      rotulo: (rot && rot.value.trim()) || `Opção ${i}`,
-      acao: (sel && sel.value) || 'mensagem',
-      mensagem: (txt && txt.value.trim()) || null
-    });
+    out.push({ acao: (sel && sel.value) || 'mensagem', mensagem: (txt && txt.value.trim()) || null });
   }
   return out;
 }
@@ -2798,7 +2788,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const mensagemAntesPresente = document.getElementById('mensagemAntesPresenteInput').value.trim();
   const tempoEsperaConversaoMin = parseInt(document.getElementById('tempoEsperaConversaoMinInput').value) || 60;
   const posMensagemConexao = document.getElementById('posMensagemConexaoInput').value.trim();
-  const posMenuPrincipalIntro = document.getElementById('posMenuPrincipalIntroInput').value.trim() || null;
+  const posMenuPrincipal = document.getElementById('posMenuPrincipalInput').value.trim() || null;
   const menuPrincipalOpcoes = coletarMenuOpcoes();
   const linkAgendamento = document.getElementById('linkAgendamentoInput').value.trim() || null;
   const posLinkAgendamento = document.getElementById('posLinkAgendamentoInput').value.trim() || null;
@@ -2830,7 +2820,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
       method: 'POST',
       body: JSON.stringify({
         mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
-        posMensagemConexao, posMenuPrincipalIntro, menuPrincipalOpcoes, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
+        posMensagemConexao, posMenuPrincipal, menuPrincipalOpcoes, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
         posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         faqComoFunciona, faqValidade, posAtendente, numeroAtendente,
         oficialTemplateRecomendado, recomendadoAtendimentoHumano, recomendadoHumanoMensagem
