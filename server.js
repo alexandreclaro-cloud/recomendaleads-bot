@@ -829,6 +829,17 @@ const EMPRESA_PADRAO = {
   // pro humano (cai em Conversas). Default OFF (segue o fluxo automático de sempre).
   recomendadoAtendimentoHumano: false,
   recomendadoHumanoMensagem: 'Que bom, {nomeRecomendado}! 😊 Já já um consultor da {empresa} te chama por aqui pra liberar o seu presente. Só um instante 🙌',
+  // Quando o modo direto transfere pro atendente:
+  // 'antes'  = não roda o fluxo do presente, transfere na hora (comportamento
+  //            original, sempre foi assim).
+  // 'depois' = entrega o presente normal primeiro (voucher/link/texto de sempre),
+  //            e só DEPOIS transfere — deixando a pessoa já com o presente na
+  //            mão quando o atendente assumir.
+  recomendadoAtendimentoHumanoQuando: 'antes',
+  // Pergunta única que o robô faz DEPOIS de entregar o presente, antes de
+  // transferir (só no modo 'depois') — a resposta já fica visível pro
+  // atendente na conversa. Vazio = transfere direto, sem perguntar nada.
+  recomendadoPerguntaChave: null,
   mensagemAntesPresente: '🎉 Boa notícia! Você ganhou {premio}. Aqui está o seu presente 👇',
   gatilhoPresente: 'quero meu presente',
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
@@ -2910,6 +2921,30 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
   console.log(`[ROTEIRO RECOMENDADO INICIADO] ${contato.nome} (${contato.telefone})`);
 }
 
+// Modo direto (atendimento humano): manda 1 msg curta, avisa o vendedor e
+// passa a conversa pro humano assumir em Conversas — usado tanto no modo
+// 'antes' (não roda o presente) quanto no 'depois' (presente já entregue).
+async function transferirRecomendadoParaAtendente(telefone, sessao, empresa) {
+  const varsH = {
+    nomeRecomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
+    recomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
+    recomendador: sessao.nomeRecomendador ? sessao.nomeRecomendador.split(' ')[0] : 'seu amigo',
+    vendedor: sessao.vendedorNome || empresa.nome,
+    empresa: empresa.nome
+  };
+  // SEM IA aqui — só o script fixo já definido, direto pro vendedor. Nada de
+  // gerar/inventar texto: previsível, sem risco de responder algo fora do lugar.
+  const msgH = substituirVariaveis(empresa.recomendadoHumanoMensagem ?? EMPRESA_PADRAO.recomendadoHumanoMensagem, varsH);
+  if (msgH && msgH.trim()) await sendText(telefone, msgH);
+  await saveSessaoRecomendado(telefone, { etapa: 'atendimento_humano', ultimaMensagemEm: new Date().toISOString() });
+  await pausarNumero(telefone);           // robô para nesse contato
+  // Revezamento: distribui entre os atendentes ONLINE (carrossel); se ninguém
+  // assumir em 1 min, escala pro próximo. Só nesse fluxo (modo direto) — os
+  // outros pontos de "pedir atendente" continuam indo pro atendente oficial único.
+  await avisarAtendenteRevezamento(telefone, sessao.nomeRecomendado, empresa, [], 1);
+  console.log(`[REC-HUMANO] ${telefone} passou pro atendimento humano (${empresa.nome})`);
+}
+
 async function enviarPremioRecomendado(telefone, sessao, empresa) {
   // Move o card para "Recebeu o Prêmio" assim que a pessoa aceita o presente.
   await marcarLeadRecebeuPremio(telefone, empresa);
@@ -2931,6 +2966,21 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
   if (empresa.textoRecomendado && empresa.textoRecomendado.trim()) {
     const orientacao = substituirVariaveis(empresa.textoRecomendado, { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' });
     await sendText(telefone, orientacao);
+  }
+
+  // Modo direto "depois do presente": já entregou tudo acima (voucher/link/
+  // texto), agora faz UMA pergunta-chave (se tiver) e transfere pro atendente
+  // — tem prioridade sobre "entrega direta"/menu normal, porque a intenção
+  // aqui é sempre cair num humano, com ou sem agendamento configurado.
+  if (empresa.recomendadoAtendimentoHumano && empresa.recomendadoAtendimentoHumanoQuando === 'depois') {
+    const pergunta = empresa.recomendadoPerguntaChave;
+    if (pergunta && pergunta.trim()) {
+      await sendText(telefone, substituirVariaveis(pergunta, variaveisRec(sessao, empresa)));
+      await saveSessaoRecomendado(telefone, { etapa: 'aguardando_pergunta_chave', ultimaMensagemEm: new Date().toISOString() });
+    } else {
+      await transferirRecomendadoParaAtendente(telefone, sessao, empresa);
+    }
+    return;
   }
 
   // Entrega direta (presente físico/ebook): não tem o que agendar. Depois de entregar
@@ -3487,28 +3537,20 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   // IA DESATIVADA — fluxo 100% por palavras-chave e respostas fixas do CRM.
   // Mais rápido, previsível e sem delay de API.
 
+  // Modo direto "depois do presente": a pessoa acabou de responder a
+  // pergunta-chave — a resposta já fica registrada normal na conversa (o
+  // atendente vê tudo ao assumir), só falta transferir de verdade.
+  if (sessao.etapa === 'aguardando_pergunta_chave') {
+    await transferirRecomendadoParaAtendente(telefone, sessao, empresa);
+    return true;
+  }
+
   if (sessao.etapa === 'aguardando_confirmacao') {
-    // Modo direto (atendimento humano): não roda o fluxo do presente. Manda 1 msg
-    // curta, avisa o vendedor e passa a conversa pro humano assumir em Conversas.
-    if (empresa.recomendadoAtendimentoHumano) {
-      const varsH = {
-        nomeRecomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
-        recomendado: sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : 'você',
-        recomendador: sessao.nomeRecomendador ? sessao.nomeRecomendador.split(' ')[0] : 'seu amigo',
-        vendedor: sessao.vendedorNome || empresa.nome,
-        empresa: empresa.nome
-      };
-      // SEM IA aqui — só o script fixo já definido, direto pro vendedor. Nada de
-      // gerar/inventar texto: previsível, sem risco de responder algo fora do lugar.
-      const msgH = substituirVariaveis(empresa.recomendadoHumanoMensagem ?? EMPRESA_PADRAO.recomendadoHumanoMensagem, varsH);
-      if (msgH && msgH.trim()) await sendText(telefone, msgH);
-      await saveSessaoRecomendado(telefone, { etapa: 'atendimento_humano', ultimaMensagemEm: new Date().toISOString() });
-      await pausarNumero(telefone);           // robô para nesse contato
-      // Revezamento: distribui entre os atendentes ONLINE (carrossel); se ninguém
-      // assumir em 1 min, escala pro próximo. Só nesse fluxo (modo direto) — os
-      // outros pontos de "pedir atendente" continuam indo pro atendente oficial único.
-      await avisarAtendenteRevezamento(telefone, sessao.nomeRecomendado, empresa, [], 1);
-      console.log(`[REC-HUMANO] ${telefone} passou pro atendimento humano (${empresa.nome})`);
+    // Modo direto "antes do presente" (o padrão de sempre): não roda o fluxo
+    // do presente, transfere na hora. "Depois do presente" segue pro fluxo
+    // normal aqui e transfere só depois de entregar (ver enviarPremioRecomendado).
+    if (empresa.recomendadoAtendimentoHumano && empresa.recomendadoAtendimentoHumanoQuando !== 'depois') {
+      await transferirRecomendadoParaAtendente(telefone, sessao, empresa);
       return true;
     }
     const variaveis = {
