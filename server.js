@@ -3660,6 +3660,25 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     return true;
   }
 
+  // Conversa já "finalizada" (ex.: entrega direta sem menu, ou terminou o fluxo
+  // normal) — sem isso o robô ficava mudo pra qualquer mensagem depois, mesmo
+  // uma pergunta de verdade. Mesmo padrão do lado Cliente (linha ~2105): "ok"/
+  // "obrigado" não precisam de resposta (ehFechamentoConversa), mas pergunta
+  // de verdade tenta responder com a IA do atendimento pós-fluxo, se ligada.
+  if (sessao.etapa === 'finalizado' && empresa.infoAtendimentoAtivo && texto && !ehFechamentoConversa(texto)) {
+    let resposta = await responderPerguntaNegocio(texto, empresa);
+    if (resposta && /##TRANSFERIR##/.test(resposta)) {
+      resposta = resposta.replace(/##TRANSFERIR##/g, '').trim();
+      if (resposta) await sendText(telefone, resposta);
+      await pausarNumero(telefone);
+      await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
+      await avisarAtendente(telefone, sessao.nomeRecomendado, empresa);
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado_atendente' });
+    } else if (resposta) {
+      await sendText(telefone, resposta);
+    }
+  }
+
   return true;
 }
 
