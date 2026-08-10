@@ -945,17 +945,20 @@ const EMPRESA_PADRAO = {
   // Vazio = pula (manda o menu direto, como antes).
   posMensagemConexao: 'E aí, gostou? 😍',
   menuAposReacaoMin: 1, // se a pessoa não responder, manda o menu depois de X min
-  posMenuPrincipal: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
-  // O que cada opção do menu principal (1/2/3...) realmente FAZ — o texto do
-  // menu acima é só o rótulo que a pessoa vê; isso aqui é a ação por trás de
-  // cada número, editável separado (senão o dono muda o texto do botão mas o
-  // sistema continua fazendo a ação antiga, sem ligação nenhuma com o rótulo).
+  // Texto ANTES da lista numerada — a lista em si é montada sozinha a partir
+  // do `rotulo` de cada opção em menuPrincipalOpcoes (ver montarMenuPrincipalRec).
+  // Assim dá pra editar só o texto de UM botão sem reescrever o menu inteiro,
+  // e o texto nunca fica "fora de sincronia" com a ação de verdade por trás.
+  posMenuPrincipalIntro: `🎉 *Prontinho!*\n\nEspero que você goste do presente 😊\nO(a) {recomendador} vai ficar feliz de saber que você recebeu.\n\nAgora é só escolher o que prefere 👇`,
+  // Cada opção do menu principal = um rótulo (o que a pessoa vê) + uma ação
+  // (o que acontece de verdade ao escolher). Os dois são independentes de
+  // propósito — trocar o texto do botão nunca muda sozinho o que ele faz.
   // acao: 'agendamento' | 'usar_depois' | 'duvidas' | 'atendente' | 'mensagem'
   // (só 'mensagem' usa o campo `mensagem` — as demais ignoram).
   menuPrincipalOpcoes: [
-    { acao: 'agendamento', mensagem: null },
-    { acao: 'usar_depois', mensagem: null },
-    { acao: 'duvidas', mensagem: null }
+    { rotulo: 'Quero usar meu presente', acao: 'agendamento', mensagem: null },
+    { rotulo: 'Vou usar depois', acao: 'usar_depois', mensagem: null },
+    { rotulo: 'Tenho uma dúvida', acao: 'duvidas', mensagem: null }
   ],
   posLinkAgendamento: 'Perfeito! 😊 É só escolher o melhor horário pra você aqui:',
   posPerguntaPeriodo: `Perfeito! 😊 Vamos combinar sua visita.\n\nQual período fica melhor pra você?\n\n*1* — Manhã ☀️\n*2* — Tarde 🌤️\n*3* — Noite 🌙\n\n👇 _Digita o número aqui_ 👇`,
@@ -3057,10 +3060,23 @@ function variaveisRec(sessao, empresa) {
   };
 }
 
+// Monta o menu principal juntando a introdução (texto livre) com a lista
+// numerada, gerada a partir do `rotulo` de cada opção — assim o texto que a
+// pessoa vê está sempre sincronizado com a ação de verdade configurada,
+// nunca precisa editar os dois em lugares separados.
+const BOLINHAS_MENU_REC = ['🟢', '🟡', '⚪', '🔵', '🟣', '🟤'];
+function montarMenuPrincipalRec(empresa, sessao) {
+  const intro = empresa.posMenuPrincipalIntro || EMPRESA_PADRAO.posMenuPrincipalIntro;
+  const opcoes = (empresa.menuPrincipalOpcoes && empresa.menuPrincipalOpcoes.length)
+    ? empresa.menuPrincipalOpcoes : EMPRESA_PADRAO.menuPrincipalOpcoes;
+  const linhas = opcoes.map((o, i) => `${BOLINHAS_MENU_REC[i] || '⚪'} *${i + 1}* — ${(o && o.rotulo) || `Opção ${i + 1}`}`).join('\n');
+  const texto = `${intro}\n\n${linhas}\n\n👇 _Digite o número aqui_ 👇`;
+  return substituirVariaveis(texto, variaveisRec(sessao, empresa));
+}
+
 async function enviarMenuPrincipalRec(telefone, sessao, marca) {
   const empresa = await getEmpresa();
-  const texto = substituirVariaveis(empresa.posMenuPrincipal || EMPRESA_PADRAO.posMenuPrincipal, variaveisRec(sessao, empresa));
-  await sendText(telefone, texto);
+  await sendText(telefone, montarMenuPrincipalRec(empresa, sessao));
   await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', ultimaMensagemEm: marca || new Date().toISOString() });
 }
 
@@ -3612,7 +3628,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       // Repete o MESMO texto configurado do menu (não um resumo hardcoded) —
       // senão, se o dono mudar os rótulos das opções, o "não entendi" ficava
       // mostrando os rótulos antigos, sem ligação com o que está no ar.
-      await sendText(telefone, substituirVariaveis(empresa.posMenuPrincipal || EMPRESA_PADRAO.posMenuPrincipal, variaveisRec(sessao, empresa)));
+      await sendText(telefone, montarMenuPrincipalRec(empresa, sessao));
     }
     return true;
   }
@@ -5647,7 +5663,7 @@ const CAMPOS_NICHO = new Set([
   'mensagemFechamentoRecomendado', 'premioRecomendado', 'arquivoRecomendado',
   'linkRecomendado', 'textoRecomendado', 'faixasBonus',
   // Fluxo completo pós-presente (pra o demo ficar 1:1 com o cliente real).
-  'posMensagemConexao', 'posMenuPrincipal', 'linkAgendamento', 'posLinkAgendamento',
+  'posMensagemConexao', 'posMenuPrincipalIntro', 'menuPrincipalOpcoes', 'linkAgendamento', 'posLinkAgendamento',
   'posPerguntaPeriodo', 'posPerguntaDia', 'posConfirmacaoAgendamento', 'posConfirmacaoCheck',
   'posMenuDepois', 'posLembrete', 'posMenuDuvidas', 'faqComoFunciona', 'faqValidade', 'posAtendente'
 ]);
