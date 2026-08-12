@@ -1689,10 +1689,78 @@ function montarColunas() {
         <span class="column-count" data-countfor="${etapa.id}">0</span>
       </div>
       ${ehColunaComprou(etapa) ? `<div class="column-total" data-totalfor="${etapa.id}" style="font-size:0.82rem; font-weight:700; color:var(--success, #1d9e75); margin:-4px 0 6px;"></div>` : ''}
+      <button type="button" class="col-disparar-btn" data-etapa="${etapa.id}" data-nome="${esc(etapa.nome)}" title="Disparar mensagem (template Meta) pra todo mundo desta coluna" style="width:100%; margin:0 0 8px; padding:6px 8px; font-size:0.78rem; font-weight:600; border-radius:8px; border:1px solid var(--brand, #3468ff); background:transparent; color:var(--brand, #3468ff); cursor:pointer;">🚀 Disparar pra esta coluna</button>
       <div class="column-body" data-coletapa="${etapa.id}"></div>
     `;
     board.appendChild(col);
   });
+}
+
+// Delegação: os botões "Disparar pra esta coluna" são recriados a cada
+// montarColunas(), então o listener fica no #board (fixo) em vez de em cada botão.
+document.getElementById('board').addEventListener('click', (e) => {
+  const btn = e.target.closest('.col-disparar-btn');
+  if (!btn) return;
+  abrirModalDisparoColuna(btn.dataset.etapa, btn.dataset.nome);
+});
+
+// Modal: dispara um template da API Oficial pra todo mundo que está numa coluna
+// do Kanban agora (sem precisar exportar CSV e montar lista na mão).
+function abrirModalDisparoColuna(etapaId, etapaNome) {
+  const modalContainer = document.getElementById('modalContainer');
+  const qtd = leads.filter(l => l.etapa === etapaId).length;
+  const ultimoTemplate = localStorage.getItem('ultimoTemplateDisparoColuna') || '';
+
+  modalContainer.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h2>🚀 Disparar pra "${esc(etapaNome)}"</h2>
+          <button class="modal-close" id="modalCloseBtn">✕</button>
+        </div>
+        <p style="font-size:0.82rem;color:var(--text-dim);margin:0 0 12px;">
+          ${qtd} contato${qtd === 1 ? '' : 's'} nessa coluna agora. Vai mandar o template abaixo (aprovado na Meta) pra cada um. Funciona só no modo API Oficial.
+        </p>
+        <div class="modal-field">
+          <label>Nome do template aprovado na Meta</label>
+          <input type="text" id="disparoColunaTemplate" placeholder="ex: recado_follow_up" value="${esc(ultimoTemplate)}">
+        </div>
+        <p style="font-size:0.75rem;color:var(--text-dim);margin:0 0 12px;">Variáveis do template: {{1}} = nome do recomendado, {{2}} = quem recomendou, {{3}} = vendedor.</p>
+        <div class="modal-actions">
+          <button class="save-vendedor-btn" id="disparoColunaBtn" ${qtd === 0 ? 'disabled' : ''}>Iniciar disparo</button>
+        </div>
+        <div class="modal-status" id="disparoColunaStatus"></div>
+      </div>
+    </div>`;
+  document.getElementById('modalCloseBtn').addEventListener('click', fecharModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') fecharModal(); });
+  document.getElementById('disparoColunaBtn').addEventListener('click', () => disparaColuna(etapaId));
+  document.getElementById('disparoColunaTemplate').focus();
+}
+
+async function disparaColuna(etapaId) {
+  const btn = document.getElementById('disparoColunaBtn');
+  const st = document.getElementById('disparoColunaStatus');
+  const template = document.getElementById('disparoColunaTemplate').value.trim();
+  if (!template) { st.textContent = '❌ Informe o nome do template.'; st.className = 'modal-status err'; return; }
+  if (!confirm(`Confirma disparar o template "${template}" pra essa coluna? Não dá pra desfazer depois de começar.`)) return;
+
+  btn.disabled = true; st.textContent = 'Iniciando...'; st.className = 'modal-status';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-leads/coluna/${etapaId}/disparar`, {
+      method: 'POST',
+      body: JSON.stringify({ template })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      localStorage.setItem('ultimoTemplateDisparoColuna', template);
+      st.textContent = `✅ Disparo iniciado! ${data.total} contato(s) na fila.`;
+      st.className = 'modal-status ok';
+      setTimeout(fecharModal, 1800);
+    } else {
+      st.textContent = '❌ ' + (data.erro || 'Erro ao iniciar disparo'); st.className = 'modal-status err'; btn.disabled = false;
+    }
+  } catch (err) { st.textContent = '❌ Erro de conexão'; st.className = 'modal-status err'; btn.disabled = false; }
 }
 
 function popularFiltroVendedores() {

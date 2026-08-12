@@ -8005,6 +8005,52 @@ app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOfe
   }
 });
 
+// Disparo em massa direto de UMA COLUNA do Kanban de Leads (ex.: "Recebeu
+// Mensagem") — sem precisar baixar CSV e colar telefone por telefone. Pega
+// os leads que já estão naquela etapa, com o MESMO filtro de visibilidade do
+// GET /minha-leads (rede de lojas + dono do lead), e usa a infra de disparo
+// já existente — a campanha aparece no histórico normal, com relatório e tudo.
+app.post('/minha-leads/coluna/:etapa/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') {
+      return res.status(400).json({ ok: false, erro: 'O disparo em massa só funciona no modo API Oficial da Meta.' });
+    }
+    const template = String((req.body && req.body.template) || '').trim();
+    if (!template) return res.status(400).json({ ok: false, erro: 'Informe o nome do template aprovado na Meta.' });
+    const etapa = req.params.etapa;
+
+    let leads = await getLeadsPorEmpresa(req.empresaLogin.id);
+    const ofertaFiltro = (req.usuario && req.usuario.ofertaId) || (req.query && req.query.oferta) || null;
+    if (ofertaFiltro) leads = leads.filter(l => l.ofertaId === ofertaFiltro);
+    if (req.papel !== 'gestor' && req.usuario) {
+      leads = leads.filter(l => !l.atendenteId || l.atendenteId === req.usuario.id);
+    }
+    leads = leads.filter(l => l.etapa === etapa);
+
+    // Dedup por telefone — a mesma pessoa pode ter mais de um lead na coluna
+    // (indicada por gente diferente, por exemplo).
+    const vistos = new Set();
+    const contatos = [];
+    for (const l of leads) {
+      const tel = soDigitos(l.telefoneRecomendado || '');
+      if (tel.length < 10 || vistos.has(tel)) continue;
+      vistos.add(tel);
+      contatos.push({ telefone: tel, params: [l.nomeRecomendado || '', l.nomeRecomendador || '', l.vendedor || empresa.nome] });
+    }
+    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Nenhum contato válido nessa coluna.' });
+    if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Mais de 1000 contatos nessa coluna — não dá num disparo só (limite de 1000).' });
+
+    const rodando = _disparoStatus[empresa.id];
+    if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
+
+    const resultado = await iniciarDisparoMassa(empresa, template, contatos);
+    res.json({ ok: true, ...resultado, total: contatos.length });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.get('/minha-disparo/status', exigirLoginEmpresa, (req, res) => {
   res.json({ ok: true, status: _disparoStatus[req.empresaLogin.id] || null });
 });
