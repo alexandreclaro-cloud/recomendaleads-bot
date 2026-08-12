@@ -987,6 +987,18 @@ const EMPRESA_PADRAO = {
     { id: 'nao_tem_interesse', nome: 'Não tem interesse' }
   ],
 
+  // Colunas FIXAS do funil do CLIENTE (recomendador), no início do Kanban.
+  // Só o "nome" (rótulo exibido) é editável no painel — os ids são fixos porque
+  // o código usa eles pra saber em qual etapa cada cliente está (iniciou/deu_nome/
+  // recomendou/recebeu_premio); por isso não entram no editor de "Etapas do
+  // Pipeline" (que permite criar/excluir/reordenar) e vivem numa lista separada.
+  etapasKanbanCliente: [
+    { id: 'cli_iniciou', nome: '🚪 Iniciou (leu o QR)' },
+    { id: 'cli_deu_nome', nome: '✍️ Deu o nome' },
+    { id: 'cli_recomendou', nome: '✅ Recomendou' },
+    { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' }
+  ],
+
   // Script de vendas — roteiro por fase da negociação, pro atendente ler/copiar
   // enquanto conversa no WhatsApp (painel lateral em Conversas). Vazio até o gestor
   // preencher; sem exemplo pré-pronto pra não confundir com script de outra empresa.
