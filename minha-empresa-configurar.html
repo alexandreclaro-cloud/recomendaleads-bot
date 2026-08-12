@@ -2230,6 +2230,10 @@ async function verificarAcesso() {
 (function () {
   const p = new URLSearchParams(location.search);
   if (p.get('assinatura') === 'ok') { setTimeout(() => { if (EH_GESTOR) trocarSecao('assinatura'); }, 300); }
+  // Link direto pro relatório de uma campanha (ex.: veio do botão "Disparar pra
+  // esta coluna" no Kanban) — abre a aba Disparo em massa já com o relatório.
+  const disparoId = p.get('disparo');
+  if (disparoId) { setTimeout(() => { if (EH_GESTOR) { trocarSecao('disparo'); abrirRelatorioDisparo(disparoId); } }, 300); }
 })();
 
 // ===================== MODO DE RECOMENDAÇÃO (Basic / Full) =====================

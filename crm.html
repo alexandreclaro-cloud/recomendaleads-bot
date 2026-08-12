@@ -1772,9 +1772,9 @@ async function disparaColuna(etapaId) {
     const data = await resp.json();
     if (resp.ok && data.ok) {
       localStorage.setItem('ultimoTemplateDisparoColuna', template);
-      st.textContent = `✅ Disparo iniciado! ${data.total} contato(s) na fila.`;
+      st.innerHTML = `✅ Disparo iniciado! ${data.total} contato(s) na fila.` +
+        (data.campanhaId ? ` <a href="/minha-empresa/configurar?disparo=${data.campanhaId}" target="_blank" style="color:inherit;text-decoration:underline;">Ver relatório (entregues/lidos) →</a>` : '');
       st.className = 'modal-status ok';
-      setTimeout(fecharModal, 1800);
     } else {
       st.textContent = '❌ ' + (data.erro || 'Erro ao iniciar disparo'); st.className = 'modal-status err'; btn.disabled = false;
     }
