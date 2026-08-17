@@ -337,7 +337,9 @@ function renderConteudoMsg(m) {
 // em vez de inventar um status que a gente não sabe de verdade).
 function ticksMsg(m) {
   if (m.direcao !== 'out') return '';
-  if (m.status === 'falhou') return ` <span title="${esc(m.erroEntrega || 'Não entregou')}">⚠️</span>`;
+  // Clicável (não só hover) — hover em título nativo é chato de capturar em print
+  // pra investigar erro de entrega; clique mostra o erro completo na hora.
+  if (m.status === 'falhou') return ` <span class="tick-erro" data-erro="${esc(m.erroEntrega || 'Não entregou (a Meta não mandou detalhe do erro)')}" title="Clique pra ver o erro" style="cursor:pointer;">⚠️</span>`;
   if (m.status === 'lido') return ' <span title="Lida" style="color:#34B7F1;">✓✓</span>';
   if (m.status === 'entregue') return ' <span title="Entregue">✓✓</span>';
   if (m.status === 'enviado') return ' <span title="Enviada" style="opacity:.6;">✓</span>';
@@ -598,6 +600,13 @@ async function carregarMensagens(scroll) {
     if (scroll || estavaNoFim) msgs.scrollTop = msgs.scrollHeight;
   } catch (e) {}
 }
+
+// Clique no ⚠️ de mensagem que falhou mostra o erro completo (o title nativo
+// não dá pra capturar bem em print pra investigar).
+document.getElementById('msgs').addEventListener('click', (e) => {
+  const el = e.target.closest('.tick-erro');
+  if (el) alert('Erro de entrega:\n\n' + el.dataset.erro);
+});
 
 async function enviar() {
   const input = document.getElementById('msgInput');
