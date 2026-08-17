@@ -129,8 +129,9 @@
       <a href="/minha-empresa/configurar" title="Voltar ao painel"><i data-lucide="arrow-left" style="width:18px;height:18px;vertical-align:-4px"></i></a>
     </div>
     <div id="convOfertaBadge" style="display:none;margin:0 12px 8px;padding:6px 10px;border-radius:8px;font-size:0.78rem;font-weight:700;align-items:center;gap:8px;"></div>
-    <div class="conv-search">
-      <input class="input" type="text" id="buscaConv" placeholder="Buscar contato ou telefone...">
+    <div class="conv-search" style="display:flex;gap:6px;align-items:center;">
+      <input class="input" type="text" id="buscaConv" placeholder="Buscar contato ou telefone..." style="flex:1;">
+      <button type="button" id="novaConvBtn" class="btn btn-ghost" title="Nova conversa (número que nunca falou com a gente — manda um template pra iniciar)" style="padding:8px 10px;"><i data-lucide="plus"></i></button>
     </div>
     <div class="conv-filtro-papel" style="display:flex;gap:6px;align-items:center;padding:0 12px 8px;flex-wrap:wrap;">
       <button type="button" class="filtro-papel-btn active" data-papel="">Todos</button>
@@ -250,6 +251,25 @@
     <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;">
       <span id="tplModalStatus" style="font-size:0.82rem;color:var(--text-dim);flex:1;"></span>
       <button id="tplEnviarBtn" class="btn btn-action" style="padding:8px 18px;" disabled>Enviar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Nova conversa: número que nunca teve contato — só dá pra mandar template como
+     primeira mensagem (texto livre é recusado pela Meta sem a janela de 24h aberta). -->
+<div id="novaConvModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--surface);border-radius:14px;width:420px;max-width:92vw;padding:18px;">
+    <b style="font-size:1rem;">➕ Nova conversa</b>
+    <p style="font-size:0.8rem;color:var(--text-dim);margin:8px 0 14px;">Pra alguém que nunca falou com a gente, só dá pra mandar <b>template</b> como primeira mensagem — texto livre a Meta recusa. No próximo passo você escolhe o template.</p>
+    <label style="font-size:0.78rem;color:var(--text-dim);display:block;margin-bottom:4px;">Telefone (com DDD)</label>
+    <input class="input" type="text" id="novaConvTelefone" placeholder="11999998888" style="width:100%;margin-bottom:10px;">
+    <label style="font-size:0.78rem;color:var(--text-dim);display:block;margin-bottom:4px;">Nome (opcional)</label>
+    <input class="input" type="text" id="novaConvNome" placeholder="Como essa pessoa se chama" style="width:100%;">
+    <div style="display:flex;gap:10px;margin-top:14px;align-items:center;">
+      <button id="novaConvFechar" class="btn btn-ghost" style="padding:8px 12px;">Cancelar</button>
+      <span style="flex:1;"></span>
+      <span id="novaConvStatus" style="font-size:0.8rem;color:var(--text-dim);"></span>
+      <button id="novaConvContinuar" class="btn btn-action" style="padding:8px 16px;">Escolher template →</button>
     </div>
   </div>
 </div>
@@ -614,7 +634,9 @@ async function enviar() {
   if (!texto || !atual) return;
   input.value = '';
   try {
-    await fetchAut(`${API_BASE}/minha-conversas/${atual}/enviar`, { method: 'POST', body: JSON.stringify({ mensagem: texto }) });
+    const r = await fetchAut(`${API_BASE}/minha-conversas/${atual}/enviar`, { method: 'POST', body: JSON.stringify({ mensagem: texto }) });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { input.value = texto; alert('❌ ' + (d.erro || 'Não foi possível enviar.')); return; }
     await carregarMensagens(true);
     await carregarConversas();
   } catch (e) { input.value = texto; }
@@ -1090,6 +1112,32 @@ document.getElementById('tplModalOverlay').addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { fecharModalTemplates(); return; }
   // Enter fora de um campo de variável (ex.: template sem variáveis, ou busca) já dispara o envio.
   if (e.key === 'Enter' && !e.target.classList.contains('tpl-var') && _templateSelecionado) enviarTemplateEscolhido();
+});
+
+// ===== Nova conversa (número que nunca falou com a gente) =====
+// abrirConversa() já funciona pra número sem histórico nenhum (mensagens vem
+// vazio) — só faltava um jeito de setar `atual` pra um telefone que ainda não
+// está na lista à esquerda. Depois de abrir, já manda direto pro modal de
+// template, porque texto livre é recusado pela Meta sem a janela de 24h aberta.
+function abrirModalNovaConversa() {
+  document.getElementById('novaConvTelefone').value = '';
+  document.getElementById('novaConvNome').value = '';
+  document.getElementById('novaConvStatus').textContent = '';
+  document.getElementById('novaConvModalOverlay').style.display = 'flex';
+  document.getElementById('novaConvTelefone').focus();
+}
+function fecharModalNovaConversa() { document.getElementById('novaConvModalOverlay').style.display = 'none'; }
+document.getElementById('novaConvBtn').addEventListener('click', abrirModalNovaConversa);
+document.getElementById('novaConvFechar').addEventListener('click', fecharModalNovaConversa);
+document.getElementById('novaConvModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'novaConvModalOverlay') fecharModalNovaConversa(); });
+document.getElementById('novaConvContinuar').addEventListener('click', async () => {
+  const tel = (document.getElementById('novaConvTelefone').value || '').replace(/\D/g, '');
+  const nome = (document.getElementById('novaConvNome').value || '').trim();
+  const st = document.getElementById('novaConvStatus');
+  if (tel.length < 10) { st.textContent = '❌ Telefone inválido — precisa ter DDD.'; st.style.color = '#c0392b'; return; }
+  fecharModalNovaConversa();
+  await abrirConversa(tel, nome);
+  await abrirModalTemplates();
 });
 
 document.getElementById('devolverBtn').addEventListener('click', async () => {

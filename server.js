@@ -6501,10 +6501,17 @@ app.post('/minha-conversas/:telefone/enviar', exigirLoginEmpresa, async (req, re
 
     const empresa = await getEmpresaById(req.empresaLogin.id);
     const contexto = { empresa, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresa) };
+    let resultado = null;
     await tenantContext.run(contexto, async () => {
-      await pausarNumero(telefone);      // assume o atendimento: bot para nesse contato
-      await sendText(telefone, mensagem); // envia e já registra a mensagem
+      await pausarNumero(telefone);              // assume o atendimento: bot para nesse contato
+      resultado = await sendText(telefone, mensagem); // envia e já registra a mensagem
     });
+    // sendText pode falhar de verdade (ex.: fora da janela de 24h, número novo que
+    // nunca falou com a gente) — sem checar o retorno, o painel dizia "enviado" mesmo
+    // quando não saiu nada, e o atendente só descobria quando o cliente "sumia".
+    if (!resultado || !resultado.ok) {
+      return res.status(400).json({ ok: false, erro: (resultado && resultado.erro) || 'Falha ao enviar — se for a primeira mensagem pra esse número, use um template.' });
+    }
     const atendenteId = (req.usuario && req.usuario.id) || null;
     const nomeAt = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';
     await CONVERSAS_COL().doc(`${req.empresaLogin.id}__${telefone}`).set({ botPausado: true, atendenteId, atendenteNome: nomeAt, atendenteEm: new Date().toISOString(), precisaAtendente: false }, { merge: true });
