@@ -445,7 +445,8 @@ async function carregarConversas() {
 let _autoAbriu = false;
 function abrirPelaURL() {
   if (_autoAbriu) return;
-  const telParam = (new URLSearchParams(window.location.search).get('tel') || '').replace(/\D/g, '');
+  const qs = new URLSearchParams(window.location.search);
+  const telParam = (qs.get('tel') || '').replace(/\D/g, '');
   if (!telParam) return;
   const alvo = conversas.find(c => {
     const d = String(c.telefone || '').replace(/\D/g, '');
@@ -453,7 +454,14 @@ function abrirPelaURL() {
     const n = Math.min(d.length, telParam.length);
     return n >= 8 && d.slice(-n) === telParam.slice(-n);
   });
-  if (alvo) { _autoAbriu = true; abrirConversa(alvo.telefone, alvo.nome || ''); }
+  if (alvo) { _autoAbriu = true; abrirConversa(alvo.telefone, alvo.nome || ''); return; }
+  // ?novo=1: veio de "acabei de cadastrar esse lead" (CRM) — ainda não existe
+  // conversa nenhuma com esse telefone. Abre direto (vazia) e já manda pro
+  // modal de template, sem precisar passar pelo ➕ Nova conversa de novo.
+  if (qs.get('novo') === '1' && telParam.length >= 10) {
+    _autoAbriu = true;
+    abrirConversa(telParam, qs.get('nome') || '').then(() => abrirModalTemplates());
+  }
 }
 
 let _filtroPapel = '';

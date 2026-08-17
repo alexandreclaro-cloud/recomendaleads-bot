@@ -1668,8 +1668,10 @@ async function salvarNovoLead() {
     });
     const data = await resp.json();
     if (resp.ok && data.ok) {
-      fecharModal();
-      await carregarLeads();
+      // Já manda direto pra conversa desse lead, no modal de template — evita o
+      // passo extra de ir em Conversas e digitar o telefone de novo na mão.
+      const telLimpo = telefoneRecomendado.replace(/\D/g, '');
+      window.location.href = `/conversas?tel=${encodeURIComponent(telLimpo)}&nome=${encodeURIComponent(nomeRecomendado)}&novo=1`;
     } else {
       st.textContent = '❌ ' + (data.erro || 'Erro ao adicionar'); st.className = 'modal-status err'; btn.disabled = false;
     }
