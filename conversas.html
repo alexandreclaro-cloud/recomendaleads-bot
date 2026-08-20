@@ -289,7 +289,11 @@ if (!TOKEN) window.location.href = '/login';
 // mas o conteúdo por-oferta (Script de vendas) já precisa saber qual é a loja.
 const EMPRESA_LOGADA_CONV = JSON.parse(localStorage.getItem('recomendaleads_empresa') || 'null');
 const MEU_OFERTA_ID = (EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.ofertaId) || null;
-const EH_GESTOR_CONV = (EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.papel) === 'gestor';
+// Default 'gestor' quando não tem papel salvo — é o login da EMPRESA (dono),
+// não de um sub-usuário da Equipe (esses sempre têm papel setado). Sem esse
+// fallback, o dono da conta era tratado como atendente aqui (diferente do CRM,
+// que já tinha esse default) e o seletor "Ver de: todo mundo" nunca aparecia.
+const EH_GESTOR_CONV = ((EMPRESA_LOGADA_CONV && EMPRESA_LOGADA_CONV.papel) || 'gestor') === 'gestor';
 // Rede de lojas: usuário preso a uma loja sempre vê só a própria (MEU_OFERTA_ID
 // manda). Matriz só filtra quando o link TEM ?oferta= agora mesmo (ex.: clicou
 // num aviso específico de uma loja) — de propósito SEM persistir em localStorage
