@@ -319,7 +319,7 @@ const CLIENTES_PIPELINE_COL = () => db.collection('clientes_pipeline');
 
 // Cria/atualiza o card do cliente no pipeline (só avança de estágio, nunca volta).
 // etapa: 'iniciou' -> 'deu_nome' -> 'recomendou'.
-const _RANK_CLI_ETAPA = { iniciou: 1, deu_nome: 2, recomendou: 3, recebeu_premio: 4, comprou: 5 };
+const _RANK_CLI_ETAPA = { iniciou: 1, deu_nome: 2, recomendou: 3, recebeu_premio: 4 };
 async function upsertClientePipeline(telefone, nome, etapa, contatos) {
   if (!db || !telefone) return;
   try {
@@ -996,8 +996,7 @@ const EMPRESA_PADRAO = {
     { id: 'cli_iniciou', nome: '🚪 Iniciou (leu o QR)' },
     { id: 'cli_deu_nome', nome: '✍️ Deu o nome' },
     { id: 'cli_recomendou', nome: '✅ Recomendou' },
-    { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' },
-    { id: 'cli_comprou', nome: '💰 Comprou' }
+    { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' }
   ],
 
   // Script de vendas — roteiro por fase da negociação, pro atendente ler/copiar
@@ -6917,10 +6916,12 @@ app.delete('/minha-clientes-pipeline/:telefone', exigirLoginEmpresa, exigirGesto
   }
 });
 
-// Move manualmente um card do funil do CLIENTE (arrastar no Kanban) e/ou grava o
-// valor gasto na compra. Diferente do avanço automático (upsertClientePipeline,
-// que nunca retrocede), aqui é o gestor mexendo na mão — pode mover pra qualquer
-// etapa, inclusive "comprou" (a única que carrega valorCompra nesse funil).
+// Move manualmente um card do funil do CLIENTE (arrastar no Kanban, corrigindo
+// a etapa) e/ou grava o valor gasto numa compra — independente da etapa (esse
+// funil não tem coluna "Comprou" própria, valorCompra é só um dado a mais no
+// card, pra não duplicar a coluna que já existe no funil do Recomendado).
+// Diferente do avanço automático (upsertClientePipeline, que nunca retrocede),
+// aqui é o gestor mexendo na mão — pode mover pra qualquer uma das 4 etapas.
 app.patch('/minha-clientes-pipeline/:telefone', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     const ref = CLIENTES_PIPELINE_COL().doc(`${req.empresaLogin.id}__${req.params.telefone}`);

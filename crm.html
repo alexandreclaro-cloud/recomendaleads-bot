@@ -1440,13 +1440,14 @@ const CLI_ETAPAS_PADRAO = [
   { id: 'cli_iniciou', nome: '🚪 Iniciou (leu o QR)' },
   { id: 'cli_deu_nome', nome: '✍️ Deu o nome' },
   { id: 'cli_recomendou', nome: '✅ Recomendou' },
-  { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' },
-  { id: 'cli_comprou', nome: '💰 Comprou' }
+  { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' }
 ];
 let CLI_ETAPAS = CLI_ETAPAS_PADRAO;
 // Etapa (como fica salvo no Firestore) <-> id da coluna do Kanban — usado pra
-// desenhar o funil e pro drag-and-drop mover o card certo.
-const CLI_ETAPA_ID_POR_CHAVE = { iniciou: 'cli_iniciou', deu_nome: 'cli_deu_nome', recomendou: 'cli_recomendou', recebeu_premio: 'cli_recebeu_premio', comprou: 'cli_comprou' };
+// desenhar o funil e pro drag-and-drop mover o card certo. Esse funil NÃO tem
+// coluna "Comprou" própria (evita duplicar a que já existe no funil do
+// Recomendado) — valorCompra é só um dado extra no card, independente da etapa.
+const CLI_ETAPA_ID_POR_CHAVE = { iniciou: 'cli_iniciou', deu_nome: 'cli_deu_nome', recomendou: 'cli_recomendou', recebeu_premio: 'cli_recebeu_premio' };
 const CLI_ETAPA_CHAVE_POR_ID = Object.fromEntries(Object.entries(CLI_ETAPA_ID_POR_CHAVE).map(([k, v]) => [v, k]));
 
 const ETAPAS_PADRAO = [
@@ -1699,7 +1700,6 @@ function montarColunas() {
         <h3>${etapa.nome}</h3>
         <span class="column-count" data-countfor="${etapa.id}">0</span>
       </div>
-      ${etapa.id === 'cli_comprou' ? `<div class="column-total" data-totalfor="${etapa.id}" style="font-size:0.82rem; font-weight:700; color:var(--success, #1d9e75); margin:-4px 0 6px;"></div>` : ''}
       <div class="column-body" data-coletapa="${etapa.id}"></div>
     `;
     board.appendChild(col);
@@ -1803,7 +1803,7 @@ function atualizarStats() {
   const etapaSucesso = etapas.find(e => e.id.includes('comprou')) || etapas[etapas.length - 1];
   document.getElementById('statTotal').textContent = leads.length;
   const comprouRecomendados = etapaSucesso ? leads.filter(l => l.etapa === etapaSucesso.id).length : 0;
-  const comprouClientes = (clientesPipeline || []).filter(c => c.etapa === 'comprou').length;
+  const comprouClientes = (clientesPipeline || []).filter(c => c.valorCompra != null).length;
   document.getElementById('statComprou').textContent = comprouRecomendados + comprouClientes;
   const vendasRecomendados = leads.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0);
   const vendasClientes = (clientesPipeline || []).reduce((s, c) => s + (Number(c.valorCompra) || 0), 0);
@@ -2012,13 +2012,14 @@ function renderClientesPipeline() {
           <span class="data-tag">🕒 ${esc(ultimaComCard(c.telefone, c.atualizadoEm || c.criadoEm))}</span>
         </div>
         ${c.valorCompra != null ? `<div class="valor-compra" style="margin-top:8px; font-weight:700; color:var(--success, #1d9e75);">💰 ${fmtBRL(c.valorCompra)}</div>` : ''}
-        ${telLimpoCli ? `<a class="card-conversa-link" href="/conversas?tel=${telLimpoCli}" target="_blank" title="Abrir a conversa desta pessoa">💬 Ver conversa</a>` : ''}`;
+        ${telLimpoCli ? `<a class="card-conversa-link" href="/conversas?tel=${telLimpoCli}" target="_blank" title="Abrir a conversa desta pessoa">💬 Ver conversa</a>` : ''}
+        <button type="button" class="card-comprou-btn" style="width:100%;margin-top:6px;padding:5px 8px;font-size:0.76rem;font-weight:600;border-radius:8px;border:1px solid var(--success,#1d9e75);background:transparent;color:var(--success,#1d9e75);cursor:pointer;">💰 ${c.valorCompra != null ? 'Editar compra' : 'Registrar compra'}</button>`;
       let foiArrastado = false;
       card.addEventListener('dragstart', () => { foiArrastado = true; card.classList.add('dragging'); });
       card.addEventListener('dragend', () => { card.classList.remove('dragging'); });
       card.addEventListener('click', (e) => {
         if (foiArrastado) { foiArrastado = false; return; }
-        if (e.target.closest('.card-del-btn') || e.target.closest('.card-conversa-link')) return;
+        if (e.target.closest('.card-del-btn') || e.target.closest('.card-conversa-link') || e.target.closest('.card-comprou-btn')) return;
         abrirRecomendadosDoCliente(c);
       });
       card.querySelector('.card-del-btn').addEventListener('click', async (e) => {
@@ -2031,15 +2032,26 @@ function renderClientesPipeline() {
           else alert('❌ ' + (data.erro || 'Erro ao excluir'));
         } catch (err) { alert('❌ Erro de conexão'); }
       });
+      // Registra/edita o valor gasto — não muda a etapa do card, é só um dado
+      // a mais (esse funil não tem coluna "Comprou" própria, pra não duplicar
+      // a que já existe no funil do Recomendado).
+      card.querySelector('.card-comprou-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const entrada = prompt(`Quanto ${c.nome || 'este cliente'} gastou na compra? (R$, vazio pra remover)`, c.valorCompra != null ? c.valorCompra : '');
+        if (entrada === null) return; // cancelou
+        const valorCompra = entrada.trim() === '' ? null : parseValor(entrada);
+        try {
+          const resp = await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/${c.telefone}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ valorCompra })
+          });
+          const data = await resp.json();
+          if (resp.ok && data.ok) { c.valorCompra = valorCompra; renderClientesPipeline(); atualizarStats(); }
+          else alert('❌ ' + (data.erro || 'Erro ao salvar'));
+        } catch (err) { alert('❌ Erro de conexão'); }
+      });
       col.appendChild(card);
     });
-
-    // Total de vendas na coluna "Comprou" (só ela mostra o badge — igual ao funil do recomendado).
-    const totalEl = document.querySelector(`[data-totalfor="${etapa.id}"]`);
-    if (totalEl) {
-      const soma = doFunil.reduce((s, c) => s + (Number(c.valorCompra) || 0), 0);
-      totalEl.textContent = soma > 0 ? `💰 ${fmtBRL(soma)} em vendas` : '';
-    }
   });
 }
 
@@ -2321,6 +2333,8 @@ boardEl.addEventListener('drop', async (e) => {
   const ehColunaCliente = (novaEtapa || '').startsWith('cli_');
 
   // ===== Card do CLIENTE (recomendador) — funil fixo à esquerda =====
+  // Sem prompt de valor aqui: registrar/editar compra é o botão 💰 do próprio
+  // card (não muda etapa), pra não precisar de uma coluna "Comprou" separada.
   if (dragging.dataset.tipo === 'cliente') {
     if (!ehColunaCliente) return; // não deixa soltar cliente fora do funil dele
     const tel = dragging.dataset.tel;
@@ -2329,26 +2343,24 @@ boardEl.addEventListener('drop', async (e) => {
     const idAtual = CLI_ETAPA_ID_POR_CHAVE[cliente.etapa] || 'cli_iniciou';
     if (idAtual === novaEtapa) return;
 
-    // Ao mover pra "Comprou", pergunta o valor gasto (fluxo de caixa).
-    let valorCompra;
-    if (novaEtapa === 'cli_comprou') {
-      const entrada = prompt(`Quanto ${cliente.nome || 'este cliente'} gastou na compra? (R$)`, cliente.valorCompra != null ? cliente.valorCompra : '');
-      if (entrada === null) return; // cancelou — não move o card
-      valorCompra = parseValor(entrada);
-    }
-
+    const etapaAnterior = cliente.etapa;
     cliente.etapa = CLI_ETAPA_CHAVE_POR_ID[novaEtapa] || cliente.etapa;
-    if (valorCompra !== undefined) cliente.valorCompra = valorCompra;
     renderClientesPipeline();
-    atualizarStats();
 
     try {
-      await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/${tel}`, {
+      const resp = await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/${tel}`, {
         method: 'PATCH',
-        body: JSON.stringify({ etapa: cliente.etapa, ...(valorCompra !== undefined ? { valorCompra } : {}) })
+        body: JSON.stringify({ etapa: cliente.etapa })
       });
+      const data = await resp.json();
+      // Sem isso, uma falha (ex.: 403/404) ficava só no console — o card parecia
+      // ter movido, e voltava sozinho pro lugar antigo só quando a página recarregava.
+      if (!resp.ok || !data.ok) throw new Error((data && data.erro) || 'Falha ao mover');
     } catch (err) {
       console.error('Erro ao mover cliente:', err);
+      cliente.etapa = etapaAnterior;
+      renderClientesPipeline();
+      alert('❌ Não foi possível mover esse card. Tenta de novo.');
     }
     return;
   }
