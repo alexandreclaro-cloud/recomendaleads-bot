@@ -55,7 +55,11 @@
   .bubble.out { align-self: flex-end; background: var(--brand-soft); }
 
   .composer { padding: 8px 14px; background: var(--surface); border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
-  .composer input { flex: 1; padding: 8px 12px; font-size: 0.88rem; }
+  .composer input, .composer textarea { flex: 1; padding: 8px 12px; font-size: 0.88rem; }
+  /* #msgInput virou <textarea> pra guardar quebra de linha (respostas rápidas com
+     parágrafo iam pra um <input> de uma linha só, que APAGA \n ao setar o value —
+     chegava tudo grudado no cliente). Cresce até 5 linhas, depois rola. */
+  #msgInput { resize: none; overflow-y: auto; max-height: 110px; line-height: 1.35; font-family: inherit; }
   .composer .btn { padding: 8px 14px; }
   .composer.disabled { opacity: 0.6; }
 
@@ -111,7 +115,7 @@
     .bubble { max-width: 85%; }
     .msgs { padding: 14px 12px; }
     .composer { padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
-    .composer input { font-size: 16px; }  /* evita zoom automático do iOS ao focar */
+    .composer input, .composer textarea { font-size: 16px; }  /* evita zoom automático do iOS ao focar */
   }
 </style>
 </head>
@@ -171,7 +175,7 @@
       <div id="respostasRapidasBox" style="display:none;"></div>
       <div class="composer" id="composer">
         <input type="file" id="anexoInput" style="display:none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
-        <input class="input" type="text" id="msgInput" placeholder="Digite uma mensagem... ( / pra respostas rápidas )" autocomplete="off" style="display:block;">
+        <textarea class="input" id="msgInput" rows="1" placeholder="Digite uma mensagem... ( / pra respostas rápidas, Shift+Enter pra quebrar linha )" autocomplete="off" style="display:block;"></textarea>
         <span id="gravandoIndicador" style="display:none;align-items:center;gap:6px;color:#DC2626;font-size:0.82rem;font-weight:600;white-space:nowrap;">🔴 <span id="gravandoTempo">0:00</span></span>
         <button class="btn btn-ghost" id="anexoBtn" title="Anexar arquivo" style="padding:8px 10px;"><i data-lucide="paperclip"></i></button>
         <button class="btn btn-ghost" id="audioBtn" title="Gravar áudio" style="padding:8px 10px;"><i data-lucide="mic"></i></button>
@@ -641,15 +645,23 @@ async function enviar() {
   const texto = input.value.trim();
   if (!texto || !atual) return;
   input.value = '';
+  input.style.height = 'auto';
   try {
     const r = await fetchAut(`${API_BASE}/minha-conversas/${atual}/enviar`, { method: 'POST', body: JSON.stringify({ mensagem: texto }) });
     const d = await r.json();
-    if (!r.ok || !d.ok) { input.value = texto; alert('❌ ' + (d.erro || 'Não foi possível enviar.')); return; }
+    if (!r.ok || !d.ok) { input.value = texto; ajustarAlturaMsgInput(); alert('❌ ' + (d.erro || 'Não foi possível enviar.')); return; }
     await carregarMensagens(true);
     await carregarConversas();
-  } catch (e) { input.value = texto; }
+  } catch (e) { input.value = texto; ajustarAlturaMsgInput(); }
 }
 document.getElementById('enviarBtn').addEventListener('click', enviar);
+
+// #msgInput virou <textarea> — cresce junto com o texto (até um teto, depois rola).
+function ajustarAlturaMsgInput() {
+  const el = document.getElementById('msgInput');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+}
 
 // ===== Anexo (imagem/vídeo/documento) =====
 function detectarTipoMidia(mimetype) {
@@ -766,10 +778,12 @@ async function selecionarRespostaRapida(r) {
     } catch (e) {}
   } else {
     document.getElementById('msgInput').value = r.texto || '';
+    ajustarAlturaMsgInput();
     document.getElementById('msgInput').focus();
   }
 }
 document.getElementById('msgInput').addEventListener('input', (e) => {
+  ajustarAlturaMsgInput();
   const v = e.target.value;
   if (v.startsWith('/') && v.length >= 1 && !v.includes(' ')) {
     abrirRespostasRapidas(v.slice(1).toLowerCase());
@@ -778,7 +792,10 @@ document.getElementById('msgInput').addEventListener('input', (e) => {
   }
 });
 document.getElementById('msgInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') { fecharRespostasRapidas(); enviar(); }
+  // Enter manda; Shift+Enter quebra linha (igual WhatsApp/qualquer chat) — antes
+  // era <input> de uma linha só, que APAGAVA \n do texto (respostas rápidas com
+  // parágrafo chegavam tudo grudado pro cliente).
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); fecharRespostasRapidas(); enviar(); }
   if (e.key === 'Escape') fecharRespostasRapidas();
 });
 carregarRespostasRapidas();
