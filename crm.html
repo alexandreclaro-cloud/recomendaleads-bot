@@ -1875,20 +1875,69 @@ function renderBoard() {
     if (!col) return;
 
     const leadsDaColuna = filtrados.filter(l => l.etapa === etapa.id);
+    // A coluna "Comprou" é ÚNICA pro sistema todo — clientes (recomendador) que
+    // "graduaram" pra cá (etapa === 'comprou' no funil deles) entram junto com
+    // os recomendados, pra não ter uma segunda coluna "Comprou" duplicada.
+    const clientesComprou = ehColunaComprou(etapa) ? (clientesPipeline || []).filter(c => c.etapa === 'comprou') : [];
+    const termoBusca = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
+    const clientesComprouFiltrados = termoBusca
+      ? clientesComprou.filter(c => (c.nome || '').toLowerCase().includes(termoBusca) || (c.telefone || '').includes(termoBusca))
+      : clientesComprou;
+
     const countEl = document.querySelector(`[data-countfor="${etapa.id}"]`);
-    if (countEl) countEl.textContent = leadsDaColuna.length;
+    if (countEl) countEl.textContent = leadsDaColuna.length + clientesComprouFiltrados.length;
 
     const totalEl = document.querySelector(`[data-totalfor="${etapa.id}"]`);
     if (totalEl) {
-      const soma = leadsDaColuna.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0);
+      const somaLeads = leadsDaColuna.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0);
+      const somaClientes = clientesComprouFiltrados.reduce((s, c) => s + (Number(c.valorCompra) || 0), 0);
+      const soma = somaLeads + somaClientes;
       totalEl.textContent = soma > 0 ? `💰 ${fmtBRL(soma)} em vendas` : '';
     }
 
     col.innerHTML = '';
-    if (leadsDaColuna.length === 0) {
+    if (leadsDaColuna.length === 0 && clientesComprouFiltrados.length === 0) {
       col.innerHTML = '<div class="empty-col">Nenhum lead aqui</div>';
       return;
     }
+
+    clientesComprouFiltrados.forEach(cliente => {
+      const card = document.createElement('div');
+      card.className = 'lead-card';
+      card.draggable = true;
+      card.dataset.tipo = 'cliente';
+      card.dataset.tel = cliente.telefone;
+      const telLimpoCli = (cliente.telefone || '').replace(/\D/g, '');
+      card.innerHTML = `
+        <button type="button" class="card-del-btn" title="Excluir este card (ex: teste)">🗑️</button>
+        <div class="nome">${esc(cliente.nome) || 'Sem nome ainda'}</div>
+        <div class="card-info">
+          <div><span class="ci-label">Cliente:</span> ${esc(cliente.nome) || '—'}</div>
+          <div><span class="ci-label">Telefone:</span> ${esc(cliente.telefone) || '—'}</div>
+        </div>
+        ${telLimpoCli ? `<a class="card-conversa-link" href="/conversas?tel=${telLimpoCli}" target="_blank" title="Abrir a conversa desta pessoa">💬 Ver conversa</a>` : ''}
+        ${cliente.valorCompra != null ? `<div class="valor-compra" style="margin-top:8px; font-weight:700; color:var(--success, #1d9e75);">💰 ${fmtBRL(cliente.valorCompra)}</div>` : ''}
+      `;
+      let foiArrastadoCli = false;
+      card.addEventListener('dragstart', () => { foiArrastadoCli = true; card.classList.add('dragging'); });
+      card.addEventListener('dragend', () => { card.classList.remove('dragging'); });
+      card.addEventListener('click', (e) => {
+        if (foiArrastadoCli) { foiArrastadoCli = false; return; }
+        if (e.target.closest('.card-del-btn') || e.target.closest('.card-conversa-link')) return;
+        abrirRecomendadosDoCliente(cliente);
+      });
+      card.querySelector('.card-del-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Excluir este card? Não dá pra desfazer.')) return;
+        try {
+          const resp = await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/${cliente.telefone}`, { method: 'DELETE' });
+          const data = await resp.json();
+          if (resp.ok && data.ok) await carregarLeads();
+          else alert('❌ ' + (data.erro || 'Erro ao excluir'));
+        } catch (err) { alert('❌ Erro de conexão'); }
+      });
+      col.appendChild(card);
+    });
 
     leadsDaColuna.forEach(lead => {
       const card = document.createElement('div');
@@ -1981,7 +2030,9 @@ document.getElementById('boardScrollRight').addEventListener('click', () => {
 // Renderiza os cards do CLIENTE (recomendador) nas colunas fixas do funil.
 function renderClientesPipeline() {
   const termo = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
-  let lista = clientesPipeline || [];
+  // Quem já "graduou" pra Comprou (etapa === 'comprou') sai daqui — vive na
+  // coluna "Comprou" única do funil do Recomendado (ver renderBoard).
+  let lista = (clientesPipeline || []).filter(c => c.etapa !== 'comprou');
   if (termo) lista = lista.filter(c => (c.nome || '').toLowerCase().includes(termo) || (c.telefone || '').includes(termo));
   CLI_ETAPAS.forEach(etapa => {
     const col = document.querySelector(`[data-coletapa="${etapa.id}"]`);
@@ -2308,9 +2359,16 @@ boardEl.addEventListener('dragover', (e) => {
   const dragging = document.querySelector('.lead-card.dragging');
   if (!dragging) return;
   const ehCliente = dragging.dataset.tipo === 'cliente';
-  const colEhCliente = (col.dataset.coletapa || '').startsWith('cli_');
-  // Cliente só solta em coluna do funil dele, recomendado só na dele.
-  if (ehCliente !== colEhCliente) return;
+  const colId = col.dataset.coletapa || '';
+  const colEhCliente = colId.startsWith('cli_');
+  const colEhComprou = !colEhCliente && ehColunaComprou(etapas.find(e2 => e2.id === colId));
+  if (ehCliente) {
+    // Cliente solta nas colunas do próprio funil OU na coluna única "Comprou".
+    if (!colEhCliente && !colEhComprou) return;
+  } else {
+    // Recomendado nunca entra nas colunas do funil do cliente.
+    if (colEhCliente) return;
+  }
   e.preventDefault();
   col.classList.add('drag-over');
 });
@@ -2332,34 +2390,53 @@ boardEl.addEventListener('drop', async (e) => {
   const novaEtapa = col.dataset.coletapa;
   const ehColunaCliente = (novaEtapa || '').startsWith('cli_');
 
-  // ===== Card do CLIENTE (recomendador) — funil fixo à esquerda =====
-  // Sem prompt de valor aqui: registrar/editar compra é o botão 💰 do próprio
-  // card (não muda etapa), pra não precisar de uma coluna "Comprou" separada.
+  // ===== Card do CLIENTE (recomendador) — funil fixo à esquerda, mais a
+  // coluna ÚNICA "Comprou" (compartilhada com o funil do Recomendado) =====
   if (dragging.dataset.tipo === 'cliente') {
-    if (!ehColunaCliente) return; // não deixa soltar cliente fora do funil dele
+    const etapaAlvo = etapas.find(e => e.id === novaEtapa);
+    const colEhComprou = !ehColunaCliente && ehColunaComprou(etapaAlvo);
+    if (!ehColunaCliente && !colEhComprou) return; // não deixa soltar em outra coluna do recomendado
+
     const tel = dragging.dataset.tel;
     const cliente = (clientesPipeline || []).find(c => c.telefone === tel);
     if (!cliente) return;
-    const idAtual = CLI_ETAPA_ID_POR_CHAVE[cliente.etapa] || 'cli_iniciou';
-    if (idAtual === novaEtapa) return;
+    // Onde ele já está, em termos de coluna: se o alvo é a Comprou, só bate se
+    // ele já estiver marcado 'comprou'; senão, compara a coluna do funil dele.
+    const jaEstaAqui = colEhComprou ? cliente.etapa === 'comprou' : (CLI_ETAPA_ID_POR_CHAVE[cliente.etapa] === novaEtapa);
+    if (jaEstaAqui) return;
 
     const etapaAnterior = cliente.etapa;
-    cliente.etapa = CLI_ETAPA_CHAVE_POR_ID[novaEtapa] || cliente.etapa;
-    renderClientesPipeline();
+    const valorAnterior = cliente.valorCompra;
+    let valorCompra;
+
+    if (colEhComprou) {
+      // "Graduação" pra coluna única Comprou — pede o valor, igual já
+      // acontece pro recomendado.
+      const entrada = prompt(`Quanto ${cliente.nome || 'este cliente'} gastou na compra? (R$)`, cliente.valorCompra != null ? cliente.valorCompra : '');
+      if (entrada === null) return; // cancelou — não move o card
+      valorCompra = parseValor(entrada);
+      cliente.etapa = 'comprou';
+      cliente.valorCompra = valorCompra;
+    } else {
+      cliente.etapa = CLI_ETAPA_CHAVE_POR_ID[novaEtapa] || cliente.etapa;
+    }
+    renderBoard(); // já chama renderClientesPipeline() no final
 
     try {
       const resp = await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/${tel}`, {
         method: 'PATCH',
-        body: JSON.stringify({ etapa: cliente.etapa })
+        body: JSON.stringify({ etapa: cliente.etapa, ...(valorCompra !== undefined ? { valorCompra } : {}) })
       });
       const data = await resp.json();
       // Sem isso, uma falha (ex.: 403/404) ficava só no console — o card parecia
       // ter movido, e voltava sozinho pro lugar antigo só quando a página recarregava.
       if (!resp.ok || !data.ok) throw new Error((data && data.erro) || 'Falha ao mover');
+      atualizarStats();
     } catch (err) {
       console.error('Erro ao mover cliente:', err);
       cliente.etapa = etapaAnterior;
-      renderClientesPipeline();
+      cliente.valorCompra = valorAnterior;
+      renderBoard();
       alert('❌ Não foi possível mover esse card. Tenta de novo.');
     }
     return;
