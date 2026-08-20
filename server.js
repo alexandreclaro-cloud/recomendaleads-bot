@@ -6921,8 +6921,11 @@ app.delete('/minha-clientes-pipeline/:telefone', exigirLoginEmpresa, exigirGesto
 // funil não tem coluna "Comprou" própria, valorCompra é só um dado a mais no
 // card, pra não duplicar a coluna que já existe no funil do Recomendado).
 // Diferente do avanço automático (upsertClientePipeline, que nunca retrocede),
-// aqui é o gestor mexendo na mão — pode mover pra qualquer uma das 4 etapas.
-app.patch('/minha-clientes-pipeline/:telefone', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+// aqui é alguém mexendo na mão — pode mover pra qualquer uma das 4 etapas.
+// Sem exigirGestor de propósito: atendente também atende/vende, tem que poder
+// mover o card e registrar o valor da compra — igual já funciona no funil do
+// Recomendado (PATCH /minha-leads/:id, também sem essa trava).
+app.patch('/minha-clientes-pipeline/:telefone', exigirLoginEmpresa, async (req, res) => {
   try {
     const ref = CLIENTES_PIPELINE_COL().doc(`${req.empresaLogin.id}__${req.params.telefone}`);
     const snap = await ref.get();
