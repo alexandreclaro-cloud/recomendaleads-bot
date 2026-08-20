@@ -1440,9 +1440,14 @@ const CLI_ETAPAS_PADRAO = [
   { id: 'cli_iniciou', nome: '🚪 Iniciou (leu o QR)' },
   { id: 'cli_deu_nome', nome: '✍️ Deu o nome' },
   { id: 'cli_recomendou', nome: '✅ Recomendou' },
-  { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' }
+  { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' },
+  { id: 'cli_comprou', nome: '💰 Comprou' }
 ];
 let CLI_ETAPAS = CLI_ETAPAS_PADRAO;
+// Etapa (como fica salvo no Firestore) <-> id da coluna do Kanban — usado pra
+// desenhar o funil e pro drag-and-drop mover o card certo.
+const CLI_ETAPA_ID_POR_CHAVE = { iniciou: 'cli_iniciou', deu_nome: 'cli_deu_nome', recomendou: 'cli_recomendou', recebeu_premio: 'cli_recebeu_premio', comprou: 'cli_comprou' };
+const CLI_ETAPA_CHAVE_POR_ID = Object.fromEntries(Object.entries(CLI_ETAPA_ID_POR_CHAVE).map(([k, v]) => [v, k]));
 
 const ETAPAS_PADRAO = [
   { id: 'recebeu_mensagem', nome: 'Recebeu Mensagem' },
@@ -1694,6 +1699,7 @@ function montarColunas() {
         <h3>${etapa.nome}</h3>
         <span class="column-count" data-countfor="${etapa.id}">0</span>
       </div>
+      ${etapa.id === 'cli_comprou' ? `<div class="column-total" data-totalfor="${etapa.id}" style="font-size:0.82rem; font-weight:700; color:var(--success, #1d9e75); margin:-4px 0 6px;"></div>` : ''}
       <div class="column-body" data-coletapa="${etapa.id}"></div>
     `;
     board.appendChild(col);
@@ -1796,12 +1802,13 @@ function popularFiltroVendedores() {
 function atualizarStats() {
   const etapaSucesso = etapas.find(e => e.id.includes('comprou')) || etapas[etapas.length - 1];
   document.getElementById('statTotal').textContent = leads.length;
-  document.getElementById('statComprou').textContent = etapaSucesso
-    ? leads.filter(l => l.etapa === etapaSucesso.id).length
-    : 0;
-  const totalVendas = leads.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0);
+  const comprouRecomendados = etapaSucesso ? leads.filter(l => l.etapa === etapaSucesso.id).length : 0;
+  const comprouClientes = (clientesPipeline || []).filter(c => c.etapa === 'comprou').length;
+  document.getElementById('statComprou').textContent = comprouRecomendados + comprouClientes;
+  const vendasRecomendados = leads.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0);
+  const vendasClientes = (clientesPipeline || []).reduce((s, c) => s + (Number(c.valorCompra) || 0), 0);
   const elVendas = document.getElementById('statVendas');
-  if (elVendas) elVendas.textContent = fmtBRL(totalVendas);
+  if (elVendas) elVendas.textContent = fmtBRL(vendasRecomendados + vendasClientes);
 }
 
 
@@ -1971,16 +1978,15 @@ document.getElementById('boardScrollRight').addEventListener('click', () => {
   document.getElementById('board').scrollBy({ left: 320, behavior: 'smooth' });
 });
 
-// Renderiza os cards do CLIENTE (recomendador) nas 3 colunas fixas do funil.
+// Renderiza os cards do CLIENTE (recomendador) nas colunas fixas do funil.
 function renderClientesPipeline() {
   const termo = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
-  const mapa = { iniciou: 'cli_iniciou', deu_nome: 'cli_deu_nome', recomendou: 'cli_recomendou', recebeu_premio: 'cli_recebeu_premio' };
   let lista = clientesPipeline || [];
   if (termo) lista = lista.filter(c => (c.nome || '').toLowerCase().includes(termo) || (c.telefone || '').includes(termo));
   CLI_ETAPAS.forEach(etapa => {
     const col = document.querySelector(`[data-coletapa="${etapa.id}"]`);
     if (!col) return;
-    const doFunil = lista.filter(c => (mapa[c.etapa] || 'cli_iniciou') === etapa.id);
+    const doFunil = lista.filter(c => (CLI_ETAPA_ID_POR_CHAVE[c.etapa] || 'cli_iniciou') === etapa.id);
     const countEl = document.querySelector(`[data-countfor="${etapa.id}"]`);
     if (countEl) countEl.textContent = doFunil.length;
     col.innerHTML = '';
@@ -1988,6 +1994,9 @@ function renderClientesPipeline() {
     doFunil.forEach(c => {
       const card = document.createElement('div');
       card.className = 'lead-card';
+      card.draggable = true;
+      card.dataset.tipo = 'cliente';
+      card.dataset.tel = c.telefone;
       const amigos = recomendadosDoCliente(c);
       const qtd = amigos.length;
       const telLimpoCli = (c.telefone || '').replace(/\D/g, '');
@@ -2002,8 +2011,13 @@ function renderClientesPipeline() {
         <div class="meta">
           <span class="data-tag">🕒 ${esc(ultimaComCard(c.telefone, c.atualizadoEm || c.criadoEm))}</span>
         </div>
+        ${c.valorCompra != null ? `<div class="valor-compra" style="margin-top:8px; font-weight:700; color:var(--success, #1d9e75);">💰 ${fmtBRL(c.valorCompra)}</div>` : ''}
         ${telLimpoCli ? `<a class="card-conversa-link" href="/conversas?tel=${telLimpoCli}" target="_blank" title="Abrir a conversa desta pessoa">💬 Ver conversa</a>` : ''}`;
+      let foiArrastado = false;
+      card.addEventListener('dragstart', () => { foiArrastado = true; card.classList.add('dragging'); });
+      card.addEventListener('dragend', () => { card.classList.remove('dragging'); });
       card.addEventListener('click', (e) => {
+        if (foiArrastado) { foiArrastado = false; return; }
         if (e.target.closest('.card-del-btn') || e.target.closest('.card-conversa-link')) return;
         abrirRecomendadosDoCliente(c);
       });
@@ -2019,6 +2033,13 @@ function renderClientesPipeline() {
       });
       col.appendChild(card);
     });
+
+    // Total de vendas na coluna "Comprou" (só ela mostra o badge — igual ao funil do recomendado).
+    const totalEl = document.querySelector(`[data-totalfor="${etapa.id}"]`);
+    if (totalEl) {
+      const soma = doFunil.reduce((s, c) => s + (Number(c.valorCompra) || 0), 0);
+      totalEl.textContent = soma > 0 ? `💰 ${fmtBRL(soma)} em vendas` : '';
+    }
   });
 }
 
@@ -2272,8 +2293,12 @@ const boardEl = document.getElementById('board');
 boardEl.addEventListener('dragover', (e) => {
   const col = e.target.closest('.column-body');
   if (!col) return;
-  // Colunas do funil do cliente não recebem cards de recomendado.
-  if ((col.dataset.coletapa || '').startsWith('cli_')) return;
+  const dragging = document.querySelector('.lead-card.dragging');
+  if (!dragging) return;
+  const ehCliente = dragging.dataset.tipo === 'cliente';
+  const colEhCliente = (col.dataset.coletapa || '').startsWith('cli_');
+  // Cliente só solta em coluna do funil dele, recomendado só na dele.
+  if (ehCliente !== colEhCliente) return;
   e.preventDefault();
   col.classList.add('drag-over');
 });
@@ -2292,11 +2317,45 @@ boardEl.addEventListener('drop', async (e) => {
   const dragging = document.querySelector('.lead-card.dragging');
   if (!dragging) return;
 
-  const id = dragging.dataset.id;
   const novaEtapa = col.dataset.coletapa;
-  // Não deixa soltar recomendado nas colunas do funil do cliente.
-  if ((novaEtapa || '').startsWith('cli_')) return;
+  const ehColunaCliente = (novaEtapa || '').startsWith('cli_');
 
+  // ===== Card do CLIENTE (recomendador) — funil fixo à esquerda =====
+  if (dragging.dataset.tipo === 'cliente') {
+    if (!ehColunaCliente) return; // não deixa soltar cliente fora do funil dele
+    const tel = dragging.dataset.tel;
+    const cliente = (clientesPipeline || []).find(c => c.telefone === tel);
+    if (!cliente) return;
+    const idAtual = CLI_ETAPA_ID_POR_CHAVE[cliente.etapa] || 'cli_iniciou';
+    if (idAtual === novaEtapa) return;
+
+    // Ao mover pra "Comprou", pergunta o valor gasto (fluxo de caixa).
+    let valorCompra;
+    if (novaEtapa === 'cli_comprou') {
+      const entrada = prompt(`Quanto ${cliente.nome || 'este cliente'} gastou na compra? (R$)`, cliente.valorCompra != null ? cliente.valorCompra : '');
+      if (entrada === null) return; // cancelou — não move o card
+      valorCompra = parseValor(entrada);
+    }
+
+    cliente.etapa = CLI_ETAPA_CHAVE_POR_ID[novaEtapa] || cliente.etapa;
+    if (valorCompra !== undefined) cliente.valorCompra = valorCompra;
+    renderClientesPipeline();
+    atualizarStats();
+
+    try {
+      await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/${tel}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ etapa: cliente.etapa, ...(valorCompra !== undefined ? { valorCompra } : {}) })
+      });
+    } catch (err) {
+      console.error('Erro ao mover cliente:', err);
+    }
+    return;
+  }
+
+  // ===== Card do RECOMENDADO — colunas configuráveis =====
+  if (ehColunaCliente) return; // não deixa soltar recomendado nas colunas do funil do cliente
+  const id = dragging.dataset.id;
   const lead = leads.find(l => l.id === id);
   if (!lead || lead.etapa === novaEtapa) return;
 

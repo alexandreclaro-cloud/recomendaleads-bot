@@ -319,7 +319,7 @@ const CLIENTES_PIPELINE_COL = () => db.collection('clientes_pipeline');
 
 // Cria/atualiza o card do cliente no pipeline (só avança de estágio, nunca volta).
 // etapa: 'iniciou' -> 'deu_nome' -> 'recomendou'.
-const _RANK_CLI_ETAPA = { iniciou: 1, deu_nome: 2, recomendou: 3, recebeu_premio: 4 };
+const _RANK_CLI_ETAPA = { iniciou: 1, deu_nome: 2, recomendou: 3, recebeu_premio: 4, comprou: 5 };
 async function upsertClientePipeline(telefone, nome, etapa, contatos) {
   if (!db || !telefone) return;
   try {
@@ -996,7 +996,8 @@ const EMPRESA_PADRAO = {
     { id: 'cli_iniciou', nome: '🚪 Iniciou (leu o QR)' },
     { id: 'cli_deu_nome', nome: '✍️ Deu o nome' },
     { id: 'cli_recomendou', nome: '✅ Recomendou' },
-    { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' }
+    { id: 'cli_recebeu_premio', nome: '🎁 Recebeu o Prêmio' },
+    { id: 'cli_comprou', nome: '💰 Comprou' }
   ],
 
   // Script de vendas — roteiro por fase da negociação, pro atendente ler/copiar
@@ -6910,6 +6911,30 @@ app.get('/minha-clientes-pipeline', exigirLoginEmpresa, async (req, res) => {
 app.delete('/minha-clientes-pipeline/:telefone', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
     await CLIENTES_PIPELINE_COL().doc(`${req.empresaLogin.id}__${req.params.telefone}`).delete();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Move manualmente um card do funil do CLIENTE (arrastar no Kanban) e/ou grava o
+// valor gasto na compra. Diferente do avanço automático (upsertClientePipeline,
+// que nunca retrocede), aqui é o gestor mexendo na mão — pode mover pra qualquer
+// etapa, inclusive "comprou" (a única que carrega valorCompra nesse funil).
+app.patch('/minha-clientes-pipeline/:telefone', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const ref = CLIENTES_PIPELINE_COL().doc(`${req.empresaLogin.id}__${req.params.telefone}`);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ ok: false, erro: 'Card não encontrado' });
+
+    const { etapa, valorCompra } = req.body || {};
+    const dados = { atualizadoEm: new Date().toISOString() };
+    if (etapa !== undefined) dados.etapa = etapa;
+    if (valorCompra !== undefined) {
+      const v = (valorCompra === null || valorCompra === '') ? null : Number(valorCompra);
+      dados.valorCompra = (v === null || isNaN(v)) ? null : v;
+    }
+    await ref.set(dados, { merge: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
