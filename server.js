@@ -1724,6 +1724,15 @@ async function sendTextOuTemplate(telefone, textoLivre, templateName, params) {
     // texto livre fora da janela não entrega e ainda confundiria. Devolve false.
     return false;
   }
+  // Sem template configurado pra essa mensagem: no oficial, texto livre só entrega
+  // se a janela de 24h estiver aberta. Sem isso, ficava tentando e falhando (⚠️)
+  // pra TODO mundo que nunca respondeu — que é justamente quem um follow-up
+  // "ainda está por aí?" tenta alcançar. Sem janela e sem template = não dá pra
+  // mandar nada; melhor pular com log claro do que insistir numa entrega impossível.
+  if (tipoWppAtual() === 'oficial' && !(await dentroJanela24h(telefone))) {
+    console.log(`[SEM-JANELA] ${telefone}: sem template configurado pra essa mensagem e fora da janela de 24h — não enviado. Configure um template pra essa etapa em Configurações > Follow-up — Sem resposta.`);
+    return false;
+  }
   return await sendText(telefone, textoLivre);
 }
 
