@@ -5596,6 +5596,9 @@ app.get('/minha-config', exigirLoginEmpresa, exigirEscopoOferta, async (req, res
     // whatsappTipo é campo de TOPO da empresa (não fica dentro de `configuracao`) —
     // o painel precisa dele pra saber que é oficial (ex.: mostrar "Disparo em massa").
     configuracao.whatsappTipo = req.empresaLogin.whatsappTipo || 'zapi';
+    // Monitor de entrega (Oficial) — avisa o próprio cliente se a maioria das
+    // mensagens está falhando agora (cobrança travada, template pausado etc.).
+    configuracao.entregaMonitor = req.empresaLogin.entregaMonitor || null;
     // Templates oficiais: expõe os 4 pro painel/CRM. Prefere o que já está na
     // `configuracao` (salvo no CRM, junto da mensagem); senão cai pro campo de
     // topo (salvo no painel novo). Assim os dois lugares editam o mesmo template.
@@ -7751,6 +7754,7 @@ app.get('/admin/empresas', exigirAdmin, async (req, res) => {
         zapiClientToken: data.zapiClientToken || null,
         whatsappProvisionado: !!(data.zapiInstanceId && data.zapiToken),
         whatsappMonitor: data.whatsappMonitor || null,
+        entregaMonitor: data.entregaMonitor || null,
         whatsappTipo: data.whatsappTipo || 'zapi',
         assinatura: data.assinatura || null,
         ofertasHabilitado: !!data.ofertasHabilitado,
@@ -9006,6 +9010,66 @@ function iniciarMonitorConexoes() {
 }
 
 // ============================================================
+// MONITOR DE ENTREGA (API Oficial) — o monitor acima só cobre Z-API (conexão
+// do celular). No Oficial a entrega pode parar por outro motivo (cobrança de
+// threshold travada, template pausado/recusado) SEM nenhuma queda de conexão
+// pra detectar. Aqui a gente olha o resultado de verdade: se a maioria das
+// mensagens saindo agora está voltando 'falhou', avisa — em vez de só
+// descobrir quando alguém testar na mão ou um cliente reclamar.
+// ============================================================
+const JANELA_MONITOR_ENTREGA_MS = 30 * 60 * 1000; // últimos 30min
+async function checarEntregaOficial(empresaId) {
+  const cutoff = new Date(Date.now() - JANELA_MONITOR_ENTREGA_MS).toISOString();
+  // Só filtros de igualdade (empresaId, direcao) — não precisa de índice composto,
+  // igual já é feito em outros pontos do código. O corte por tempo/status é em JS.
+  const snap = await MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'out').get();
+  let total = 0, falhas = 0;
+  snap.forEach(doc => {
+    const d = doc.data();
+    if (!d.criadoEm || d.criadoEm < cutoff) return;
+    if (!d.status) return; // ainda sem status resolvido (webhook pode demorar) — ignora
+    total++;
+    if (d.status === 'falhou') falhas++;
+  });
+  return { total, falhas };
+}
+async function monitorarEntregaOficial() {
+  if (!db) return;
+  try {
+    const snap = await EMPRESAS_COL().get();
+    for (const doc of snap.docs) {
+      const empresa = { id: doc.id, ...doc.data() };
+      if (empresa.whatsappTipo !== 'oficial') continue;
+      let contagem;
+      try { contagem = await checarEntregaOficial(empresa.id); }
+      catch (e) { console.error(`[MONITOR-ENTREGA] erro ao checar ${empresa.id}:`, e.message); continue; }
+      const { total, falhas } = contagem;
+      // Exige um mínimo de volume (evita alarme falso com 1 mensagem isolada
+      // que falhou por sorte) E maioria falhando — sintoma de algo sistêmico
+      // (cobrança travada, template pausado), não de 1 número queimado.
+      const emAlerta = total >= 3 && (falhas / total) >= 0.6;
+      const agora = new Date().toISOString();
+      const atual = empresa.entregaMonitor || {};
+      const jaEstavaEmAlerta = !!atual.ativo;
+      const patch = { ativo: emAlerta, total, falhas, checadoEm: agora };
+      if (emAlerta && !jaEstavaEmAlerta) {
+        patch.desde = agora;
+        console.warn(`[MONITOR-ENTREGA] ${empresa.nome || empresa.id}: ${falhas}/${total} mensagens falharam nos últimos 30min`);
+      } else if (emAlerta) {
+        patch.desde = atual.desde || agora;
+      } else {
+        patch.desde = null;
+      }
+      await EMPRESAS_COL().doc(empresa.id).set({ entregaMonitor: patch }, { merge: true });
+    }
+  } catch (e) { console.error('[MONITOR-ENTREGA] erro geral:', e.message); }
+}
+function iniciarMonitorEntregaOficial() {
+  setTimeout(monitorarEntregaOficial, 45000); // 1ª checagem 45s após subir
+  setInterval(monitorarEntregaOficial, 15 * 60 * 1000).unref?.(); // depois, de 15 em 15 min
+}
+
+// ============================================================
 // INICIALIZAÇÃO DO SERVIDOR
 // ============================================================
 
@@ -9018,6 +9082,8 @@ app.listen(PORT, () => {
   iniciarExecutorAgendamentos();
   iniciarMonitorConexoes();
   console.log('Monitor de conexão iniciado (checagem a cada 5 min)');
+  iniciarMonitorEntregaOficial();
+  console.log('Monitor de entrega (Oficial) iniciado (checagem a cada 15 min)');
   // Agenda de Marketing: checa de hora em hora quem está no ciclo de reenvio.
   setInterval(processarAgendaMarketing, 60 * 60 * 1000).unref?.();
   processarAgendaMarketing();

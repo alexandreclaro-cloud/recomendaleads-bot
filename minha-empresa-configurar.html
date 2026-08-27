@@ -95,6 +95,9 @@
     <div id="conteudo" style="display:none">
 
       <section class="view active fade-in" id="view-overview">
+        <div id="entregaAlertaBox" style="display:none;margin-bottom:16px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:10px;padding:12px 14px;font-size:0.88rem;">
+          ⚠️ <b>A entrega de mensagens está falhando agora.</b> <span id="entregaAlertaTexto"></span> Confere em Meta Business → Cobrança e pagamentos → Contas do WhatsApp Business se tem algum saldo pendente, ou se algum template foi pausado.
+        </div>
         <div class="grid grid-metrics" style="margin-bottom:18px">
           <a class="metric-card metric-action" href="/conversas">
             <div class="m-label"><i data-lucide="message-circle"></i> Conversas</div>
@@ -1370,6 +1373,19 @@ async function carregarConfiguracao() {
     if (!MEU_OFERTA_ID && configuracaoAtual && configuracaoAtual.whatsappTipo === 'oficial') {
       const navD = document.querySelector('#nav .nav-item[data-section="disparo"]');
       if (navD) navD.style.display = '';
+    }
+    // Monitor de entrega (Oficial) — checagem em background a cada 15min avisa
+    // aqui se a maioria das mensagens está falhando agora (cobrança travada,
+    // template pausado etc.), em vez de só descobrir testando na mão.
+    const em = configuracaoAtual && configuracaoAtual.entregaMonitor;
+    const entregaBox = document.getElementById('entregaAlertaBox');
+    if (entregaBox) {
+      if (em && em.ativo) {
+        document.getElementById('entregaAlertaTexto').textContent = `${em.falhas} de ${em.total} mensagens falharam nos últimos 30 minutos.`;
+        entregaBox.style.display = 'block';
+      } else {
+        entregaBox.style.display = 'none';
+      }
     }
     loadMsg.style.display = 'none';
     document.getElementById('conteudo').style.display = 'block';

@@ -624,16 +624,32 @@ function statusWhatsappPill(e) {
   const desde = m.caiuEm ? ` ${tempoDesde(m.caiuEm)}` : '';
   return `<span class="pill" style="background:#FEE2E2;color:#B91C1C;border-color:#FCA5A5">🔴 Caiu${desde}</span>`;
 }
-// Banner de alerta no topo quando algum cliente Z-API está offline.
+// Banner de alerta no topo quando algum cliente Z-API está offline OU (Oficial)
+// com a maioria das mensagens falhando agora (cobrança travada, template
+// pausado etc. — o monitor de conexão normal não cobre Oficial, que não tem
+// "conexão de celular" pra cair).
 function renderAlertaConexao() {
   const box = document.getElementById('alertaConexao');
   if (!box) return;
+  const partes = [];
+
   const caidos = (empresas || []).filter(e => e.whatsappProvisionado && e.whatsappTipo !== 'oficial' && e.whatsappMonitor && e.whatsappMonitor.conectado === false);
-  if (!caidos.length) { box.innerHTML = ''; return; }
-  const nomes = caidos.map(e => `<b>${esc(e.nome) || 'Cliente'}</b>${e.whatsappMonitor.caiuEm ? ` <span style="opacity:.75">(${tempoDesde(e.whatsappMonitor.caiuEm)})</span>` : ''}`).join(' · ');
-  box.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;border-radius:12px;padding:12px 16px;font-size:0.92rem;">
-    🔴 <b>${caidos.length} cliente(s) com WhatsApp CAÍDO</b> — precisa reconectar: ${nomes}
-  </div>`;
+  if (caidos.length) {
+    const nomes = caidos.map(e => `<b>${esc(e.nome) || 'Cliente'}</b>${e.whatsappMonitor.caiuEm ? ` <span style="opacity:.75">(${tempoDesde(e.whatsappMonitor.caiuEm)})</span>` : ''}`).join(' · ');
+    partes.push(`<div style="background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;border-radius:12px;padding:12px 16px;font-size:0.92rem;">
+      🔴 <b>${caidos.length} cliente(s) com WhatsApp CAÍDO</b> — precisa reconectar: ${nomes}
+    </div>`);
+  }
+
+  const comFalhaEntrega = (empresas || []).filter(e => e.entregaMonitor && e.entregaMonitor.ativo);
+  if (comFalhaEntrega.length) {
+    const nomes = comFalhaEntrega.map(e => `<b>${esc(e.nome) || 'Cliente'}</b> (${e.entregaMonitor.falhas}/${e.entregaMonitor.total} falhando${e.entregaMonitor.desde ? `, ${tempoDesde(e.entregaMonitor.desde)}` : ''})`).join(' · ');
+    partes.push(`<div style="background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;border-radius:12px;padding:12px 16px;font-size:0.92rem;">
+      ⚠️ <b>${comFalhaEntrega.length} cliente(s) Oficial com entrega falhando</b> — checa cobrança/template: ${nomes}
+    </div>`);
+  }
+
+  box.innerHTML = partes.join('<div style="height:8px;"></div>');
 }
 
 function inp(id, val, ph) { return `<div class="campo"><input class="input" id="${id}" value="${esc(val)}" placeholder="${ph || ''}"></div>`; }
