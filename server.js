@@ -1683,7 +1683,13 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
       template: { name: templateName, language: { code: lang }, components }
     }, { headers: metaHeaders(cfg) });
     console.log(`[TEMPLATE ENVIADO/oficial] ${templateName} → ${phone}`);
-    registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: `[template: ${templateName}]`, messageId: idMensagemMeta(r), campanhaId: opts.campanhaId || null });
+    // Guarda o texto REAL (corpo do template com as variáveis já substituídas),
+    // não só "[template: nome]" — antes disso, quem olhava Conversas via só o
+    // nome do template, sem saber o que a pessoa recebeu de fato.
+    const textoReal = (info && info.texto)
+      ? bodyParams.reduce((acc, val, i) => acc.replace(new RegExp(`\\{\\{\\s*${i + 1}\\s*\\}\\}`, 'g'), String(val)), info.texto)
+      : `[template: ${templateName}]`;
+    registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: textoReal, messageId: idMensagemMeta(r), campanhaId: opts.campanhaId || null });
     return true;
   } catch (err) {
     console.error('Erro ao enviar template (Oficial):', err.response?.data || err.message);
@@ -2208,7 +2214,7 @@ async function getTemplateInfo(oficial, templateName) {
     // botão de teste mandava sempre 'pt_BR' fixo, então testar um template que
     // não é português (ex.: o hello_world de amostra) sempre dava "does not
     // exist in pt_BR", mesmo o template existindo — só existia noutro idioma.
-    const info = { n, categoria, idioma: tpl.language || 'pt_BR' };
+    const info = { n, categoria, idioma: tpl.language || 'pt_BR', texto: txt };
     _templateInfoCache[key] = { info, em: Date.now() };
     console.log(`[TEMPLATE-INFO] ${templateName}: ${n} variável(is), categoria=${categoria}`);
     return info;
