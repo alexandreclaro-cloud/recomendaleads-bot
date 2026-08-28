@@ -716,24 +716,22 @@ function aplicarOferta(empresa, ofertaId) {
 // ativa (ex.: "quero meu bônus" = loja 2), (3) só existe 1 oferta ativa. Com 2+
 // ofertas ativas e nenhum sinal, devolve null — fica pra Fase 2b (menu).
 function resolverOfertaSilenciosa(empresa, texto, ofertaIdConhecida) {
-  // LOG TEMPORÁRIO — investigando por que uma oferta ativa com frase-gatilho
-  // configurada não estava sendo escolhida (2026-08-27). Remover depois.
-  console.log('[OFERTA-DEBUG]', JSON.stringify({
-    ofertaIdConhecida: ofertaIdConhecida || null,
-    ofertasHabilitado: !!(empresa && empresa.ofertasHabilitado),
-    texto: texto || null,
-    ofertas: empresa && empresa.ofertas ? Object.entries(empresa.ofertas).map(([id, o]) => ({
-      id, nome: o && o.nomeOferta, ativa: !!(o && o.ativa), gatilho: o && o.gatilhoPresente
-    })) : null
-  }));
   if (ofertaIdConhecida) return ofertaIdConhecida;
   if (!empresa || !empresa.ofertasHabilitado || !empresa.ofertas) return null;
   const ativas = Object.entries(empresa.ofertas).filter(([, o]) => o && o.ativa);
   if (!ativas.length) return null;
   if (texto) {
     const t = String(texto).toLowerCase();
-    const porGatilho = ativas.find(([, o]) => o.gatilhoPresente && t.includes(String(o.gatilhoPresente).toLowerCase()));
-    if (porGatilho) return porGatilho[0];
+    // Pega TODOS os gatilhos que batem, não só o primeiro — quando um gatilho é
+    // pedaço de outro (ex.: "quero o presente" dentro de "quero o presente
+    // agora"), o primeiro da lista vencia por sorte de ordem, mesmo quando outra
+    // oferta tinha o gatilho mais específico e batia igual. Desempate: o gatilho
+    // MAIS LONGO (mais específico) ganha.
+    const candidatos = ativas.filter(([, o]) => o.gatilhoPresente && t.includes(String(o.gatilhoPresente).toLowerCase()));
+    if (candidatos.length) {
+      candidatos.sort((a, b) => String(b[1].gatilhoPresente).length - String(a[1].gatilhoPresente).length);
+      return candidatos[0][0];
+    }
   }
   // NÃO auto-seleciona a oferta quando só existe 1 alternativa ativa e a frase
   // não bateu com o gatilho específico dela — Padrão continua sendo uma opção
