@@ -716,6 +716,16 @@ function aplicarOferta(empresa, ofertaId) {
 // ativa (ex.: "quero meu bônus" = loja 2), (3) só existe 1 oferta ativa. Com 2+
 // ofertas ativas e nenhum sinal, devolve null — fica pra Fase 2b (menu).
 function resolverOfertaSilenciosa(empresa, texto, ofertaIdConhecida) {
+  // LOG TEMPORÁRIO — investigando por que uma oferta ativa com frase-gatilho
+  // configurada não estava sendo escolhida (2026-08-27). Remover depois.
+  console.log('[OFERTA-DEBUG]', JSON.stringify({
+    ofertaIdConhecida: ofertaIdConhecida || null,
+    ofertasHabilitado: !!(empresa && empresa.ofertasHabilitado),
+    texto: texto || null,
+    ofertas: empresa && empresa.ofertas ? Object.entries(empresa.ofertas).map(([id, o]) => ({
+      id, nome: o && o.nomeOferta, ativa: !!(o && o.ativa), gatilho: o && o.gatilhoPresente
+    })) : null
+  }));
   if (ofertaIdConhecida) return ofertaIdConhecida;
   if (!empresa || !empresa.ofertasHabilitado || !empresa.ofertas) return null;
   const ativas = Object.entries(empresa.ofertas).filter(([, o]) => o && o.ativa);
