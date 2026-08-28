@@ -1035,13 +1035,21 @@ const EMPRESA_PADRAO = {
 // Campos de OPERAÇÃO/CONEXÃO da empresa — nunca entram dentro de uma oferta,
 // continuam soltos em `configuracao` de topo (compartilhados entre ofertas).
 const CAMPOS_OPERACAO_EMPRESA = new Set([
-  'nome', 'vendedores', 'numeroWhatsapp', 'numeroAtendente', 'linkAgendamento',
+  'vendedores', 'numeroWhatsapp', 'numeroAtendente', 'linkAgendamento',
   'diasFechados', 'enderecoEmpresa', 'horariosEmpresa',
   'infoAtendimentoAtivo', 'infoEndereco', 'infoHorario', 'infoSite', 'infoInstagram',
   'infoTelefone', 'infoEmail', 'infoOutras',
   'recomendadoGapMinMin', 'recomendadoGapMaxMin', 'humanizarDigitacao', 'humanizarMaxSeg',
   'intervaloProximaFaixaMin', 'avisarConfirmDelayMin', 'menuAposReacaoMin',
   'modoRecomendacao', 'nichos', 'numeroConectado', 'numeroDemo', 'mensagemEscolhaOferta'
+  // 'nome' SAIU daqui de propósito — cada oferta (lançamento) roda com nome
+  // próprio (usa a variável {empresa} nas mensagens), não é um dado da empresa
+  // como um todo. Bug real: editar o nome numa oferta mudava em todas, porque
+  // esse campo caía do lado "compartilhado" por engano. Agora vai junto dos
+  // campos de PRODUTO (CAMPOS_PRODUTO_OFERTA, abaixo) — cada oferta guarda o
+  // seu; a oferta marcada "padrão" (ofertaAtivaPadrao) continua espelhando pro
+  // topo, que é o que o robô lê quando ainda não sabe qual oferta é (ver
+  // POST /minha-config, linha do Object.assign com ofertaAtivaPadrao).
 ]);
 // Campos de PRODUTO — tudo que descreve o lançamento em si (mensagens, prêmios,
 // cadências, Kanban, script de vendas, templates da Meta). Vive dentro de cada oferta.
