@@ -330,6 +330,17 @@ function horaCurta(iso) {
   return mesmaData ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                    : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
+// Timestamp de cada BOLHA de mensagem — diferente da lista de conversas
+// (horaCurta, que só mostra data OU hora): aqui sempre mostra a hora, e a
+// data junto quando não for hoje. Sem isso, mensagens de dias antigos só
+// mostravam "24/08" sem nenhum horário, difícil saber a ordem/hora exata.
+function horaCompleta(iso) {
+  if (!iso) return '';
+  const d = new Date(iso), hoje = new Date();
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const mesmaData = d.toDateString() === hoje.toDateString();
+  return mesmaData ? hora : `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${hora}`;
+}
 function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
 // Bolha com mídia (imagem/áudio/vídeo/documento) quando a mensagem tiver midiaUrl;
@@ -631,7 +642,7 @@ async function carregarMensagens(scroll) {
     const msgs = document.getElementById('msgs');
     const estavaNoFim = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
     msgs.innerHTML = (data.mensagens || []).map(m => `
-      <div class="bubble ${m.direcao === 'out' ? 'out' : 'in'}">${renderConteudoMsg(m)}<small>${horaCurta(m.criadoEm)}${ticksMsg(m)}</small></div>
+      <div class="bubble ${m.direcao === 'out' ? 'out' : 'in'}">${renderConteudoMsg(m)}<small>${horaCompleta(m.criadoEm)}${ticksMsg(m)}</small></div>
     `).join('') || '<div class="chat-empty">Nenhuma mensagem ainda.</div>';
     if (scroll || estavaNoFim) msgs.scrollTop = msgs.scrollHeight;
   } catch (e) {}
