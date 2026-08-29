@@ -5848,7 +5848,8 @@ app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilit
     }
     let lista = Object.entries(config.ofertas).map(([id, o]) => ({
       id, nome: o.nomeOferta || id, ativa: !!o.ativa, criadoEm: o.criadoEm || null,
-      padrao: id === config.ofertaAtivaPadrao, acessoLiberado: !!o.acessoLiberado
+      padrao: id === config.ofertaAtivaPadrao, acessoLiberado: !!o.acessoLiberado,
+      modelo: id === config.ofertaModeloId
     })).sort((a, b) => (a.criadoEm || '').localeCompare(b.criadoEm || ''));
     // Rede de lojas: gestor de loja só enxerga a própria — nunca a lista da rede toda.
     if (req.usuario && req.usuario.ofertaId) lista = lista.filter(o => o.id === req.usuario.ofertaId);
@@ -5858,8 +5859,12 @@ app.get('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilit
   }
 });
 
-// Cria uma oferta nova, vazia (defaults de fábrica do EMPRESA_PADRAO — não copia
-// nada de nenhuma oferta existente). Não mexe em qual é a `ofertaAtivaPadrao`.
+// Cria uma oferta nova. Se houver uma oferta marcada como MODELO
+// (config.ofertaModeloId), a nova já nasce copiando os campos de PRODUTO dela
+// (mensagens, prêmios, cadências, templates) — só os dados administrativos
+// (nome, ativa, datas) são sempre novos, nunca copiados. Sem modelo marcado,
+// nasce vazia (defaults de fábrica do EMPRESA_PADRAO), como sempre foi. Não
+// mexe em qual é a `ofertaAtivaPadrao`.
 app.post('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabilitado, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const nome = String((req.body && req.body.nome) || '').trim();
@@ -5870,9 +5875,17 @@ app.post('/minha-ofertas', exigirLoginEmpresa, exigirGestor, exigirOfertasHabili
     if (duplicado) return res.status(400).json({ ok: false, erro: 'Já existe uma oferta com esse nome.' });
     const id = gerarIdOferta(nome);
     const agora = new Date().toISOString();
-    config.ofertas[id] = { nomeOferta: nome, ativa: true, criadoEm: agora, atualizadoEm: agora };
+    const modeloId = config.ofertaModeloId;
+    const modelo = modeloId && config.ofertas[modeloId];
+    const camposModelo = {};
+    if (modelo) {
+      for (const k of CAMPOS_PRODUTO_OFERTA) {
+        if (modelo[k] !== undefined) camposModelo[k] = modelo[k];
+      }
+    }
+    config.ofertas[id] = { ...camposModelo, nomeOferta: nome, ativa: true, criadoEm: agora, atualizadoEm: agora };
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
-    res.status(201).json({ ok: true, id, nome, ativa: true, criadoEm: agora, padrao: false });
+    res.status(201).json({ ok: true, id, nome, ativa: true, criadoEm: agora, padrao: false, copiadoDeModelo: !!modelo });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -5887,7 +5900,7 @@ app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasH
     const config = req.empresaLogin.configuracao || {};
     const ofertas = config.ofertas || {};
     if (!ofertas[id]) return res.status(404).json({ ok: false, erro: 'Oferta não encontrada.' });
-    const { nome, ativa, acessoLiberado } = req.body || {};
+    const { nome, ativa, acessoLiberado, modelo } = req.body || {};
     const atualizacoes = {};
     // Rede de lojas: só a matriz (sem ofertaId) pode liberar/suspender o acesso
     // de uma loja — mesmo que exigirEscopoOferta deixe o gestor da própria loja
@@ -5897,6 +5910,16 @@ app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasH
         return res.status(403).json({ ok: false, erro: 'Só a matriz pode liberar/suspender o acesso de uma loja.' });
       }
       atualizacoes.acessoLiberado = !!acessoLiberado;
+    }
+    // Marca (ou desmarca) essa oferta como MODELO — a partir daí, toda oferta
+    // nova criada já nasce com os textos/prêmios/cadências dela em vez de
+    // vazia. Só uma por vez; só a matriz decide (afeta todos os clientes
+    // novos, não só a própria loja).
+    if (modelo !== undefined) {
+      if (req.usuario && req.usuario.ofertaId) {
+        return res.status(403).json({ ok: false, erro: 'Só a matriz pode marcar uma oferta como modelo.' });
+      }
+      config.ofertaModeloId = modelo ? id : (config.ofertaModeloId === id ? null : config.ofertaModeloId);
     }
     if (nome !== undefined) {
       const nomeLimpo = String(nome).trim();
@@ -5919,7 +5942,7 @@ app.patch('/minha-ofertas/:id', exigirLoginEmpresa, exigirGestor, exigirOfertasH
     ofertas[id] = { ...ofertas[id], ...atualizacoes };
     config.ofertas = ofertas;
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
-    res.json({ ok: true, oferta: { id, nome: ofertas[id].nomeOferta, ativa: !!ofertas[id].ativa, criadoEm: ofertas[id].criadoEm, padrao: id === config.ofertaAtivaPadrao, acessoLiberado: !!ofertas[id].acessoLiberado } });
+    res.json({ ok: true, oferta: { id, nome: ofertas[id].nomeOferta, ativa: !!ofertas[id].ativa, criadoEm: ofertas[id].criadoEm, padrao: id === config.ofertaAtivaPadrao, acessoLiberado: !!ofertas[id].acessoLiberado, modelo: config.ofertaModeloId === id } });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

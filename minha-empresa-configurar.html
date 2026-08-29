@@ -2627,14 +2627,16 @@ function renderOfertas() {
     const badgeAtiva = !o.ativa ? ' <span class="badge">Inativa</span>' : '';
     // Acesso da loja (login próprio) — só a matriz libera/suspende.
     const badgeAcesso = o.acessoLiberado ? ' <span class="badge badge-success">🔓 Acesso liberado</span>' : ' <span class="badge">🔒 Acesso suspenso</span>';
+    const badgeModelo = o.modelo ? ' <span class="badge badge-success">⭐ Modelo p/ novas ofertas</span>' : '';
     const criada = o.criadoEm ? new Date(o.criadoEm).toLocaleDateString('pt-BR') : '—';
     const acoes = [
       `<a class="btn btn-action" href="/crm?oferta=${encodeURIComponent(o.id)}#config" style="padding:6px 10px;font-size:0.78rem;text-decoration:none;">✏️ Editar conteúdo</a>`,
       `<button class="btn btn-secondary" data-acao="renomear" data-id="${o.id}" data-nome="${escapeHtml(o.nome)}" style="padding:6px 10px;font-size:0.78rem">Renomear</button>`
     ];
     // Só a matriz vê/mexe nisso — gestor de loja não pode liberar a própria conta,
-    // nem desativar/remover a própria loja ou criar outras.
+    // nem desativar/remover a própria loja, criar outras, ou escolher o modelo.
     if (!MEU_OFERTA_ID) {
+      acoes.push(`<button class="btn btn-secondary" data-acao="${o.modelo ? 'desmarcar-modelo' : 'marcar-modelo'}" data-id="${o.id}" style="padding:6px 10px;font-size:0.78rem">${o.modelo ? '⭐ Modelo (clique pra tirar)' : '☆ Usar como modelo'}</button>`);
       acoes.push(`<button class="btn btn-secondary" data-acao="${o.acessoLiberado ? 'suspender' : 'liberar'}" data-id="${o.id}" style="padding:6px 10px;font-size:0.78rem">${o.acessoLiberado ? 'Suspender acesso' : 'Liberar acesso'}</button>`);
       if (!o.padrao) {
         acoes.push(`<button class="btn btn-secondary" data-acao="${o.ativa ? 'desativar' : 'ativar'}" data-id="${o.id}" style="padding:6px 10px;font-size:0.78rem">${o.ativa ? 'Desativar' : 'Ativar'}</button>`);
@@ -2642,7 +2644,7 @@ function renderOfertas() {
       }
     }
     return `<div class="user-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)">
-      <div><b>${escapeHtml(o.nome)}</b>${badgePadrao}${badgeAtiva}${badgeAcesso}<br><small style="color:var(--text-dim)">Criada em ${criada}</small></div>
+      <div><b>${escapeHtml(o.nome)}</b>${badgePadrao}${badgeAtiva}${badgeAcesso}${badgeModelo}<br><small style="color:var(--text-dim)">Criada em ${criada}</small></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${acoes.join('')}</div>
     </div>`;
   }).join('');
@@ -2669,6 +2671,10 @@ async function acaoOferta(e) {
       const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acessoLiberado: acao === 'liberar' }) });
       const data = await resp.json();
       if (!resp.ok || !data.ok) return alert(data.erro || 'Não foi possível alterar o acesso.');
+    } else if (acao === 'marcar-modelo' || acao === 'desmarcar-modelo') {
+      const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modelo: acao === 'marcar-modelo' }) });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) return alert(data.erro || 'Não foi possível alterar o modelo.');
     } else if (acao === 'remover') {
       if (!confirm(`Remover a oferta "${btn.dataset.nome}"? Essa ação não pode ser desfeita.`)) return;
       const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas/${id}`, { method: 'DELETE' });
@@ -2687,7 +2693,7 @@ document.getElementById('criarOfertaBtn').addEventListener('click', async () => 
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-ofertas`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome }) });
     const data = await resp.json();
-    if (resp.ok && data.ok) { inp.value = ''; st.textContent = '✅ Oferta criada!'; st.className = 'status-msg ok'; carregarOfertas(); }
+    if (resp.ok && data.ok) { inp.value = ''; st.textContent = data.copiadoDeModelo ? '✅ Oferta criada, já copiando o modelo!' : '✅ Oferta criada!'; st.className = 'status-msg ok'; carregarOfertas(); }
     else { st.textContent = '❌ ' + (data.erro || 'Erro ao criar oferta'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
   finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
