@@ -761,6 +761,12 @@ function respostaEhNegativa(texto) {
   // Só considera negativo se for exatamente "não"/"nao" sozinho,
   // ou se contiver frases explicitamente negativas
   if (normalizado === 'não' || normalizado === 'nao') return true;
+  // Qualquer resposta que COMEÇA negando ("não posso", "não consigo agora",
+  // "não dá"...) — sem isso, um botão de template tipo "Não posso, obrigado"
+  // caía como POSITIVO em respostaEhPositiva (que casa a palavra "posso" solta),
+  // porque essa função é checada primeiro. Isso tem que vir antes desse checagem
+  // de substring, senão nunca é alcançado.
+  if (/^(não|nao)\b/.test(normalizado)) return true;
   return ['não quero', 'nao quero', 'não tenho interesse', 'nao tenho interesse',
     'para de mandar', 'me tira', 'não conheço', 'nao conheco',
     'não me interessa', 'nao me interessa', 'bloquear', 'spam'
@@ -3611,16 +3617,19 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       await sendText(telefone, respostaObjecao);
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
+    } else if (respostaEhNegativa(texto)) {
+      // Recusa explícita ("não", "não quero", "para", "não posso"): faz um convite
+      // gentil + follow-up, sem forçar o presente. Checado ANTES da positiva de
+      // propósito — "não posso, obrigado" (texto de um botão de template) contém a
+      // palavra solta "posso", que por si só já casa como positiva; sem essa ordem,
+      // uma recusa clara nunca chegaria a ser tratada como recusa.
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      await sendText(telefone, substituirVariaveis(empresa.mensagemAguardandoConfirmacao || 'Sem problema 😊 É rapidinho e sem compromisso — posso te mostrar o presente que prepararam pra você? 🎁', variaveis));
+      await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
     } else if (respostaEhPositiva(texto)) {
       // Resposta positiva — envia prêmio imediatamente.
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
-    } else if (respostaEhNegativa(texto)) {
-      // Recusa explícita ("não", "não quero", "para"): faz um convite gentil + follow-up,
-      // sem forçar o presente.
-      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-      await sendText(telefone, substituirVariaveis(empresa.mensagemAguardandoConfirmacao || 'Sem problema 😊 É rapidinho e sem compromisso — posso te mostrar o presente que prepararam pra você? 🎁', variaveis));
-      await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
     } else {
       // Qualquer outra resposta (a pessoa respondeu = está engajada): NÃO fica perguntando,
       // entrega o presente direto. Isso evita o loop de "não entendi".
