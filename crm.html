@@ -1076,6 +1076,11 @@
           </div>
           <label>Confirmação do agendamento (use {dia} e {periodo})</label>
           <textarea id="posConfirmacaoInput" rows="5"></textarea>
+          <label style="display:flex; align-items:center; gap:10px; margin:14px 0; cursor:pointer;">
+            <input type="checkbox" id="avisoAgendamentoInput" style="width:18px; height:18px;">
+            <span style="font-weight:600;">🔔 Avisar no WhatsApp quando alguém agendar</span>
+          </label>
+          <p style="color:var(--text-dim);font-size:0.8rem;margin:-8px 0 8px;">Manda um aviso pro número configurado logo abaixo (🔔 Avisar atendente), assim que o agendamento for confirmado — com o dia/período e link direto pra conversa.</p>
           <label>Checagem ~3 min depois ("conseguiu confirmar?")</label>
           <textarea id="posConfirmacaoCheckInput" rows="2"></textarea>
 
@@ -2612,6 +2617,7 @@ async function carregarConfiguracao() {
     document.getElementById('infoAtivo').checked = !!configuracaoAtual.infoAtendimentoAtivo;
     ['Endereco','Horario','Site','Instagram','Telefone','Email','Outras'].forEach(k => { const el = document.getElementById('info'+k); if (el) el.value = configuracaoAtual['info'+k] || ''; });
     document.getElementById('posConfirmacaoInput').value = configuracaoAtual.posConfirmacaoAgendamento || '';
+    document.getElementById('avisoAgendamentoInput').checked = !!configuracaoAtual.avisoAgendamentoAtivo;
     document.getElementById('posConfirmacaoCheckInput').value = configuracaoAtual.posConfirmacaoCheck || '';
     document.getElementById('posMenuDepoisInput').value = configuracaoAtual.posMenuDepois || '';
     document.getElementById('posLembreteInput').value = configuracaoAtual.posLembrete || '';
@@ -2979,6 +2985,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const posPerguntaDia = document.getElementById('posPerguntaDiaInput').value.trim() || null;
   const diasFechados = [...document.querySelectorAll('.dia-fechado')].filter(cb => cb.checked).map(cb => Number(cb.value));
   const posConfirmacaoAgendamento = document.getElementById('posConfirmacaoInput').value.trim() || null;
+  const avisoAgendamentoAtivo = document.getElementById('avisoAgendamentoInput').checked;
   const posConfirmacaoCheck = document.getElementById('posConfirmacaoCheckInput').value.trim() || null;
   const posMenuDepois = document.getElementById('posMenuDepoisInput').value.trim() || null;
   const posLembrete = document.getElementById('posLembreteInput').value.trim() || null;
@@ -3008,7 +3015,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
       body: JSON.stringify({
         mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
-        posConfirmacaoAgendamento, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
+        posConfirmacaoAgendamento, avisoAgendamentoAtivo, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         faqComoFunciona, faqValidade, posAtendente, numeroAtendente,
         oficialTemplateRecomendado, recomendadoAtendimentoHumano, recomendadoHumanoMensagem,
         recomendadoAtendimentoHumanoQuando, recomendadoPerguntaChave

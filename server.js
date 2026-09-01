@@ -978,6 +978,9 @@ const EMPRESA_PADRAO = {
   // Esses dias não aparecem na lista de agendamento. Padrão: atende todos.
   diasFechados: [],
   posConfirmacaoAgendamento: `🎉 *Tudo certo!*\n\nSua visita foi reservada:\n📅 {dia} — período da {periodo}\n\nNossa equipe vai confirmar com você pertinho do dia. Vai ser um prazer te receber! 😊`,
+  // Além de mandar a confirmação pro cliente, avisa o atendente/dono no WhatsApp
+  // (mesmo número de 'numeroAtendente') que um agendamento acabou de entrar. Default OFF.
+  avisoAgendamentoAtivo: false,
   posConfirmacaoCheck: 'Oi {nomeRecomendado}! 😊 Conseguiu confirmar seu agendamento? Se ficou alguma dúvida, é só me chamar aqui 👍',
   posMenuDepois: `Sem problemas! 😊 Seu presente continua reservado pra você.\n\nComo prefere fazer?\n\n🟢 *1* — Deixar uma data reservada\n🟡 *2* — Receber um lembrete depois\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
   posLembrete: 'Perfeito! 😊 Vamos te lembrar no momento certo de aproveitar seu presente. Até breve! 👋',
@@ -1454,6 +1457,23 @@ async function avisarAtendente(telefone, nomePessoa, empresa) {
     const msg = `🔔 *Atendimento humano solicitado*\n\n${nome} pediu pra falar com um atendente${empresa.nome ? ` na ${empresa.nome}` : ''}.\n\n👉 Responda pelo sistema (abre direto na conversa):\n${link}`;
     await enviarSemLog(numAt, msg);
   }
+}
+
+// Avisa o atendente/dono no WhatsApp quando um agendamento é confirmado
+// (mesmo número/atendente oficial usado em avisarAtendente). Default OFF —
+// só dispara se a empresa/oferta ligar 'avisoAgendamentoAtivo'.
+async function avisarAgendamento(telefone, sessao, empresa, diaLabel, periodoLabel) {
+  if (!empresa.avisoAgendamentoAtivo) return;
+  try {
+    const numAt = await getNumeroAvisoAtendente(empresa);
+    if (!numAt) return;
+    const nome = (sessao && sessao.nomeRecomendado ? sessao.nomeRecomendado.split(' ')[0] : null) || 'Um cliente';
+    const recomendador = sessao && sessao.nomeRecomendador ? sessao.nomeRecomendador.split(' ')[0] : null;
+    const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
+    const link = `${base}/conversas?tel=${encodeURIComponent(soDigitosTel(telefone))}`;
+    const msg = `📅 *Novo agendamento!*\n\n${nome} marcou pra *${diaLabel}* — período da *${periodoLabel}*${recomendador ? `\nVeio pela recomendação de ${recomendador}` : ''}.\n\n👉 Ver conversa:\n${link}`;
+    await enviarSemLog(numAt, msg);
+  } catch (e) { console.error('avisarAgendamento:', e.message); }
 }
 
 // ============================================================
@@ -3331,6 +3351,7 @@ async function marcarLeadRecebeuPremio(telefone, empresa) {
 async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, diaLabel) {
   const vars = { ...variaveisRec(sessao, empresa), dia: diaLabel, periodo: periodoLabel };
   await sendText(telefone, substituirVariaveis(empresa.posConfirmacaoAgendamento || EMPRESA_PADRAO.posConfirmacaoAgendamento, vars));
+  await avisarAgendamento(telefone, sessao, empresa, diaLabel, periodoLabel);
   await registrarEscolhaNoLead(telefone, {
     agendamentoPeriodo: periodoLabel,
     agendamentoDia: diaLabel,
