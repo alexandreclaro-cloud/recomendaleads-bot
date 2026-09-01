@@ -871,6 +871,8 @@ const EMPRESA_PADRAO = {
   // Frase que vai LOGO DEPOIS do textinho (opção 3), pra o cliente já saber o próximo
   // passo (responder 1) sem ter que esperar o 1º lembrete.
   basicTextoProntoConfirma: 'Encaminha este textinho acima pros seus amigos 💜\nAssim que enviar, me avisa aqui tá? 😊',
+  // Opção 1 do menu: resposta quando o cliente confirma que JÁ avisou (dispara na hora).
+  basicConfirmado: 'Perfeito! 🙌 Já estou avisando seus amigos. Muito obrigado(a)!',
   // Opção 2 do menu: resposta quando o cliente diz que ainda NÃO avisou (segue aguardando).
   basicAindaNao: 'Tranquilo, {cliente}! 😊 Sem pressa. Assim que avisar seus amigos, é só me responder *1* (ou "pode mandar") que eu chamo eles na hora 🎁',
   basicConfirmacaoCadencia: [
@@ -4135,7 +4137,7 @@ async function tratarWebhook(req, res) {
         await dispararRecomendados(s.clienteNome, s.vendedorNome, s.contatosPendentesDisparo || [], empresaC, telefone);
         await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, aguardandoIntervaloConfirmacao: false, contatosPendentesDisparo: [] });
         await cancelarConfirmacoesDisparo(telefone);
-        await sendText(telefone, 'Perfeito! 🙌 Já estou avisando seus amigos. Muito obrigado(a)!');
+        await sendText(telefone, substituirVariaveis(empresaC.basicConfirmado || EMPRESA_PADRAO.basicConfirmado, varsC));
         return res.sendStatus(200);
       }
 

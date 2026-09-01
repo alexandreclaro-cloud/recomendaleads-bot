@@ -418,6 +418,9 @@
             <p class="sub" style="margin-bottom:8px;">O cliente responde por um <b>menu</b>: <b>1</b> já avisei · <b>2</b> ainda não · <b>3</b> me manda um texto pronto.</p>
             <label class="label">Mensagem com o menu 1/2/3 <span style="font-weight:400;color:var(--text-dim)">(logo após o presente)</span></label>
             <textarea class="textarea" id="basicConfirmMsg" rows="5"></textarea>
+            <label class="label" style="margin-top:14px;">Opção 1 — resposta quando o cliente confirma que já avisou (dispara na hora)</label>
+            <textarea class="textarea" id="basicConfirmado" rows="2"></textarea>
+            <div class="hint">Pode escrever "amigas" ou "amigos" conforme seu público.</div>
             <label class="label" style="margin-top:14px;">Opção 3 — texto pronto pro cliente encaminhar pros amigos</label>
             <textarea class="textarea" id="basicTextoPronto" rows="3"></textarea>
             <label class="label" style="margin-top:14px;">Opção 3 — frase logo depois do textinho (o próximo passo)</label>
@@ -2339,6 +2342,7 @@ function carregarBasicConf() {
   document.getElementById('avisarModo').value = modo;
   // Textos: usa os do Basic; se vazio, cai nos do Follow-up (eram os mesmos).
   document.getElementById('basicConfirmMsg').value = c.basicConfirmMensagem || c.followupRecomendadorMensagem || '';
+  document.getElementById('basicConfirmado').value = c.basicConfirmado || c.followupJaAvisei || '';
   document.getElementById('basicTextoPronto').value = c.basicTextoPronto || c.followupTextoPronto || '';
   document.getElementById('basicTextoProntoConfirma').value = c.basicTextoProntoConfirma || '';
   document.getElementById('basicAindaNao').value = c.basicAindaNao || c.followupAindaNao || '';
@@ -2374,6 +2378,7 @@ document.getElementById('salvarBasicConfBtn').addEventListener('click', async ()
   const st = document.getElementById('statusBasicConf');
   const modo = document.getElementById('avisarModo').value;
   const msg = document.getElementById('basicConfirmMsg').value;
+  const confirmado = document.getElementById('basicConfirmado').value;
   const textoPronto = document.getElementById('basicTextoPronto').value;
   const textoProntoConfirma = document.getElementById('basicTextoProntoConfirma').value;
   const aindaNao = document.getElementById('basicAindaNao').value;
@@ -2385,6 +2390,8 @@ document.getElementById('salvarBasicConfBtn').addEventListener('click', async ()
     followupRecomendadorAtivo: modo === 'lembrar',
     basicConfirmMensagem: msg,
     followupRecomendadorMensagem: msg,
+    basicConfirmado: confirmado,
+    followupJaAvisei: confirmado,
     basicTextoPronto: textoPronto,
     followupTextoPronto: textoPronto,
     basicTextoProntoConfirma: textoProntoConfirma,

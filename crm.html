@@ -896,6 +896,8 @@
           <div id="crmSegurarBox" style="display:none;">
             <label>Mensagem que pede a confirmação <span style="font-weight:400;color:var(--text-dim)">(menu 1 já avisei · 2 ainda não · 3 me manda um texto pronto)</span></label>
             <textarea id="crmBasicConfirmMsg" rows="5"></textarea>
+            <label style="margin-top:12px;">Opção 1 — resposta quando o cliente confirma que já avisou (dispara na hora)</label>
+            <textarea id="crmBasicConfirmado" rows="2"></textarea>
             <label style="margin-top:12px;">Opção 3 — texto pronto pro cliente encaminhar pros amigos</label>
             <textarea id="crmBasicTextoPronto" rows="3"></textarea>
             <label style="margin-top:12px;">Opção 3 — frase logo depois do textinho (próximo passo)</label>
@@ -2771,6 +2773,7 @@ function carregarCrmSegurar() {
   const c = configuracaoAtual || {};
   document.getElementById('crmSegurarAtivo').checked = !!c.basicConfirmarAntesDisparo;
   document.getElementById('crmBasicConfirmMsg').value = c.basicConfirmMensagem || '';
+  document.getElementById('crmBasicConfirmado').value = c.basicConfirmado || c.followupJaAvisei || '';
   document.getElementById('crmBasicTextoPronto').value = c.basicTextoPronto || '';
   document.getElementById('crmBasicTextoProntoConfirma').value = c.basicTextoProntoConfirma || '';
   document.getElementById('crmBasicAindaNao').value = c.basicAindaNao || '';
@@ -2808,6 +2811,7 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   syncCrmBasicCadFromDom();
   const basicConfirmarAntesDisparo = document.getElementById('crmSegurarAtivo').checked;
   const basicConfirmMensagem = document.getElementById('crmBasicConfirmMsg').value.trim();
+  const basicConfirmado = document.getElementById('crmBasicConfirmado').value.trim();
   const basicTextoPronto = document.getElementById('crmBasicTextoPronto').value.trim();
   const basicTextoProntoConfirma = document.getElementById('crmBasicTextoProntoConfirma').value.trim();
   const basicAindaNao = document.getElementById('crmBasicAindaNao').value.trim();
@@ -2818,7 +2822,7 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta, mensagemValidarAmigo, gatilhoPresente,
-        basicConfirmarAntesDisparo, basicConfirmMensagem, basicSemConfirmacao, basicConfirmacaoCadencia,
+        basicConfirmarAntesDisparo, basicConfirmMensagem, basicConfirmado, followupJaAvisei: basicConfirmado, basicSemConfirmacao, basicConfirmacaoCadencia,
         basicTextoPronto, basicTextoProntoConfirma, basicAindaNao })
     });
     const data = await resp.json();
