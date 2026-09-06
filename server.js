@@ -1705,15 +1705,28 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
   // Sem saldo → bloqueia (não envia). Empresa sem prepagoAtivo passa livre.
   const info = await getTemplateInfo(cfg, templateName);
   const categoria = (info && info.categoria) || 'marketing';
+  // Cabeçalho com mídia (IMAGE/VIDEO/DOCUMENT) — a Meta exige uma URL em TODO
+  // envio, não fica salva no template. Sem isso a Meta recusa com "Format
+  // mismatch, expected IMAGE...". Barra ANTES de cobrar (não desconta saldo
+  // de um envio que já sabemos que vai falhar).
+  const headerFormat = info && info.headerFormat;
+  const precisaHeaderMidia = headerFormat && headerFormat !== 'TEXT' && headerFormat !== 'NONE';
+  if (precisaHeaderMidia && !opts.headerMediaUrl) {
+    console.error(`[TEMPLATE] "${templateName}" tem cabeçalho ${headerFormat} — falta a URL da imagem/mídia (headerMediaUrl). Envio NÃO feito.`);
+    return false;
+  }
   const cobranca = await cobrarEnvioOficial(empresaId, categoria);
   if (!cobranca.permitido) {
     console.warn(`[PREPAGO] envio BLOQUEADO por saldo insuficiente — empresa=${empresaId} template=${templateName} (precisa ${cobranca.valorCentavos}c, saldo ${cobranca.saldoDepois}c)`);
     return false;
   }
   try {
-    const components = bodyParams.length
-      ? [{ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) }]
-      : [];
+    const components = [];
+    if (precisaHeaderMidia) {
+      const tipoHeader = headerFormat.toLowerCase(); // image/video/document
+      components.push({ type: 'header', parameters: [{ type: tipoHeader, [tipoHeader]: { link: opts.headerMediaUrl } }] });
+    }
+    if (bodyParams.length) components.push({ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) });
     const r = await axios.post(metaMessagesUrl(cfg), {
       messaging_product: 'whatsapp', to: soDigitos(phone), type: 'template',
       template: { name: templateName, language: { code: lang }, components }
@@ -2246,11 +2259,16 @@ async function getTemplateInfo(oficial, templateName) {
     const nums = (txt.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map(m => parseInt(m.replace(/\D/g, ''), 10));
     const n = nums.length ? Math.max(...nums) : 0;
     const categoria = String(tpl.category || 'MARKETING').toLowerCase();
+    // Cabeçalho do template — se for IMAGE/VIDEO/DOCUMENT, a Meta EXIGE mandar
+    // uma URL de mídia em todo envio (não fica salva no template pra sempre).
+    // Sem isso o envio é recusado com "Format mismatch, expected IMAGE...".
+    const header = (tpl.components || []).find(c => String(c.type || '').toUpperCase() === 'HEADER');
+    const headerFormat = header ? String(header.format || 'TEXT').toUpperCase() : null;
     // Idioma real aprovado na Meta (ex.: "en_US" pro hello_world de exemplo) — o
     // botão de teste mandava sempre 'pt_BR' fixo, então testar um template que
     // não é português (ex.: o hello_world de amostra) sempre dava "does not
     // exist in pt_BR", mesmo o template existindo — só existia noutro idioma.
-    const info = { n, categoria, idioma: tpl.language || 'pt_BR', texto: txt };
+    const info = { n, categoria, idioma: tpl.language || 'pt_BR', texto: txt, headerFormat };
     _templateInfoCache[key] = { info, em: Date.now() };
     console.log(`[TEMPLATE-INFO] ${templateName}: ${n} variável(is), categoria=${categoria}`);
     return info;
@@ -5445,7 +5463,19 @@ app.post('/minha-entrega/testar', exigirLoginEmpresa, exigirGestor, async (req, 
         // pt_BR", mesmo o template existindo (só existia noutro idioma).
         const idioma = (info && info.idioma) || 'pt_BR';
         const exemplo = ['Teste', 'RecomendaLeads', 'Equipe'].slice(0, Math.min(nVars, 3));
-        const components = exemplo.length ? [{ type: 'body', parameters: exemplo.map(t => ({ type: 'text', text: t })) }] : [];
+        // Cabeçalho com mídia (imagem/vídeo/documento) — a Meta exige a URL em
+        // TODO envio, nem que seja teste. Sem isso: "Format mismatch, expected IMAGE...".
+        const headerFormat = info && info.headerFormat;
+        const headerImageUrl = String((req.body && req.body.headerImageUrl) || '').trim();
+        const components = [];
+        if (headerFormat && headerFormat !== 'TEXT' && headerFormat !== 'NONE') {
+          if (!headerImageUrl) {
+            return res.json({ ok: true, resultado: { ...out, template: tpl, aceitou: false, zapiResposta: `Esse template tem cabeçalho de ${headerFormat} — falta enviar a imagem/mídia antes de testar.` } });
+          }
+          const tipoHeader = headerFormat.toLowerCase();
+          components.push({ type: 'header', parameters: [{ type: tipoHeader, [tipoHeader]: { link: headerImageUrl } }] });
+        }
+        if (exemplo.length) components.push({ type: 'body', parameters: exemplo.map(t => ({ type: 'text', text: t })) });
         payload = { messaging_product: 'whatsapp', to: soDigitos(numero), type: 'template', template: { name: tpl, language: { code: idioma }, components } };
         out.template = tpl;
         out.idioma = idioma;
@@ -6539,7 +6569,9 @@ app.get('/minha-templates', exigirLoginEmpresa, async (req, res) => {
         const texto = (body && body.text) || '';
         const nums = (texto.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map(m => parseInt(m.replace(/\D/g, ''), 10));
         const variaveis = nums.length ? Math.max(...nums) : 0;
-        return { name: t.name, categoria: String(t.category || '').toLowerCase(), idioma: t.language || '', texto, variaveis };
+        const header = (t.components || []).find(c => String(c.type || '').toUpperCase() === 'HEADER');
+        const headerFormat = header ? String(header.format || 'TEXT').toUpperCase() : null;
+        return { name: t.name, categoria: String(t.category || '').toLowerCase(), idioma: t.language || '', texto, variaveis, headerFormat };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
     _todosTemplatesCache[cacheKey] = { templates, em: Date.now() };
@@ -8070,7 +8102,7 @@ const _disparoStatus = {};
 
 // Dispara em background e devolve na hora (campanhaId, total) — usado tanto
 // pelo disparo normal quanto pelo "redisparar pra quem não respondeu".
-async function iniciarDisparoMassa(empresa, template, contatos) {
+async function iniciarDisparoMassa(empresa, template, contatos, headerMediaUrl) {
   const agora = new Date().toISOString();
   const disparoRef = await DISPAROS_COL().add({
     empresaId: empresa.id, template, contatos, total: contatos.length,
@@ -8089,7 +8121,7 @@ async function iniciarDisparoMassa(empresa, template, contatos) {
         if (await estaDescadastrado(c.telefone)) { status.optout++; continue; }
         let ok = false;
         await tenantContext.run({ empresa, empresaId: empresa.id, oficial }, async () => {
-          ok = await sendTemplate(c.telefone, template, c.params, 'pt_BR', { campanhaId });
+          ok = await sendTemplate(c.telefone, template, c.params, 'pt_BR', { campanhaId, headerMediaUrl });
         });
         if (ok) { status.enviados++; }
         else {
@@ -8118,6 +8150,20 @@ async function iniciarDisparoMassa(empresa, template, contatos) {
   return { campanhaId, total: contatos.length };
 }
 
+// Confere ANTES de disparar se o template tem cabeçalho com mídia (imagem/vídeo/
+// documento) — a Meta exige uma URL em TODO envio, não fica salva no template.
+// Sem essa checagem, um disparo de 1000 contatos falhava um por um (cada um
+// gastando o intervalo anti-flood) só pra descobrir no fim que faltava a imagem.
+async function validarHeaderTemplate(empresa, template, headerImageUrl) {
+  const oficial = oficialDaEmpresa(empresa);
+  const info = oficial ? await getTemplateInfo(oficial, template) : null;
+  const headerFormat = info && info.headerFormat;
+  if (headerFormat && headerFormat !== 'TEXT' && headerFormat !== 'NONE' && !headerImageUrl) {
+    return `Esse template tem um cabeçalho de ${headerFormat === 'IMAGE' ? 'imagem' : headerFormat === 'VIDEO' ? 'vídeo' : 'documento'} fixo — suba o arquivo no campo "Imagem/mídia do cabeçalho" antes de disparar.`;
+  }
+  return null;
+}
+
 app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresa = await getEmpresaById(req.empresaLogin.id);
@@ -8126,6 +8172,9 @@ app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOfe
     }
     const template = String((req.body && req.body.template) || '').trim();
     if (!template) return res.status(400).json({ ok: false, erro: 'Informe o nome do template aprovado na Meta.' });
+    const headerImageUrl = String((req.body && req.body.headerImageUrl) || '').trim() || null;
+    const erroHeader = await validarHeaderTemplate(empresa, template, headerImageUrl);
+    if (erroHeader) return res.status(400).json({ ok: false, erro: erroHeader });
     let contatos = Array.isArray(req.body && req.body.contatos) ? req.body.contatos : [];
     contatos = contatos.map(c => ({
       telefone: soDigitos((c && (c.telefone || c.tel)) || ''),
@@ -8136,7 +8185,7 @@ app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOfe
     const rodando = _disparoStatus[empresa.id];
     if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
 
-    const resultado = await iniciarDisparoMassa(empresa, template, contatos);
+    const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
     res.json({ ok: true, ...resultado });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -8156,6 +8205,9 @@ app.post('/minha-leads/coluna/:etapa/disparar', exigirLoginEmpresa, exigirGestor
     }
     const template = String((req.body && req.body.template) || '').trim();
     if (!template) return res.status(400).json({ ok: false, erro: 'Informe o nome do template aprovado na Meta.' });
+    const headerImageUrl = String((req.body && req.body.headerImageUrl) || '').trim() || null;
+    const erroHeader = await validarHeaderTemplate(empresa, template, headerImageUrl);
+    if (erroHeader) return res.status(400).json({ ok: false, erro: erroHeader });
     const etapa = req.params.etapa;
 
     let leads = await getLeadsPorEmpresa(req.empresaLogin.id);
@@ -8182,7 +8234,7 @@ app.post('/minha-leads/coluna/:etapa/disparar', exigirLoginEmpresa, exigirGestor
     const rodando = _disparoStatus[empresa.id];
     if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
 
-    const resultado = await iniciarDisparoMassa(empresa, template, contatos);
+    const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
     res.json({ ok: true, ...resultado, total: contatos.length });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

@@ -1780,9 +1780,13 @@ async function disparaColuna(etapaId) {
 
   btn.disabled = true; st.textContent = 'Iniciando...'; st.className = 'modal-status';
   try {
+    // Reaproveita a imagem/mídia do cabeçalho já enviada na tela "Disparo em
+    // massa" (painel novo) — se o template escolhido aqui exigir uma e não
+    // tiver nenhuma salva, o backend recusa com um aviso claro.
+    const headerImageUrl = (configuracaoAtual && configuracaoAtual.disparoTemplateImagemUrl) || null;
     const resp = await fetchAutenticado(`${API_BASE}/minha-leads/coluna/${etapaId}/disparar`, {
       method: 'POST',
-      body: JSON.stringify({ template })
+      body: JSON.stringify({ template, headerImageUrl })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) {

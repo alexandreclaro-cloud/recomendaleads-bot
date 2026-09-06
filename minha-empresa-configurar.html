@@ -651,6 +651,17 @@
           <div id="disparoTemplateBadge" style="margin:2px 0;"></div>
           <div class="hint">Tem que ser um template <b>Ativo</b> na sua conta da Meta. As variáveis vão na ordem das colunas abaixo. Pode salvar o template agora e montar a lista depois — fica guardado aqui.</div>
 
+          <div id="disparoHeaderImgBox" style="display:none;margin-top:12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px;">
+            <div style="font-size:0.9rem;font-weight:600;margin-bottom:4px;" id="disparoHeaderImgTitulo">🖼️ Imagem do cabeçalho deste template</div>
+            <div class="hint" style="margin:0 0 8px;">Esse template tem uma <b>imagem/mídia fixa no topo</b> — a Meta exige o arquivo em <b>todo envio</b> (não fica salvo automaticamente no template). Suba aqui uma vez; fica guardado pra próxima.</div>
+            <input type="file" id="disparoHeaderImgInput" accept="image/*,video/*,application/pdf" style="display:none;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button type="button" class="btn btn-secondary" id="disparoHeaderImgBtn">📤 Enviar imagem</button>
+              <span class="status-msg" id="disparoHeaderImgStatus"></span>
+            </div>
+            <div id="disparoHeaderImgPreviewBox" style="margin-top:8px;"></div>
+          </div>
+
           <div style="margin-top:12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;">
             <div style="font-size:0.9rem;font-weight:600;margin-bottom:4px;">🧪 Testar antes (recomendado)</div>
             <div class="hint" style="margin:0 0 8px;">Manda o template pro <b>seu</b> número pra você conferir <b>antes</b> de disparar pra lista. Não queima a base.</div>
@@ -955,6 +966,7 @@ async function carregarTemplatesMeta() {
     _tplMetaCache = (d.ok && d.templates) || [];
   } catch (e) { _tplMetaCache = []; }
   atualizarTodosBadgesTemplate();
+  if (typeof atualizarHeaderImgUI === 'function') atualizarHeaderImgUI();
   return _tplMetaCache;
 }
 function categoriaBadgeHtml(nome) {
@@ -988,6 +1000,60 @@ function registrarBadgeTemplate(inputId, badgeId) {
 function fmtReaisCliente(c) { return 'R$ ' + ((c || 0) / 100).toFixed(2).replace('.', ','); }
 let disparoPollTimer = null;
 
+// ===================== IMAGEM/MÍDIA DO CABEÇALHO (templates com header fixo) =====================
+// Alguns templates de Marketing têm uma imagem/vídeo/documento FIXO no topo — a
+// Meta exige a URL do arquivo em TODO envio (não fica salva no template pra
+// sempre). Sem isso a Meta recusa com "Format mismatch, expected IMAGE...".
+let disparoHeaderImageUrl = null;
+function headerFormatDoTemplate(nome) {
+  if (!_tplMetaCache) return null;
+  const t = _tplMetaCache.find(x => x.name === (nome || '').trim());
+  return (t && t.headerFormat) || null;
+}
+function renderHeaderImgPreview() {
+  const box = document.getElementById('disparoHeaderImgPreviewBox');
+  if (!box) return;
+  box.innerHTML = disparoHeaderImageUrl
+    ? `<div style="font-size:0.8rem;color:#166534;">✅ Arquivo enviado — <a href="${disparoHeaderImageUrl}" target="_blank" style="color:inherit;">ver</a></div>`
+    : `<div style="font-size:0.8rem;color:#991B1B;">⚠️ Nenhum arquivo enviado ainda — obrigatório pra disparar esse template.</div>`;
+}
+function atualizarHeaderImgUI() {
+  const box = document.getElementById('disparoHeaderImgBox');
+  if (!box) return;
+  const nome = (document.getElementById('disparoTemplate') || {}).value || '';
+  const fmt = headerFormatDoTemplate(nome);
+  const precisa = fmt && fmt !== 'TEXT' && fmt !== 'NONE';
+  box.style.display = precisa ? 'block' : 'none';
+  if (!precisa) return;
+  const rotulo = fmt === 'IMAGE' ? 'Imagem' : fmt === 'VIDEO' ? 'Vídeo' : 'Documento';
+  document.getElementById('disparoHeaderImgTitulo').textContent = `🖼️ ${rotulo} do cabeçalho deste template`;
+  const inp = document.getElementById('disparoHeaderImgInput');
+  if (inp) inp.accept = fmt === 'IMAGE' ? 'image/*' : fmt === 'VIDEO' ? 'video/*' : 'application/pdf';
+  renderHeaderImgPreview();
+}
+document.getElementById('disparoHeaderImgBtn').addEventListener('click', () => document.getElementById('disparoHeaderImgInput').click());
+document.getElementById('disparoHeaderImgInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  const st = document.getElementById('disparoHeaderImgStatus');
+  if (!file) return;
+  st.textContent = 'Enviando...'; st.className = 'status-msg';
+  try {
+    const fd = new FormData();
+    fd.append('arquivo', file);
+    const resp = await fetchAutenticado(`${API_BASE}/minha-conversas/upload`, { method: 'POST', body: fd });
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) throw new Error(d.erro || 'Falha no upload');
+    disparoHeaderImageUrl = d.url;
+    // Salva junto da config pra não precisar subir de novo na próxima vez.
+    await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disparoTemplateImagemUrl: d.url }) });
+    if (configuracaoAtual) configuracaoAtual.disparoTemplateImagemUrl = d.url;
+    renderHeaderImgPreview();
+    st.textContent = '✅ Enviado!'; st.className = 'status-msg ok';
+  } catch (err) { st.textContent = '❌ ' + (err.message || 'Erro no upload'); st.className = 'status-msg err'; }
+  finally { e.target.value = ''; setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
+});
+document.getElementById('disparoTemplate').addEventListener('input', atualizarHeaderImgUI);
+
 async function carregarDisparo() {
   const ehOficial = configuracaoAtual && configuracaoAtual.whatsappTipo === 'oficial';
   const soOf = document.getElementById('disparoSoOficial'); if (soOf) soOf.style.display = ehOficial ? 'none' : 'block';
@@ -999,6 +1065,8 @@ async function carregarDisparo() {
     tplInp.value = configuracaoAtual.disparoTemplateSalvo || configuracaoAtual.oficialTemplateConvite || '';
   }
   atualizarBadgeTemplate('disparoTemplate', 'disparoTemplateBadge');
+  disparoHeaderImageUrl = (configuracaoAtual && configuracaoAtual.disparoTemplateImagemUrl) || null;
+  atualizarHeaderImgUI();
   atualizarResumoDisparo();
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-saldo`);
@@ -1179,11 +1247,15 @@ async function dispararCampanha() {
   const contatos = parseListaDisparo();
   if (!template) { st.textContent = '❌ Informe o nome do template.'; st.className = 'status-msg err'; return; }
   if (!contatos.length) { st.textContent = '❌ Nenhum contato válido na lista.'; st.className = 'status-msg err'; return; }
+  const fmtHeader = headerFormatDoTemplate(template);
+  if (fmtHeader && fmtHeader !== 'TEXT' && fmtHeader !== 'NONE' && !disparoHeaderImageUrl) {
+    st.textContent = '❌ Esse template tem imagem/mídia fixa no cabeçalho — suba o arquivo acima antes de disparar.'; st.className = 'status-msg err'; return;
+  }
   if (!confirm(`Disparar o template "${template}" para ${contatos.length} contato(s)?\nCada envio desconta do seu saldo.`)) return;
   const btn = document.getElementById('disparoBtn');
   btn.disabled = true; st.textContent = 'Iniciando...'; st.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-disparo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template, contatos }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-disparo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template, contatos, headerImageUrl: disparoHeaderImageUrl || null }) });
     const d = await resp.json();
     if (!resp.ok || !d.ok) { st.textContent = '❌ ' + (d.erro || 'Erro'); st.className = 'status-msg err'; btn.disabled = false; return; }
     st.textContent = `🚀 Disparo iniciado (${d.total} contatos)`; st.className = 'status-msg ok';
@@ -1314,7 +1386,7 @@ async function testarTemplateDisparo() {
   const btn = document.getElementById('disparoTesteBtn');
   btn.disabled = true; st.textContent = 'Enviando teste...'; st.className = 'status-msg';
   try {
-    const r = await fetchAutenticado(`${API_BASE}/minha-entrega/testar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numero: tel, template }) });
+    const r = await fetchAutenticado(`${API_BASE}/minha-entrega/testar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numero: tel, template, headerImageUrl: disparoHeaderImageUrl || null }) });
     const d = await r.json();
     const x = (d && d.resultado) || {};
     if (x.aceitou) { st.textContent = '✅ Meta aceitou! Confere se chegou no seu WhatsApp.'; st.className = 'status-msg ok'; }
