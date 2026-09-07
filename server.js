@@ -8426,6 +8426,48 @@ app.post('/minha-disparos/:id/redisparar', exigirLoginEmpresa, exigirGestor, exi
   }
 });
 
+// Retoma um disparo INTERROMPIDO (fica preso em "em_andamento" pra sempre) — o
+// loop de disparo mora só na MEMÓRIA do processo (_disparoStatus), então um
+// deploy/restart do servidor no meio de uma campanha grande mata o loop sem
+// avisar ninguém: o Firestore nunca recebe o 'concluido' final. Diferente do
+// /redisparar (que reenvia pra quem não RESPONDEU, de propósito — reengajamento
+// mesmo em campanha 100% concluída), aqui a checagem é por quem já foi ENVIADO
+// de fato (via o log de mensagens, campanhaId) — assim ninguém que já recebeu
+// leva o mesmo template de novo (e paga de novo) só porque não respondeu.
+app.post('/minha-disparos/:id/retomar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') {
+      return res.status(400).json({ ok: false, erro: 'O disparo em massa só funciona no modo API Oficial da Meta.' });
+    }
+    const doc = await DISPAROS_COL().doc(req.params.id).get();
+    if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Disparo não encontrado' });
+    }
+    const disparo = doc.data();
+    const rodando = _disparoStatus[empresa.id];
+    if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
+
+    const jaEnviadosSnap = await MENSAGENS_CHAT_COL().where('campanhaId', '==', req.params.id).where('direcao', '==', 'out').get();
+    const jaEnviados = new Set();
+    jaEnviadosSnap.forEach(d => { const t = d.data().telefone; if (t) jaEnviados.add(t); });
+
+    const restantes = (disparo.contatos || []).filter(c => !jaEnviados.has(c.telefone));
+    if (!restantes.length) {
+      // Todo mundo já tinha sido enviado de fato — só faltou o Firestore
+      // registrar o 'concluido' (o processo morreu bem no fim). Não cria
+      // campanha nova, só corrige o status da existente.
+      await doc.ref.set({ status: 'concluido', terminadoEm: new Date().toISOString(), enviados: jaEnviados.size }, { merge: true });
+      return res.json({ ok: true, jaCompleto: true, jaEnviadosAntes: jaEnviados.size, total: disparo.total });
+    }
+
+    const resultado = await iniciarDisparoMassa(empresa, disparo.template, restantes, empresa.disparoTemplateImagemUrl);
+    res.json({ ok: true, ...resultado, retomadoDe: req.params.id, jaEnviadosAntes: jaEnviados.size });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Reconstrói RETROATIVAMENTE o último disparo em massa que rodou ANTES desse
 // rastreio por campanha existir — as mensagens de template já ficavam salvas
 // (registrarMensagem sempre gravou), só não tinham campanhaId. Agrupa os envios

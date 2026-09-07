@@ -1116,12 +1116,45 @@ async function carregarDisparosHistorico() {
           <b>${(x.template || '').replace(/[<>]/g, '')}</b>
           <span class="hint" style="margin-left:6px;">${fmtDataHoraCliente(x.criadoEm)} · ${x.total} contato(s) · ${x.status === 'concluido' ? '✅ concluído' : '⏳ em andamento'}</span>
         </div>
-        <button type="button" class="btn btn-secondary" data-rel-id="${x.id}" style="padding:6px 12px;font-size:0.82rem;">📊 Ver relatório</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          ${x.status !== 'concluido' ? `<button type="button" class="btn btn-action" data-retomar-id="${x.id}" style="padding:6px 12px;font-size:0.82rem;">▶️ Retomar disparo</button>
+          <span class="status-msg" data-retomar-status="${x.id}"></span>` : ''}
+          <button type="button" class="btn btn-secondary" data-rel-id="${x.id}" style="padding:6px 12px;font-size:0.82rem;">📊 Ver relatório</button>
+        </div>
       </div>`).join('');
     box.querySelectorAll('[data-rel-id]').forEach(btn => {
       btn.addEventListener('click', () => abrirRelatorioDisparo(btn.dataset.relId));
     });
+    box.querySelectorAll('[data-retomar-id]').forEach(btn => {
+      btn.addEventListener('click', () => retomarDisparo(btn.dataset.retomarId));
+    });
   } catch (e) { box.innerHTML = '<span class="sub">Não foi possível carregar o histórico.</span>'; }
+}
+
+// "em_andamento" pra sempre geralmente quer dizer que o servidor reiniciou no
+// meio (deploy, etc.) e o loop morreu — o Firestore nunca chega a marcar
+// 'concluido'. Isso NÃO reenvia pra quem já recebeu (checa pelo log de
+// mensagens da própria campanha), só termina o que ficou faltando.
+async function retomarDisparo(id) {
+  const st = document.querySelector(`[data-retomar-status="${id}"]`);
+  const btn = document.querySelector(`[data-retomar-id="${id}"]`);
+  if (!confirm('Isso termina de enviar só pra quem AINDA NÃO recebeu essa campanha (não manda de novo pra quem já recebeu). Continuar?')) return;
+  if (btn) btn.disabled = true;
+  if (st) { st.textContent = 'Verificando...'; st.className = 'status-msg'; }
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-disparos/${id}/retomar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) { if (st) { st.textContent = '❌ ' + (d.erro || 'Erro'); st.className = 'status-msg err'; } if (btn) btn.disabled = false; return; }
+    if (d.jaCompleto) {
+      if (st) { st.textContent = `✅ Já estava tudo enviado (${d.jaEnviadosAntes}/${d.total}) — só corrigi o status.`; st.className = 'status-msg ok'; }
+      carregarDisparosHistorico();
+      return;
+    }
+    if (st) { st.textContent = `🚀 Retomado! Faltavam ${d.total} (${d.jaEnviadosAntes} já tinham recebido).`; st.className = 'status-msg ok'; }
+    document.getElementById('disparoProgresso').style.display = 'block';
+    document.getElementById('disparoBtn').disabled = true;
+    pollDisparo();
+  } catch (e) { if (st) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; } if (btn) btn.disabled = false; }
 }
 
 let _disparoRelatorioAtualId = null;
