@@ -148,6 +148,11 @@
         <option value="">👥 Ver de: todo mundo</option>
       </select>
     </div>
+    <div style="padding:0 12px 8px;">
+      <select id="filtroCampanhaConv" class="input" style="width:100%;font-size:0.8rem;padding:6px 8px;">
+        <option value="">📢 Todas as conversas</option>
+      </select>
+    </div>
     <div class="conv-items" id="convItems"><div class="chat-empty" style="padding:30px">Carregando...</div></div>
   </aside>
 
@@ -484,11 +489,44 @@ function abrirPelaURL() {
 }
 
 let _filtroPapel = '';
+// Filtro "por campanha" — deixa ver só as conversas de UM disparo em massa
+// (mesmo template/script), sem misturar com o resto. null = sem filtro (mostra
+// tudo); Set = só telefones dessa campanha.
+let _filtroCampanhaTelefones = null;
+async function carregarCampanhasFiltro() {
+  const sel = document.getElementById('filtroCampanhaConv');
+  if (!sel) return;
+  try {
+    const resp = await fetchAut(`${API_BASE}/minha-conversas/campanhas`);
+    const d = await resp.json();
+    if (!d.ok) return;
+    const campanhas = d.campanhas || [];
+    if (!campanhas.length) return;
+    const valorAtual = sel.value;
+    sel.innerHTML = '<option value="">📢 Todas as conversas</option>' + campanhas.map(c =>
+      `<option value="${esc(c.id)}">${esc(c.template)} — ${new Date(c.criadoEm).toLocaleDateString('pt-BR')} (${c.total})</option>`
+    ).join('');
+    sel.value = valorAtual;
+  } catch (e) {}
+}
+document.getElementById('filtroCampanhaConv').addEventListener('change', async (e) => {
+  const id = e.target.value;
+  if (!id) { _filtroCampanhaTelefones = null; renderConversas(); return; }
+  try {
+    const resp = await fetchAut(`${API_BASE}/minha-conversas/campanhas/${id}/telefones`);
+    const d = await resp.json();
+    _filtroCampanhaTelefones = new Set(d.ok ? (d.telefones || []) : []);
+  } catch (e) { _filtroCampanhaTelefones = new Set(); }
+  renderConversas();
+});
+carregarCampanhasFiltro();
+
 function renderConversas() {
   const termo = (document.getElementById('buscaConv').value || '').toLowerCase().trim();
   const lista = conversas.filter(c =>
     (!termo || (c.nome || '').toLowerCase().includes(termo) || (c.telefone || '').includes(termo)) &&
-    (!_filtroPapel || c.papel === _filtroPapel));
+    (!_filtroPapel || c.papel === _filtroPapel) &&
+    (!_filtroCampanhaTelefones || _filtroCampanhaTelefones.has((c.telefone || '').replace(/\D/g, ''))));
   const cont = document.getElementById('convItems');
   if (!lista.length) { cont.innerHTML = '<div class="chat-empty" style="padding:30px">Nenhuma conversa ainda.</div>'; return; }
   // Quem pediu atendimento humano vai pro TOPO da lista (minha vez primeiro).

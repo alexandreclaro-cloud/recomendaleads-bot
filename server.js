@@ -6463,6 +6463,38 @@ app.get('/minha-conversas', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Filtro "por campanha" em Conversas — deixa ver só as conversas que vieram de
+// UM disparo em massa específico (mesmo template/script), em vez de tudo
+// misturado. Lista leve (sem os contatos) pra popular o seletor; qualquer
+// usuário logado pode ver (mesmo nível de acesso de /minha-conversas).
+app.get('/minha-conversas/campanhas', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const snap = await DISPAROS_COL().where('empresaId', '==', req.empresaLogin.id).get();
+    const campanhas = [];
+    snap.forEach(d => { const x = d.data(); campanhas.push({ id: d.id, template: x.template, total: x.total, criadoEm: x.criadoEm }); });
+    campanhas.sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, campanhas });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Telefones de UMA campanha específica (pra filtrar a lista de conversas no
+// front). Só os dígitos, já dedup — a lista de contatos do disparo pode ter
+// nome/params junto, aqui só interessa quem faz parte dessa campanha.
+app.get('/minha-conversas/campanhas/:id/telefones', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const doc = await DISPAROS_COL().doc(req.params.id).get();
+    if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Campanha não encontrada' });
+    }
+    const telefones = [...new Set((doc.data().contatos || []).map(c => soDigitos(c.telefone || '')).filter(Boolean))];
+    res.json({ ok: true, telefones });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Preenche o papel (Cliente/Recomendado) das conversas que já existiam antes
 // dessa marcação existir — cruza com as sessões (sessoes = cliente,
 // sessoes_recomendado = recomendado) pra descobrir quem é quem. Rodar uma vez
