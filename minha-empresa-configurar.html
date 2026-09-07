@@ -750,13 +750,27 @@
             <label class="label">Editando o script da oferta:</label>
             <select class="input" id="scriptOfertaSeletor" style="max-width:320px;"></select>
           </div>
-          <div style="margin-bottom:14px;">
+          <div id="scriptMultiBox" style="display:none;margin-bottom:14px;">
             <label class="label">Qual script <span style="font-weight:400;color:var(--text-dim);">(dá pra ter vários por oferta — ex: um por template/campanha)</span></label>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <select class="input" id="scriptNomeSeletor" style="max-width:320px;flex:1;"></select>
               <button class="btn btn-secondary" id="novoScriptBtn" type="button">➕ Novo script</button>
               <button class="btn btn-secondary" id="renomearScriptBtn" type="button">✏️ Renomear</button>
               <button class="btn btn-secondary" id="excluirScriptBtn" type="button" style="color:var(--danger-dark);">🗑️ Excluir</button>
+            </div>
+          </div>
+          <div id="scriptUnicoBox" style="display:none;margin-bottom:14px;">
+            <button type="button" id="criarOutroScriptBtn" style="background:none;border:none;color:var(--brand,#2563eb);font-size:0.82rem;cursor:pointer;text-decoration:underline;padding:0;">➕ Criar outro script (ex: um pra cada template)</button>
+          </div>
+          <div style="margin-bottom:14px;background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+              <input type="checkbox" id="scriptAgenteAtivoInput" style="width:18px;height:18px;">
+              <span style="font-weight:600;">🤖 Agente de I.A. — conduz a conversa sozinho por este script</span>
+            </label>
+            <p class="hint" style="margin:6px 0 0;">Pra quem responde um disparo em massa (ou qualquer contato sem sessão nenhuma): a I.A. conduz naturalmente pelas fases do script certo (identifica pelo nome do template), manda até 3 mensagens e depois chama um atendente de verdade pra continuar. Desligado por padrão.</p>
+            <div class="row-save" style="margin-top:10px;">
+              <button class="btn btn-secondary" id="salvarScriptAgenteBtn">Salvar</button>
+              <span class="status-msg" id="statusScriptAgente"></span>
             </div>
           </div>
           <div id="scriptContainer"></div>
@@ -2707,6 +2721,10 @@ function renderSeletorScripts() {
   if (!sel) return;
   sel.innerHTML = scripts.map(s => `<option value="${s.id}">${escapeHtml(s.nome || 'Sem nome')}</option>`).join('');
   sel.value = scriptAtualId || '';
+  // Com 1 script só (o caso comum), o seletor completo (Renomear/Excluir) só
+  // polui a tela à toa — mostra um linkzinho discreto pra criar o 2º em vez disso.
+  document.getElementById('scriptMultiBox').style.display = scripts.length > 1 ? 'block' : 'none';
+  document.getElementById('scriptUnicoBox').style.display = scripts.length > 1 ? 'none' : 'block';
 }
 async function carregarScriptConteudo() {
   let c;
@@ -2731,6 +2749,8 @@ async function carregarScriptConteudo() {
   scriptFases = scripts[0].fases;
   renderSeletorScripts();
   renderScriptFases();
+  const agInp = document.getElementById('scriptAgenteAtivoInput');
+  if (agInp) agInp.checked = !!c.scriptAgenteAtivo;
 }
 function trocarScriptAtual(novoId) {
   syncScriptFasesFromDom();
@@ -2746,7 +2766,7 @@ if (scriptOfertaSeletorEl) scriptOfertaSeletorEl.addEventListener('change', (e) 
   carregarScriptConteudo();
 });
 document.getElementById('scriptNomeSeletor').addEventListener('change', (e) => trocarScriptAtual(e.target.value));
-document.getElementById('novoScriptBtn').addEventListener('click', () => {
+function criarNovoScript() {
   const nome = prompt('Nome do novo script (ex: nome do template/campanha):');
   if (!nome || !nome.trim()) return;
   syncScriptFasesFromDom();
@@ -2757,6 +2777,22 @@ document.getElementById('novoScriptBtn').addEventListener('click', () => {
   scriptFases = novo.fases;
   renderSeletorScripts();
   renderScriptFases();
+}
+document.getElementById('novoScriptBtn').addEventListener('click', criarNovoScript);
+document.getElementById('criarOutroScriptBtn').addEventListener('click', criarNovoScript);
+document.getElementById('salvarScriptAgenteBtn').addEventListener('click', async () => {
+  const st = document.getElementById('statusScriptAgente');
+  const body = { scriptAgenteAtivo: document.getElementById('scriptAgenteAtivoInput').checked };
+  st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(urlScriptConfig(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      if (scriptOfertasList.length <= 1) configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body);
+      st.textContent = '✅ Salvo!'; st.className = 'status-msg ok';
+    } else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
 });
 document.getElementById('renomearScriptBtn').addEventListener('click', () => {
   const atual = scriptAtualObj(); if (!atual) return;

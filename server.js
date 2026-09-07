@@ -316,6 +316,9 @@ const CONVERSAS_COL = () => db.collection('conversas');
 // Pipeline do CLIENTE (recomendador): acompanha quem iniciou (leu o QR), deu o nome
 // e recomendou. Separado dos leads (recomendados) pra não mexer em métricas/export.
 const CLIENTES_PIPELINE_COL = () => db.collection('clientes_pipeline');
+// Sessão do agente de IA que conduz a conversa pelo Script de vendas (ex: quem
+// respondeu um disparo em massa e não tem sessão de cliente/recomendado nenhuma).
+const SESSOES_AGENTE_SCRIPT_COL = () => db.collection('sessoes_agente_script');
 
 // Cria/atualiza o card do cliente no pipeline (só avança de estágio, nunca volta).
 // etapa: 'iniciou' -> 'deu_nome' -> 'recomendou'.
@@ -1028,6 +1031,12 @@ const EMPRESA_PADRAO = {
   // no painel e carregarScriptVendas() em conversas.html pra como migra sozinho.
   scriptVendas: [],
   scriptsVenda: [], // [{ id, nome, fases: [{titulo, texto}] }]
+
+  // Agente de I.A. que conduz a conversa pelo Script de vendas (pra quem
+  // respondeu um disparo em massa e não tem sessão de cliente/recomendado
+  // nenhuma) — manda até 3 mensagens seguindo as fases do script escolhido
+  // e depois chama um atendente de verdade. Default OFF, por oferta.
+  scriptAgenteAtivo: false,
 
   // Rede de lojas: pergunta mandada quando 2+ ofertas estão ativas e ninguém
   // resolveu ainda qual loja é o contato (nenhuma frase-gatilho específica bateu).
@@ -3581,6 +3590,159 @@ Regras:
   }
 }
 
+// ============================================================
+// AGENTE DE I.A. DO SCRIPT DE VENDAS — conduz a conversa (com Claude) pelas
+// fases de um dos scripts nomeados da oferta, pra contatos SEM sessão de
+// cliente/recomendado nenhuma (o caso típico: respondeu um disparo em massa).
+// Manda até MAX_MENSAGENS_AGENTE_SCRIPT mensagens e depois chama um atendente
+// de verdade — nunca fica "conversando pra sempre" sozinho. Default OFF
+// (empresa.scriptAgenteAtivo), por oferta.
+// ============================================================
+const MAX_MENSAGENS_AGENTE_SCRIPT = 3;
+
+async function getSessaoAgenteScript(telefone) {
+  const snap = await SESSOES_AGENTE_SCRIPT_COL().doc(chaveSessao(telefone)).get();
+  return snap.exists ? snap.data() : null;
+}
+async function saveSessaoAgenteScript(telefone, dados) {
+  await SESSOES_AGENTE_SCRIPT_COL().doc(chaveSessao(telefone)).set(dados, { merge: true });
+}
+
+// Acha o TEMPLATE que originou esse contato (via campanhaId da última mensagem
+// que a gente mandou pra ele) — usado pra escolher, entre os vários scripts
+// nomeados da oferta, aquele com o nome batendo com o template (por convenção,
+// nomeie o script igual ao template do disparo).
+async function templateOrigemDoContato(empresaId, telefone) {
+  try {
+    const snap = await MENSAGENS_CHAT_COL()
+      .where('empresaId', '==', empresaId).where('telefone', '==', telefone).where('direcao', '==', 'out').get();
+    let maisRecente = null;
+    snap.forEach(d => {
+      const x = d.data();
+      if (!x.campanhaId) return;
+      if (!maisRecente || new Date(x.criadoEm) > new Date(maisRecente.criadoEm)) maisRecente = x;
+    });
+    if (!maisRecente) return null;
+    const disp = await DISPAROS_COL().doc(maisRecente.campanhaId).get();
+    return disp.exists ? (disp.data().template || null) : null;
+  } catch (e) { return null; }
+}
+
+// Acha, entre TODAS as ofertas da empresa com o agente ligado (scriptAgenteAtivo),
+// qual delas tem um script cujo nome bate com o template de origem. Precisa
+// varrer todas porque o disparo em massa hoje não fica vinculado a nenhuma
+// oferta específica (o campo 'template' é solto) — então não dá pra saber de
+// antemão qual oferta usar só pelo contexto atual da conversa.
+async function encontrarOfertaEScriptParaTemplate(empresaId, templateOrigem) {
+  const cfgRaw = await getEmpresaById(empresaId);
+  if (!cfgRaw) return null;
+  const ofertasMap = (cfgRaw.ofertas && Object.keys(cfgRaw.ofertas).length)
+    ? cfgRaw.ofertas
+    : { [cfgRaw.ofertaAtivaPadrao || '__padrao__']: cfgRaw };
+  const entradas = Object.entries(ofertasMap).filter(([, o]) => o && o.scriptAgenteAtivo);
+  if (!entradas.length) return null;
+  // 1ª passada: só considera match de verdade pelo nome do template — evita
+  // pegar a oferta errada quando tem mais de uma com o agente ligado.
+  const alvo = String(templateOrigem || '').toLowerCase();
+  for (const [ofertaId, oferta] of entradas) {
+    const script = (oferta.scriptsVenda || []).find(s => s && Array.isArray(s.fases) && s.fases.length && (() => {
+      const nome = String(s.nome || '').toLowerCase();
+      return nome && alvo && (nome.includes(alvo) || alvo.includes(nome));
+    })());
+    if (script) return { ofertaId, script };
+  }
+  // 2ª passada (fallback): só se tiver EXATAMENTE 1 oferta com o agente ligado
+  // e ela tiver EXATAMENTE 1 script — não dá pra errar mesmo sem template.
+  if (entradas.length === 1) {
+    const [ofertaId, oferta] = entradas[0];
+    const scripts = (oferta.scriptsVenda || []).filter(s => s && Array.isArray(s.fases) && s.fases.length);
+    if (scripts.length === 1) return { ofertaId, script: scripts[0] };
+  }
+  return null;
+}
+
+async function processarMensagemAgenteScript(telefone, texto, empresaBase, nomeContato) {
+  const eid = (empresaBase && empresaBase.id) || empresaIdAtual();
+  let empresa = empresaBase;
+  let sessao = await getSessaoAgenteScript(telefone);
+
+  // Sessão já sabe qual oferta usar — aplica ela no contexto (pode não ser a
+  // mesma que o roteamento normal resolveu pra essa mensagem).
+  if (sessao && sessao.ofertaId) {
+    const ctx = tenantContext.getStore();
+    if (ctx) { ctx.empresa = aplicarOferta(ctx.empresa, sessao.ofertaId); empresa = await getEmpresa(); }
+  }
+
+  if (!sessao) {
+    const templateOrigem = await templateOrigemDoContato(eid, telefone);
+    const achado = await encontrarOfertaEScriptParaTemplate(eid, templateOrigem);
+    if (!achado) return false; // não deu pra saber qual oferta/script usar — segue o fluxo de sempre
+    sessao = { scriptId: achado.script.id, ofertaId: achado.ofertaId, faseIndex: 0, mensagensEnviadas: 0, historico: [], criadoEm: new Date().toISOString() };
+    const ctx = tenantContext.getStore();
+    if (ctx) { ctx.empresa = aplicarOferta(ctx.empresa, achado.ofertaId); empresa = await getEmpresa(); }
+  }
+  const script = (empresa.scriptsVenda || []).find(s => s.id === sessao.scriptId);
+  if (!script || !script.fases || !script.fases.length) return false;
+
+  const historico = Array.isArray(sessao.historico) ? sessao.historico : [];
+  historico.push({ role: 'user', content: String(texto || '') });
+
+  if (!ANTHROPIC_API_KEY) {
+    await saveSessaoAgenteScript(telefone, { ...sessao, historico, finalizado: true });
+    await transferirParaAtendente(telefone, nomeContato, empresa);
+    return true;
+  }
+
+  const faseIdx = Math.min(sessao.faseIndex, script.fases.length - 1);
+  const faseAtual = script.fases[faseIdx];
+  const proximasFases = script.fases.slice(faseIdx + 1, faseIdx + 3)
+    .map(f => `- ${f.titulo}: ${f.texto}`).join('\n');
+
+  const systemPrompt = `Você representa a ${empresa.nome}, conversando naturalmente no WhatsApp com um lead. Converse de forma humana e natural, curta (2-4 frases), sem soar decorado ou repetitivo. Não fique dizendo por conta própria que é uma I.A./robô — mas se perguntarem diretamente, seja honesto com naturalidade (ex: "sou o assistente virtual da ${empresa.nome}"), nunca negue.
+
+Seu roteiro de vendas agora está na fase "${faseAtual.titulo}":
+${faseAtual.texto}
+${proximasFases ? `\nPróximas fases do roteiro (só de referência, NÃO pule direto pra elas):\n${proximasFases}` : ''}
+
+Regras:
+- Baseie-se no objetivo dessa fase, mas responda com suas próprias palavras, reagindo de verdade ao que a pessoa escreveu — nunca copie o texto da fase igualzinho.
+- No máximo 2-4 frases curtas, sem markdown, sem título.
+- Se a pessoa pedir claramente pra falar com alguém/atendente, ou perguntar algo que o roteiro não cobre, termine sua resposta com o marcador ##TRANSFERIR##.`;
+
+  try {
+    const resp = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: ANTHROPIC_MODEL,
+      max_tokens: 300,
+      temperature: 0.4,
+      system: systemPrompt,
+      messages: historico.slice(-10)
+    }, { headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, timeout: 8000 });
+
+    let txt = (resp.data?.content?.[0]?.text || '').trim();
+    const pedeTransferir = txt.includes('##TRANSFERIR##');
+    txt = txt.replace('##TRANSFERIR##', '').trim();
+    if (txt) await sendText(telefone, txt);
+    historico.push({ role: 'assistant', content: txt || '(sem texto)' });
+
+    const mensagensEnviadas = (sessao.mensagensEnviadas || 0) + 1;
+    const acabouRoteiro = (faseIdx + 1) >= script.fases.length;
+    const faseIndex = Math.min(faseIdx + 1, script.fases.length - 1);
+
+    if (pedeTransferir || mensagensEnviadas >= MAX_MENSAGENS_AGENTE_SCRIPT || acabouRoteiro) {
+      await saveSessaoAgenteScript(telefone, { ...sessao, historico, mensagensEnviadas, faseIndex, finalizado: true });
+      await transferirParaAtendente(telefone, nomeContato, empresa);
+    } else {
+      await saveSessaoAgenteScript(telefone, { ...sessao, historico, mensagensEnviadas, faseIndex });
+    }
+    return true;
+  } catch (err) {
+    console.error('Erro no agente de script:', err.message);
+    await saveSessaoAgenteScript(telefone, { ...sessao, historico, finalizado: true });
+    await transferirParaAtendente(telefone, nomeContato, empresa);
+    return true;
+  }
+}
+
 // Mapeamento de objeções — o bot nunca desiste, sempre leva para o presente
 const OBJECOES = [
   {
@@ -4078,6 +4240,19 @@ async function tratarWebhook(req, res) {
       && sessaoRecomendado.etapa
       && !['finalizado', 'finalizado_negativo', 'finalizado_atendente'].includes(sessaoRecomendado.etapa);
 
+    // Agente de I.A. do Script de vendas: continua uma conversa JÁ em andamento
+    // por ele (contato sem sessão de cliente/recomendado nenhuma — ex: respondeu
+    // um disparo em massa). Checado antes do roteamento normal porque esse
+    // contato nunca teve sessaoExiste/sessaoRecomendado de verdade.
+    if (!sessaoExiste && !sessaoRecomendado && !ehGatilhoInicial) {
+      const sessaoAgenteScript = await getSessaoAgenteScript(telefone);
+      if (sessaoAgenteScript && !sessaoAgenteScript.finalizado) {
+        const empresaAgente = await getEmpresa();
+        const tratou = await processarMensagemAgenteScript(telefone, texto, empresaAgente, nomeContato);
+        if (tratou) return res.sendStatus(200);
+      }
+    }
+
     // Pedido de ATENDENTE por frase natural ("atendente", "recepcionista", "humano",
     // "alguém pode me ajudar"...), em qualquer momento — desde que haja uma conversa
     // com o robô (cliente ou recomendado). Transfere pro humano na hora.
@@ -4255,7 +4430,16 @@ async function tratarWebhook(req, res) {
       await processarMensagem(telefone, texto, vCard, contatosMultiplos);
     } else {
       const empresa = await getEmpresa();
-      await processarMensagemRecomendado(telefone, texto, empresa);
+      // Contato sem sessão nenhuma (ex: respondeu um disparo em massa) — se a
+      // oferta tiver o agente de I.A. do Script de vendas ligado, ele assume
+      // a conversa; senão, cai no comportamento de sempre (processarMensagemRecomendado,
+      // que não faz nada pra quem nunca teve sessão — fica só na caixa de entrada
+      // pro atendente ler/responder na mão).
+      let tratouAgente = false;
+      if (empresa.scriptAgenteAtivo) {
+        tratouAgente = await processarMensagemAgenteScript(telefone, texto, empresa, nomeContato);
+      }
+      if (!tratouAgente) await processarMensagemRecomendado(telefone, texto, empresa);
     }
 
     res.sendStatus(200);
