@@ -762,12 +762,17 @@
           <div id="scriptUnicoBox" style="display:none;margin-bottom:14px;">
             <button type="button" id="criarOutroScriptBtn" style="background:none;border:none;color:var(--brand,#2563eb);font-size:0.82rem;cursor:pointer;text-decoration:underline;padding:0;">➕ Criar outro script (ex: um pra cada template)</button>
           </div>
+          <div style="margin-bottom:14px;">
+            <label class="label">Template da Meta que aciona ESTE script <span style="font-weight:400;color:var(--text-dim);">(precisa ser exato — sem isso o agente tenta adivinhar pelo nome, menos confiável)</span></label>
+            <input class="input" id="scriptTemplateOrigemInput" type="text" placeholder="ex: convite_doctor_cortesia" style="max-width:360px;">
+            <div id="scriptTemplateOrigemBadge" style="margin:2px 0;"></div>
+          </div>
           <div style="margin-bottom:14px;background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">
             <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
               <input type="checkbox" id="scriptAgenteAtivoInput" style="width:18px;height:18px;">
               <span style="font-weight:600;">🤖 Agente de I.A. — conduz a conversa sozinho por este script</span>
             </label>
-            <p class="hint" style="margin:6px 0 0;">Pra quem responde um disparo em massa (ou qualquer contato sem sessão nenhuma): a I.A. conduz naturalmente pelas fases do script certo (identifica pelo nome do template), manda até 3 mensagens e depois chama um atendente de verdade pra continuar. Desligado por padrão.</p>
+            <p class="hint" style="margin:6px 0 0;">Pra quem responde um disparo em massa (ou qualquer contato sem sessão nenhuma): a I.A. conduz naturalmente pelas fases do script certo (identificado pelo campo "Template" acima), manda até 3 mensagens e depois chama um atendente de verdade pra continuar. Desligado por padrão.</p>
             <div class="row-save" style="margin-top:10px;">
               <button class="btn btn-secondary" id="salvarScriptAgenteBtn">Salvar</button>
               <span class="status-msg" id="statusScriptAgente"></span>
@@ -2686,6 +2691,7 @@ function urlScriptConfig() {
     : `${API_BASE}/minha-config`;
 }
 async function carregarScript() {
+  await carregarTemplatesMeta();
   try {
     const r = await fetchAutenticado(`${API_BASE}/minha-ofertas`);
     const d = await r.json();
@@ -2716,6 +2722,19 @@ let scripts = [];
 let scriptAtualId = null;
 function gerarIdScript() { return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function scriptAtualObj() { return scripts.find(s => s.id === scriptAtualId) || null; }
+// Template da Meta que aciona o script atual — grava no próprio objeto do
+// script antes de trocar/salvar (mesmo padrão do sync das fases).
+function syncTemplateOrigemFromDom() {
+  const atual = scriptAtualObj();
+  const inp = document.getElementById('scriptTemplateOrigemInput');
+  if (atual && inp) atual.templateOrigem = inp.value.trim();
+}
+function renderTemplateOrigemInput() {
+  const inp = document.getElementById('scriptTemplateOrigemInput');
+  if (!inp) return;
+  inp.value = (scriptAtualObj() || {}).templateOrigem || '';
+  if (typeof atualizarBadgeTemplate === 'function') atualizarBadgeTemplate('scriptTemplateOrigemInput', 'scriptTemplateOrigemBadge');
+}
 function renderSeletorScripts() {
   const sel = document.getElementById('scriptNomeSeletor');
   if (!sel) return;
@@ -2749,16 +2768,19 @@ async function carregarScriptConteudo() {
   scriptFases = scripts[0].fases;
   renderSeletorScripts();
   renderScriptFases();
+  renderTemplateOrigemInput();
   const agInp = document.getElementById('scriptAgenteAtivoInput');
   if (agInp) agInp.checked = !!c.scriptAgenteAtivo;
 }
 function trocarScriptAtual(novoId) {
   syncScriptFasesFromDom();
+  syncTemplateOrigemFromDom();
   const atual = scriptAtualObj();
   if (atual) atual.fases = scriptFases;
   scriptAtualId = novoId;
   scriptFases = (scriptAtualObj() || {}).fases || [];
   renderScriptFases();
+  renderTemplateOrigemInput();
 }
 const scriptOfertaSeletorEl = document.getElementById('scriptOfertaSeletor');
 if (scriptOfertaSeletorEl) scriptOfertaSeletorEl.addEventListener('change', (e) => {
@@ -2770,13 +2792,15 @@ function criarNovoScript() {
   const nome = prompt('Nome do novo script (ex: nome do template/campanha):');
   if (!nome || !nome.trim()) return;
   syncScriptFasesFromDom();
+  syncTemplateOrigemFromDom();
   const atual = scriptAtualObj(); if (atual) atual.fases = scriptFases;
-  const novo = { id: gerarIdScript(), nome: nome.trim(), fases: [] };
+  const novo = { id: gerarIdScript(), nome: nome.trim(), fases: [], templateOrigem: '' };
   scripts.push(novo);
   scriptAtualId = novo.id;
   scriptFases = novo.fases;
   renderSeletorScripts();
   renderScriptFases();
+  renderTemplateOrigemInput();
 }
 document.getElementById('novoScriptBtn').addEventListener('click', criarNovoScript);
 document.getElementById('criarOutroScriptBtn').addEventListener('click', criarNovoScript);
@@ -2819,9 +2843,10 @@ document.getElementById('addFaseScriptBtn').addEventListener('click', () => {
 });
 document.getElementById('salvarScriptBtn').addEventListener('click', async () => {
   syncScriptFasesFromDom();
+  syncTemplateOrigemFromDom();
   const atual = scriptAtualObj(); if (atual) atual.fases = scriptFases;
   const st = document.getElementById('statusScript');
-  const body = { scriptsVenda: scripts.map(s => ({ id: s.id, nome: s.nome, fases: (s.fases || []).filter(f => (f.titulo && f.titulo.trim()) || (f.texto && f.texto.trim())) })) };
+  const body = { scriptsVenda: scripts.map(s => ({ id: s.id, nome: s.nome, templateOrigem: (s.templateOrigem || '').trim(), fases: (s.fases || []).filter(f => (f.titulo && f.titulo.trim()) || (f.texto && f.texto.trim())) })) };
   st.textContent = 'Salvando...'; st.className = 'status-msg';
   try {
     const resp = await fetchAutenticado(urlScriptConfig(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -2833,7 +2858,7 @@ document.getElementById('salvarScriptBtn').addEventListener('click', async () =>
       if (!scripts.some(s => s.id === scriptAtualId)) scriptAtualId = scripts[0].id;
       scriptFases = scriptAtualObj().fases;
       renderSeletorScripts();
-      renderScriptFases(); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok';
+      renderScriptFases(); renderTemplateOrigemInput(); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok';
     }
     else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }

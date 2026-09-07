@@ -3629,7 +3629,7 @@ async function templateOrigemDoContato(empresaId, telefone) {
 }
 
 // Acha, entre TODAS as ofertas da empresa com o agente ligado (scriptAgenteAtivo),
-// qual delas tem um script cujo nome bate com o template de origem. Precisa
+// qual delas tem o script certo pro template que originou o contato. Precisa
 // varrer todas porque o disparo em massa hoje não fica vinculado a nenhuma
 // oferta específica (o campo 'template' é solto) — então não dá pra saber de
 // antemão qual oferta usar só pelo contexto atual da conversa.
@@ -3641,17 +3641,29 @@ async function encontrarOfertaEScriptParaTemplate(empresaId, templateOrigem) {
     : { [cfgRaw.ofertaAtivaPadrao || '__padrao__']: cfgRaw };
   const entradas = Object.entries(ofertasMap).filter(([, o]) => o && o.scriptAgenteAtivo);
   if (!entradas.length) return null;
-  // 1ª passada: só considera match de verdade pelo nome do template — evita
-  // pegar a oferta errada quando tem mais de uma com o agente ligado.
-  const alvo = String(templateOrigem || '').toLowerCase();
-  for (const [ofertaId, oferta] of entradas) {
-    const script = (oferta.scriptsVenda || []).find(s => s && Array.isArray(s.fases) && s.fases.length && (() => {
-      const nome = String(s.nome || '').toLowerCase();
-      return nome && alvo && (nome.includes(alvo) || alvo.includes(nome));
-    })());
-    if (script) return { ofertaId, script };
+  const alvo = String(templateOrigem || '').toLowerCase().trim();
+  // 1ª passada: match EXATO pelo campo 'templateOrigem' configurado no script
+  // (o dono escolhe explicitamente qual template aciona qual script — zero
+  // ambiguidade, é a forma preferida).
+  if (alvo) {
+    for (const [ofertaId, oferta] of entradas) {
+      const script = (oferta.scriptsVenda || []).find(s => s && Array.isArray(s.fases) && s.fases.length
+        && String(s.templateOrigem || '').toLowerCase().trim() === alvo);
+      if (script) return { ofertaId, script };
+    }
   }
-  // 2ª passada (fallback): só se tiver EXATAMENTE 1 oferta com o agente ligado
+  // 2ª passada: scripts SEM 'templateOrigem' preenchido, tentando pelo nome
+  // do script (compatibilidade com quem ainda não configurou o campo novo).
+  if (alvo) {
+    for (const [ofertaId, oferta] of entradas) {
+      const script = (oferta.scriptsVenda || []).find(s => s && Array.isArray(s.fases) && s.fases.length && !s.templateOrigem && (() => {
+        const nome = String(s.nome || '').toLowerCase();
+        return nome && (nome.includes(alvo) || alvo.includes(nome));
+      })());
+      if (script) return { ofertaId, script };
+    }
+  }
+  // 3ª passada (fallback): só se tiver EXATAMENTE 1 oferta com o agente ligado
   // e ela tiver EXATAMENTE 1 script — não dá pra errar mesmo sem template.
   if (entradas.length === 1) {
     const [ofertaId, oferta] = entradas[0];
