@@ -196,6 +196,9 @@
       <i data-lucide="scroll-text"></i>
       <b>Script de vendas</b>
     </div>
+    <div id="scriptOfertaBox" style="display:none;padding:8px 16px;border-bottom:1px solid var(--border);">
+      <select id="scriptOfertaSelect" class="input" style="width:100%;font-size:0.8rem;padding:6px 8px;"></select>
+    </div>
     <div class="script-body" id="scriptBody"></div>
   </aside>
 </div>
@@ -885,12 +888,18 @@ function mdParaWhatsapp(texto) {
     .replace(/^\s{0,3}#{1,6}\s+(.*)$/gm, '*$1*')
     .replace(/\*\*(.+?)\*\*/g, '*$1*');
 }
+// Qual oferta escolher pra ver o script: usuário de loja SEMPRE lê a própria
+// (nunca escolhe); matriz lembra a última escolhida no seletor (localStorage) —
+// sem isso, o painel só mostrava o script da oferta "padrão" do WhatsApp, e
+// quem tinha mais de uma oferta (ex.: PDN Corretores + PDN Doctors) não
+// conseguia ver o script da outra sem trocar qual é a padrão.
+let _scriptOfertaEscolhida = localStorage.getItem('scriptOfertaEscolhida') || '';
 async function carregarScriptVendas() {
   const painel = document.getElementById('scriptPanel');
   const body = document.getElementById('scriptBody');
   try {
-    // Usuário de loja lê o script DA PRÓPRIA loja, não o compartilhado.
-    const url = MEU_OFERTA_ID ? `${API_BASE}/minha-config?oferta=${encodeURIComponent(MEU_OFERTA_ID)}` : `${API_BASE}/minha-config`;
+    const ofertaAlvo = MEU_OFERTA_ID || _scriptOfertaEscolhida || '';
+    const url = ofertaAlvo ? `${API_BASE}/minha-config?oferta=${encodeURIComponent(ofertaAlvo)}` : `${API_BASE}/minha-config`;
     const r = await fetchAut(url);
     const d = await r.json();
     const fases = (d.ok && Array.isArray(d.empresa.scriptVendas)) ? d.empresa.scriptVendas : [];
@@ -920,7 +929,37 @@ async function carregarScriptVendas() {
     painel.classList.remove('hidden');
   } catch (e) { painel.classList.add('hidden'); }
 }
+
+// Popula o seletor de oferta no topo do painel (só aparece pra quem tem mais
+// de uma oferta E pode ver a lista — usuário de loja nunca vê, sempre lê a
+// própria). Falha em silêncio (sem gestor, ou sem ofertas habilitado): o
+// painel some e volta a mostrar só o script da oferta padrão, como sempre foi.
+async function carregarOfertasScriptSelect() {
+  const box = document.getElementById('scriptOfertaBox');
+  const sel = document.getElementById('scriptOfertaSelect');
+  if (!box || !sel || MEU_OFERTA_ID) return;
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-ofertas`);
+    const d = await r.json();
+    const ofertas = (d.ok && Array.isArray(d.ofertas)) ? d.ofertas : [];
+    if (ofertas.length <= 1) return;
+    sel.innerHTML = ofertas.map(o => `<option value="${esc(o.id)}">${esc(o.nome)}</option>`).join('');
+    if (!_scriptOfertaEscolhida || !ofertas.some(o => o.id === _scriptOfertaEscolhida)) {
+      const padrao = ofertas.find(o => o.padrao) || ofertas[0];
+      _scriptOfertaEscolhida = padrao ? padrao.id : '';
+    }
+    sel.value = _scriptOfertaEscolhida;
+    box.style.display = 'block';
+    carregarScriptVendas();
+  } catch (e) {}
+}
+document.getElementById('scriptOfertaSelect').addEventListener('change', (e) => {
+  _scriptOfertaEscolhida = e.target.value;
+  localStorage.setItem('scriptOfertaEscolhida', _scriptOfertaEscolhida);
+  carregarScriptVendas();
+});
 carregarScriptVendas();
+carregarOfertasScriptSelect();
 
 // ===== Gerenciador de respostas rápidas (modal de verdade) =====
 let _qrEditando = [];
