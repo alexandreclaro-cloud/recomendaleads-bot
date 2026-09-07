@@ -1021,7 +1021,13 @@ const EMPRESA_PADRAO = {
   // Script de vendas — roteiro por fase da negociação, pro atendente ler/copiar
   // enquanto conversa no WhatsApp (painel lateral em Conversas). Vazio até o gestor
   // preencher; sem exemplo pré-pronto pra não confundir com script de outra empresa.
+  // 'scriptVendas' (ANTIGO, sem o 's' final) era uma lista plana de fases, sem nome —
+  // mantido só por compatibilidade com contas que já tinham preenchido antes de
+  // existir 'scriptsVenda' (NOVO): uma lista de scripts NOMEADOS (ex: um por
+  // template/campanha), cada um com suas próprias fases. Ver carregarScriptConteudo()
+  // no painel e carregarScriptVendas() em conversas.html pra como migra sozinho.
   scriptVendas: [],
+  scriptsVenda: [], // [{ id, nome, fases: [{titulo, texto}] }]
 
   // Rede de lojas: pergunta mandada quando 2+ ofertas estão ativas e ninguém
   // resolveu ainda qual loja é o contato (nenhuma frase-gatilho específica bateu).

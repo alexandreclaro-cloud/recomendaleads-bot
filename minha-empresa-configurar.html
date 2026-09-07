@@ -750,6 +750,15 @@
             <label class="label">Editando o script da oferta:</label>
             <select class="input" id="scriptOfertaSeletor" style="max-width:320px;"></select>
           </div>
+          <div style="margin-bottom:14px;">
+            <label class="label">Qual script <span style="font-weight:400;color:var(--text-dim);">(dá pra ter vários por oferta — ex: um por template/campanha)</span></label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <select class="input" id="scriptNomeSeletor" style="max-width:320px;flex:1;"></select>
+              <button class="btn btn-secondary" id="novoScriptBtn" type="button">➕ Novo script</button>
+              <button class="btn btn-secondary" id="renomearScriptBtn" type="button">✏️ Renomear</button>
+              <button class="btn btn-secondary" id="excluirScriptBtn" type="button" style="color:var(--danger-dark);">🗑️ Excluir</button>
+            </div>
+          </div>
           <div id="scriptContainer"></div>
           <button class="btn btn-secondary" id="addFaseScriptBtn" type="button" style="margin-top:6px;">➕ Adicionar fase</button>
           <div class="row-save">
@@ -2683,6 +2692,22 @@ async function carregarScript() {
   }
   await carregarScriptConteudo();
 }
+// Vários scripts NOMEADOS dentro de cada oferta (ex: um por template/campanha),
+// além das fases de cada um. 'scriptsVenda' é o campo novo (lista de scripts);
+// 'scriptVendas' (singular, sem o 's' do final) é o campo ANTIGO — uma lista
+// plana de fases, sem nome — mantido só pra não perder o que já foi escrito
+// antes dessa mudança: se a oferta ainda não tem nenhum scriptsVenda mas tem
+// o scriptVendas antigo, ele vira automaticamente 1 script chamado "Script padrão".
+let scripts = [];
+let scriptAtualId = null;
+function gerarIdScript() { return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function scriptAtualObj() { return scripts.find(s => s.id === scriptAtualId) || null; }
+function renderSeletorScripts() {
+  const sel = document.getElementById('scriptNomeSeletor');
+  if (!sel) return;
+  sel.innerHTML = scripts.map(s => `<option value="${s.id}">${escapeHtml(s.nome || 'Sem nome')}</option>`).join('');
+  sel.value = scriptAtualId || '';
+}
 async function carregarScriptConteudo() {
   let c;
   if (scriptOfertasList.length > 1) {
@@ -2694,7 +2719,25 @@ async function carregarScriptConteudo() {
   } else {
     c = configuracaoAtual || {};
   }
-  scriptFases = JSON.parse(JSON.stringify(c.scriptVendas || []));
+  if (Array.isArray(c.scriptsVenda) && c.scriptsVenda.length) {
+    scripts = JSON.parse(JSON.stringify(c.scriptsVenda));
+  } else if (Array.isArray(c.scriptVendas) && c.scriptVendas.length) {
+    scripts = [{ id: gerarIdScript(), nome: 'Script padrão', fases: JSON.parse(JSON.stringify(c.scriptVendas)) }];
+  } else {
+    scripts = [];
+  }
+  if (!scripts.length) scripts = [{ id: gerarIdScript(), nome: 'Script padrão', fases: [] }];
+  scriptAtualId = scripts[0].id;
+  scriptFases = scripts[0].fases;
+  renderSeletorScripts();
+  renderScriptFases();
+}
+function trocarScriptAtual(novoId) {
+  syncScriptFasesFromDom();
+  const atual = scriptAtualObj();
+  if (atual) atual.fases = scriptFases;
+  scriptAtualId = novoId;
+  scriptFases = (scriptAtualObj() || {}).fases || [];
   renderScriptFases();
 }
 const scriptOfertaSeletorEl = document.getElementById('scriptOfertaSeletor');
@@ -2702,22 +2745,58 @@ if (scriptOfertaSeletorEl) scriptOfertaSeletorEl.addEventListener('change', (e) 
   scriptOfertaId = e.target.value;
   carregarScriptConteudo();
 });
+document.getElementById('scriptNomeSeletor').addEventListener('change', (e) => trocarScriptAtual(e.target.value));
+document.getElementById('novoScriptBtn').addEventListener('click', () => {
+  const nome = prompt('Nome do novo script (ex: nome do template/campanha):');
+  if (!nome || !nome.trim()) return;
+  syncScriptFasesFromDom();
+  const atual = scriptAtualObj(); if (atual) atual.fases = scriptFases;
+  const novo = { id: gerarIdScript(), nome: nome.trim(), fases: [] };
+  scripts.push(novo);
+  scriptAtualId = novo.id;
+  scriptFases = novo.fases;
+  renderSeletorScripts();
+  renderScriptFases();
+});
+document.getElementById('renomearScriptBtn').addEventListener('click', () => {
+  const atual = scriptAtualObj(); if (!atual) return;
+  const novoNome = prompt('Novo nome do script:', atual.nome);
+  if (!novoNome || !novoNome.trim()) return;
+  atual.nome = novoNome.trim();
+  renderSeletorScripts();
+});
+document.getElementById('excluirScriptBtn').addEventListener('click', () => {
+  if (scripts.length <= 1) { alert('Precisa ter pelo menos 1 script.'); return; }
+  const atual = scriptAtualObj(); if (!atual) return;
+  if (!confirm(`Excluir o script "${atual.nome}"? Só apaga de vez quando clicar em "Salvar script".`)) return;
+  scripts = scripts.filter(s => s.id !== scriptAtualId);
+  scriptAtualId = scripts[0].id;
+  scriptFases = scripts[0].fases;
+  renderSeletorScripts();
+  renderScriptFases();
+});
 document.getElementById('addFaseScriptBtn').addEventListener('click', () => {
   syncScriptFasesFromDom();
   scriptFases.push({ titulo: '', texto: '' });
+  const atual = scriptAtualObj(); if (atual) atual.fases = scriptFases;
   renderScriptFases();
 });
 document.getElementById('salvarScriptBtn').addEventListener('click', async () => {
   syncScriptFasesFromDom();
+  const atual = scriptAtualObj(); if (atual) atual.fases = scriptFases;
   const st = document.getElementById('statusScript');
-  const body = { scriptVendas: scriptFases.filter(f => (f.titulo && f.titulo.trim()) || (f.texto && f.texto.trim())) };
+  const body = { scriptsVenda: scripts.map(s => ({ id: s.id, nome: s.nome, fases: (s.fases || []).filter(f => (f.titulo && f.titulo.trim()) || (f.texto && f.texto.trim())) })) };
   st.textContent = 'Salvando...'; st.className = 'status-msg';
   try {
     const resp = await fetchAutenticado(urlScriptConfig(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       if (scriptOfertasList.length <= 1) configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body);
-      scriptFases = JSON.parse(JSON.stringify(body.scriptVendas));
+      scripts = JSON.parse(JSON.stringify(body.scriptsVenda));
+      if (!scripts.length) scripts = [{ id: gerarIdScript(), nome: 'Script padrão', fases: [] }];
+      if (!scripts.some(s => s.id === scriptAtualId)) scriptAtualId = scripts[0].id;
+      scriptFases = scriptAtualObj().fases;
+      renderSeletorScripts();
       renderScriptFases(); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok';
     }
     else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }

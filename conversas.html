@@ -199,6 +199,9 @@
     <div id="scriptOfertaBox" style="display:none;padding:8px 16px;border-bottom:1px solid var(--border);">
       <select id="scriptOfertaSelect" class="input" style="width:100%;font-size:0.8rem;padding:6px 8px;"></select>
     </div>
+    <div id="scriptNomeBox" style="display:none;padding:8px 16px;border-bottom:1px solid var(--border);">
+      <select id="scriptNomeSelect" class="input" style="width:100%;font-size:0.8rem;padding:6px 8px;"></select>
+    </div>
     <div class="script-body" id="scriptBody"></div>
   </aside>
 </div>
@@ -894,15 +897,44 @@ function mdParaWhatsapp(texto) {
 // quem tinha mais de uma oferta (ex.: PDN Corretores + PDN Doctors) não
 // conseguia ver o script da outra sem trocar qual é a padrão.
 let _scriptOfertaEscolhida = localStorage.getItem('scriptOfertaEscolhida') || '';
+// Dentro de uma oferta pode ter vários scripts NOMEADOS (ex: um por template)
+// — 'scriptsVenda' é a lista nova; contas antigas que só têm o campo plano
+// 'scriptVendas' (sem nome) continuam funcionando igual, só que sem seletor
+// de script (não tem entre o quê escolher).
+let _scriptsDaOferta = [];
+let _scriptNomeEscolhidoId = null;
 async function carregarScriptVendas() {
   const painel = document.getElementById('scriptPanel');
   const body = document.getElementById('scriptBody');
+  const nomeBox = document.getElementById('scriptNomeBox');
   try {
     const ofertaAlvo = MEU_OFERTA_ID || _scriptOfertaEscolhida || '';
     const url = ofertaAlvo ? `${API_BASE}/minha-config?oferta=${encodeURIComponent(ofertaAlvo)}` : `${API_BASE}/minha-config`;
     const r = await fetchAut(url);
     const d = await r.json();
-    const fases = (d.ok && Array.isArray(d.empresa.scriptVendas)) ? d.empresa.scriptVendas : [];
+    if (Array.isArray(d.empresa && d.empresa.scriptsVenda) && d.empresa.scriptsVenda.length) {
+      _scriptsDaOferta = d.empresa.scriptsVenda;
+    } else if (Array.isArray(d.empresa && d.empresa.scriptVendas) && d.empresa.scriptVendas.length) {
+      _scriptsDaOferta = [{ id: '', nome: '', fases: d.empresa.scriptVendas }];
+    } else {
+      _scriptsDaOferta = [];
+    }
+    if (!_scriptsDaOferta.length) { painel.classList.add('hidden'); nomeBox.style.display = 'none'; return; }
+    const chaveLembrete = 'scriptNomeEscolhido__' + (ofertaAlvo || 'padrao');
+    if (!_scriptNomeEscolhidoId || !_scriptsDaOferta.some(s => s.id === _scriptNomeEscolhidoId)) {
+      _scriptNomeEscolhidoId = localStorage.getItem(chaveLembrete) || _scriptsDaOferta[0].id;
+      if (!_scriptsDaOferta.some(s => s.id === _scriptNomeEscolhidoId)) _scriptNomeEscolhidoId = _scriptsDaOferta[0].id;
+    }
+    const sel = document.getElementById('scriptNomeSelect');
+    if (_scriptsDaOferta.length > 1 && _scriptsDaOferta.some(s => s.nome)) {
+      sel.innerHTML = _scriptsDaOferta.map(s => `<option value="${esc(s.id)}">${esc(s.nome || 'Sem nome')}</option>`).join('');
+      sel.value = _scriptNomeEscolhidoId;
+      nomeBox.style.display = 'block';
+    } else {
+      nomeBox.style.display = 'none';
+    }
+    const escolhido = _scriptsDaOferta.find(s => s.id === _scriptNomeEscolhidoId) || _scriptsDaOferta[0];
+    const fases = escolhido.fases || [];
     if (!fases.length) { painel.classList.add('hidden'); return; }
     body.innerHTML = fases.map((f, i) => {
       const titulo = escHtml(f.titulo || `Fase ${i + 1}`);
@@ -956,6 +988,11 @@ async function carregarOfertasScriptSelect() {
 document.getElementById('scriptOfertaSelect').addEventListener('change', (e) => {
   _scriptOfertaEscolhida = e.target.value;
   localStorage.setItem('scriptOfertaEscolhida', _scriptOfertaEscolhida);
+  carregarScriptVendas();
+});
+document.getElementById('scriptNomeSelect').addEventListener('change', (e) => {
+  _scriptNomeEscolhidoId = e.target.value;
+  localStorage.setItem('scriptNomeEscolhido__' + (MEU_OFERTA_ID || _scriptOfertaEscolhida || 'padrao'), _scriptNomeEscolhidoId);
   carregarScriptVendas();
 });
 carregarScriptVendas();
