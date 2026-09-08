@@ -1756,8 +1756,13 @@ function abrirModalDisparoColuna(etapaId, etapaNome) {
           ${qtd} contato${qtd === 1 ? '' : 's'} nessa coluna agora. Vai mandar o template abaixo (aprovado na Meta) pra cada um. Funciona só no modo API Oficial.
         </p>
         <div class="modal-field">
-          <label>Nome do template aprovado na Meta</label>
-          <input type="text" id="disparoColunaTemplate" list="templatesMetaDatalist" placeholder="ex: recado_follow_up" value="${esc(ultimoTemplate)}">
+          <label>Escolher da lista (templates aprovados na Meta)</label>
+          <select id="disparoColunaTemplateSelect" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border,#ddd);margin-bottom:8px;">
+            <option value="">— Carregando templates... —</option>
+          </select>
+          <label>Ou digitar o nome exato</label>
+          <input type="text" id="disparoColunaTemplate" placeholder="ex: recado_follow_up" value="${esc(ultimoTemplate)}">
+          <div id="disparoColunaTemplateBadge" style="margin:4px 0 0;"></div>
         </div>
         <p style="font-size:0.75rem;color:var(--text-dim);margin:0 0 12px;">Variáveis do template: {{1}} = nome do recomendado, {{2}} = quem recomendou, {{3}} = vendedor.</p>
         <div class="modal-actions">
@@ -1770,6 +1775,30 @@ function abrirModalDisparoColuna(etapaId, etapaNome) {
   document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') fecharModal(); });
   document.getElementById('disparoColunaBtn').addEventListener('click', () => disparaColuna(etapaId));
   document.getElementById('disparoColunaTemplate').focus();
+  preencherSeletorTemplateColuna();
+}
+
+// Popula o <select> com os templates aprovados de verdade na Meta — clica e
+// escolhe, em vez de ter que lembrar/digitar o nome exato. Escolhendo um,
+// preenche o campo de texto (que continua editável, pra digitar livre se
+// o template for novo e ainda não tiver caído no cache de 10min).
+async function preencherSeletorTemplateColuna() {
+  const sel = document.getElementById('disparoColunaTemplateSelect');
+  const inp = document.getElementById('disparoColunaTemplate');
+  if (!sel) return;
+  const templates = await carregarTemplatesMeta();
+  const mapa = { marketing: '🟠 Marketing', utility: '🟢 Utilidade', authentication: '🔵 Autenticação' };
+  sel.innerHTML = '<option value="">— Escolher um template da lista —</option>' +
+    (templates || []).map(t => `<option value="${esc(t.name)}">${esc(t.name)} (${mapa[t.categoria] || t.categoria || '?'})</option>`).join('');
+  if (inp && inp.value && templates.some(t => t.name === inp.value)) sel.value = inp.value;
+  sel.addEventListener('change', () => {
+    if (sel.value && inp) { inp.value = sel.value; inp.dispatchEvent(new Event('input')); }
+  });
+  if (inp) {
+    const atualizarBadge = () => { const b = document.getElementById('disparoColunaTemplateBadge'); if (b) b.innerHTML = categoriaBadgeHtml(inp.value); };
+    inp.addEventListener('input', atualizarBadge);
+    atualizarBadge();
+  }
 }
 
 async function disparaColuna(etapaId) {

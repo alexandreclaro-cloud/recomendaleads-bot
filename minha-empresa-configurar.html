@@ -642,7 +642,11 @@
           <p class="sub">Manda um <b>template aprovado</b> pra uma lista de contatos, tudo pela API Oficial (sem risco de ban). Cada envio desconta do saldo.</p>
           <div id="disparoSoOficial" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:0.86rem;margin-bottom:12px;">⚠️ O disparo em massa só funciona no modo <b>API Oficial da Meta</b>. Configure na aba WhatsApp.</div>
 
-          <label class="label">Nome do template aprovado na Meta</label>
+          <label class="label">Escolher da lista (templates aprovados na Meta)</label>
+          <select class="input" id="disparoTemplateSelect" style="max-width:420px;margin-bottom:8px;">
+            <option value="">— Carregando templates... —</option>
+          </select>
+          <label class="label">Ou digitar o nome exato</label>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <input class="input" id="disparoTemplate" type="text" list="templatesMetaDatalist" placeholder="ex: poder_network_corretores" style="max-width:420px;flex:1;">
             <button type="button" class="btn btn-secondary" id="salvarTemplateDisparoBtn">💾 Salvar template</button>
@@ -1011,10 +1015,24 @@ async function carregarTemplatesMeta() {
 // (ex: um recém-criado que ainda não caiu no cache de 10min).
 function renderTemplatesDatalist() {
   const dl = document.getElementById('templatesMetaDatalist');
-  if (!dl || !_tplMetaCache) return;
   const mapa = { marketing: '🟠 Marketing', utility: '🟢 Utilidade', authentication: '🔵 Autenticação' };
-  dl.innerHTML = _tplMetaCache.map(t => `<option value="${escapeHtml(t.name)}">${mapa[t.categoria] || t.categoria || ''}</option>`).join('');
+  if (dl && _tplMetaCache) {
+    dl.innerHTML = _tplMetaCache.map(t => `<option value="${escapeHtml(t.name)}">${mapa[t.categoria] || t.categoria || ''}</option>`).join('');
+  }
+  // <select> explícito do campo principal de Disparo em massa — mais visível
+  // que o datalist (que não mostra seta nenhuma até o usuário digitar/clicar).
+  const sel = document.getElementById('disparoTemplateSelect');
+  if (sel && _tplMetaCache) {
+    const inp = document.getElementById('disparoTemplate');
+    sel.innerHTML = '<option value="">— Escolher um template da lista —</option>' +
+      _tplMetaCache.map(t => `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)} (${mapa[t.categoria] || t.categoria || '?'})</option>`).join('');
+    if (inp && inp.value && _tplMetaCache.some(t => t.name === inp.value)) sel.value = inp.value;
+  }
 }
+document.getElementById('disparoTemplateSelect').addEventListener('change', (e) => {
+  const inp = document.getElementById('disparoTemplate');
+  if (e.target.value && inp) { inp.value = e.target.value; inp.dispatchEvent(new Event('input')); }
+});
 function categoriaBadgeHtml(nome) {
   const n = (nome || '').trim();
   if (!n) return '';
