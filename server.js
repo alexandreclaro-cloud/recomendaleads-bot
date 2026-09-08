@@ -8623,6 +8623,96 @@ app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, exigi
   }
 });
 
+// Junta TODOS os disparos já feitos com esse MESMO template (a Meta também
+// soma assim, por template — não por "lote") — sem isso, um template mandado
+// em 3 levas diferentes (lista original + retomada do que faltou + lista
+// nova) aparecia como 3 relatórios separados, difícil de somar de cabeça.
+// Dedup por telefone (quem recebeu em mais de uma leva conta só uma vez).
+async function montarDisparoAgregado(empresaId, template) {
+  const snap = await DISPAROS_COL().where('empresaId', '==', empresaId).where('template', '==', template).get();
+  if (snap.empty) return null;
+  const campanhaIds = [];
+  const vistos = new Set();
+  const contatos = [];
+  let criadoEmMin = null;
+  snap.forEach(d => {
+    campanhaIds.push(d.id);
+    const x = d.data();
+    if (!criadoEmMin || new Date(x.criadoEm) < new Date(criadoEmMin)) criadoEmMin = x.criadoEm;
+    (x.contatos || []).forEach(c => { if (c.telefone && !vistos.has(c.telefone)) { vistos.add(c.telefone); contatos.push(c); } });
+  });
+  return { campanhaIds, contatos, criadoEm: criadoEmMin, lotes: campanhaIds.length };
+}
+
+app.get('/minha-disparos/template/:template/relatorio', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const template = req.params.template;
+    const agregado = await montarDisparoAgregado(req.empresaLogin.id, template);
+    if (!agregado) return res.status(404).json({ ok: false, erro: 'Nenhum disparo encontrado com esse template.' });
+
+    const statusPorTelefone = {};
+    for (let i = 0; i < agregado.campanhaIds.length; i += 30) {
+      const lote = agregado.campanhaIds.slice(i, i + 30);
+      const msgsSnap = await MENSAGENS_CHAT_COL().where('campanhaId', 'in', lote).get();
+      msgsSnap.forEach(d => { const m = d.data(); statusPorTelefone[m.telefone] = m.status || 'enviado'; });
+    }
+    let entregues = 0, lidos = 0, falharam = 0;
+    agregado.contatos.forEach(c => {
+      const st = statusPorTelefone[c.telefone];
+      if (st === 'entregue' || st === 'lido') entregues++;
+      if (st === 'lido') lidos++;
+      if (st === 'falhou') falharam++;
+    });
+
+    const disparoAgregado = { criadoEm: agregado.criadoEm, contatos: agregado.contatos };
+    const respostas = await calcularRespostasPorBotao(disparoAgregado, req.empresaLogin.id);
+    const responderam = respostas.filter(g => g.resposta !== '(sem resposta)').reduce((n, g) => n + g.contatos.length, 0);
+
+    res.json({
+      ok: true,
+      disparo: { id: null, template, total: agregado.contatos.length, criadoEm: agregado.criadoEm, status: 'agregado', lotes: agregado.lotes },
+      resumo: { total: agregado.contatos.length, entregues, lidos, falharam, responderam, recomendaram: 0 },
+      colunas: [],
+      respostas
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Redispara pra um grupo de resposta, mas olhando pra TODOS os lotes desse
+// template (versão agregada do /minha-disparos/:id/resposta/disparar).
+app.post('/minha-disparos/template/:template/resposta/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') {
+      return res.status(400).json({ ok: false, erro: 'O disparo em massa só funciona no modo API Oficial da Meta.' });
+    }
+    const templateOrigem = req.params.template;
+    const resposta = String((req.body && req.body.resposta) || '');
+    const template = String((req.body && req.body.template) || '').trim();
+    if (!template) return res.status(400).json({ ok: false, erro: 'Informe o template.' });
+    const headerImageUrl = String((req.body && req.body.headerImageUrl) || '').trim() || null;
+    const erroHeader = await validarHeaderTemplate(empresa, template, headerImageUrl);
+    if (erroHeader) return res.status(400).json({ ok: false, erro: erroHeader });
+
+    const rodando = _disparoStatus[empresa.id];
+    if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
+
+    const agregado = await montarDisparoAgregado(req.empresaLogin.id, templateOrigem);
+    if (!agregado) return res.status(404).json({ ok: false, erro: 'Nenhum disparo encontrado com esse template.' });
+    const grupos = await calcularRespostasPorBotao({ criadoEm: agregado.criadoEm, contatos: agregado.contatos }, req.empresaLogin.id);
+    const alvo = grupos.find(g => g.resposta === resposta);
+    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
+    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém com essa resposta agora — nada pra disparar.' });
+
+    const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
+    res.json({ ok: true, ...resultado, resposta, disparadoDeTemplate: templateOrigem });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Disparo por COLUNA do pipeline — dá pra usar um template DIFERENTE pra quem
 // nunca respondeu vs. quem respondeu mas travou no meio do fluxo. Recalcula a
 // coluna na hora (não confia em cache) e cria uma campanha NOVA (rastreável

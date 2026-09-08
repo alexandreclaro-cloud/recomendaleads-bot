@@ -726,7 +726,7 @@
           </div>
           <div id="disparoRelStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-top:16px;"></div>
 
-          <div style="margin-top:20px;">
+          <div style="margin-top:20px;" id="disparoRelPipelineBox">
             <b style="font-size:0.9rem;">Pipeline — momento de cada lead</b>
             <p class="hint" style="margin:2px 0 10px;">Escolha um template diferente pra cada coluna (ex.: quem nunca respondeu precisa de um lembrete; quem já deu o nome mas não indicou ninguém precisa só de um empurrão pra terminar) e dispare só pra ela.</p>
             <div id="disparoRelPipeline" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;"></div>
@@ -1187,7 +1187,16 @@ async function carregarDisparosHistorico() {
     if (!resp.ok || !d.ok) throw new Error();
     const disparos = d.disparos || [];
     if (!disparos.length) { box.innerHTML = '<span class="sub">Nenhum disparo ainda.</span>'; return; }
-    box.innerHTML = disparos.map(x => `
+    // Um mesmo template pode ter sido disparado em vários lotes (lista original +
+    // retomada do que faltou + uma lista nova depois) — conta quantos lotes cada
+    // template tem pra saber quando vale a pena oferecer o relatório consolidado.
+    const porTemplate = {};
+    disparos.forEach(x => { porTemplate[x.template] = (porTemplate[x.template] || 0) + 1; });
+    const jaMostrouConsolidado = new Set();
+    box.innerHTML = disparos.map(x => {
+      const mostrarConsolidado = porTemplate[x.template] > 1 && !jaMostrouConsolidado.has(x.template);
+      if (mostrarConsolidado) jaMostrouConsolidado.add(x.template);
+      return `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border);padding:10px 0;">
         <div>
           <b>${(x.template || '').replace(/[<>]/g, '')}</b>
@@ -1197,10 +1206,15 @@ async function carregarDisparosHistorico() {
           ${x.status !== 'concluido' ? `<button type="button" class="btn btn-action" data-retomar-id="${x.id}" style="padding:6px 12px;font-size:0.82rem;">▶️ Retomar disparo</button>
           <span class="status-msg" data-retomar-status="${x.id}"></span>` : ''}
           <button type="button" class="btn btn-secondary" data-rel-id="${x.id}" style="padding:6px 12px;font-size:0.82rem;">📊 Ver relatório</button>
+          ${mostrarConsolidado ? `<button type="button" class="btn btn-action" data-rel-agregado="${escapeHtml(x.template)}" style="padding:6px 12px;font-size:0.82rem;" title="Soma todos os ${porTemplate[x.template]} lotes já disparados com esse template">📊 Ver consolidado (${porTemplate[x.template]} lotes)</button>` : ''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     box.querySelectorAll('[data-rel-id]').forEach(btn => {
       btn.addEventListener('click', () => abrirRelatorioDisparo(btn.dataset.relId));
+    });
+    box.querySelectorAll('[data-rel-agregado]').forEach(btn => {
+      btn.addEventListener('click', () => abrirRelatorioAgregado(btn.dataset.relAgregado));
     });
     box.querySelectorAll('[data-retomar-id]').forEach(btn => {
       btn.addEventListener('click', () => retomarDisparo(btn.dataset.retomarId));
@@ -1235,8 +1249,22 @@ async function retomarDisparo(id) {
 }
 
 let _disparoRelatorioAtualId = null;
+let _disparoRelatorioAgregado = false;
+// Relatório de UM lote específico (um clique em "Ver relatório" na lista).
 async function abrirRelatorioDisparo(id) {
   _disparoRelatorioAtualId = id;
+  _disparoRelatorioAgregado = false;
+  await carregarRelatorio(`${API_BASE}/minha-disparos/${id}/relatorio`);
+}
+// Relatório CONSOLIDADO — soma todos os lotes já disparados com esse mesmo
+// template (ex.: lista original + retomada + uma lista nova depois), igual o
+// jeito que a própria Meta soma no relatório dela (por template, não por lote).
+async function abrirRelatorioAgregado(template) {
+  _disparoRelatorioAtualId = template;
+  _disparoRelatorioAgregado = true;
+  await carregarRelatorio(`${API_BASE}/minha-disparos/template/${encodeURIComponent(template)}/relatorio`);
+}
+async function carregarRelatorio(url) {
   const overlay = document.getElementById('disparoRelatorioOverlay');
   overlay.style.display = 'flex';
   document.getElementById('disparoRelTitulo').textContent = 'Carregando...';
@@ -1244,11 +1272,11 @@ async function abrirRelatorioDisparo(id) {
   document.getElementById('disparoRelPipeline').innerHTML = '';
   document.getElementById('disparoRelRespostas').innerHTML = '';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-disparos/${id}/relatorio`);
+    const resp = await fetchAutenticado(url);
     const d = await resp.json();
     if (!resp.ok || !d.ok) { document.getElementById('disparoRelTitulo').textContent = '❌ ' + (d.erro || 'Erro ao carregar'); return; }
-    document.getElementById('disparoRelTitulo').textContent = d.disparo.template;
-    document.getElementById('disparoRelSub').textContent = `${fmtDataHoraCliente(d.disparo.criadoEm)} · ${d.disparo.total} contato(s)`;
+    document.getElementById('disparoRelTitulo').textContent = d.disparo.template + (_disparoRelatorioAgregado ? ` — consolidado (${d.disparo.lotes} lote${d.disparo.lotes === 1 ? '' : 's'})` : '');
+    document.getElementById('disparoRelSub').textContent = `${fmtDataHoraCliente(d.disparo.criadoEm)} · ${d.disparo.total} contato(s) únicos`;
     const r = d.resumo;
     const stat = (label, valor, cor) => `<div style="background:var(--brand-soft,#eff4ff);border-radius:10px;padding:10px;text-align:center;">
       <div style="font-size:1.4rem;font-weight:800;${cor ? 'color:' + cor + ';' : ''}">${valor}</div>
@@ -1263,6 +1291,7 @@ async function abrirRelatorioDisparo(id) {
       stat('Falharam', r.falharam, r.falharam ? '#b91c1c' : '');
 
     const colunas = d.colunas || [];
+    document.getElementById('disparoRelPipelineBox').style.display = colunas.length ? 'block' : 'none';
     document.getElementById('disparoRelPipeline').innerHTML = colunas.map(col => `
       <div style="flex:0 0 240px;background:var(--bg,#f7f8fa);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;">
         <div style="font-weight:700;font-size:0.86rem;">${col.nome}</div>
@@ -1333,7 +1362,10 @@ async function dispararGrupoResposta(idx) {
   btn.disabled = true; st.textContent = 'Iniciando...'; st.className = 'status-msg';
   try {
     const headerImageUrl = (configuracaoAtual && configuracaoAtual.disparoTemplateImagemUrl) || null;
-    const resp = await fetchAutenticado(`${API_BASE}/minha-disparos/${id}/resposta/disparar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resposta: grupo.resposta, template, headerImageUrl }) });
+    const url = _disparoRelatorioAgregado
+      ? `${API_BASE}/minha-disparos/template/${encodeURIComponent(id)}/resposta/disparar`
+      : `${API_BASE}/minha-disparos/${id}/resposta/disparar`;
+    const resp = await fetchAutenticado(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resposta: grupo.resposta, template, headerImageUrl }) });
     const d = await resp.json();
     if (!resp.ok || !d.ok) { st.textContent = '❌ ' + (d.erro || 'Erro'); st.className = 'status-msg err'; btn.disabled = false; return; }
     st.textContent = `🚀 Iniciado (${d.total})`; st.className = 'status-msg ok';
