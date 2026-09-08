@@ -239,6 +239,16 @@ function metaHeaders(cfg) {
 function soDigitos(telefone) {
   return String(telefone || '').replace(/\D/g, '');
 }
+// Chave "solta" pra cruzar telefones vindos de fontes diferentes (uma lista
+// que o dono subiu vs. o wa_id que a própria Meta devolve de quem respondeu
+// de verdade) — usa só os últimos 8 dígitos, ignorando DDI (55) e o "nono
+// dígito" do celular brasileiro, que varia dependendo de como o número foi
+// digitado/importado. Sem isso, cruzar "quem está na lista do disparo" com
+// "quem respondeu" falha silenciosamente pra boa parte dos contatos — dá
+// '0 responderam' no relatório mesmo com clique real registrado na Meta.
+function chaveTelefoneFuzzy(telefone) {
+  return soDigitos(telefone).slice(-8);
+}
 
 // Descobre o número REAL da conta oficial direto na Meta (display_phone_number
 // do Phone Number ID). É a fonte da verdade no modo 'oficial' — não depende de
@@ -8525,13 +8535,26 @@ async function calcularPipelineDisparo(disparo, empresaId) {
   const statusPorTelefone = {};
   msgsSnap.forEach(d => { const m = d.data(); statusPorTelefone[m.telefone] = m.status || 'enviado'; });
 
+  // Casa pela chave "solta" (últimos 8 dígitos) — o telefone da conversa vem
+  // do wa_id que a MESMA Meta devolveu de quem respondeu de verdade, que pode
+  // não bater dígito-a-dígito com o telefone digitado/importado na lista do
+  // disparo (DDI, nono dígito do celular BR). Guarda a data MAIS RECENTE por
+  // chave, caso duas pessoas de listas diferentes caiam na mesma chave.
   const convSnap = await CONVERSAS_COL().where('empresaId', '==', empresaId).get();
-  const ultimaInboundPorTelefone = {};
-  convSnap.forEach(d => { const c = d.data(); if (c.telefone) ultimaInboundPorTelefone[c.telefone] = c.ultimaInboundEm || null; });
+  const ultimaInboundPorChave = {};
+  convSnap.forEach(d => {
+    const c = d.data();
+    if (!c.telefone) return;
+    const k = chaveTelefoneFuzzy(c.telefone);
+    if (!k) return;
+    if (!ultimaInboundPorChave[k] || new Date(c.ultimaInboundEm || 0) > new Date(ultimaInboundPorChave[k])) {
+      ultimaInboundPorChave[k] = c.ultimaInboundEm || null;
+    }
+  });
 
   const leadsSnap = await LEADS_COL().where('empresaId', '==', empresaId).get();
-  const recomendouTelefones = new Set();
-  leadsSnap.forEach(d => { const l = d.data(); if (l.telefoneRecomendador) recomendouTelefones.add(soDigitos(l.telefoneRecomendador)); });
+  const recomendouChaves = new Set();
+  leadsSnap.forEach(d => { const l = d.data(); if (l.telefoneRecomendador) recomendouChaves.add(chaveTelefoneFuzzy(l.telefoneRecomendador)); });
 
   const contatos = disparo.contatos || [];
   const chave = (tel) => (empresaId === EMPRESA_ID_PDN ? tel : `${empresaId}__${tel}`);
@@ -8547,10 +8570,10 @@ async function calcularPipelineDisparo(disparo, empresaId) {
     if (st === 'entregue' || st === 'lido') entregues++;
     if (st === 'lido') lidos++;
     if (st === 'falhou') falharam++;
-    const ultimaInbound = ultimaInboundPorTelefone[c.telefone];
+    const ultimaInbound = ultimaInboundPorChave[chaveTelefoneFuzzy(c.telefone)];
     const respondeu = !!(ultimaInbound && disparo.criadoEm && new Date(ultimaInbound) > new Date(disparo.criadoEm));
     if (respondeu) responderam++;
-    const jaRecomendou = recomendouTelefones.has(c.telefone);
+    const jaRecomendou = recomendouChaves.has(chaveTelefoneFuzzy(c.telefone));
     if (jaRecomendou) recomendaram++;
 
     const item = { telefone: c.telefone, nome: (c.params && c.params[0]) || null };
@@ -8577,16 +8600,22 @@ async function calcularPipelineDisparo(disparo, empresaId) {
 // "Quero participar", sem misturar com quem recusou ou nunca respondeu.
 async function calcularRespostasPorBotao(disparo, empresaId) {
   const contatos = disparo.contatos || [];
-  const telefones = new Set(contatos.map(c => c.telefone));
+  // Casa pela chave "solta" (últimos 8 dígitos) — o telefone de quem responde
+  // vem do wa_id que a Meta devolve, que pode não bater dígito-a-dígito com o
+  // telefone digitado/importado na lista do disparo (DDI, nono dígito do
+  // celular BR). Sem isso, dava '0 responderam' mesmo com clique real na Meta.
+  const telefoneOriginalPorChave = new Map();
+  contatos.forEach(c => { const k = chaveTelefoneFuzzy(c.telefone); if (k) telefoneOriginalPorChave.set(k, c.telefone); });
   const snap = await MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'in').get();
   const primeiraRespostaPorTelefone = {};
   snap.forEach(d => {
     const m = d.data();
-    if (!telefones.has(m.telefone)) return;
+    const telOriginal = telefoneOriginalPorChave.get(chaveTelefoneFuzzy(m.telefone));
+    if (!telOriginal) return;
     if (disparo.criadoEm && new Date(m.criadoEm) <= new Date(disparo.criadoEm)) return; // só resposta DEPOIS do disparo
-    const atual = primeiraRespostaPorTelefone[m.telefone];
+    const atual = primeiraRespostaPorTelefone[telOriginal];
     if (!atual || new Date(m.criadoEm) < new Date(atual.em)) {
-      primeiraRespostaPorTelefone[m.telefone] = { texto: (m.texto || '').trim() || '(sem texto)', em: m.criadoEm };
+      primeiraRespostaPorTelefone[telOriginal] = { texto: (m.texto || '').trim() || '(sem texto)', em: m.criadoEm };
     }
   });
   const grupos = {};
