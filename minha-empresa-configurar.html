@@ -726,6 +726,12 @@
             <p class="hint" style="margin:2px 0 10px;">Escolha um template diferente pra cada coluna (ex.: quem nunca respondeu precisa de um lembrete; quem já deu o nome mas não indicou ninguém precisa só de um empurrão pra terminar) e dispare só pra ela.</p>
             <div id="disparoRelPipeline" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;"></div>
           </div>
+
+          <div style="margin-top:20px;">
+            <b style="font-size:0.9rem;">Respostas — o que cada um respondeu</b>
+            <p class="hint" style="margin:2px 0 10px;">Agrupa pela primeira resposta de cada contato (clique em botão de Resposta Rápida ou texto livre). Se a janela de 24h já fechou, escolha um template pra reenviar só pra um grupo específico (ex: só quem clicou "Quero participar").</p>
+            <div id="disparoRelRespostas" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;"></div>
+          </div>
         </div>
       </div>
 
@@ -1206,6 +1212,7 @@ async function abrirRelatorioDisparo(id) {
   document.getElementById('disparoRelTitulo').textContent = 'Carregando...';
   document.getElementById('disparoRelStats').innerHTML = '';
   document.getElementById('disparoRelPipeline').innerHTML = '';
+  document.getElementById('disparoRelRespostas').innerHTML = '';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-disparos/${id}/relatorio`);
     const d = await resp.json();
@@ -1244,6 +1251,28 @@ async function abrirRelatorioDisparo(id) {
     document.getElementById('disparoRelPipeline').querySelectorAll('[data-pipeline-disparar]').forEach(btn => {
       btn.addEventListener('click', () => dispararColunaPipeline(btn.dataset.pipelineDisparar));
     });
+
+    // Respostas — agrupado pela primeira resposta de cada contato (texto do
+    // botão clicado, ou texto livre). Guarda a lista completa num array global
+    // e referencia por índice nos data-attributes (evita ter que escapar texto
+    // de resposta arbitrário dentro de um atributo HTML).
+    _disparoRespostasAtual = d.respostas || [];
+    document.getElementById('disparoRelRespostas').innerHTML = _disparoRespostasAtual.map((grupo, i) => `
+      <div style="flex:0 0 240px;background:var(--bg,#f7f8fa);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;">
+        <div style="font-weight:700;font-size:0.86rem;">${escapeHtml(grupo.resposta)}</div>
+        <div class="hint" style="margin:2px 0 8px;">${grupo.contatos.length} contato(s)</div>
+        <div style="max-height:180px;overflow:auto;font-size:0.78rem;flex:1;margin-bottom:8px;">
+          ${grupo.contatos.length ? grupo.contatos.map(c => `<div style="padding:3px 0;border-top:1px solid var(--border);">${(c.nome ? escapeHtml(c.nome) + ' — ' : '')}${escapeHtml(c.telefone)}</div>`).join('') : '<span class="sub">Ninguém aqui.</span>'}
+        </div>
+        <input class="input" type="text" data-resposta-template="${i}" placeholder="Template pra reenviar a este grupo" style="font-size:0.78rem;padding:6px 8px;margin-bottom:2px;">
+        <div data-resposta-badge="${i}" style="margin-bottom:6px;"></div>
+        <button type="button" class="btn btn-action" data-resposta-disparar="${i}" style="padding:6px 10px;font-size:0.78rem;">🚀 Disparar pra este grupo</button>
+        <span class="status-msg" data-resposta-status="${i}" style="font-size:0.72rem;"></span>
+      </div>`).join('');
+    document.getElementById('disparoRelRespostas').querySelectorAll('[data-resposta-disparar]').forEach(btn => {
+      btn.addEventListener('click', () => dispararGrupoResposta(+btn.dataset.respostaDisparar));
+    });
+
     await carregarTemplatesMeta();
     document.getElementById('disparoRelPipeline').querySelectorAll('[data-pipeline-template]').forEach(inp => {
       const badgeId = `[data-pipeline-badge="${inp.dataset.pipelineTemplate}"]`;
@@ -1251,7 +1280,38 @@ async function abrirRelatorioDisparo(id) {
       inp.addEventListener('input', atualizar);
       atualizar();
     });
+    document.getElementById('disparoRelRespostas').querySelectorAll('[data-resposta-template]').forEach(inp => {
+      const badgeId = `[data-resposta-badge="${inp.dataset.respostaTemplate}"]`;
+      const atualizar = () => { const b = document.querySelector(badgeId); if (b) b.innerHTML = categoriaBadgeHtml(inp.value); };
+      inp.addEventListener('input', atualizar);
+      atualizar();
+    });
   } catch (e) { document.getElementById('disparoRelTitulo').textContent = '❌ Erro de conexão'; }
+}
+
+let _disparoRespostasAtual = [];
+async function dispararGrupoResposta(idx) {
+  const id = _disparoRelatorioAtualId;
+  const grupo = _disparoRespostasAtual[idx];
+  if (!id || !grupo) return;
+  const inp = document.querySelector(`[data-resposta-template="${idx}"]`);
+  const template = (inp && inp.value || '').trim();
+  if (!template) { inp.focus(); return; }
+  if (!confirm(`Disparar o template "${template}" pra quem respondeu "${grupo.resposta}" (${grupo.contatos.length} contato(s))?`)) return;
+  const st = document.querySelector(`[data-resposta-status="${idx}"]`);
+  const btn = document.querySelector(`[data-resposta-disparar="${idx}"]`);
+  btn.disabled = true; st.textContent = 'Iniciando...'; st.className = 'status-msg';
+  try {
+    const headerImageUrl = (configuracaoAtual && configuracaoAtual.disparoTemplateImagemUrl) || null;
+    const resp = await fetchAutenticado(`${API_BASE}/minha-disparos/${id}/resposta/disparar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resposta: grupo.resposta, template, headerImageUrl }) });
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) { st.textContent = '❌ ' + (d.erro || 'Erro'); st.className = 'status-msg err'; btn.disabled = false; return; }
+    st.textContent = `🚀 Iniciado (${d.total})`; st.className = 'status-msg ok';
+    fecharRelatorioDisparo();
+    document.getElementById('disparoProgresso').style.display = 'block';
+    document.getElementById('disparoBtn').disabled = true;
+    pollDisparo();
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; btn.disabled = false; }
 }
 
 async function dispararColunaPipeline(coluna) {

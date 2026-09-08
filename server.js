@@ -8569,6 +8569,38 @@ async function calcularPipelineDisparo(disparo, empresaId) {
   };
 }
 
+// Agrupa os contatos do disparo pela PRIMEIRA resposta que deram depois dele
+// (texto exato — cobre tanto clique em botão de Resposta Rápida, que chega
+// como o próprio rótulo do botão, quanto texto livre digitado). Quem ainda não
+// respondeu cai no grupo '(sem resposta)'. Serve pra reenviar (outro template,
+// já fora da janela de 24h) só pra um grupo específico — ex: só quem clicou
+// "Quero participar", sem misturar com quem recusou ou nunca respondeu.
+async function calcularRespostasPorBotao(disparo, empresaId) {
+  const contatos = disparo.contatos || [];
+  const telefones = new Set(contatos.map(c => c.telefone));
+  const snap = await MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'in').get();
+  const primeiraRespostaPorTelefone = {};
+  snap.forEach(d => {
+    const m = d.data();
+    if (!telefones.has(m.telefone)) return;
+    if (disparo.criadoEm && new Date(m.criadoEm) <= new Date(disparo.criadoEm)) return; // só resposta DEPOIS do disparo
+    const atual = primeiraRespostaPorTelefone[m.telefone];
+    if (!atual || new Date(m.criadoEm) < new Date(atual.em)) {
+      primeiraRespostaPorTelefone[m.telefone] = { texto: (m.texto || '').trim() || '(sem texto)', em: m.criadoEm };
+    }
+  });
+  const grupos = {};
+  for (const c of contatos) {
+    const r = primeiraRespostaPorTelefone[c.telefone];
+    const chave = r ? r.texto : '(sem resposta)';
+    if (!grupos[chave]) grupos[chave] = [];
+    grupos[chave].push({ telefone: c.telefone, nome: (c.params && c.params[0]) || null });
+  }
+  return Object.entries(grupos)
+    .map(([resposta, contatos]) => ({ resposta, contatos }))
+    .sort((a, b) => b.contatos.length - a.contatos.length);
+}
+
 app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const doc = await DISPAROS_COL().doc(req.params.id).get();
@@ -8577,12 +8609,14 @@ app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, exigi
     }
     const disparo = { ...doc.data(), _id: doc.id };
     const { resumo, colunas } = await calcularPipelineDisparo(disparo, req.empresaLogin.id);
+    const respostas = await calcularRespostasPorBotao(disparo, req.empresaLogin.id);
 
     res.json({
       ok: true,
       disparo: { id: doc.id, template: disparo.template, total: disparo.total, criadoEm: disparo.criadoEm, status: disparo.status },
       resumo,
-      colunas
+      colunas,
+      respostas
     });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -8620,6 +8654,45 @@ app.post('/minha-disparos/:id/pipeline/disparar', exigirLoginEmpresa, exigirGest
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos);
     res.json({ ok: true, ...resultado, coluna, disparadoDe: req.params.id });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Redispara (outro template) SÓ pra quem deu UMA resposta específica a esse
+// disparo (ex: só quem clicou "Quero participar da seleção") — útil quando a
+// janela de 24h já fechou e só um template novo alcança essas pessoas de novo,
+// sem misturar com quem recusou ou nunca respondeu. Recalcula na hora (não
+// confia em cache) e cria uma campanha NOVA, não mexe na original.
+app.post('/minha-disparos/:id/resposta/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') {
+      return res.status(400).json({ ok: false, erro: 'O disparo em massa só funciona no modo API Oficial da Meta.' });
+    }
+    const resposta = String((req.body && req.body.resposta) || '');
+    const template = String((req.body && req.body.template) || '').trim();
+    if (!template) return res.status(400).json({ ok: false, erro: 'Informe o template.' });
+    const headerImageUrl = String((req.body && req.body.headerImageUrl) || '').trim() || null;
+    const erroHeader = await validarHeaderTemplate(empresa, template, headerImageUrl);
+    if (erroHeader) return res.status(400).json({ ok: false, erro: erroHeader });
+
+    const doc = await DISPAROS_COL().doc(req.params.id).get();
+    if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
+      return res.status(404).json({ ok: false, erro: 'Disparo não encontrado' });
+    }
+    const disparo = { ...doc.data(), _id: doc.id };
+
+    const rodando = _disparoStatus[empresa.id];
+    if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
+
+    const grupos = await calcularRespostasPorBotao(disparo, req.empresaLogin.id);
+    const alvo = grupos.find(g => g.resposta === resposta);
+    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
+    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém com essa resposta agora — nada pra disparar.' });
+
+    const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
+    res.json({ ok: true, ...resultado, resposta, disparadoDe: req.params.id });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
