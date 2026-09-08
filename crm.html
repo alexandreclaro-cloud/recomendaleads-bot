@@ -1019,7 +1019,7 @@
 
           <div id="oficialTemplateRecomendadoBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
             <label style="margin-top:0;">🟢 Template da API Oficial — usado no <b>1º contato</b> (frio)</label>
-            <input type="text" id="oficialTemplateRecomendadoInput" placeholder="ex: recomenda_amigos">
+            <input type="text" id="oficialTemplateRecomendadoInput" list="templatesMetaDatalist" placeholder="ex: recomenda_amigos">
             <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Nome <b>exato</b> do template aprovado na Meta. Na API Oficial, a 1ª mensagem pro recomendado (que nunca te chamou) TEM que ser template — os textos acima só valem dentro da janela de 24h. Variáveis na ordem: <b>{{1}}</b> nome do recomendado · <b>{{2}}</b> quem recomendou · <b>{{3}}</b> vendedor.</div>
             <div style="margin-top:10px;border-top:1px dashed #BBF7D0;padding-top:10px;">
               <div style="font-size:0.82rem;font-weight:600;margin-bottom:4px;">🧪 Testar este template</div>
@@ -1167,7 +1167,7 @@
           <textarea id="mensagemVendaInput" rows="3" placeholder="Ex: Boa notícia, {recomendador}! {recomendado} comprou e você ganhou: {premio} 🎁"></textarea>
           <div id="oficialTemplateVendaBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:10px 0;">
             <label style="margin-top:0;">🟢 Template da API Oficial (a venda pode ser dias depois → fora das 24h)</label>
-            <input type="text" id="oficialTemplateVendaInput" placeholder="ex: presente_venda">
+            <input type="text" id="oficialTemplateVendaInput" list="templatesMetaDatalist" placeholder="ex: presente_venda">
             <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Variáveis na ordem: <b>{{1}}</b> recomendador · <b>{{2}}</b> recomendado · <b>{{3}}</b> prêmio. Deixe vazio pra não avisar fora das 24h.</div>
           </div>
           <label>Prêmio (texto curto)</label>
@@ -1273,7 +1273,7 @@
           <textarea id="marketingMensagemInput" rows="3" placeholder="Ex: Oi {recomendador}! Temos novidades na {empresa} 😊"></textarea>
           <div id="oficialTemplateMarketingBox" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:10px 0;">
             <label style="margin-top:0;">🟢 Template da API Oficial (recorrente = sempre fora das 24h)</label>
-            <input type="text" id="oficialTemplateMarketingInput" placeholder="ex: agenda_marketing">
+            <input type="text" id="oficialTemplateMarketingInput" list="templatesMetaDatalist" placeholder="ex: agenda_marketing">
             <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Como manda a cada X dias, SEMPRE cai fora das 24h → precisa de template. Variáveis na ordem: <b>{{1}}</b> recomendador · <b>{{2}}</b> empresa · <b>{{3}}</b> prêmio. Vazio = não manda no oficial.</div>
           </div>
           <label>Prêmio (opcional — texto curto)</label>
@@ -1309,6 +1309,7 @@
 </div>
 
 <div id="modalContainer"></div>
+<datalist id="templatesMetaDatalist"></datalist>
 
 <script>
 const API_BASE = window.location.origin;
@@ -1756,7 +1757,7 @@ function abrirModalDisparoColuna(etapaId, etapaNome) {
         </p>
         <div class="modal-field">
           <label>Nome do template aprovado na Meta</label>
-          <input type="text" id="disparoColunaTemplate" placeholder="ex: recado_follow_up" value="${esc(ultimoTemplate)}">
+          <input type="text" id="disparoColunaTemplate" list="templatesMetaDatalist" placeholder="ex: recado_follow_up" value="${esc(ultimoTemplate)}">
         </div>
         <p style="font-size:0.75rem;color:var(--text-dim);margin:0 0 12px;">Variáveis do template: {{1}} = nome do recomendado, {{2}} = quem recomendou, {{3}} = vendedor.</p>
         <div class="modal-actions">
@@ -3114,7 +3115,17 @@ async function carregarTemplatesMeta() {
     const badge = inp.parentElement.querySelector(`[data-tpl-cat-badge="${inp.dataset.index}"]`);
     if (badge) badge.innerHTML = categoriaBadgeHtml(inp.value);
   });
+  renderTemplatesDatalist();
   return _tplMetaCache;
+}
+// Datalist compartilhado — todo campo de "nome do template" vira um combobox:
+// escolhe da lista de templates aprovados na Meta OU digita livre (ex: um
+// recém-criado que ainda não caiu no cache de 10min).
+function renderTemplatesDatalist() {
+  const dl = document.getElementById('templatesMetaDatalist');
+  if (!dl || !_tplMetaCache) return;
+  const mapa = { marketing: '🟠 Marketing', utility: '🟢 Utilidade', authentication: '🔵 Autenticação' };
+  dl.innerHTML = _tplMetaCache.map(t => `<option value="${esc(t.name)}">${mapa[t.categoria] || t.categoria || ''}</option>`).join('');
 }
 function categoriaBadgeHtml(nome) {
   const n = (nome || '').trim();
@@ -3167,7 +3178,7 @@ function renderCadenciaGenerica(containerId, cadencia, onChange) {
         <p data-tpl-aviso="${index}" class="hint" style="font-size:0.74rem;color:var(--text-dim);margin:6px 0 0;${item.esperaMin >= 1440 ? 'display:none;' : ''}">🔓 Espera menor que 24h — entrega sempre como texto livre, sem precisar de template. Passa a pedir template só se aumentar a espera pra 24h ou mais.</p>
         <div data-tpl-box="${index}" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:10px 12px;margin-top:8px;${item.esperaMin >= 1440 ? '' : 'display:none;'}">
           <label style="margin-top:0;font-size:0.8rem;">🟢 Template da API Oficial desta mensagem</label>
-          <input type="text" data-cadencia-campo="template" data-index="${index}" value="${(item.template || '').replace(/"/g, '&quot;')}" placeholder="ex: recomenda_insistencia_2">
+          <input type="text" data-cadencia-campo="template" list="templatesMetaDatalist" data-index="${index}" value="${(item.template || '').replace(/"/g, '&quot;')}" placeholder="ex: recomenda_insistencia_2">
           <div data-tpl-cat-badge="${index}" style="margin:4px 0 0;"></div>
           <div class="hint" style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">Nome exato do template aprovado na Meta. Só é usado se a pessoa já estiver <b>fora da janela de 24h</b> — enquanto ela ainda pode receber texto livre, o sistema manda a Mensagem acima em vez do template. Vazio = essa mensagem só entrega como texto livre (não chega se já estiver fora da janela).</div>
         </div>

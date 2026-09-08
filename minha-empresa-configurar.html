@@ -644,11 +644,12 @@
 
           <label class="label">Nome do template aprovado na Meta</label>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <input class="input" id="disparoTemplate" type="text" placeholder="ex: poder_network_corretores" style="max-width:420px;flex:1;">
+            <input class="input" id="disparoTemplate" type="text" list="templatesMetaDatalist" placeholder="ex: poder_network_corretores" style="max-width:420px;flex:1;">
             <button type="button" class="btn btn-secondary" id="salvarTemplateDisparoBtn">💾 Salvar template</button>
             <span class="status-msg" id="statusTemplateDisparo"></span>
           </div>
           <div id="disparoTemplateBadge" style="margin:2px 0;"></div>
+          <datalist id="templatesMetaDatalist"></datalist>
           <div class="hint">Tem que ser um template <b>Ativo</b> na sua conta da Meta. As variáveis vão na ordem das colunas abaixo. Pode salvar o template agora e montar a lista depois — fica guardado aqui.</div>
 
           <div id="disparoHeaderImgBox" style="display:none;margin-top:12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px;">
@@ -770,7 +771,7 @@
           </div>
           <div style="margin-bottom:14px;">
             <label class="label">Template da Meta que aciona ESTE script <span style="font-weight:400;color:var(--text-dim);">(precisa ser exato — sem isso o agente tenta adivinhar pelo nome, menos confiável)</span></label>
-            <input class="input" id="scriptTemplateOrigemInput" type="text" placeholder="ex: convite_doctor_cortesia" style="max-width:360px;">
+            <input class="input" id="scriptTemplateOrigemInput" type="text" list="templatesMetaDatalist" placeholder="ex: convite_doctor_cortesia" style="max-width:360px;">
             <div id="scriptTemplateOrigemBadge" style="margin:2px 0;"></div>
           </div>
           <div style="margin-bottom:14px;background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:10px;padding:12px 14px;">
@@ -1000,8 +1001,19 @@ async function carregarTemplatesMeta() {
     _tplMetaCache = (d.ok && d.templates) || [];
   } catch (e) { _tplMetaCache = []; }
   atualizarTodosBadgesTemplate();
+  renderTemplatesDatalist();
   if (typeof atualizarHeaderImgUI === 'function') atualizarHeaderImgUI();
   return _tplMetaCache;
+}
+// Datalist compartilhado — todo campo de "nome do template" (Disparo em massa,
+// grupos de Resposta, colunas de Pipeline) usa list="templatesMetaDatalist" pra
+// virar um combobox: escolhe da lista de templates aprovados OU digita livre
+// (ex: um recém-criado que ainda não caiu no cache de 10min).
+function renderTemplatesDatalist() {
+  const dl = document.getElementById('templatesMetaDatalist');
+  if (!dl || !_tplMetaCache) return;
+  const mapa = { marketing: '🟠 Marketing', utility: '🟢 Utilidade', authentication: '🔵 Autenticação' };
+  dl.innerHTML = _tplMetaCache.map(t => `<option value="${escapeHtml(t.name)}">${mapa[t.categoria] || t.categoria || ''}</option>`).join('');
 }
 function categoriaBadgeHtml(nome) {
   const n = (nome || '').trim();
@@ -1241,7 +1253,7 @@ async function abrirRelatorioDisparo(id) {
           ${col.contatos.length ? col.contatos.map(c => `<div style="padding:3px 0;border-top:1px solid var(--border);">${(c.nome ? c.nome.replace(/[<>]/g, '') + ' — ' : '')}${c.telefone}</div>`).join('') : '<span class="sub">Ninguém aqui.</span>'}
         </div>
         ${col.contatos.length ? `
-          <input class="input" type="text" data-pipeline-template="${col.id}" placeholder="Template pra esta coluna" style="font-size:0.78rem;padding:6px 8px;margin-bottom:2px;">
+          <input class="input" type="text" list="templatesMetaDatalist" data-pipeline-template="${col.id}" placeholder="Template pra esta coluna" style="font-size:0.78rem;padding:6px 8px;margin-bottom:2px;">
           <div data-pipeline-badge="${col.id}" style="margin-bottom:6px;"></div>
           <button type="button" class="btn btn-action" data-pipeline-disparar="${col.id}" style="padding:6px 10px;font-size:0.78rem;">🚀 Disparar pra esta coluna</button>
           <span class="status-msg" data-pipeline-status="${col.id}" style="font-size:0.72rem;"></span>
@@ -1264,7 +1276,7 @@ async function abrirRelatorioDisparo(id) {
         <div style="max-height:180px;overflow:auto;font-size:0.78rem;flex:1;margin-bottom:8px;">
           ${grupo.contatos.length ? grupo.contatos.map(c => `<div style="padding:3px 0;border-top:1px solid var(--border);">${(c.nome ? escapeHtml(c.nome) + ' — ' : '')}${escapeHtml(c.telefone)}</div>`).join('') : '<span class="sub">Ninguém aqui.</span>'}
         </div>
-        <input class="input" type="text" data-resposta-template="${i}" placeholder="Template pra reenviar a este grupo" style="font-size:0.78rem;padding:6px 8px;margin-bottom:2px;">
+        <input class="input" type="text" list="templatesMetaDatalist" data-resposta-template="${i}" placeholder="Template pra reenviar a este grupo" style="font-size:0.78rem;padding:6px 8px;margin-bottom:2px;">
         <div data-resposta-badge="${i}" style="margin-bottom:6px;"></div>
         <button type="button" class="btn btn-action" data-resposta-disparar="${i}" style="padding:6px 10px;font-size:0.78rem;">🚀 Disparar pra este grupo</button>
         <span class="status-msg" data-resposta-status="${i}" style="font-size:0.72rem;"></span>
