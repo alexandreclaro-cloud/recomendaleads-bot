@@ -2561,15 +2561,37 @@ async function agendarConfirmacaoDisparo(telefone, empresa, indice) {
   console.log(`[BASIC-CONFIRM] agendando lembrete indice=${indice} pra ${telefone}: esperaMin salvo=${item.esperaMin} (usado=${esperaMinUsado}) executarEm=${executarEm}`);
   await criarAgendamento({ tipo: 'confirmar_disparo', executarEm, dados: { telefone, indice } });
 }
+// Rede de segurança INDEPENDENTE da corrente de lembretes: cada lembrete se
+// auto-agenda em cadeia (agendarConfirmacaoDisparo chama a si mesmo pro próximo
+// índice) — se QUALQUER elo dessa cadeia falhar (número ficou pausado bem na
+// hora, sessão foi resetada por outro motivo, etc.), a corrente para
+// silenciosamente e a decisão final ("disparar mesmo assim" ou não) nunca
+// chega a rodar. Os amigos ficam "na fila" pra sempre, sem erro nenhum
+// aparecer pra ninguém perceber. Esse agendamento é criado UMA VEZ, já com o
+// prazo final calculado (soma de todos os lembretes + folga), e não depende
+// de nenhum lembrete anterior ter disparado certo — na hora marcada, se ainda
+// estiver esperando confirmação, aplica a política sozinho.
+async function agendarPrazoFinalConfirmacaoDisparo(telefone, empresa) {
+  const cad = empresa.basicConfirmacaoCadencia || EMPRESA_PADRAO.basicConfirmacaoCadencia || [];
+  const totalMin = cad.reduce((soma, item) => soma + Math.max(1, parseInt(item && item.esperaMin, 10) || 0), 0);
+  const executarEm = new Date(Date.now() + (totalMin + 10) * 60000).toISOString(); // +10min de folga
+  await criarAgendamento({ tipo: 'confirmar_disparo_prazo_final', executarEm, dados: { telefone } });
+}
 async function cancelarConfirmacoesDisparo(telefone) {
+  // Cancela tanto os lembretes em cadeia quanto a rede de segurança (prazo
+  // final) — sem isso, o prazo final ainda dispararia mais tarde. Não é uma
+  // proteção CRÍTICA (o handler dos dois já confere aguardandoConfirmacaoDisparo
+  // antes de agir, então nunca dispara em dobro), mas evita rodar à toa.
   try {
-    const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').where('tipo', '==', 'confirmar_disparo').get();
-    const batch = db.batch(); let n = 0;
-    snap.forEach(doc => {
-      const d = doc.data();
-      if ((d.dados && d.dados.telefone) === telefone && (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) { batch.update(doc.ref, { status: 'cancelado' }); n++; }
-    });
-    if (n) await batch.commit();
+    for (const tipo of ['confirmar_disparo', 'confirmar_disparo_prazo_final']) {
+      const snap = await AGENDAMENTOS_COL().where('status', '==', 'pendente').where('tipo', '==', tipo).get();
+      const batch = db.batch(); let n = 0;
+      snap.forEach(doc => {
+        const d = doc.data();
+        if ((d.dados && d.dados.telefone) === telefone && (d.empresaId || EMPRESA_ID_PDN) === empresaIdAtual()) { batch.update(doc.ref, { status: 'cancelado' }); n++; }
+      });
+      if (n) await batch.commit();
+    }
   } catch (e) { console.error('cancelarConfirmacoesDisparo:', e.message); }
 }
 
@@ -2581,6 +2603,7 @@ async function pedirConfirmacaoDisparoBasic(telefone, sessao, empresa) {
   const varsC = { nomeRecomendado: nome, recomendador: nome, empresa: empresa.nome };
   await sendText(telefone, substituirVariaveis(empresa.basicConfirmMensagem || EMPRESA_PADRAO.basicConfirmMensagem, varsC));
   try { await agendarConfirmacaoDisparo(telefone, empresa, 0); } catch (e) { console.error('agendarConfirmacaoDisparo:', e.message); }
+  try { await agendarPrazoFinalConfirmacaoDisparo(telefone, empresa); } catch (e) { console.error('agendarPrazoFinalConfirmacaoDisparo:', e.message); }
 }
 // Espera alguns minutos (avisarConfirmDelayMin, padrão 2) depois do "muito obrigado"
 // antes de mandar o menu "avisar os amigos" (1/2/3), pra não vir grudado e dar tempo
@@ -9427,6 +9450,28 @@ async function processarAgendamentoInterno(agendamento) {
       }
       await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
     }
+    return;
+  }
+
+  // Rede de segurança do "Basic com confirmação" (ver agendarPrazoFinalConfirmacaoDisparo)
+  // — roda UMA VEZ, independente dos lembretes em cadeia terem disparado certo
+  // ou não. Se a corrente normal já resolveu (confirmou "1" ou já esgotou e
+  // disparou), aguardandoConfirmacaoDisparo já está false e esse handler não
+  // faz nada — nunca dispara em dobro.
+  if (agendamento.tipo === 'confirmar_disparo_prazo_final') {
+    const { telefone } = agendamento.dados;
+    if (await numeroEstaPausado(telefone)) return;
+    const snap = await SESSOES_COL().doc(chaveSessao(telefone)).get();
+    const sessao = snap.exists ? snap.data() : null;
+    if (!sessao || !sessao.aguardandoConfirmacaoDisparo) return; // já resolvido pela corrente normal ou pela confirmação
+    if (empresa.basicSemConfirmacao === 'envia') {
+      await dispararRecomendados(sessao.clienteNome, sessao.vendedorNome, sessao.contatosPendentesDisparo || [], empresa, telefone);
+      console.log(`[BASIC-CONFIRM-PRAZO-FINAL] ${telefone} não confirmou até o prazo final — disparando mesmo assim (rede de segurança, independente da corrente de lembretes)`);
+    } else {
+      console.log(`[BASIC-CONFIRM-PRAZO-FINAL] ${telefone} não confirmou até o prazo final — NÃO disparado (política 'nao_envia')`);
+    }
+    await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
+    await cancelarConfirmacoesDisparo(telefone); // limpa qualquer lembrete da corrente normal que ainda esteja pendente
     return;
   }
 
