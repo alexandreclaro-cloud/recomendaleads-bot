@@ -698,6 +698,7 @@
     <button type="button" class="periodo-btn" id="baixarRecomendadosBtn">⬇️ Baixar recomendados (.csv)</button>
     <button type="button" class="periodo-btn" id="backfillFunilBtn" title="Cria os cards do funil a partir das conversas que já existem">🔄 Preencher funil com quem já existe</button>
     <button type="button" class="periodo-btn" id="backfillRecebeuPremioBtn" title="Move pra 'Recebeu o Prêmio' quem já estava em 'Recomendou' antes dessa coluna existir">🎁 Mover quem já recomendou pro Recebeu o Prêmio</button>
+    <button type="button" class="periodo-btn" id="destravarAvisarAmigosBtn" title="Aplica agora a política 'Se o cliente nunca confirmar' pra quem está preso esperando confirmar que avisou os amigos (ex: recomendados presos em 'ainda não recebeu')">🔓 Destravar quem está esperando confirmação</button>
   </div>
 
   <div id="loadMsg" class="load-msg">Carregando leads...</div>
@@ -1610,6 +1611,23 @@ document.getElementById('backfillRecebeuPremioBtn') && document.getElementById('
     const data = await resp.json();
     if (resp.ok && data.ok) { alert(`Pronto! ${data.atualizados} card(s) movido(s) pra "Recebeu o Prêmio".`); await carregarLeads(); }
     else alert('Erro: ' + (data.erro || 'falha ao mover'));
+  } catch (err) { alert('Erro de conexão.'); }
+  finally { btn.disabled = false; btn.textContent = txt; }
+});
+document.getElementById('destravarAvisarAmigosBtn') && document.getElementById('destravarAvisarAmigosBtn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (!confirm('Isso vai olhar todo mundo que está preso esperando confirmar "já avisei os amigos" e aplicar agora a política configurada (ex: "Disparar mesmo assim" — vai mandar mensagem de verdade pros amigos que ainda não receberam). Continuar?')) return;
+  const txt = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Destravando...';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-clientes-pipeline/destravar-avisar-amigos`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      alert(data.processados
+        ? `Pronto! ${data.processados} cliente(s) estavam presos.\n${data.politica === 'envia' ? `${data.disparados} disparo(s) feito(s) pros amigos.` : 'Política é "Não disparar" — só destravei, sem mandar mensagem.'}`
+        : 'Ninguém preso agora — nada pra fazer.');
+      await carregarLeads();
+    }
+    else alert('Erro: ' + (data.erro || 'falha ao destravar'));
   } catch (err) { alert('Erro de conexão.'); }
   finally { btn.disabled = false; btn.textContent = txt; }
 });

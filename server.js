@@ -7350,6 +7350,44 @@ app.post('/minha-clientes-pipeline/backfill-recebeu-premio', exigirLoginEmpresa,
   }
 });
 
+// "Destravar" quem ficou preso esperando o cliente confirmar "já avisei os
+// amigos" (modo Basic com confirmação) — normalmente isso se resolve sozinho
+// agora (ver agendarPrazoFinalConfirmacaoDisparo), mas serve pra desempacar
+// quem ficou preso ANTES dessa correção existir (a rede de segurança só vale
+// pra conversas novas daqui pra frente). Aplica a política já escolhida
+// (basicSemConfirmacao) agora mesmo, pra cada sessão pendurada dessa empresa.
+app.post('/minha-clientes-pipeline/destravar-avisar-amigos', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const ehPadrao = empresa.id === EMPRESA_ID_PDN;
+    const prefix = `${empresa.id}__`;
+    const contexto = { empresa, empresaId: empresa.id, oficial: oficialDaEmpresa(empresa), zapi: zapiDaEmpresa(empresa) };
+
+    const snap = await SESSOES_COL().where('aguardandoConfirmacaoDisparo', '==', true).get();
+    let processados = 0, disparados = 0;
+    for (const doc of snap.docs) {
+      const id = doc.id;
+      let telefone;
+      if (ehPadrao) { if (id.includes('__')) continue; telefone = id; }
+      else { if (!id.startsWith(prefix)) continue; telefone = id.slice(prefix.length); }
+      const sessao = doc.data();
+      processados++;
+      await tenantContext.run(contexto, async () => {
+        if (empresa.basicSemConfirmacao === 'envia') {
+          await dispararRecomendados(sessao.clienteNome, sessao.vendedorNome, sessao.contatosPendentesDisparo || [], empresa, telefone);
+        }
+        await saveSessao(telefone, { aguardandoConfirmacaoDisparo: false, contatosPendentesDisparo: [] });
+        await cancelarConfirmacoesDisparo(telefone);
+      });
+      if (empresa.basicSemConfirmacao === 'envia') disparados++;
+    }
+    console.log(`[DESTRAVAR-AVISAR-AMIGOS] empresa ${empresa.id} — ${processados} pendente(s), ${disparados} disparado(s)`);
+    res.json({ ok: true, processados, disparados, politica: empresa.basicSemConfirmacao || 'nao_envia' });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Backfill: cria os cards do funil do cliente a partir das conversas (sessões) que já
 // existem, pra o funil não ficar vazio com quem começou ANTES da função existir.
 app.post('/minha-clientes-pipeline/backfill', exigirLoginEmpresa, exigirGestor, async (req, res) => {
