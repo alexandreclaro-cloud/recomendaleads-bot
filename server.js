@@ -2984,6 +2984,17 @@ async function iniciarConversaRecomendado(contato, nomeRecomendador, vendedorNom
     console.log(`[OPT-OUT] ${contato.telefone} descadastrado — não inicia conversa.`);
     return;
   }
+  // Nunca reenvia do zero pra quem JÁ tem uma sessão de recomendado (mesmo que
+  // finalizada) — essa função é chamada a partir de um agendamento, e o mesmo
+  // disparo pode acabar acionado 2x (ex.: "destravar quem está esperando
+  // confirmação" rodando pra uma sessão que na verdade já tinha disparado antes,
+  // só não tinha limpado a flag). Sem essa trava, a pessoa recebia a saudação +
+  // prêmio + voucher REPETIDOS.
+  const sessaoRecomendadoJaExiste = await getSessaoRecomendado(contato.telefone);
+  if (sessaoRecomendadoJaExiste) {
+    console.log(`[REC-INICIO] ${contato.telefone} já tem sessão de recomendado (etapa=${sessaoRecomendadoJaExiste.etapa}) — não reenvia do zero.`);
+    return;
+  }
   // Marca esta conversa como RECOMENDADO (amigo indicado) — usado pra separar
   // Cliente x Recomendado na aba Conversas. Se o mesmo número já tiver sido
   // marcado como Cliente antes (raro — normalmente é gente diferente), prevalece
