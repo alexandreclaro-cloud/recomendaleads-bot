@@ -998,7 +998,18 @@ const EMPRESA_PADRAO = {
   avisoAgendamentoAtivo: false,
   posConfirmacaoCheck: 'Oi {nomeRecomendado}! 😊 Conseguiu confirmar seu agendamento? Se ficou alguma dúvida, é só me chamar aqui 👍',
   posMenuDepois: `Sem problemas! 😊 Seu presente continua reservado pra você.\n\nComo prefere fazer?\n\n🟢 *1* — Deixar uma data reservada\n🟡 *2* — Receber um lembrete depois\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
-  posLembrete: 'Perfeito! 😊 Vamos te lembrar no momento certo de aproveitar seu presente. Até breve! 👋',
+  posLembrete: 'Sem problema! 😊 Te chamo novamente daqui {prazo} dias pra você usar seu presente. Até lá! 👋',
+  // Prazo (em dias) que a mensagem acima promete — e também usado de verdade
+  // pra agendar o lembrete (ver finalizarAgendamentoRec/menu_depois), pra
+  // nunca ficar dizendo um prazo e cumprindo outro.
+  posLembretePrazoDias: 30,
+  // Mensagem enviada quando o prazo do lembrete acima realmente chega — reabre
+  // o menu principal (1/2/3). No modo Oficial isso quase sempre cai FORA da
+  // janela de 24h (30 dias depois!), então precisa de um template aprovado —
+  // reaproveita 'oficialTemplateInsistencia' (já existe no painel, WhatsApp →
+  // "Template da insistência — amigo não respondeu"). Sem template configurado
+  // no oficial, o lembrete não sai (mesma regra de sempre — ver sendTextOuTemplate).
+  posLembreteMensagem: `Oi {nomeRecomendado}! 😊 Como te avisei, voltei aqui pra saber se já quer usar seu presente.\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Quero mais um tempinho\n⚪ *3* — Tenho uma dúvida\n\n👇 _Digita o número aqui_ 👇`,
   posMenuDuvidas: `Claro! Sobre o que você gostaria de saber?\n\n*1* — Como funciona o presente?\n*2* — Qual a validade?\n*3* — Onde fica a empresa?\n*4* — Horários de atendimento\n*5* — Falar com um atendente\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
   faqComoFunciona: 'Seu presente é: {premio}. É só apresentar essa mensagem quando vier nos visitar 😊',
   faqValidade: 'É por tempo limitado, então recomendo aproveitar logo! 😉 Qualquer detalhe, nossa equipe te ajuda.',
@@ -2760,7 +2771,7 @@ function substituirVariaveis(template, variaveis) {
     recomendador: v.recomendador, amigo: v.recomendador, recomendou: v.recomendador,
     vendedor: v.vendedor, atendente: v.vendedor, consultor: v.vendedor,
     empresa: v.empresa, negocio: v.empresa,
-    premio: v.premio, dia: v.dia, periodo: v.periodo, quantidade: v.quantidade
+    premio: v.premio, dia: v.dia, periodo: v.periodo, quantidade: v.quantidade, prazo: v.prazo
   };
   return template.replace(/\{(\w+)\}/g, (match, chave) => {
     const val = mapa[chave.toLowerCase()];
@@ -2852,6 +2863,14 @@ async function marcarAgendamentoConcluido(id) {
   await AGENDAMENTOS_COL().doc(id).update({ status: 'concluido' });
 }
 
+// Recomendado escolheu "vou usar depois → receber um lembrete depois": agenda
+// pro prazo prometido na própria mensagem (empresa.posLembretePrazoDias),
+// nunca um valor genérico — assim o que a gente diz bate com o que a gente faz.
+async function agendarLembreteRecomendadoDepois(telefone, empresa) {
+  const dias = Math.max(1, parseInt(empresa.posLembretePrazoDias, 10) || EMPRESA_PADRAO.posLembretePrazoDias);
+  const executarEm = new Date(Date.now() + dias * 24 * 60 * 60 * 1000).toISOString();
+  await criarAgendamento({ tipo: 'lembrete_recomendado_depois', executarEm, dados: { telefone } });
+}
 async function agendarProximoFollowup(telefone, empresa, marcaTempo, indiceFollowup) {
   const cadencia = empresa.cadenciaFollowupRecomendado || [];
   const proximo = cadencia[indiceFollowup];
@@ -3240,7 +3259,11 @@ function variaveisRec(sessao, empresa) {
     empresa: (empresa && empresa.nome) || '',
     // Prêmio do recomendado: disponível em TODA mensagem pós-presente (menu,
     // "vou usar depois", dúvidas, lembrete...), pra que {premio} sempre puxe.
-    premio: (empresa && empresa.premioRecomendado) || 'seu presente'
+    premio: (empresa && empresa.premioRecomendado) || 'seu presente',
+    // Prazo (em dias) do lembrete de "vou usar depois" — mesmo valor usado
+    // de verdade pra agendar (ver agendarLembreteRecomendadoDepois), pra
+    // nunca prometer um prazo na mensagem e cumprir outro.
+    prazo: (empresa && empresa.posLembretePrazoDias) || EMPRESA_PADRAO.posLembretePrazoDias
   };
 }
 
@@ -3466,7 +3489,7 @@ async function responderDuvidaRec(telefone, opcao, empresa) {
   else if (opcao === 4) { const hor = empresa.infoHorario || empresa.horariosEmpresa; resposta = hor ? `Nosso atendimento: ${hor} 🕒` : 'Um atendente já te passa os horários 😊'; }
   else return false;
   await sendText(telefone, resposta);
-  await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona\n*2* — Validade\n*3* — Endereço\n*4* — Horários\n*5* — Falar com atendente\n\nOu responda *0* se estiver tudo certo 👍`);
+  await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona\n*2* — Validade\n*3* — Endereço\n*4* — Horários\n*5* — Falar com atendente`);
   await saveSessaoRecomendado(telefone, { etapa: 'menu_duvidas', ultimaMensagemEm: new Date().toISOString() });
   return true;
 }
@@ -3940,7 +3963,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       await iniciarAgendamentoRec(telefone, empresa, sessao, 'depois');
     } else if (op === 2) {
       await sendText(telefone, substituirVariaveis(empresa.posLembrete || EMPRESA_PADRAO.posLembrete, variaveisRec(sessao, empresa)));
-      await agendarProximoFollowup(telefone, empresa, new Date().toISOString(), 0);
+      await agendarLembreteRecomendadoDepois(telefone, empresa);
       await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
     } else {
       await sendText(telefone, 'Responde com *1* (deixar uma data) ou *2* (receber um lembrete depois) 😊');
@@ -4011,11 +4034,11 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       }
       if (resposta) {
         await sendText(telefone, resposta);
-        await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona\n*2* — Validade\n*3* — Endereço\n*4* — Horários\n*5* — Falar com atendente\n\nOu responda *0* se estiver tudo certo 👍`);
+        await sendText(telefone, `Posso ajudar em mais alguma coisa? 😊\n\n*1* — Como funciona\n*2* — Validade\n*3* — Endereço\n*4* — Horários\n*5* — Falar com atendente`);
         return true;
       }
     }
-    await sendText(telefone, 'Me responde com o número da dúvida 😊 (1 a 5), ou *0* se estiver tudo certo.');
+    await sendText(telefone, 'Me responde com o número da dúvida 😊 (1 a 5).');
     return true;
   }
 
@@ -9313,6 +9336,30 @@ async function processarAgendamentoInterno(agendamento) {
     const novaMarca = new Date().toISOString();
     await saveSessaoRecomendado(telefone, { ultimaMensagemEm: novaMarca });
     await agendarProximoFollowup(telefone, empresa, novaMarca, indiceFollowup + 1);
+    return;
+  }
+
+  // Recomendado pediu "vou usar depois → receber um lembrete depois": chegou o
+  // prazo prometido (ver agendarLembreteRecomendadoDepois/posLembretePrazoDias).
+  // Reabre o menu principal — só se ele ainda estiver 'finalizado' (não usou o
+  // presente nem entrou noutro fluxo nesse meio tempo). No Oficial, 30 dias
+  // depois é bem fora da janela de 24h — sendTextOuTemplate já cuida de exigir
+  // um template configurado (reaproveita oficialTemplateInsistencia) e não
+  // manda nada (só loga) se não tiver nenhum.
+  if (agendamento.tipo === 'lembrete_recomendado_depois') {
+    const { telefone } = agendamento.dados;
+    if (await numeroEstaPausado(telefone)) return;
+    const sessaoAtual = await getSessaoRecomendado(telefone);
+    if (!sessaoAtual || sessaoAtual.etapa !== 'finalizado') return; // já mudou de estado nesse meio tempo
+    const vars = variaveisRec(sessaoAtual, empresa);
+    const templateEscolhido = empresa.oficialTemplateInsistencia && String(empresa.oficialTemplateInsistencia).trim();
+    const enviou = await sendTextOuTemplate(
+      telefone,
+      substituirVariaveis(empresa.posLembreteMensagem || EMPRESA_PADRAO.posLembreteMensagem, vars),
+      templateEscolhido,
+      [vars.nomeRecomendado, vars.recomendador, vars.vendedor]
+    );
+    if (enviou) await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', ultimaMensagemEm: new Date().toISOString() });
     return;
   }
 
