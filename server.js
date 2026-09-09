@@ -8598,6 +8598,24 @@ async function calcularPipelineDisparo(disparo, empresaId) {
 // respondeu cai no grupo '(sem resposta)'. Serve pra reenviar (outro template,
 // já fora da janela de 24h) só pra um grupo específico — ex: só quem clicou
 // "Quero participar", sem misturar com quem recusou ou nunca respondeu.
+// Diagnóstico: quantos telefones DISTINTOS mandaram alguma mensagem pra essa
+// empresa depois de determinada data — SEM filtrar por quem está na lista do
+// disparo (de propósito). Serve pra comparar com o "respostas únicas" que a
+// própria Meta mostra: se esse número já vier menor que o da Meta, a
+// diferença é de RECEBIMENTO (mensagem não chegou no nosso webhook); se vier
+// igual/maior mas os grupos de resposta continuam menores, a diferença é de
+// CRUZAMENTO de telefone (calcularRespostasPorBotao ainda não casando todo mundo).
+async function contarInboundNoPeriodo(empresaId, desde) {
+  const snap = await MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'in').get();
+  const telefones = new Set();
+  snap.forEach(d => {
+    const m = d.data();
+    if (desde && new Date(m.criadoEm) <= new Date(desde)) return;
+    if (m.telefone) telefones.add(m.telefone);
+  });
+  return telefones.size;
+}
+
 async function calcularRespostasPorBotao(disparo, empresaId) {
   const contatos = disparo.contatos || [];
   // Casa pela chave "solta" (últimos 8 dígitos) — o telefone de quem responde
@@ -8639,13 +8657,15 @@ app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, exigi
     const disparo = { ...doc.data(), _id: doc.id };
     const { resumo, colunas } = await calcularPipelineDisparo(disparo, req.empresaLogin.id);
     const respostas = await calcularRespostasPorBotao(disparo, req.empresaLogin.id);
+    const diagnostico = { mensagensRecebidasNoPeriodo: await contarInboundNoPeriodo(req.empresaLogin.id, disparo.criadoEm) };
 
     res.json({
       ok: true,
       disparo: { id: doc.id, template: disparo.template, total: disparo.total, criadoEm: disparo.criadoEm, status: disparo.status },
       resumo,
       colunas,
-      respostas
+      respostas,
+      diagnostico
     });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -8696,13 +8716,15 @@ app.get('/minha-disparos/template/:template/relatorio', exigirLoginEmpresa, exig
     const disparoAgregado = { criadoEm: agregado.criadoEm, contatos: agregado.contatos };
     const respostas = await calcularRespostasPorBotao(disparoAgregado, req.empresaLogin.id);
     const responderam = respostas.filter(g => g.resposta !== '(sem resposta)').reduce((n, g) => n + g.contatos.length, 0);
+    const diagnostico = { mensagensRecebidasNoPeriodo: await contarInboundNoPeriodo(req.empresaLogin.id, agregado.criadoEm) };
 
     res.json({
       ok: true,
       disparo: { id: null, template, total: agregado.contatos.length, criadoEm: agregado.criadoEm, status: 'agregado', lotes: agregado.lotes },
       resumo: { total: agregado.contatos.length, entregues, lidos, falharam, responderam, recomendaram: 0 },
       colunas: [],
-      respostas
+      respostas,
+      diagnostico
     });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

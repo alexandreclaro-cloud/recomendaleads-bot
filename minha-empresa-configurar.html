@@ -725,6 +725,7 @@
             <button type="button" id="disparoRelFecharBtn" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text-dim);line-height:1;">✕</button>
           </div>
           <div id="disparoRelStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-top:16px;"></div>
+          <div id="disparoRelDiagnostico" style="font-size:0.76rem;color:var(--text-dim);margin-top:8px;line-height:1.5;"></div>
 
           <div style="margin-top:20px;" id="disparoRelPipelineBox">
             <b style="font-size:0.9rem;">Pipeline — momento de cada lead</b>
@@ -1269,6 +1270,7 @@ async function carregarRelatorio(url) {
   overlay.style.display = 'flex';
   document.getElementById('disparoRelTitulo').textContent = 'Carregando...';
   document.getElementById('disparoRelStats').innerHTML = '';
+  document.getElementById('disparoRelDiagnostico').innerHTML = '';
   document.getElementById('disparoRelPipeline').innerHTML = '';
   document.getElementById('disparoRelRespostas').innerHTML = '';
   try {
@@ -1289,6 +1291,20 @@ async function carregarRelatorio(url) {
       stat('Responderam', r.responderam, '#166534') +
       stat('Recomendaram amigos', r.recomendaram, '#166534') +
       stat('Falharam', r.falharam, r.falharam ? '#b91c1c' : '');
+
+    // Diagnóstico — compara com o "respostas únicas" que a Meta mostra, pra
+    // descobrir se a diferença é de RECEBIMENTO (mensagem some antes de
+    // chegar aqui) ou de CRUZAMENTO de telefone (ver 'Respostas' abaixo).
+    const diag = d.diagnostico || {};
+    const diagBox = document.getElementById('disparoRelDiagnostico');
+    if (diagBox) {
+      diagBox.innerHTML = (diag.mensagensRecebidasNoPeriodo != null) ? `
+        <b>${diag.mensagensRecebidasNoPeriodo}</b> telefones distintos mandaram alguma mensagem pra empresa desde ${fmtDataHoraCliente(d.disparo.criadoEm)}
+        (sem filtrar se é dessa campanha — é só pra comparar com o "Respostas únicas" que a Meta mostra).
+        Se esse número já vier bem menor que o da Meta, a mensagem não está chegando até aqui (problema de recebimento).
+        Se vier parecido mas os grupos de "Respostas" abaixo continuam pequenos, o problema é no cruzamento por telefone.
+      ` : '';
+    }
 
     const colunas = d.colunas || [];
     document.getElementById('disparoRelPipelineBox').style.display = colunas.length ? 'block' : 'none';
