@@ -3946,16 +3946,30 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       // propósito — "não posso, obrigado" (texto de um botão de template) contém a
       // palavra solta "posso", que por si só já casa como positiva; sem essa ordem,
       // uma recusa clara nunca chegaria a ser tratada como recusa.
-      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      // Marca 'jaRecusouAguardandoConfirmacao' pra lembrar dessa recusa na PRÓXIMA
+      // mensagem (ver comentário no fallback abaixo) — sem isso, uma recusa
+      // explícita virava só um obstáculo temporário: qualquer resposta ambígua
+      // seguinte entregava o presente do mesmo jeito, ignorando o "não" que ela
+      // já tinha dado.
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo, jaRecusouAguardandoConfirmacao: true });
       await sendText(telefone, substituirVariaveis(empresa.mensagemAguardandoConfirmacao || 'Sem problema 😊 É rapidinho e sem compromisso — posso te mostrar o presente que prepararam pra você? 🎁', variaveis));
       await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
     } else if (respostaEhPositiva(texto)) {
       // Resposta positiva — envia prêmio imediatamente.
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
+    } else if (sessao.jaRecusouAguardandoConfirmacao) {
+      // ELA JÁ RECUSOU uma vez antes, e essa resposta não é claramente um "sim"
+      // (verificado acima) — NÃO entrega o presente por conta própria de novo.
+      // Fazer isso ignoraria a recusa explícita dela, o que é o oposto de
+      // "sem compromisso" e aumenta risco de denúncia. Só repete o convite,
+      // sem forçar — só entrega se ela confirmar claramente dessa vez.
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      await sendText(telefone, substituirVariaveis(empresa.mensagemAguardandoConfirmacao || 'Sem problema 😊 É rapidinho e sem compromisso — posso te mostrar o presente que prepararam pra você? 🎁', variaveis));
     } else {
-      // Qualquer outra resposta (a pessoa respondeu = está engajada): NÃO fica perguntando,
-      // entrega o presente direto. Isso evita o loop de "não entendi".
+      // Primeira resposta ambígua dela (nunca recusou explicitamente antes):
+      // entrega o presente direto, sem ficar perguntando de novo — evita o
+      // loop de "não entendi" pra quem só está sendo natural na conversa.
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
     }
