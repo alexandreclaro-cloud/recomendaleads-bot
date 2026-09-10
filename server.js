@@ -4002,7 +4002,15 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   // ---- MENU PRINCIPAL (pós-presente) ----
   if (sessao.etapa === 'menu_principal') {
     const op = extrairOpcao(texto);
-    if (op === 1) await iniciarAgendamentoRec(telefone, empresa, sessao, 'agora');
+    if (op === 1 && sessao.viaLembreteDepois) {
+      // Voltou depois do lembrete de "vou usar depois" (dias/semanas sumida) e
+      // disse que quer agendar agora — vai direto pro atendente em vez do
+      // agendamento automático: já esfriou uma vez, então um toque humano tem
+      // mais chance de fechar do que jogar ela de novo no fluxo que não
+      // converteu da primeira vez.
+      await transferirRecomendadoParaAtendente(telefone, sessao, empresa);
+    }
+    else if (op === 1) await iniciarAgendamentoRec(telefone, empresa, sessao, 'agora');
     else if (op === 2) await enviarMenuDepoisRec(telefone);
     else if (op === 3) await enviarMenuDuvidasRec(telefone);
     else await sendText(telefone, 'É só me responder com o número da opção 😊\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida');
@@ -9415,7 +9423,7 @@ async function processarAgendamentoInterno(agendamento) {
       templateEscolhido,
       [vars.nomeRecomendado, vars.recomendador, vars.vendedor]
     );
-    if (enviou) await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', ultimaMensagemEm: new Date().toISOString() });
+    if (enviou) await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', viaLembreteDepois: true, ultimaMensagemEm: new Date().toISOString() });
     return;
   }
 
