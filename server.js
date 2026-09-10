@@ -1003,13 +1003,16 @@ const EMPRESA_PADRAO = {
   // pra agendar o lembrete (ver finalizarAgendamentoRec/menu_depois), pra
   // nunca ficar dizendo um prazo e cumprindo outro.
   posLembretePrazoDias: 30,
-  // Mensagem enviada quando o prazo do lembrete acima realmente chega — reabre
-  // o menu principal (1/2/3). No modo Oficial isso quase sempre cai FORA da
-  // janela de 24h (30 dias depois!), então precisa de um template aprovado —
-  // reaproveita 'oficialTemplateInsistencia' (já existe no painel, WhatsApp →
-  // "Template da insistência — amigo não respondeu"). Sem template configurado
-  // no oficial, o lembrete não sai (mesma regra de sempre — ver sendTextOuTemplate).
-  posLembreteMensagem: `Oi {nomeRecomendado}! 😊 Como te avisei, voltei aqui pra saber se já quer usar seu presente.\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Quero mais um tempinho\n⚪ *3* — Tenho uma dúvida\n\n👇 _Digita o número aqui_ 👇`,
+  // Mensagem enviada quando o prazo do lembrete acima realmente chega. Não é
+  // mais um menu numerado (1/2/3) — a resposta esperada é livre ou por botão
+  // de Resposta Rápida do próprio template Oficial (ex.: "Quero saber mais" /
+  // "Não quero, obrigado" — reconhecidos por respostaEhPositiva/Negativa, ver
+  // etapa 'aguardando_resposta_lembrete_depois'). No modo Oficial isso quase
+  // sempre cai FORA da janela de 24h (dias depois!), então precisa de um
+  // template aprovado — campo dedicado oficialTemplateLembreteDepois, na
+  // própria tela "Conversa do Recomendado". Sem template configurado no
+  // oficial, o lembrete não sai (mesma regra de sempre — ver sendTextOuTemplate).
+  posLembreteMensagem: `Oi {nomeRecomendado}! 😊 Faz um tempinho que você recebeu um presente de {recomendador} e me pediu pra te chamar de novo.\n\nQuer aproveitar e já agendar seu horário pra usar? 🎁`,
   posMenuDuvidas: `Claro! Sobre o que você gostaria de saber?\n\n*1* — Como funciona o presente?\n*2* — Qual a validade?\n*3* — Onde fica a empresa?\n*4* — Horários de atendimento\n*5* — Falar com um atendente\n🚫 *0* — Não quero receber mensagens\n\n👇 _Digita o número aqui_ 👇`,
   faqComoFunciona: 'Seu presente é: {premio}. É só apresentar essa mensagem quando vier nos visitar 😊',
   faqValidade: 'É por tempo limitado, então recomendo aproveitar logo! 😉 Qualquer detalhe, nossa equipe te ajuda.',
@@ -4002,18 +4005,29 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
   // ---- MENU PRINCIPAL (pós-presente) ----
   if (sessao.etapa === 'menu_principal') {
     const op = extrairOpcao(texto);
-    if (op === 1 && sessao.viaLembreteDepois) {
-      // Voltou depois do lembrete de "vou usar depois" (dias/semanas sumida) e
-      // disse que quer agendar agora — vai direto pro atendente em vez do
-      // agendamento automático: já esfriou uma vez, então um toque humano tem
-      // mais chance de fechar do que jogar ela de novo no fluxo que não
-      // converteu da primeira vez.
-      await transferirRecomendadoParaAtendente(telefone, sessao, empresa);
-    }
-    else if (op === 1) await iniciarAgendamentoRec(telefone, empresa, sessao, 'agora');
+    if (op === 1) await iniciarAgendamentoRec(telefone, empresa, sessao, 'agora');
     else if (op === 2) await enviarMenuDepoisRec(telefone);
     else if (op === 3) await enviarMenuDuvidasRec(telefone);
     else await sendText(telefone, 'É só me responder com o número da opção 😊\n\n🟢 *1* — Quero usar meu presente\n🟡 *2* — Vou usar depois\n⚪ *3* — Tenho uma dúvida');
+    return true;
+  }
+
+  // Resposta ao lembrete de "vou usar depois" (dias/semanas sumida) — o
+  // template pode vir com botões de Resposta Rápida (ex.: "Quero saber mais" /
+  // "Não quero, obrigado", que chegam aqui já como texto — ver
+  // metaMensagemParaInterno) OU texto livre, por isso usa a mesma classificação
+  // positiva/negativa do resto do bot, não um menu numerado.
+  if (sessao.etapa === 'aguardando_resposta_lembrete_depois') {
+    if (respostaEhNegativa(texto)) {
+      // Recusa explícita — respeita, sem insistir, e encerra por ali.
+      await sendText(telefone, 'Sem problema, super entendo 😊 Fico por aqui então — se mudar de ideia, é só me chamar 🎁');
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado_negativo', ultimaMensagemEm: new Date().toISOString() });
+    } else {
+      // "Quero saber mais" (ou qualquer outra resposta, positiva ou ambígua) —
+      // ela já esfriou uma vez, um toque humano converte melhor do que jogar
+      // ela de novo no agendamento automático que não fechou da primeira vez.
+      await transferirRecomendadoParaAtendente(telefone, sessao, empresa);
+    }
     return true;
   }
 
@@ -9423,7 +9437,7 @@ async function processarAgendamentoInterno(agendamento) {
       templateEscolhido,
       [vars.nomeRecomendado, vars.recomendador, vars.vendedor]
     );
-    if (enviou) await saveSessaoRecomendado(telefone, { etapa: 'menu_principal', viaLembreteDepois: true, ultimaMensagemEm: new Date().toISOString() });
+    if (enviou) await saveSessaoRecomendado(telefone, { etapa: 'aguardando_resposta_lembrete_depois', ultimaMensagemEm: new Date().toISOString() });
     return;
   }
 
