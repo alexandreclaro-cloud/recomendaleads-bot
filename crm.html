@@ -1090,9 +1090,16 @@
           <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">3) Se escolher "Vou usar depois"</p>
           <label>Menu "usar depois"</label>
           <textarea id="posMenuDepoisInput" rows="5"></textarea>
-          <label>Mensagem de "receber lembrete depois"</label>
+          <label>Mensagem de "receber lembrete depois" <span style="font-weight:400;color:var(--text-dim);">(use {prazo} pra citar o prazo)</span></label>
           <textarea id="posLembreteInput" rows="2"></textarea>
-          <p style="color:var(--text-dim);font-size:.82rem;margin:4px 0 0;">Pra configurar os lembretes automáticos de quem escolheu "receber depois" (e não respondeu), use a aba <b>Follow-up — Sem resposta → Recomendado</b>.</p>
+          <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+            <label style="margin:0;">Chamar de novo depois de</label>
+            <input type="number" id="posLembretePrazoDiasInput" min="1" style="max-width:80px;" placeholder="30">
+            <span>dia(s)</span>
+          </div>
+          <label style="margin-top:12px;">Mensagem enviada quando esse prazo chega (reabre o menu 1/2/3)</label>
+          <textarea id="posLembreteMensagemInput" rows="4"></textarea>
+          <p style="color:var(--text-dim);font-size:.82rem;margin:4px 0 0;">No modo <b>API Oficial</b>, esse envio (dias depois) cai fora da janela de 24h — precisa do <b>Template da insistência (amigo não respondeu)</b> aprovado na Meta (aba WhatsApp). Sem esse template configurado, o lembrete não é enviado.</p>
 
           <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">4) Se escolher "Tenho uma dúvida"</p>
           <label>Menu de dúvidas</label>
@@ -2679,6 +2686,8 @@ async function carregarConfiguracao() {
     document.getElementById('posConfirmacaoCheckInput').value = configuracaoAtual.posConfirmacaoCheck || '';
     document.getElementById('posMenuDepoisInput').value = configuracaoAtual.posMenuDepois || '';
     document.getElementById('posLembreteInput').value = configuracaoAtual.posLembrete || '';
+    document.getElementById('posLembretePrazoDiasInput').value = configuracaoAtual.posLembretePrazoDias || 30;
+    document.getElementById('posLembreteMensagemInput').value = configuracaoAtual.posLembreteMensagem || '';
     document.getElementById('posMenuDuvidasInput').value = configuracaoAtual.posMenuDuvidas || '';
     document.getElementById('faqComoFuncionaInput').value = configuracaoAtual.faqComoFunciona || '';
     document.getElementById('faqValidadeInput').value = configuracaoAtual.faqValidade || '';
@@ -3050,6 +3059,8 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const posConfirmacaoCheck = document.getElementById('posConfirmacaoCheckInput').value.trim() || null;
   const posMenuDepois = document.getElementById('posMenuDepoisInput').value.trim() || null;
   const posLembrete = document.getElementById('posLembreteInput').value.trim() || null;
+  const posLembretePrazoDias = parseInt(document.getElementById('posLembretePrazoDiasInput').value, 10) || 30;
+  const posLembreteMensagem = document.getElementById('posLembreteMensagemInput').value.trim() || null;
   const posMenuDuvidas = document.getElementById('posMenuDuvidasInput').value.trim() || null;
   const faqComoFunciona = document.getElementById('faqComoFuncionaInput').value.trim() || null;
   const faqValidade = document.getElementById('faqValidadeInput').value.trim() || null;
@@ -3078,7 +3089,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
       body: JSON.stringify({
         mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
-        posConfirmacaoAgendamento, avisoAgendamentoAtivo, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
+        posConfirmacaoAgendamento, avisoAgendamentoAtivo, posConfirmacaoCheck, posMenuDepois, posLembrete, posLembretePrazoDias, posLembreteMensagem, posMenuDuvidas,
         faqComoFunciona, faqValidade, posAtendente, numeroAtendente,
         oficialTemplateRecomendado, oficialTemplateAvisoInterno, recomendadoAtendimentoHumano, recomendadoHumanoMensagem,
         recomendadoAtendimentoHumanoQuando, recomendadoPerguntaChave
