@@ -1097,9 +1097,11 @@
             <input type="number" id="posLembretePrazoDiasInput" min="1" style="max-width:80px;" placeholder="30">
             <span>dia(s)</span>
           </div>
+          <label style="margin-top:12px;">Template aprovado na Meta pra esse envio <span style="font-weight:400;color:var(--text-dim);">(obrigatório — dias depois sempre cai fora da janela de 24h)</span></label>
+          <input type="text" id="oficialTemplateLembreteDepoisInput" placeholder="ex: lembrete_recomendado_30dias">
+          <p style="color:var(--text-dim);font-size:.8rem;margin:4px 0 0;">Crie e aprove esse template na Meta (Gerenciador do WhatsApp → Modelos), com 1 variável (ex: {{1}} = nome). Sem preencher aqui, o lembrete de "{prazo} dias depois" não é enviado.</p>
           <label style="margin-top:12px;">Mensagem enviada quando esse prazo chega (reabre o menu 1/2/3)</label>
           <textarea id="posLembreteMensagemInput" rows="4"></textarea>
-          <p style="color:var(--text-dim);font-size:.82rem;margin:4px 0 0;">No modo <b>API Oficial</b>, esse envio (dias depois) cai fora da janela de 24h — precisa do <b>Template da insistência (amigo não respondeu)</b> aprovado na Meta (aba WhatsApp). Sem esse template configurado, o lembrete não é enviado.</p>
 
           <p style="font-weight:600;color:var(--gold-deep);margin:18px 0 0;">4) Se escolher "Tenho uma dúvida"</p>
           <label>Menu de dúvidas</label>
@@ -2687,6 +2689,7 @@ async function carregarConfiguracao() {
     document.getElementById('posMenuDepoisInput').value = configuracaoAtual.posMenuDepois || '';
     document.getElementById('posLembreteInput').value = configuracaoAtual.posLembrete || '';
     document.getElementById('posLembretePrazoDiasInput').value = configuracaoAtual.posLembretePrazoDias || 30;
+    document.getElementById('oficialTemplateLembreteDepoisInput').value = configuracaoAtual.oficialTemplateLembreteDepois || '';
     document.getElementById('posLembreteMensagemInput').value = configuracaoAtual.posLembreteMensagem || '';
     document.getElementById('posMenuDuvidasInput').value = configuracaoAtual.posMenuDuvidas || '';
     document.getElementById('faqComoFuncionaInput').value = configuracaoAtual.faqComoFunciona || '';
@@ -3060,6 +3063,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const posMenuDepois = document.getElementById('posMenuDepoisInput').value.trim() || null;
   const posLembrete = document.getElementById('posLembreteInput').value.trim() || null;
   const posLembretePrazoDias = parseInt(document.getElementById('posLembretePrazoDiasInput').value, 10) || 30;
+  const oficialTemplateLembreteDepois = document.getElementById('oficialTemplateLembreteDepoisInput').value.trim() || null;
   const posLembreteMensagem = document.getElementById('posLembreteMensagemInput').value.trim() || null;
   const posMenuDuvidas = document.getElementById('posMenuDuvidasInput').value.trim() || null;
   const faqComoFunciona = document.getElementById('faqComoFuncionaInput').value.trim() || null;
@@ -3089,7 +3093,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
       body: JSON.stringify({
         mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
-        posConfirmacaoAgendamento, avisoAgendamentoAtivo, posConfirmacaoCheck, posMenuDepois, posLembrete, posLembretePrazoDias, posLembreteMensagem, posMenuDuvidas,
+        posConfirmacaoAgendamento, avisoAgendamentoAtivo, posConfirmacaoCheck, posMenuDepois, posLembrete, posLembretePrazoDias, oficialTemplateLembreteDepois, posLembreteMensagem, posMenuDuvidas,
         faqComoFunciona, faqValidade, posAtendente, numeroAtendente,
         oficialTemplateRecomendado, oficialTemplateAvisoInterno, recomendadoAtendimentoHumano, recomendadoHumanoMensagem,
         recomendadoAtendimentoHumanoQuando, recomendadoPerguntaChave

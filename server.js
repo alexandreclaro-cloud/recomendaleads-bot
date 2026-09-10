@@ -1169,6 +1169,10 @@ async function getEmpresaById(empresaId) {
     // dono/atendente. Some sem template configurado quando o número dele não
     // falou com a gente há mais de 24h (ver enviarSemLog).
     oficialTemplateAvisoInterno: cfg.oficialTemplateAvisoInterno || data.oficialTemplateAvisoInterno || null,
+    // Template pro lembrete de "vou usar depois" (ver posLembretePrazoDias) —
+    // sempre cai fora da janela de 24h (é dias depois), então precisa desse
+    // template aprovado configurado, senão o lembrete não sai.
+    oficialTemplateLembreteDepois: cfg.oficialTemplateLembreteDepois || data.oficialTemplateLembreteDepois || null,
     // Pré-pago (só cobra quando prepagoAtivo = true).
     prepagoAtivo: !!data.prepagoAtivo,
     saldoCentavos: data.saldoCentavos || 0,
@@ -9393,17 +9397,18 @@ async function processarAgendamentoInterno(agendamento) {
   // Recomendado pediu "vou usar depois → receber um lembrete depois": chegou o
   // prazo prometido (ver agendarLembreteRecomendadoDepois/posLembretePrazoDias).
   // Reabre o menu principal — só se ele ainda estiver 'finalizado' (não usou o
-  // presente nem entrou noutro fluxo nesse meio tempo). No Oficial, 30 dias
+  // presente nem entrou noutro fluxo nesse meio tempo). No Oficial, dias
   // depois é bem fora da janela de 24h — sendTextOuTemplate já cuida de exigir
-  // um template configurado (reaproveita oficialTemplateInsistencia) e não
-  // manda nada (só loga) se não tiver nenhum.
+  // um template configurado (campo dedicado oficialTemplateLembreteDepois, na
+  // própria tela "Conversa do Recomendado") e não manda nada (só loga) se não
+  // tiver nenhum.
   if (agendamento.tipo === 'lembrete_recomendado_depois') {
     const { telefone } = agendamento.dados;
     if (await numeroEstaPausado(telefone)) return;
     const sessaoAtual = await getSessaoRecomendado(telefone);
     if (!sessaoAtual || sessaoAtual.etapa !== 'finalizado') return; // já mudou de estado nesse meio tempo
     const vars = variaveisRec(sessaoAtual, empresa);
-    const templateEscolhido = empresa.oficialTemplateInsistencia && String(empresa.oficialTemplateInsistencia).trim();
+    const templateEscolhido = empresa.oficialTemplateLembreteDepois && String(empresa.oficialTemplateLembreteDepois).trim();
     const enviou = await sendTextOuTemplate(
       telefone,
       substituirVariaveis(empresa.posLembreteMensagem || EMPRESA_PADRAO.posLembreteMensagem, vars),
