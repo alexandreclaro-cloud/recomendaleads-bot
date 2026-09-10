@@ -1164,6 +1164,11 @@ async function getEmpresaById(empresaId) {
     oficialTemplateConvite: cfg.oficialTemplateConvite || data.oficialTemplateConvite || null,
     oficialTemplateClienteInicial: cfg.oficialTemplateClienteInicial || data.oficialTemplateClienteInicial || null,
     oficialTemplateClienteContatos: cfg.oficialTemplateClienteContatos || data.oficialTemplateClienteContatos || null,
+    // Template pras notificações INTERNAS (avisar atendente, novo agendamento,
+    // lembrete de retorno) — não é mensagem pro cliente, é aviso pro
+    // dono/atendente. Some sem template configurado quando o número dele não
+    // falou com a gente há mais de 24h (ver enviarSemLog).
+    oficialTemplateAvisoInterno: cfg.oficialTemplateAvisoInterno || data.oficialTemplateAvisoInterno || null,
     // Pré-pago (só cobra quando prepagoAtivo = true).
     prepagoAtivo: !!data.prepagoAtivo,
     saldoCentavos: data.saldoCentavos || 0,
@@ -1454,12 +1459,42 @@ async function sendText(phone, message) {
 }
 
 // Envia uma mensagem SEM registrar no inbox (Conversas) — usado pra avisos internos
-// (ex.: alertar o atendente), pra não criar uma "conversa" com o número do atendente.
+// (ex.: alertar o atendente, novo agendamento, lembrete de retorno), pra não
+// criar uma "conversa" com o número do atendente.
+//
+// No modo Oficial vale a MESMA regra da janela de 24h — se o atendente não
+// falou com o número do WhatsApp há mais de 24h, texto livre é recusado pela
+// Meta. Antes disso não era checado: o aviso simplesmente sumia sem erro
+// nenhum aparecer em lugar nenhum. Agora, fora da janela, usa um template
+// genérico (oficialTemplateAvisoInterno — 1 variável, o texto inteiro do
+// aviso) se estiver configurado; sem template, não tenta (evita gastar uma
+// chamada que a Meta ia recusar) e loga claro pra dar pra diagnosticar.
 async function enviarSemLog(phone, message) {
   try {
     if (tipoWppAtual() === 'oficial') {
       const cfg = oficialAtual();
-      await axios.post(metaMessagesUrl(cfg), { messaging_product: 'whatsapp', to: soDigitos(phone), type: 'text', text: { body: message } }, { headers: metaHeaders(cfg) });
+      if (await dentroJanela24h(phone)) {
+        await axios.post(metaMessagesUrl(cfg), { messaging_product: 'whatsapp', to: soDigitos(phone), type: 'text', text: { body: message } }, { headers: metaHeaders(cfg) });
+        return true;
+      }
+      const empresa = await getEmpresa();
+      const template = empresa.oficialTemplateAvisoInterno && String(empresa.oficialTemplateAvisoInterno).trim();
+      if (!template) {
+        console.warn(`[AVISO-INTERNO] ${phone} fora da janela de 24h e sem template configurado (oficialTemplateAvisoInterno) — aviso NÃO enviado: "${message.slice(0, 80)}..."`);
+        return false;
+      }
+      // A Meta não aceita quebra de linha nem *negrito* dentro de uma variável
+      // de template — achata tudo numa linha só, sem formatação.
+      const textoParam = message.replace(/\*/g, '').replace(/\s*\n+\s*/g, ' — ').slice(0, 1024);
+      const info = await getTemplateInfo(cfg, template);
+      const idioma = (info && info.idioma) || 'pt_BR';
+      // Envio direto (sem passar por sendTemplate) de propósito — é uma
+      // notificação interna pro dono/atendente, não deve descontar do saldo
+      // pré-pago (que é pra mensagens de/pra clientes).
+      await axios.post(metaMessagesUrl(cfg), {
+        messaging_product: 'whatsapp', to: soDigitos(phone), type: 'template',
+        template: { name: template, language: { code: idioma }, components: [{ type: 'body', parameters: [{ type: 'text', text: textoParam }] }] }
+      }, { headers: metaHeaders(cfg) });
       return true;
     }
     const cfg = zapiAtual();
@@ -6536,6 +6571,7 @@ app.get('/minha-whatsapp', exigirLoginEmpresa, async (req, res) => {
       oficialTemplateInsistencia: e.oficialTemplateInsistencia || '',
       oficialTemplateFollowupCliente: e.oficialTemplateFollowupCliente || '',
       oficialTemplateConvite: e.oficialTemplateConvite || '',
+      oficialTemplateAvisoInterno: e.oficialTemplateAvisoInterno || '',
       oficialConectado: !!(e.oficialPhoneId && e.oficialToken),
       oficialWebhookUrl: `${urlBase(req)}/webhook-oficial/${e.id}`
     });
@@ -6578,7 +6614,7 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) =
 app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const { oficialPhoneId, oficialToken, oficialVerifyToken, oficialWabaId, oficialAppSecret, oficialTemplateRecomendado,
-      oficialTemplateInsistencia, oficialTemplateFollowupCliente, oficialTemplateConvite } = req.body;
+      oficialTemplateInsistencia, oficialTemplateFollowupCliente, oficialTemplateConvite, oficialTemplateAvisoInterno } = req.body;
 
     // Campos "já salvos" (Token, Verify Token, App Secret) podem vir VAZIOS do painel —
     // ele mostra "já salvo — preencha para trocar". Nesse caso, MANTÉM o valor gravado
@@ -6611,6 +6647,7 @@ app.post('/minha-whatsapp/oficial', exigirLoginEmpresa, exigirGestor, exigirUsua
       oficialTemplateInsistencia: (oficialTemplateInsistencia != null ? String(oficialTemplateInsistencia).trim() : (atual.oficialTemplateInsistencia || '')) || null,
       oficialTemplateFollowupCliente: (oficialTemplateFollowupCliente != null ? String(oficialTemplateFollowupCliente).trim() : (atual.oficialTemplateFollowupCliente || '')) || null,
       oficialTemplateConvite: (oficialTemplateConvite != null ? String(oficialTemplateConvite).trim() : (atual.oficialTemplateConvite || '')) || null,
+      oficialTemplateAvisoInterno: (oficialTemplateAvisoInterno != null ? String(oficialTemplateAvisoInterno).trim() : (atual.oficialTemplateAvisoInterno || '')) || null,
       // Limpa o número que sobrou de sessão Z-API antiga (numeroConectado) pra o
       // link/painel não mostrar número torto — no modo oficial o número vem da Meta.
       configuracao: { numeroConectado: '', numeroDetectado: '' }

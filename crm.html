@@ -1111,6 +1111,10 @@
           </div>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:4px 0 0;">Quando alguém pede pra falar com um atendente, o robô manda um aviso nesse número. Clica em <b>📤 Testar</b> pra receber uma mensagem de teste na hora. <b>Deixe vazio pra não avisar por WhatsApp</b> (o alerta piscando no painel Conversas acontece de qualquer jeito). Obs.: se tiver um <b>⭐ atendente oficial</b> na Equipe, o aviso vai pra ele.</p>
 
+          <label style="margin-top:10px;">Template pra avisos internos (WhatsApp do atendente) <span style="font-weight:400;color:var(--text-dim);">(API Oficial)</span></label>
+          <input type="text" id="oficialTemplateAvisoInternoInput" placeholder="ex: aviso_interno_recomendaleads">
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:4px 0 0;">No modo <b>API Oficial</b>, esse aviso vai pro WhatsApp do vendedor/atendente — e vale a MESMA regra de janela de 24h de qualquer mensagem: se o número dele não falou com esse WhatsApp há mais de 24h, só um <b>template aprovado</b> entrega (texto livre é recusado, silenciosamente). Crie um template simples de 1 variável (ex.: <i>"🔔 {'{{1}}'}"</i>) na Meta e cole o nome aqui — sem isso, avisos fora da janela não chegam.</p>
+
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar conversa do recomendado</button>
             <span class="config-status-msg" id="statusRecomendado"></span>
@@ -2680,6 +2684,7 @@ async function carregarConfiguracao() {
     document.getElementById('faqValidadeInput').value = configuracaoAtual.faqValidade || '';
     document.getElementById('posAtendenteInput').value = configuracaoAtual.posAtendente || '';
     document.getElementById('numeroAtendenteInput').value = configuracaoAtual.numeroAtendente || '';
+    document.getElementById('oficialTemplateAvisoInternoInput').value = configuracaoAtual.oficialTemplateAvisoInterno || '';
 
     renderCadencia(configuracaoAtual.cadenciaFollowupRecomendado || []);
     renderCadenciaCliente(configuracaoAtual.cadenciaFollowupClienteInicial || []);
@@ -3052,6 +3057,8 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const numeroAtendente = (document.getElementById('numeroAtendenteInput').value || '').replace(/\D/g, '') || null;
   const tplRecEl = document.getElementById('oficialTemplateRecomendadoInput');
   const oficialTemplateRecomendado = tplRecEl ? tplRecEl.value.trim() : '';
+  const tplAvisoEl = document.getElementById('oficialTemplateAvisoInternoInput');
+  const oficialTemplateAvisoInterno = tplAvisoEl ? tplAvisoEl.value.trim() : '';
   const recHAEl = document.getElementById('recHumanoAtivo');
   const recomendadoAtendimentoHumano = recHAEl ? recHAEl.checked : false;
   const recHMEl = document.getElementById('recHumanoMsg');
@@ -3073,7 +3080,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
         posConfirmacaoAgendamento, avisoAgendamentoAtivo, posConfirmacaoCheck, posMenuDepois, posLembrete, posMenuDuvidas,
         faqComoFunciona, faqValidade, posAtendente, numeroAtendente,
-        oficialTemplateRecomendado, recomendadoAtendimentoHumano, recomendadoHumanoMensagem,
+        oficialTemplateRecomendado, oficialTemplateAvisoInterno, recomendadoAtendimentoHumano, recomendadoHumanoMensagem,
         recomendadoAtendimentoHumanoQuando, recomendadoPerguntaChave
       })
     });
