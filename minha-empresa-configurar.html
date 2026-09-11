@@ -1623,6 +1623,58 @@ async function testarTemplateDisparo() {
   if (teste) teste.addEventListener('click', testarTemplateDisparo);
 })();
 
+// Botão genérico "🧪 Testar" pra qualquer campo de nome de template — injeta o
+// widget logo depois do input. Reaproveitado em toda camada que tem template
+// (recomendado principal, insistência, follow-up do cliente, convite, script
+// de vendas), pra não precisar disparar de verdade só pra saber se o template
+// está aprovado.
+function injetarTesteTemplate(tplInputId) {
+  const input = document.getElementById(tplInputId);
+  if (!input) return;
+  const uid = tplInputId + '_teste';
+  const savedTel = localStorage.getItem('rl_teste_tpl_tel') || '';
+  const box = document.createElement('div');
+  box.style.cssText = 'margin-top:8px;padding:10px;border:1px dashed #FDBA74;border-radius:10px;background:#FFF7ED;';
+  box.innerHTML = `
+    <div style="font-size:0.8rem;font-weight:600;margin-bottom:6px;">🧪 Testar este template</div>
+    <div class="row-save" style="align-items:center;">
+      <input class="input" type="text" id="${uid}_tel" placeholder="Seu número com DDD" value="${savedTel}" style="max-width:200px;">
+      <button type="button" class="btn btn-action" id="${uid}_btn">🧪 Testar</button>
+      <span class="status-msg" id="${uid}_status"></span>
+    </div>
+    <pre id="${uid}_out" style="display:none;white-space:pre-wrap;background:#0F172A;color:#E2E8F0;padding:8px;border-radius:8px;margin-top:8px;font-size:0.72rem;max-height:180px;overflow:auto;"></pre>
+  `;
+  input.insertAdjacentElement('afterend', box);
+
+  document.getElementById(`${uid}_btn`).addEventListener('click', async () => {
+    const btn = document.getElementById(`${uid}_btn`);
+    const statusEl = document.getElementById(`${uid}_status`);
+    const outEl = document.getElementById(`${uid}_out`);
+    const telEl = document.getElementById(`${uid}_tel`);
+    const template = (input.value || '').trim();
+    const tel = (telEl.value || '').replace(/\D/g, '');
+    if (!template) { statusEl.textContent = '❌ Preencha o template acima.'; statusEl.className = 'status-msg err'; return; }
+    if (tel.length < 10) { statusEl.textContent = '❌ Número com DDD.'; statusEl.className = 'status-msg err'; return; }
+    localStorage.setItem('rl_teste_tpl_tel', telEl.value);
+    btn.disabled = true; statusEl.textContent = 'Enviando teste...'; statusEl.className = 'status-msg';
+    try {
+      const r = await fetchAutenticado(`${API_BASE}/minha-entrega/testar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numero: tel, template }) });
+      const d = await r.json();
+      const x = (d && d.resultado) || {};
+      if (x.aceitou) { statusEl.textContent = '✅ Meta aceitou! Confere se chegou no seu WhatsApp.'; statusEl.className = 'status-msg ok'; }
+      else { statusEl.textContent = '❌ A Meta recusou — veja o motivo abaixo.'; statusEl.className = 'status-msg err'; }
+      outEl.style.display = 'block';
+      outEl.textContent = (x.aceitou ? '✅ ACEITO PELA META' : '❌ RECUSADO') +
+        '\nTemplate: ' + (x.template || template) +
+        '\nIdioma usado no teste: ' + (x.idioma || 'pt_BR') +
+        '\nHTTP: ' + (x.httpStatus != null ? x.httpStatus : '?') +
+        '\n\nResposta da Meta:\n' + JSON.stringify(x.zapiResposta || d, null, 2);
+    } catch (e) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'status-msg err'; }
+    finally { btn.disabled = false; }
+  });
+}
+['oficialTemplateInput', 'oficialTemplateInsistenciaInput', 'oficialTemplateFollowupInput', 'oficialTemplateConviteInput', 'scriptTemplateOrigemInput'].forEach(injetarTesteTemplate);
+
 async function carregarConfiguracao() {
   const loadMsg = document.getElementById('loadMsg');
   try {

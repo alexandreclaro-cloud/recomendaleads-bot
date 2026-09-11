@@ -2077,6 +2077,16 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
   const sessao = await getSessao(telefone);
 
   if (sessao.etapa === 'aguardando_nome') {
+    // Recusa explícita ("não quero, obrigado") não é o nome dela — sem essa
+    // checagem o texto inteiro virava o nome (ex.: "Prazer, Não!" a partir de
+    // "Não quero, obrigado"), e o roteiro seguia perguntando "quem te atendeu
+    // hoje?" como se nada tivesse acontecido, ignorando a recusa por completo.
+    if (respostaEhNegativa(texto)) {
+      await sendText(telefone, 'Sem problema, super entendo! 😊 Fico por aqui então — se quiser recomendar um amigo depois, é só me chamar por aqui 🙏');
+      sessao.etapa = 'finalizado';
+      await saveSessao(telefone, sessao);
+      return;
+    }
     sessao.clienteNome = (texto || '').trim();
     // Pipeline do cliente: deu o nome.
     await upsertClientePipeline(telefone, sessao.clienteNome, 'deu_nome');
@@ -3864,12 +3874,13 @@ Regras:
   }
 }
 
-// Mapeamento de objeções — o bot nunca desiste, sempre leva para o presente
+// Mapeamento de objeções — só pra ceticismo/curiosidade ("quem é você?", "não
+// conheço", "é golpe?"), NUNCA para recusa explícita ("não quero", "não tenho
+// interesse") — essas são tratadas por respostaEhNegativa, que dá espaço pra
+// pessoa confirmar antes de entregar (ver comentário na etapa
+// 'aguardando_confirmacao'). Já tivemos recusa explícita caindo aqui e
+// recebendo o presente mesmo assim, ignorando o "não" — não repetir.
 const OBJECOES = [
-  {
-    gatilhos: ['nao quero', 'não quero', 'nao tenho interesse', 'não tenho interesse', 'sem interesse'],
-    resposta: 'Sem problema, eu entendo! 😊 Só não queria que você ficasse sem o presente que o(a) {recomendador} recomendou para você. Posso te enviar? É rapidinho 🎁'
-  },
   {
     gatilhos: ['nao conheco', 'não conheço', 'nao sei quem', 'não sei quem', 'quem e voce', 'quem é você', 'quem é vc', 'quem sao voces', 'não conheço vocês'],
     resposta: 'Faz todo sentido! 😊 Sou {vendedor}, da {empresa}, e o(a) {recomendador} lembrou de você pra ganhar um presente nosso. Posso te entregar agora? 🎁'
@@ -3941,13 +3952,11 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     };
 
     const marcaTempo = new Date().toISOString();
-    const respostaObjecao = verificarObjecao(texto, variaveis);
-    if (respostaObjecao) {
-      // Objeção conhecida ("quem é você?", "não conheço"): responde e entrega o presente.
-      await sendText(telefone, respostaObjecao);
-      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-      await enviarPremioRecomendado(telefone, sessao, empresa);
-    } else if (respostaEhNegativa(texto)) {
+    // Recusa explícita é checada ANTES de objeção de propósito: uma recusa
+    // clara ("não quero", "não, obrigado") nunca pode cair no tratamento de
+    // objeção (que entrega o presente na hora) só porque compartilha alguma
+    // palavra com um gatilho de ceticismo/curiosidade.
+    if (respostaEhNegativa(texto)) {
       // Recusa explícita ("não", "não quero", "para", "não posso"): faz um convite
       // gentil + follow-up, sem forçar o presente. Checado ANTES da positiva de
       // propósito — "não posso, obrigado" (texto de um botão de template) contém a
@@ -3963,6 +3972,12 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
     } else if (respostaEhPositiva(texto)) {
       // Resposta positiva — envia prêmio imediatamente.
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
+      await enviarPremioRecomendado(telefone, sessao, empresa);
+    } else if (verificarObjecao(texto, variaveis)) {
+      // Objeção de ceticismo/curiosidade ("quem é você?", "não conheço", "é
+      // golpe?") — não é recusa (já tratada acima): responde e entrega o presente.
+      await sendText(telefone, verificarObjecao(texto, variaveis));
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
     } else if (sessao.jaRecusouAguardandoConfirmacao) {

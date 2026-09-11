@@ -3326,6 +3326,55 @@ document.getElementById('adicionarFollowupClienteContatosBtn').addEventListener(
   renderCadenciaClienteContatos(cadenciaClienteContatosAtual);
 });
 
+// Botão genérico "🧪 Testar" pra qualquer campo de nome de template — injeta o
+// widget logo depois do input. Reaproveitado em toda camada que tem template
+// (recomendado, lembrete 30 dias, aviso interno, venda, marketing), pra não
+// precisar disparar de verdade só pra saber se o template está aprovado.
+function injetarTesteTemplate(tplInputId) {
+  const input = document.getElementById(tplInputId);
+  if (!input) return;
+  const uid = tplInputId + '_teste';
+  const savedTel = localStorage.getItem('rl_teste_tpl_tel') || '';
+  const box = document.createElement('div');
+  box.style.cssText = 'margin-top:8px;padding:10px;border:1px dashed var(--gold,#c9a227);border-radius:10px;background:#FFFDF5;';
+  box.innerHTML = `
+    <div style="font-size:0.8rem;font-weight:600;margin-bottom:6px;">🧪 Testar este template</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <input type="text" id="${uid}_tel" placeholder="Seu número com DDD" value="${savedTel}" style="max-width:200px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;">
+      <button type="button" id="${uid}_btn" class="config-save-btn" style="background:transparent;border:1px solid var(--gold);color:var(--gold-deep);">🧪 Testar</button>
+      <span id="${uid}_status" class="config-status-msg"></span>
+    </div>
+    <pre id="${uid}_out" style="display:none;white-space:pre-wrap;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:8px;font-size:0.72rem;max-height:180px;overflow:auto;"></pre>
+  `;
+  input.insertAdjacentElement('afterend', box);
+
+  document.getElementById(`${uid}_btn`).addEventListener('click', async () => {
+    const btn = document.getElementById(`${uid}_btn`);
+    const statusEl = document.getElementById(`${uid}_status`);
+    const outEl = document.getElementById(`${uid}_out`);
+    const telEl = document.getElementById(`${uid}_tel`);
+    const template = (input.value || '').trim();
+    const tel = (telEl.value || '').replace(/\D/g, '');
+    if (!template) { statusEl.textContent = '❌ Preencha o template acima.'; statusEl.className = 'config-status-msg err'; return; }
+    if (tel.length < 10) { statusEl.textContent = '❌ Número com DDD.'; statusEl.className = 'config-status-msg err'; return; }
+    localStorage.setItem('rl_teste_tpl_tel', telEl.value);
+    btn.disabled = true; statusEl.textContent = 'Enviando teste...'; statusEl.className = 'config-status-msg';
+    try {
+      const r = await fetchAutenticado(`${API_BASE}/minha-entrega/testar`, { method: 'POST', body: JSON.stringify({ numero: tel, template }) });
+      const d = await r.json();
+      const x = (d && d.resultado) || {};
+      if (x.aceitou) { statusEl.textContent = '✅ Meta aceitou! Vê se chegou no seu Whats.'; statusEl.className = 'config-status-msg ok'; }
+      else { statusEl.textContent = '❌ Meta recusou — veja abaixo.'; statusEl.className = 'config-status-msg err'; }
+      outEl.style.display = 'block';
+      outEl.textContent = (x.aceitou ? '✅ ACEITO' : '❌ RECUSADO') + '\nTemplate: ' + (x.template || template) +
+        '\nIdioma usado no teste: ' + (x.idioma || 'pt_BR') +
+        '\nHTTP: ' + (x.httpStatus != null ? x.httpStatus : '?') + '\n\nResposta da Meta:\n' + JSON.stringify(x.zapiResposta || d, null, 2);
+    } catch (e) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+    finally { btn.disabled = false; }
+  });
+}
+['oficialTemplateLembreteDepoisInput', 'oficialTemplateAvisoInternoInput', 'oficialTemplateVendaInput', 'oficialTemplateMarketingInput'].forEach(injetarTesteTemplate);
+
 // Teste do template da API Oficial (dentro do card, no CRM).
 (function wireTesteTemplate() {
   const tbtn = document.getElementById('oficialTplTesteBtn');
