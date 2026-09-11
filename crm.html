@@ -1097,9 +1097,11 @@
             <input type="number" id="posLembretePrazoDiasInput" min="1" style="max-width:80px;" placeholder="30">
             <span>dia(s)</span>
           </div>
-          <label style="margin-top:12px;">Template aprovado na Meta pra esse envio <span style="font-weight:400;color:var(--text-dim);">(obrigatório — dias depois sempre cai fora da janela de 24h)</span></label>
-          <input type="text" id="oficialTemplateLembreteDepoisInput" placeholder="ex: lembrete_recomendado_30dias">
-          <p style="color:var(--text-dim);font-size:.8rem;margin:4px 0 0;">Crie e aprove esse template na Meta (Gerenciador do WhatsApp → Modelos), com 1 variável (ex: {{1}} = nome). Sem preencher aqui, o lembrete de "{prazo} dias depois" não é enviado.</p>
+          <div id="oficialTemplateLembreteDepoisBox" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:12px 0;">
+            <label style="margin-top:0;">🟢 Template aprovado na Meta pra esse envio <span style="font-weight:400;color:var(--text-dim);">(obrigatório — dias depois sempre cai fora da janela de 24h)</span></label>
+            <input type="text" id="oficialTemplateLembreteDepoisInput" placeholder="ex: lembrete_recomendado_30dias">
+            <p style="color:var(--text-dim);font-size:.8rem;margin:4px 0 0;">Crie e aprove esse template na Meta (Gerenciador do WhatsApp → Modelos), com 1 variável (ex: {{1}} = nome). Sem preencher aqui, o lembrete de "{prazo} dias depois" não é enviado.</p>
+          </div>
           <label style="margin-top:12px;">Mensagem enviada quando esse prazo chega (reabre o menu 1/2/3)</label>
           <textarea id="posLembreteMensagemInput" rows="4"></textarea>
 
@@ -1120,9 +1122,11 @@
           </div>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:4px 0 0;">Quando alguém pede pra falar com um atendente, o robô manda um aviso nesse número. Clica em <b>📤 Testar</b> pra receber uma mensagem de teste na hora. <b>Deixe vazio pra não avisar por WhatsApp</b> (o alerta piscando no painel Conversas acontece de qualquer jeito). Obs.: se tiver um <b>⭐ atendente oficial</b> na Equipe, o aviso vai pra ele.</p>
 
-          <label style="margin-top:10px;">Template pra avisos internos (WhatsApp do atendente) <span style="font-weight:400;color:var(--text-dim);">(API Oficial)</span></label>
-          <input type="text" id="oficialTemplateAvisoInternoInput" placeholder="ex: aviso_interno_recomendaleads">
-          <p style="font-size:0.8rem; color:var(--text-dim); margin:4px 0 0;">No modo <b>API Oficial</b>, esse aviso vai pro WhatsApp do vendedor/atendente — e vale a MESMA regra de janela de 24h de qualquer mensagem: se o número dele não falou com esse WhatsApp há mais de 24h, só um <b>template aprovado</b> entrega (texto livre é recusado, silenciosamente). Crie um template simples de 1 variável (ex.: <i>"🔔 {'{{1}}'}"</i>) na Meta e cole o nome aqui — sem isso, avisos fora da janela não chegam.</p>
+          <div id="oficialTemplateAvisoInternoBox" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:10px 0;">
+            <label style="margin-top:0;">🟢 Template pra avisos internos (WhatsApp do atendente) <span style="font-weight:400;color:var(--text-dim);">(API Oficial)</span></label>
+            <input type="text" id="oficialTemplateAvisoInternoInput" placeholder="ex: aviso_interno_recomendaleads">
+            <p style="font-size:0.8rem; color:var(--text-dim); margin:4px 0 0;">No modo <b>API Oficial</b>, esse aviso vai pro WhatsApp do vendedor/atendente — e vale a MESMA regra de janela de 24h de qualquer mensagem: se o número dele não falou com esse WhatsApp há mais de 24h, só um <b>template aprovado</b> entrega (texto livre é recusado, silenciosamente). Crie um template simples de 1 variável (ex.: <i>"🔔 {'{{1}}'}"</i>) na Meta e cole o nome aqui — sem isso, avisos fora da janela não chegam.</p>
+          </div>
 
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarRecomendadoBtn">Salvar conversa do recomendado</button>
@@ -1786,8 +1790,8 @@ function abrirModalDisparoColuna(etapaId, etapaNome) {
         <p style="font-size:0.82rem;color:var(--text-dim);margin:0 0 12px;">
           ${qtd} contato${qtd === 1 ? '' : 's'} nessa coluna agora. Vai mandar o template abaixo (aprovado na Meta) pra cada um. Funciona só no modo API Oficial.
         </p>
-        <div class="modal-field">
-          <label>Escolher da lista (templates aprovados na Meta)</label>
+        <div class="modal-field" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;">
+          <label style="margin-top:0;">🟢 Escolher da lista (templates aprovados na Meta)</label>
           <select id="disparoColunaTemplateSelect" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border,#ddd);margin-bottom:8px;">
             <option value="">— Carregando templates... —</option>
           </select>
@@ -3336,9 +3340,11 @@ function injetarTesteTemplate(tplInputId) {
   const uid = tplInputId + '_teste';
   const savedTel = localStorage.getItem('rl_teste_tpl_tel') || '';
   const box = document.createElement('div');
-  box.style.cssText = 'margin-top:8px;padding:10px;border:1px dashed var(--gold,#c9a227);border-radius:10px;background:#FFFDF5;';
+  // Mesmo padrão do widget original (linha ~1026): SEM caixa/cor própria — só
+  // uma divisória tracejada verde, herdando o fundo verde do campo em volta.
+  box.style.cssText = 'margin-top:10px;border-top:1px dashed #BBF7D0;padding-top:10px;';
   box.innerHTML = `
-    <div style="font-size:0.8rem;font-weight:600;margin-bottom:6px;">🧪 Testar este template</div>
+    <div style="font-size:0.82rem;font-weight:600;margin-bottom:4px;">🧪 Testar este template</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <input type="text" id="${uid}_tel" placeholder="Seu número com DDD" value="${savedTel}" style="max-width:200px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;">
       <button type="button" id="${uid}_btn" class="config-save-btn" style="background:transparent;border:1px solid var(--gold);color:var(--gold-deep);">🧪 Testar</button>
