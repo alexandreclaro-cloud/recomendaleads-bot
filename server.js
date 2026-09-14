@@ -780,6 +780,13 @@ function respostaEhNegativa(texto) {
   // porque essa função é checada primeiro. Isso tem que vir antes desse checagem
   // de substring, senão nunca é alcançado.
   if (/^(não|nao)\b/.test(normalizado)) return true;
+  // "não"/"nao" em QUALQUER lugar da frase (não só no início), aceitando a
+  // abreviação informal "nn" e alongamentos por ênfase ("naaao", "naooooo",
+  // "nnnn") — sem isso, recusas reais como "Eu nn quero", "Nn precisa" e
+  // "NAOOOOOOOOO" passavam batido (nem começam com "não" nem batem em
+  // nenhuma frase da lista abaixo), e o robô seguia insistindo como se a
+  // pessoa nunca tivesse recusado.
+  if (/\b(n[ãa]o+|nn+)\b/.test(normalizado)) return true;
   return ['não quero', 'nao quero', 'não tenho interesse', 'nao tenho interesse',
     'para de mandar', 'me tira', 'não conheço', 'nao conheco',
     'não me interessa', 'nao me interessa', 'bloquear', 'spam'
@@ -4019,6 +4026,13 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
 
   // ---- MENU PRINCIPAL (pós-presente) ----
   if (sessao.etapa === 'menu_principal') {
+    // Recusa explícita aqui — trata como "vou usar depois" (mantém o presente
+    // reservado, sem insistir) em vez de só repetir o menu numerado pra sempre.
+    if (respostaEhNegativa(texto)) {
+      await sendText(telefone, 'Sem problema, nenhum compromisso! 😊 Seu presente continua guardado — quando quiser usar, é só me chamar por aqui 🎁');
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
+      return true;
+    }
     const op = extrairOpcao(texto);
     if (op === 1) await iniciarAgendamentoRec(telefone, empresa, sessao, 'agora');
     else if (op === 2) await enviarMenuDepoisRec(telefone);
@@ -4048,6 +4062,11 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
 
   // ---- "VOU USAR DEPOIS" ----
   if (sessao.etapa === 'menu_depois') {
+    if (respostaEhNegativa(texto)) {
+      await sendText(telefone, 'Sem problema, nenhum compromisso! 😊 Seu presente continua guardado — quando quiser usar, é só me chamar por aqui 🎁');
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
+      return true;
+    }
     const op = extrairOpcao(texto);
     if (op === 1) {
       await iniciarAgendamentoRec(telefone, empresa, sessao, 'depois');
@@ -4063,6 +4082,17 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
 
   // ---- AGENDAR: período ----
   if (sessao.etapa === 'agendar_periodo') {
+    // Recusa explícita NO MEIO do agendamento (mudou de ideia sobre marcar):
+    // sem essa checagem o robô só sabia reprompt(ar) "escolhe o número",
+    // ignorando recusas repetidas e cada vez mais enfáticas — até uma resposta
+    // ambígua (ex.: frustração digitando números soltos) ser malinterpretada
+    // por extrairOpcao como se fosse uma escolha válida, confirmando um
+    // agendamento que a pessoa nunca quis.
+    if (respostaEhNegativa(texto)) {
+      await sendText(telefone, 'Sem problema, nenhum compromisso! 😊 Seu presente continua guardado — quando quiser agendar, é só me chamar por aqui 🎁');
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
+      return true;
+    }
     const op = extrairOpcao(texto);
     if (op >= 1 && op <= 3) {
       await saveSessaoRecomendado(telefone, { periodoEscolhido: PERIODOS_REC[op] });
@@ -4075,6 +4105,13 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
 
   // ---- AGENDAR: dia ----
   if (sessao.etapa === 'agendar_dia') {
+    // Mesma recusa explícita, agora na etapa de escolher o dia (ver comentário
+    // acima, em 'agendar_periodo').
+    if (respostaEhNegativa(texto)) {
+      await sendText(telefone, 'Sem problema, nenhum compromisso! 😊 Seu presente continua guardado — quando quiser agendar, é só me chamar por aqui 🎁');
+      await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
+      return true;
+    }
     const op = extrairOpcao(texto);
     const dias = sessao.diasOpcoes || gerarOpcoesDias(empresa);
     const dia = dias.find(d => d.idx === op);
