@@ -1544,6 +1544,17 @@ async function avisarAtendente(telefone, nomePessoa, empresa) {
     const msg = `🔔 *Atendimento humano solicitado*\n\n${nome} pediu pra falar com um atendente${empresa.nome ? ` na ${empresa.nome}` : ''}.\n\n👉 Responda pelo sistema (abre direto na conversa):\n${link}`;
     await enviarSemLog(numAt, msg);
   }
+  // Lembrete único se ninguém assumir em 10 min — evita lead esfriando/esquecido
+  // por causa de um aviso que passou batido. Só 1 tentativa extra (não fica
+  // repetindo): no modo API Oficial, fora da janela de 24h só um template
+  // aprovado entrega, e reenviar várias vezes exigiria orçar isso mais.
+  try {
+    await criarAgendamento({
+      tipo: 'lembrete_atendente_sem_resposta',
+      executarEm: new Date(Date.now() + 10 * 60000).toISOString(),
+      dados: { telefone, nomePessoa, empresaId: empresa.id }
+    });
+  } catch (e) { console.error('agendar lembrete_atendente_sem_resposta:', e.message); }
 }
 
 // Avisa o atendente/dono no WhatsApp quando um agendamento é confirmado
@@ -2867,7 +2878,7 @@ function deBrasiliaParaUTC(dataDeslocada) { return new Date(dataDeslocada.getTim
 
 // Tipos de agendamento que NÃO mandam mensagem pra um lead/cliente (avisam a
 // própria equipe) — não faz sentido segurar isso até de manhã.
-const AGENDAMENTOS_SEM_SILENCIO = new Set(['escalar_aviso_atendente']);
+const AGENDAMENTOS_SEM_SILENCIO = new Set(['escalar_aviso_atendente', 'lembrete_atendente_sem_resposta']);
 
 // Se `quandoISO` cai dentro do silêncio, empurra pro 08:00 de Brasília seguinte
 // (mesmo dia se já passou da meia-noite, dia seguinte se ainda é noite) —
@@ -9360,6 +9371,30 @@ async function processarAgendamentoInterno(agendamento) {
       return;
     }
     await avisarAtendenteRevezamento(telefone, nomePessoa, empresa, excluirIds, tentativa);
+    return;
+  }
+
+  // Lembrete único (sem escalar/revezar) pra quem pediu atendente pelo caminho
+  // "normal" (avisarAtendente — atendente oficial único, não o carrossel de
+  // revezamento): se ninguém assumiu em 10 min, manda o mesmo aviso de novo com
+  // um prefixo de lembrete. Só 1 tentativa extra (ver comentário em avisarAtendente).
+  if (agendamento.tipo === 'lembrete_atendente_sem_resposta') {
+    const { telefone, nomePessoa } = agendamento.dados;
+    const chave = `${empresa.id}__${telefone}`;
+    const convSnap = await CONVERSAS_COL().doc(chave).get();
+    const conv = convSnap.exists ? convSnap.data() : {};
+    if (!conv.precisaAtendente) {
+      console.log(`[LEMBRETE-ATENDENTE] ${telefone} já foi assumido — não lembra de novo`);
+      return;
+    }
+    const numAt = await getNumeroAvisoAtendente(empresa);
+    if (numAt) {
+      const nome = (nomePessoa || '').split(' ')[0] || 'Um cliente';
+      const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
+      const link = `${base}/conversas?tel=${encodeURIComponent(soDigitosTel(telefone))}`;
+      const msg = `🔔 *Lembrete — atendimento ainda sem resposta*\n\n${nome} pediu pra falar com um atendente${empresa.nome ? ` na ${empresa.nome}` : ''} e ainda ninguém assumiu.\n\n👉 Responda pelo sistema (abre direto na conversa):\n${link}`;
+      await enviarSemLog(numAt, msg);
+    }
     return;
   }
 
