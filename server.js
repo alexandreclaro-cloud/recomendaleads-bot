@@ -1801,6 +1801,12 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
   // Sem saldo → bloqueia (não envia). Empresa sem prepagoAtivo passa livre.
   const info = await getTemplateInfo(cfg, templateName);
   const categoria = (info && info.categoria) || 'marketing';
+  // Usa o idioma REAL aprovado na Meta pra esse template — todo chamador desta
+  // função só manda 'pt_BR' (o default) ou nem passa `lang`, então sem isso
+  // TODO envio de um template aprovado em outro idioma (ex.: pt_PT, en_US —
+  // necessário pra listas de Portugal/EUA) falhava com "template does not
+  // exist in pt_BR", mesmo o template existindo (só existia noutro idioma).
+  const idioma = (info && info.idioma) || lang;
   // Cabeçalho com mídia (IMAGE/VIDEO/DOCUMENT) — a Meta exige uma URL em TODO
   // envio, não fica salva no template. Sem isso a Meta recusa com "Format
   // mismatch, expected IMAGE...". Barra ANTES de cobrar (não desconta saldo
@@ -1825,7 +1831,7 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
     if (bodyParams.length) components.push({ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) });
     const r = await axios.post(metaMessagesUrl(cfg), {
       messaging_product: 'whatsapp', to: soDigitos(phone), type: 'template',
-      template: { name: templateName, language: { code: lang }, components }
+      template: { name: templateName, language: { code: idioma }, components }
     }, { headers: metaHeaders(cfg) });
     console.log(`[TEMPLATE ENVIADO/oficial] ${templateName} → ${phone}`);
     // Guarda o texto REAL (corpo do template com as variáveis já substituídas),
