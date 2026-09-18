@@ -1484,23 +1484,28 @@ async function sendText(phone, message) {
   }
 }
 
-// Envia uma mensagem SEM registrar no inbox (Conversas) — usado pra avisos internos
-// (ex.: alertar o atendente, novo agendamento, lembrete de retorno), pra não
-// criar uma "conversa" com o número do atendente.
+// Envia uma mensagem de aviso interno (ex.: alertar o atendente, novo
+// agendamento, lembrete de retorno). O nome ficou de um tempo em que isso NÃO
+// registrava no inbox (Conversas) de propósito — mas isso tornava impossível
+// diagnosticar "a Meta aceitou mas não chegou" (sem registro, sem messageId,
+// sem como casar com o webhook de status/erro depois). Agora registra igual
+// qualquer outro envio, só continua SEM passar pela cobrança pré-pago (essa
+// parte do design original se mantém — aviso interno não é mensagem de/pra
+// cliente, não deve descontar saldo).
 //
 // No modo Oficial vale a MESMA regra da janela de 24h — se o atendente não
 // falou com o número do WhatsApp há mais de 24h, texto livre é recusado pela
-// Meta. Antes disso não era checado: o aviso simplesmente sumia sem erro
-// nenhum aparecer em lugar nenhum. Agora, fora da janela, usa um template
-// genérico (oficialTemplateAvisoInterno — 1 variável, o texto inteiro do
-// aviso) se estiver configurado; sem template, não tenta (evita gastar uma
-// chamada que a Meta ia recusar) e loga claro pra dar pra diagnosticar.
+// Meta. Fora da janela, usa um template genérico (oficialTemplateAvisoInterno
+// — 1 variável, o texto inteiro do aviso) se estiver configurado; sem
+// template, não tenta (evita gastar uma chamada que a Meta ia recusar) e loga
+// claro pra dar pra diagnosticar.
 async function enviarSemLog(phone, message) {
   try {
     if (tipoWppAtual() === 'oficial') {
       const cfg = oficialAtual();
       if (await dentroJanela24h(phone)) {
-        await axios.post(metaMessagesUrl(cfg), { messaging_product: 'whatsapp', to: soDigitos(phone), type: 'text', text: { body: message } }, { headers: metaHeaders(cfg) });
+        const r = await axios.post(metaMessagesUrl(cfg), { messaging_product: 'whatsapp', to: soDigitos(phone), type: 'text', text: { body: message } }, { headers: metaHeaders(cfg) });
+        registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message, messageId: idMensagemMeta(r) });
         return true;
       }
       const empresa = await getEmpresa();
@@ -1517,14 +1522,16 @@ async function enviarSemLog(phone, message) {
       // Envio direto (sem passar por sendTemplate) de propósito — é uma
       // notificação interna pro dono/atendente, não deve descontar do saldo
       // pré-pago (que é pra mensagens de/pra clientes).
-      await axios.post(metaMessagesUrl(cfg), {
+      const r = await axios.post(metaMessagesUrl(cfg), {
         messaging_product: 'whatsapp', to: soDigitos(phone), type: 'template',
         template: { name: template, language: { code: idioma }, components: [{ type: 'body', parameters: [{ type: 'text', text: textoParam }] }] }
       }, { headers: metaHeaders(cfg) });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message, messageId: idMensagemMeta(r) });
       return true;
     }
     const cfg = zapiAtual();
-    await axios.post(`${zapiBaseUrl(cfg)}/send-text`, { phone, message }, { headers: zapiHeaders(cfg) });
+    const respZ = await axios.post(`${zapiBaseUrl(cfg)}/send-text`, { phone, message }, { headers: zapiHeaders(cfg) });
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message, messageId: idMensagemZapi(respZ) });
     return true;
   } catch (e) { console.error('enviarSemLog:', e.response?.data ? JSON.stringify(e.response.data) : e.message); return false; }
 }
