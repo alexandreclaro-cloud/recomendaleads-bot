@@ -1439,6 +1439,18 @@ function idMensagemMeta(respostaAxios) {
   catch (e) { return null; }
 }
 
+// Mesma ideia, mas pro canal Z-API: ela devolve o ID da mensagem em `messageId`
+// (às vezes só em `zaapId`/`id`, dependendo do endpoint) — precisa disso pra
+// casar com o callback "Ao enviar" (DeliveryCallback) depois e desenhar o
+// risquinho de confirmação. Sem isso, mensagens via Z-API nunca tinham
+// messageId gravado, então NUNCA tinham risquinho — não por falta de recurso
+// da Z-API (ela manda o status certinho), só porque a gente não guardava o ID
+// pra casar com ele.
+function idMensagemZapi(respostaAxios) {
+  try { const d = respostaAxios.data; return (d && (d.messageId || d.zaapId || d.id)) || null; }
+  catch (e) { return null; }
+}
+
 async function sendText(phone, message) {
   if (tipoWppAtual() === 'oficial') {
     try {
@@ -1463,7 +1475,7 @@ async function sendText(phone, message) {
     // if (d) { body.delayTyping = d.delayTyping; if (d.delayMessage > 0) body.delayMessage = d.delayMessage; }
     const respZ = await axios.post(`${zapiBaseUrl(cfg)}/send-text`, body, { headers: zapiHeaders(cfg) });
     console.log(`[ENVIADO via instância ${cfg.instanceId}] empresa=${empresaIdAtual()} para ${destino}${destino !== soDigitos(phone) ? ` (era ${soDigitos(phone)})` : ''}: ${message.slice(0, 40)}... resp=${JSON.stringify(respZ.data || {}).slice(0, 200)}`);
-    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message });
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message, messageId: idMensagemZapi(respZ) });
     return { ok: true, via: 'zapi' };
   } catch (err) {
     const e = err.response?.data ? JSON.stringify(err.response.data) : err.message;
@@ -1695,11 +1707,11 @@ async function sendImage(phone, imageUrl, caption) {
   }
   try {
     const cfg = zapiAtual();
-    await axios.post(`${zapiBaseUrl(cfg)}/send-image`, {
+    const respZ = await axios.post(`${zapiBaseUrl(cfg)}/send-image`, {
       phone, image: imageUrl, caption: caption || ''
     }, { headers: zapiHeaders(cfg) });
     console.log(`[IMAGEM ENVIADA] para ${phone}`);
-    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem', midiaUrl: urlParaRegistro(imageUrl) });
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '📷 Imagem', tipo: 'imagem', midiaUrl: urlParaRegistro(imageUrl), messageId: idMensagemZapi(respZ) });
   } catch (err) {
     console.error('Erro ao enviar imagem:', err.response?.data || err.message);
   }
@@ -1724,11 +1736,11 @@ async function sendDocument(phone, base64OrUrl, fileName, extension) {
   }
   try {
     const cfg = zapiAtual();
-    await axios.post(`${zapiBaseUrl(cfg)}/send-document/${extension}`, {
+    const respZ = await axios.post(`${zapiBaseUrl(cfg)}/send-document/${extension}`, {
       phone, document: base64OrUrl, fileName
     }, { headers: zapiHeaders(cfg) });
     console.log(`[DOCUMENTO ENVIADO] para ${phone}: ${fileName}`);
-    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento', midiaUrl: urlParaRegistro(base64OrUrl) });
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: `📎 ${fileName || 'Documento'}`, tipo: 'documento', midiaUrl: urlParaRegistro(base64OrUrl), messageId: idMensagemZapi(respZ) });
   } catch (err) {
     console.error('Erro ao enviar documento:', err.response?.data || err.message);
   }
@@ -1754,9 +1766,9 @@ async function sendAudio(phone, audioUrl) {
   }
   try {
     const cfg = zapiAtual();
-    await axios.post(`${zapiBaseUrl(cfg)}/send-audio`, { phone, audio: audioUrl }, { headers: zapiHeaders(cfg) });
+    const respZ = await axios.post(`${zapiBaseUrl(cfg)}/send-audio`, { phone, audio: audioUrl }, { headers: zapiHeaders(cfg) });
     console.log(`[AUDIO ENVIADO] para ${phone}`);
-    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: '🎤 Áudio', tipo: 'audio', midiaUrl: urlParaRegistro(audioUrl) });
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: '🎤 Áudio', tipo: 'audio', midiaUrl: urlParaRegistro(audioUrl), messageId: idMensagemZapi(respZ) });
   } catch (err) {
     console.error('Erro ao enviar áudio:', err.response?.data || err.message);
   }
@@ -1780,9 +1792,9 @@ async function sendVideo(phone, videoUrl, caption) {
   }
   try {
     const cfg = zapiAtual();
-    await axios.post(`${zapiBaseUrl(cfg)}/send-video`, { phone, video: videoUrl, caption: caption || '' }, { headers: zapiHeaders(cfg) });
+    const respZ = await axios.post(`${zapiBaseUrl(cfg)}/send-video`, { phone, video: videoUrl, caption: caption || '' }, { headers: zapiHeaders(cfg) });
     console.log(`[VIDEO ENVIADO] para ${phone}`);
-    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '🎬 Vídeo', tipo: 'video', midiaUrl: urlParaRegistro(videoUrl) });
+    registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: caption || '🎬 Vídeo', tipo: 'video', midiaUrl: urlParaRegistro(videoUrl), messageId: idMensagemZapi(respZ) });
   } catch (err) {
     console.error('Erro ao enviar vídeo:', err.response?.data || err.message);
   }
@@ -4694,6 +4706,10 @@ async function comWebhook(req, res, empresaId) {
   if (ehStatus) {
     guardarStatusCallback(b);
     console.log(`[ZSTATUS] status=${b.status || b.type} phone=${b.phone || ''} messageId=${b.messageId || b.id || ''} error=${b.error ? JSON.stringify(b.error) : '(sem erro)'} body=${JSON.stringify(b).slice(0, 400)}`);
+    // Aplica o status na mensagem de verdade (risquinho de confirmação na
+    // conversa) — antes só ficava guardado no cache do "Teste de entrega",
+    // nunca atualizava a mensagem real (ver comentário em atualizarStatusMensagemZapi).
+    atualizarStatusMensagemZapi(b).catch(e => console.error('[ZSTATUS] erro ao aplicar status:', e.message));
     return res.sendStatus(200);
   }
 
@@ -4809,15 +4825,14 @@ async function metaMensagemParaInterno(value, msg, cfg, empresaId) {
   return base;
 }
 
-// Risquinho de confirmação: atualiza o status (enviado/entregue/lido/falhou) da
-// mensagem NOSSA que a Meta identifica pelo wamid — casa por messageId (gravado
-// no envio, ver idMensagemMeta). Nunca REGRIDE o status (ex.: um "delivered"
-// que chegue atrasado depois do "read" não deve voltar o risquinho pra trás).
-async function atualizarStatusMensagem(messageId, statusMeta, errosMeta) {
-  if (!messageId) return;
-  const mapa = { sent: 'enviado', delivered: 'entregue', read: 'lido', failed: 'falhou' };
-  const status = mapa[statusMeta];
-  if (!status) return; // status desconhecido — ignora
+// Risquinho de confirmação: aplica um novo status (enviado/entregue/lido/falhou)
+// na mensagem NOSSA que casa por messageId (gravado no envio — ver idMensagemMeta
+// pro canal Oficial e idMensagemZapi pro Z-API). Nunca REGRIDE o status (ex.: um
+// "delivered" que chegue atrasado depois do "read" não deve voltar o risquinho
+// pra trás). Núcleo compartilhado pelos dois canais — só muda quem traduz o
+// status bruto de cada API pro nosso enum.
+async function aplicarStatusMensagem(messageId, status, erroEntrega) {
+  if (!messageId || !status) return;
   try {
     const snap = await MENSAGENS_CHAT_COL().where('messageId', '==', messageId).limit(1).get();
     if (snap.empty) return;
@@ -4830,16 +4845,42 @@ async function atualizarStatusMensagem(messageId, statusMeta, errosMeta) {
     const atual = doc.data().status;
     if (atual && ordem[atual] > (ordem[status] || 0)) return;
     const upd = { status };
-    // Guarda o MOTIVO da falha (a Meta manda em statuses[].errors) — sem isso o
-    // painel só mostrava "⚠️ Não entregou", sem dizer por quê, obrigando a
-    // caçar nos logs do servidor toda vez que alguém perguntava "por que falhou?".
-    if (status === 'falhou' && Array.isArray(errosMeta) && errosMeta[0]) {
-      upd.erroEntrega = errosMeta[0].title || errosMeta[0].message || `Erro ${errosMeta[0].code || ''}`.trim();
-    }
+    // Guarda o MOTIVO da falha — sem isso o painel só mostrava "⚠️ Não entregou",
+    // sem dizer por quê, obrigando a caçar nos logs do servidor toda vez que
+    // alguém perguntava "por que falhou?".
+    if (status === 'falhou' && erroEntrega) upd.erroEntrega = erroEntrega;
     await doc.ref.update(upd);
   } catch (e) {
-    console.error('[WEBHOOK-OFICIAL] erro ao atualizar status da mensagem:', e.message);
+    console.error('[STATUS-MSG] erro ao atualizar status da mensagem:', e.message);
   }
+}
+
+async function atualizarStatusMensagem(messageId, statusMeta, errosMeta) {
+  const mapa = { sent: 'enviado', delivered: 'entregue', read: 'lido', failed: 'falhou' };
+  const status = mapa[statusMeta];
+  if (!status) return; // status desconhecido — ignora
+  // A Meta manda o MOTIVO da falha em statuses[].errors.
+  const erro = (status === 'falhou' && Array.isArray(errosMeta) && errosMeta[0])
+    ? (errosMeta[0].title || errosMeta[0].message || `Erro ${errosMeta[0].code || ''}`.trim())
+    : null;
+  await aplicarStatusMensagem(messageId, status, erro);
+}
+
+// Mesma ideia pro canal Z-API — ela manda o status (SENT/RECEIVED/DELIVERY/READ/
+// VIEWED/PLAYED) e, quando falha, o motivo em `error`. Casa pelo messageId que a
+// Z-API devolveu no envio (ver idMensagemZapi) — sem esse ID gravado, esse
+// casamento nunca acha a mensagem (era exatamente o que faltava antes).
+async function atualizarStatusMensagemZapi(body) {
+  const messageId = body.messageId || body.id || (Array.isArray(body.ids) && body.ids[0]);
+  if (!messageId) return;
+  const mapa = { SENT: 'enviado', RECEIVED: 'entregue', DELIVERY: 'entregue', READ: 'lido', VIEWED: 'lido', PLAYED: 'lido' };
+  let status = mapa[String(body.status || body.type || '').toUpperCase()];
+  let erro = null;
+  if (body.error) {
+    status = 'falhou';
+    erro = typeof body.error === 'string' ? body.error : (body.error.message || body.error.errorCode || JSON.stringify(body.error));
+  }
+  await aplicarStatusMensagem(messageId, status, erro);
 }
 
 // Confere que o POST do webhook realmente veio da Meta (header X-Hub-Signature-256,
