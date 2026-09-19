@@ -1550,6 +1550,13 @@ async function getNumeroAvisoAtendente(empresa) {
 
 // Quando alguém pede atendimento humano: marca a conversa (aviso visual no painel)
 // e dispara um WhatsApp pro atendente OFICIAL (ou número do CRM, se não houver oficial).
+// Máximo de lembretes repetidos se ninguém assumir — ~1h de tentativas (6 × 10
+// min) antes de desistir. Na prática as pessoas não ficam de olho no painel o
+// tempo todo, então 1 aviso só (o que tínhamos antes) não bastava — repetir
+// aumenta a chance de alguém ver a tempo. Aceita o custo extra de template
+// fora da janela de 24h (decisão consciente, revertendo o limite anterior).
+const MAX_LEMBRETES_ATENDENTE = 6;
+
 async function avisarAtendente(telefone, nomePessoa, empresa) {
   try {
     await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`)
@@ -1563,17 +1570,55 @@ async function avisarAtendente(telefone, nomePessoa, empresa) {
     const msg = `🔔 *Atendimento humano solicitado*\n\n${nome} pediu pra falar com um atendente${empresa.nome ? ` na ${empresa.nome}` : ''}.\n\n👉 Responda pelo sistema (abre direto na conversa):\n${link}`;
     await enviarSemLog(numAt, msg);
   }
-  // Lembrete único se ninguém assumir em 10 min — evita lead esfriando/esquecido
-  // por causa de um aviso que passou batido. Só 1 tentativa extra (não fica
-  // repetindo): no modo API Oficial, fora da janela de 24h só um template
-  // aprovado entrega, e reenviar várias vezes exigiria orçar isso mais.
+  await agendarLembreteAtendenteSemResposta(telefone, nomePessoa, empresa, 1);
+}
+
+async function agendarLembreteAtendenteSemResposta(telefone, nomePessoa, empresa, tentativa) {
+  if (tentativa > MAX_LEMBRETES_ATENDENTE) return;
   try {
     await criarAgendamento({
       tipo: 'lembrete_atendente_sem_resposta',
       executarEm: new Date(Date.now() + 10 * 60000).toISOString(),
-      dados: { telefone, nomePessoa, empresaId: empresa.id }
+      dados: { telefone, nomePessoa, empresaId: empresa.id, tentativa }
     });
   } catch (e) { console.error('agendar lembrete_atendente_sem_resposta:', e.message); }
+}
+
+// Avisa quando o CLIENTE manda mensagem numa conversa que já está com humano
+// envolvido — assumida (botPausado) ou esperando ser assumida (precisaAtendente).
+// Sem isso, quem não fica de olho o tempo todo no painel (a maioria — ver
+// comentário em avisarAtendente) só descobre que a pessoa respondeu se abrir o
+// sistema por conta própria. NÃO dispara em conversa 100% automática (o bot
+// ainda respondendo sozinho) — aí seria barulho sem necessidade.
+async function avisarMovimentoCliente(telefone, nomePessoa, empresa) {
+  try {
+    const ref = CONVERSAS_COL().doc(`${empresa.id}__${telefone}`);
+    const snap = await ref.get();
+    if (!snap.exists) return;
+    const conv = snap.data();
+    if (!conv.botPausado && !conv.precisaAtendente) return;
+    // Debounce: se a pessoa mandar várias mensagens seguidas, não manda um
+    // aviso pra cada uma — só se já não avisou nos últimos 3 minutos.
+    const ultimoAviso = conv.avisoMovimentoEm ? new Date(conv.avisoMovimentoEm).getTime() : 0;
+    if (Date.now() - ultimoAviso < 3 * 60 * 1000) return;
+    // Prioriza o atendente que assumiu essa conversa especificamente; sem
+    // ninguém assumido ainda, cai no número de aviso padrão da empresa.
+    let numAt = null;
+    if (conv.atendenteId) {
+      try {
+        const uDoc = await USUARIOS_COL().doc(conv.atendenteId).get();
+        if (uDoc.exists && uDoc.data().telefone) numAt = soDigitosTel(uDoc.data().telefone);
+      } catch (e) { /* best-effort */ }
+    }
+    if (!numAt) numAt = await getNumeroAvisoAtendente(empresa);
+    if (!numAt) return;
+    await ref.set({ avisoMovimentoEm: new Date().toISOString() }, { merge: true });
+    const nome = (nomePessoa || '').split(' ')[0] || 'Um cliente';
+    const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
+    const link = `${base}/conversas?tel=${encodeURIComponent(soDigitosTel(telefone))}`;
+    const msg = `💬 *${nome} respondeu*\n\nMandou uma mensagem nova${empresa.nome ? ` na ${empresa.nome}` : ''} e está esperando resposta.\n\n👉 Ver conversa:\n${link}`;
+    await enviarSemLog(numAt, msg);
+  } catch (e) { console.error('avisarMovimentoCliente:', e.message); }
 }
 
 // Avisa o atendente/dono no WhatsApp quando um agendamento é confirmado
@@ -2128,6 +2173,22 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
       await sendText(telefone, 'Sem problema, super entendo! 😊 Fico por aqui então — se quiser recomendar um amigo depois, é só me chamar por aqui 🙏');
       sessao.etapa = 'finalizado';
       await saveSessao(telefone, sessao);
+      return;
+    }
+    // Texto vazio aqui não é "sem nome nenhum" — normalmente é a pessoa
+    // adiantando o passo seguinte (compartilhando os contatos ANTES de
+    // responder o nome, ex.: vCard/agenda). Sem essa checagem, `clienteNome`
+    // virava string vazia: a pergunta seguinte ("Prazer, {nome}!...") saía com
+    // a variável {nome} literal (não tem valor pra substituir) e a etapa
+    // avançava pra "vendedor" sem nunca ter o nome — quando a pessoa finalmente
+    // digitava o nome dela, caía como resposta de VENDEDOR ("Não encontrei
+    // esse vendedor"), uma bagunça pra desembaraçar depois. Os contatos
+    // compartilhados nesse meio-tempo também ficam perdidos pro fluxo (só
+    // aparecem no histórico da conversa) — por isso avisa que ainda faltam.
+    if (!texto || !texto.trim()) {
+      await sendText(telefone, (vCard || (contatosMultiplos && contatosMultiplos.length))
+        ? 'Antes de me passar os contatos, só preciso saber seu nome 😊 Qual é o seu nome? (Depois te peço os contatos de novo, viu?)'
+        : 'Acho que não veio nenhum texto 🙂 Pra começar, qual é o seu nome?');
       return;
     }
     sessao.clienteNome = (texto || '').trim();
@@ -4359,6 +4420,9 @@ async function tratarWebhook(req, res) {
       } catch (e) { ehDoBot = false; }
       if (ehDoBot) {
         registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat, tipo: midiaTipoChat, midiaUrl: midiaUrlChat, contatosArray: contatosParaChat });
+        // Se essa conversa já está com humano envolvido, avisa que a pessoa
+        // respondeu — sem depender de alguém estar de olho no painel.
+        getEmpresa().then(emp => avisarMovimentoCliente(telefone, nomeContato, emp)).catch(() => {});
       }
     }
 
@@ -9428,12 +9492,14 @@ async function processarAgendamentoInterno(agendamento) {
     return;
   }
 
-  // Lembrete único (sem escalar/revezar) pra quem pediu atendente pelo caminho
-  // "normal" (avisarAtendente — atendente oficial único, não o carrossel de
-  // revezamento): se ninguém assumiu em 10 min, manda o mesmo aviso de novo com
-  // um prefixo de lembrete. Só 1 tentativa extra (ver comentário em avisarAtendente).
+  // Lembrete repetido (sem escalar/revezar) pra quem pediu atendente pelo
+  // caminho "normal" (avisarAtendente — atendente oficial único, não o
+  // carrossel de revezamento): se ninguém assumiu em 10 min, manda o mesmo
+  // aviso de novo com um prefixo de lembrete, e reagenda a próxima tentativa
+  // — até MAX_LEMBRETES_ATENDENTE (ver comentário em avisarAtendente: 1 aviso
+  // só não bastava na prática, as pessoas não ficam de olho no painel).
   if (agendamento.tipo === 'lembrete_atendente_sem_resposta') {
-    const { telefone, nomePessoa } = agendamento.dados;
+    const { telefone, nomePessoa, tentativa } = agendamento.dados;
     const chave = `${empresa.id}__${telefone}`;
     const convSnap = await CONVERSAS_COL().doc(chave).get();
     const conv = convSnap.exists ? convSnap.data() : {};
@@ -9449,6 +9515,7 @@ async function processarAgendamentoInterno(agendamento) {
       const msg = `🔔 *Lembrete — atendimento ainda sem resposta*\n\n${nome} pediu pra falar com um atendente${empresa.nome ? ` na ${empresa.nome}` : ''} e ainda ninguém assumiu.\n\n👉 Responda pelo sistema (abre direto na conversa):\n${link}`;
       await enviarSemLog(numAt, msg);
     }
+    await agendarLembreteAtendenteSemResposta(telefone, nomePessoa, empresa, (tentativa || 1) + 1);
     return;
   }
 
