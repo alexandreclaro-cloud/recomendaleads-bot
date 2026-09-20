@@ -901,6 +901,7 @@ const EMPRESA_PADRAO = {
     { esperaMin: 4320, texto: 'Oi {cliente}! Última lembrança 🙌 É só avisar os amigos e responder *1* (já avisei) que eu libero os presentes deles.' }
   ],
   basicSemConfirmacao: 'nao_envia', // 'nao_envia' (seguro) | 'envia' (dispara mesmo sem confirmar, após a cadência)
+  modoAtendimento: 'oficial', // 'oficial' (sempre a mesma pessoa) | 'carrossel' (revezamento entre a equipe online)
   // Intervalo (min) entre entregar o presente e perguntar se quer o próximo prêmio.
   // Evita encavalar essa pergunta com o aviso de "avise seus amigos" (o cliente
   // respondia "ok" e o robô achava que era "sim" pra próxima faixa).
@@ -1639,10 +1640,12 @@ async function avisarAgendamento(telefone, sessao, empresa, diaLabel, periodoLab
 }
 
 // ============================================================
-// REVEZAMENTO DE ATENDIMENTO — distribui o "modo direto" (recomendado que
-// escolhe ir direto pro humano, sem passar pelo fluxo automático) entre os
-// atendentes ONLINE, em carrossel. Se ninguém responder (assumir) em 1 min,
-// escala pro próximo online — até esgotar as tentativas.
+// REVEZAMENTO DE ATENDIMENTO — distribui entre os atendentes ONLINE, em
+// carrossel. Se ninguém responder (assumir) em 1 min, escala pro próximo
+// online — até esgotar as tentativas. Usado sempre que a empresa escolhe o
+// modo 'carrossel' (ver notificarAtendente) — antes só rodava no "modo
+// direto" do recomendado, agora é uma escolha da empresa, válida em qualquer
+// lugar que chama atendente.
 // ============================================================
 
 // Atendentes "online" agora: telefone cadastrado, status = 'online' (o próprio
@@ -1717,6 +1720,26 @@ async function avisarAtendenteRevezamento(telefone, nomePessoa, empresa, excluir
   }
 }
 
+// Ponto único de decisão de COMO avisar quando alguém pede atendente —
+// configurável por empresa (empresa.modoAtendimento), válido pra QUALQUER
+// lugar do código que chama atendente, não só um fluxo específico:
+//   'carrossel' → distribui entre quem estiver online (revezamento — escala
+//                 pro próximo se ninguém assumir em 1 min, até 6 tentativas).
+//                 Bom pra time de vendas: cliente 1 vai pro vendedor A,
+//                 cliente 2 vai pro vendedor B, e por aí vai.
+//   'oficial' (padrão) → sempre a mesma pessoa (⭐ atendente oficial na
+//                 Equipe), com lembrete repetido se ninguém assumir.
+// Antes disso, o revezamento só rodava no fluxo "recomendado modo direto" e
+// todo o resto ia sempre pro atendente oficial, hardcoded por fluxo — agora é
+// uma escolha só da empresa, coerente em todo lugar.
+async function notificarAtendente(telefone, nomePessoa, empresa) {
+  if (empresa && empresa.modoAtendimento === 'carrossel') {
+    await avisarAtendenteRevezamento(telefone, nomePessoa, empresa, [], 1);
+  } else {
+    await avisarAtendente(telefone, nomePessoa, empresa);
+  }
+}
+
 // Detecta pedido de atendente humano por frase natural, em qualquer momento.
 function pedeAtendente(texto) {
   const t = (texto || '').toLowerCase().trim();
@@ -1730,7 +1753,7 @@ function pedeAtendente(texto) {
 async function transferirParaAtendente(telefone, nome, empresa) {
   await pausarNumero(telefone);
   await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
-  await avisarAtendente(telefone, nome, empresa);
+  await notificarAtendente(telefone, nome, empresa);
   const prim = (nome || '').split(' ')[0] || 'você';
   await sendText(telefone, substituirVariaveis(empresa.posAtendente || EMPRESA_PADRAO.posAtendente, { nomeRecomendado: prim, recomendado: prim, empresa: empresa.nome }));
 }
@@ -3261,10 +3284,9 @@ async function transferirRecomendadoParaAtendente(telefone, sessao, empresa) {
   if (msgH && msgH.trim()) await sendText(telefone, msgH);
   await saveSessaoRecomendado(telefone, { etapa: 'atendimento_humano', ultimaMensagemEm: new Date().toISOString() });
   await pausarNumero(telefone);           // robô para nesse contato
-  // Revezamento: distribui entre os atendentes ONLINE (carrossel); se ninguém
-  // assumir em 1 min, escala pro próximo. Só nesse fluxo (modo direto) — os
-  // outros pontos de "pedir atendente" continuam indo pro atendente oficial único.
-  await avisarAtendenteRevezamento(telefone, sessao.nomeRecomendado, empresa, [], 1);
+  // Respeita a escolha da empresa (carrossel entre a equipe vs. atendente
+  // oficial único) — ver notificarAtendente.
+  await notificarAtendente(telefone, sessao.nomeRecomendado, empresa);
   console.log(`[REC-HUMANO] ${telefone} passou pro atendimento humano (${empresa.nome})`);
 }
 
@@ -4231,7 +4253,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     if (op === 5) {
       await pausarNumero(telefone);
       await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
-      await avisarAtendente(telefone, sessao.nomeRecomendado, empresa);
+      await notificarAtendente(telefone, sessao.nomeRecomendado, empresa);
       await sendText(telefone, substituirVariaveis(empresa.posAtendente || EMPRESA_PADRAO.posAtendente, variaveisRec(sessao, empresa)));
       await saveSessaoRecomendado(telefone, { etapa: 'finalizado_atendente' });
       return true;
@@ -4251,7 +4273,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
         if (resposta) await sendText(telefone, resposta);
         await pausarNumero(telefone);
         await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
-        await avisarAtendente(telefone, sessao.nomeRecomendado, empresa);
+        await notificarAtendente(telefone, sessao.nomeRecomendado, empresa);
         await sendText(telefone, substituirVariaveis(empresa.posAtendente || EMPRESA_PADRAO.posAtendente, variaveisRec(sessao, empresa)));
         await saveSessaoRecomendado(telefone, { etapa: 'finalizado_atendente' });
         return true;
@@ -4278,7 +4300,7 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       if (resposta) await sendText(telefone, resposta);
       await pausarNumero(telefone);
       await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
-      await avisarAtendente(telefone, sessao.nomeRecomendado, empresa);
+      await notificarAtendente(telefone, sessao.nomeRecomendado, empresa);
       await saveSessaoRecomendado(telefone, { etapa: 'finalizado_atendente' });
     } else if (resposta) {
       await sendText(telefone, resposta);
@@ -5752,6 +5774,7 @@ app.get('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => {
         papel: u.papel,
         telefone: u.telefone || '',
         ativo: u.ativo !== false,
+        atendenteOficial: !!u.atendenteOficial,
         statusAtendimento,
         online, // pro revezamento: 🟢 = participa agora do carrossel de atendimento
         souEu: !!(req.usuario && req.usuario.id === d.id),
