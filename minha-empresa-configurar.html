@@ -1857,6 +1857,12 @@ function vgRecebeu(l) {
   const i = ets.findIndex(e => e.id === l.etapa);
   return l.bonusPago === true || (pi >= 0 && i >= pi) || vgComprou(l);
 }
+// Etapas "de saída" (não respondeu / não tem interesse / perdido...) não entram
+// no funil sequencial — são ramificação, não um passo à frente. Ficam de fora
+// da contagem "alcançou esse estágio", e aparecem só como total à parte.
+function vgEhNegativo(e) { return !!e && (/n[ãa]o respond|n[ãa]o tem interesse|sem interesse|perdid|desistiu|cancelad/i.test(e.nome || '') || /nao_respondeu|nao_tem_interesse|perdid|desistiu|cancelad/i.test(e.id || '')); }
+function vgEtapasFunil() { return vgEtapas().filter(e => !vgEhNegativo(e)); }
+function vgRankFunil(l) { return vgEtapasFunil().findIndex(e => e.id === l.etapa); }
 function vgBRL(n) { return (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 
 function vgRange() {
@@ -1879,11 +1885,15 @@ function vgRange() {
 }
 function vgFiltrar(a, b) { return leadsVG.filter(l => { const t = new Date(l.criadoEm || 0).getTime(); return t >= a.getTime() && t <= b.getTime(); }); }
 function vgCalc(lista) {
+  const funil = vgEtapasFunil();
+  const porEtapa = funil.map((e, i) => ({ id: e.id, nome: e.nome, n: lista.filter(l => vgRankFunil(l) >= i).length }));
   return {
     total: lista.length,
     receb: lista.filter(vgRecebeu).length,
     compr: lista.filter(vgComprou).length,
-    valor: lista.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0)
+    semResposta: lista.filter(l => vgEhNegativo(vgEtapas().find(e => e.id === l.etapa))).length,
+    valor: lista.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0),
+    porEtapa
   };
 }
 
@@ -1940,10 +1950,11 @@ function renderDashboardVG() {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
       <div style="background:var(--surface-2,#fff);border:1px solid var(--border,#e3e6ea);border-radius:12px;padding:16px;">
         <div style="font-weight:600;margin-bottom:12px;">Funil de conversão</div>
-        ${barra('Leads recebidos', at.total, 100, '#2e9e5b')}
-        ${barra('Receberam o presente', at.receb, cpct(at.receb), '#3b82c4')}
-        ${barra('Compraram', at.compr, cpct(at.compr), '#d98a2b')}
-        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#e3e6ea);font-size:0.82rem;color:var(--text-dim,#6b7280);">🎯 Conversão final: <b style="color:var(--text,#1a1a1a);">${cpct(at.compr)}%</b></div>
+        ${at.porEtapa.map((e, i) => barra(e.nome, e.n, cpct(e.n), ['#2e9e5b', '#3b82c4', '#8b5cf6', '#d98a2b', '#e0575b', '#0ea5e9'][i % 6])).join('')}
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#e3e6ea);font-size:0.82rem;color:var(--text-dim,#6b7280);">
+          🎯 Conversão final: <b style="color:var(--text,#1a1a1a);">${cpct(at.porEtapa.length ? at.porEtapa[at.porEtapa.length - 1].n : 0)}%</b>
+          ${at.semResposta ? `&nbsp;·&nbsp;😶 Sem resposta/interesse: <b style="color:var(--text,#1a1a1a);">${at.semResposta}</b>` : ''}
+        </div>
       </div>
       <div style="background:var(--surface-2,#fff);border:1px solid var(--border,#e3e6ea);border-radius:12px;padding:16px;">
         <div style="font-weight:600;margin-bottom:12px;">Vendas por mês (6 meses)</div>
