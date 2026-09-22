@@ -4424,16 +4424,16 @@ async function tratarWebhook(req, res) {
 
     // ROBÔ DESLIGADO pra essa oferta/canal — humano está no comando 100% do
     // tempo, de propósito (ex.: emergência, evento ao vivo). Registra a
-    // mensagem (pra aparecer na conversa, igual sempre) e avisa quem está
-    // atendendo, mas NÃO processa nem responde nada automaticamente — nem
-    // gatilho, nem menu, nem I.A. Checado o quanto antes possível, antes de
+    // mensagem (pra aparecer na conversa, igual sempre), mas NÃO processa
+    // nem responde nada automaticamente — nem gatilho, nem menu, nem I.A.,
+    // nem aviso de WhatsApp pro atendente (quem está no comando já acompanha
+    // direto pela aba Conversas). Checado o quanto antes possível, antes de
     // qualquer outro processamento (inclusive antes de baixar mídia).
     const empresaBotCheck = await getEmpresa();
     if (empresaBotCheck && empresaBotCheck.botDesligado) {
       const textoRegistro = texto || (contatosParaChat ? '👤 Contato compartilhado' : '📎 Mensagem recebida');
       registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoRegistro, contatosArray: contatosParaChat });
       await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
-      avisarMovimentoCliente(telefone, nomeContato, empresaBotCheck).catch(e => console.error('[MOVIMENTO-CLIENTE] erro ao avisar:', e.message));
       return res.sendStatus(200);
     }
 
