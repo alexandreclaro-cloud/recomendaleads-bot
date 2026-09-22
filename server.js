@@ -1612,7 +1612,10 @@ async function avisarMovimentoCliente(telefone, nomePessoa, empresa) {
       } catch (e) { /* best-effort */ }
     }
     if (!numAt) numAt = await getNumeroAvisoAtendente(empresa);
-    if (!numAt) return;
+    if (!numAt) {
+      console.warn(`[MOVIMENTO-CLIENTE] ${telefone} (empresa ${empresa.id}) — ninguém pra avisar (sem atendente oficial nem número de aviso configurado)`);
+      return;
+    }
     await ref.set({ avisoMovimentoEm: new Date().toISOString() }, { merge: true });
     const nome = (nomePessoa || '').split(' ')[0] || 'Um cliente';
     const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
@@ -4444,7 +4447,7 @@ async function tratarWebhook(req, res) {
         registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat, tipo: midiaTipoChat, midiaUrl: midiaUrlChat, contatosArray: contatosParaChat });
         // Se essa conversa já está com humano envolvido, avisa que a pessoa
         // respondeu — sem depender de alguém estar de olho no painel.
-        getEmpresa().then(emp => avisarMovimentoCliente(telefone, nomeContato, emp)).catch(() => {});
+        getEmpresa().then(emp => avisarMovimentoCliente(telefone, nomeContato, emp)).catch(e => console.error('[MOVIMENTO-CLIENTE] erro ao avisar:', e.message));
       }
     }
 
