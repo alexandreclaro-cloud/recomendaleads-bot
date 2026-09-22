@@ -884,6 +884,11 @@ const EMPRESA_PADRAO = {
   // escrever e mensagens genéricas ("oi", "quero saber mais") ficavam sem
   // resposta nenhuma por não bater com a frase exata. Desligado por padrão.
   gatilhoLivre: false,
+  // Desliga o robô por completo pra essa oferta/canal — nenhuma resposta
+  // automática, nenhum processamento de fluxo. Só registra a mensagem e avisa
+  // quem está atendendo. Pra emergência/evento ao vivo onde um humano assume
+  // 100% do atendimento. Desligado (robô ativo normalmente) por padrão.
+  botDesligado: false,
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
   //  'basic'  = o robô dispara pros amigos (atual, padrão).
   //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).
@@ -4416,6 +4421,22 @@ async function tratarWebhook(req, res) {
     let contatosParaChat = null;
     if (contatosMultiplos && contatosMultiplos.length) contatosParaChat = contatosMultiplos;
     else if (vCard) contatosParaChat = [parseVCard(vCard)];
+
+    // ROBÔ DESLIGADO pra essa oferta/canal — humano está no comando 100% do
+    // tempo, de propósito (ex.: emergência, evento ao vivo). Registra a
+    // mensagem (pra aparecer na conversa, igual sempre) e avisa quem está
+    // atendendo, mas NÃO processa nem responde nada automaticamente — nem
+    // gatilho, nem menu, nem I.A. Checado o quanto antes possível, antes de
+    // qualquer outro processamento (inclusive antes de baixar mídia).
+    const empresaBotCheck = await getEmpresa();
+    if (empresaBotCheck && empresaBotCheck.botDesligado) {
+      const textoRegistro = texto || (contatosParaChat ? '👤 Contato compartilhado' : '📎 Mensagem recebida');
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoRegistro, contatosArray: contatosParaChat });
+      await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
+      avisarMovimentoCliente(telefone, nomeContato, empresaBotCheck).catch(e => console.error('[MOVIMENTO-CLIENTE] erro ao avisar:', e.message));
+      return res.sendStatus(200);
+    }
+
     let textoChat = texto;
     let midiaTipoChat = null, midiaUrlChat = null;
     if (!textoChat) {

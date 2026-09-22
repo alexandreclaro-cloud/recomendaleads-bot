@@ -852,6 +852,18 @@
 
       <!-- Sub-aba: Conversa do Cliente (quem recomenda) -->
       <div class="subtab-panel" id="subtabClienteConversa">
+        <div class="config-card" style="background:#FEF2F2;border:1px solid #FCA5A5;">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+            <input type="checkbox" id="botDesligadoInput" style="width:20px;height:20px;">
+            <span style="font-weight:700;font-size:1.02rem;">🛑 Desligar o robô por completo (emergência)</span>
+          </label>
+          <p style="font-size:0.8rem; color:#7f1d1d; margin:6px 0 0;">Com isso ligado, <b>nenhuma mensagem automática sai</b> — nem gatilho, nem menu, nem I.A. Toda mensagem só fica registrada na conversa esperando um humano responder. Use quando você (ou sua equipe) vai assumir 100% do atendimento manualmente. Desliga esse botão pra voltar ao normal.</p>
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarBotDesligadoBtn" style="background:#dc2626;">Salvar</button>
+            <span class="config-status-msg" id="statusBotDesligado"></span>
+          </div>
+        </div>
+
         <div class="config-card">
           <h2>💬 Conversa com o cliente (quem recomenda)</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 4px;">
@@ -2616,6 +2628,7 @@ async function carregarConfiguracao() {
     document.getElementById('empresaNomeInput').value = configuracaoAtual.nome || '';
     document.getElementById('gatilhoPresenteInput').value = configuracaoAtual.gatilhoPresente || 'quero meu presente';
     document.getElementById('gatilhoLivreInput').checked = !!configuracaoAtual.gatilhoLivre;
+    document.getElementById('botDesligadoInput').checked = !!configuracaoAtual.botDesligado;
     document.getElementById('empresaMsgInput').value = configuracaoAtual.mensagemAgradecimento || '';
     document.getElementById('empresaVendedoresInput').value = (configuracaoAtual.vendedores || []).join('\n');
 
@@ -3385,6 +3398,23 @@ function injetarTesteTemplate(tplInputId) {
     finally { tbtn.disabled = false; }
   });
 })();
+
+document.getElementById('salvarBotDesligadoBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarBotDesligadoBtn');
+  const statusEl = document.getElementById('statusBotDesligado');
+  const botDesligado = document.getElementById('botDesligadoInput').checked;
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ botDesligado }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      statusEl.textContent = botDesligado ? '✅ Robô desligado — atendimento 100% manual agora.' : '✅ Robô ligado de novo.';
+      statusEl.className = 'config-status-msg ok';
+      configuracaoAtual = data.empresa;
+    } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; }
+});
 
 document.getElementById('salvarCadenciaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarCadenciaBtn');
