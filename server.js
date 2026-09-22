@@ -4422,21 +4422,6 @@ async function tratarWebhook(req, res) {
     if (contatosMultiplos && contatosMultiplos.length) contatosParaChat = contatosMultiplos;
     else if (vCard) contatosParaChat = [parseVCard(vCard)];
 
-    // ROBÔ DESLIGADO pra essa oferta/canal — humano está no comando 100% do
-    // tempo, de propósito (ex.: emergência, evento ao vivo). Registra a
-    // mensagem (pra aparecer na conversa, igual sempre), mas NÃO processa
-    // nem responde nada automaticamente — nem gatilho, nem menu, nem I.A.,
-    // nem aviso de WhatsApp pro atendente (quem está no comando já acompanha
-    // direto pela aba Conversas). Checado o quanto antes possível, antes de
-    // qualquer outro processamento (inclusive antes de baixar mídia).
-    const empresaBotCheck = await getEmpresa();
-    if (empresaBotCheck && empresaBotCheck.botDesligado) {
-      const textoRegistro = texto || (contatosParaChat ? '👤 Contato compartilhado' : '📎 Mensagem recebida');
-      registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoRegistro, contatosArray: contatosParaChat });
-      await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
-      return res.sendStatus(200);
-    }
-
     let textoChat = texto;
     let midiaTipoChat = null, midiaUrlChat = null;
     if (!textoChat) {
@@ -4470,6 +4455,20 @@ async function tratarWebhook(req, res) {
         }
       }
     }
+
+    // ROBÔ DESLIGADO pra essa oferta/canal — humano está no comando 100% do
+    // tempo, de propósito (ex.: emergência, evento ao vivo). Registra a
+    // mensagem (com mídia resolvida igual sempre, pra dar pra ler/ouvir/ver
+    // no painel), mas NÃO processa nem responde nada automaticamente — nem
+    // gatilho, nem menu, nem I.A., nem aviso de WhatsApp pro atendente (quem
+    // está no comando já acompanha direto pela aba Conversas).
+    const empresaBotCheck = await getEmpresa();
+    if (empresaBotCheck && empresaBotCheck.botDesligado) {
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone, nome: nomeContato, direcao: 'in', texto: textoChat || '📎 Mensagem recebida', tipo: midiaTipoChat, midiaUrl: midiaUrlChat, contatosArray: contatosParaChat });
+      await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ botPausado: true }, { merge: true }).catch(() => {});
+      return res.sendStatus(200);
+    }
+
     // PRIVACIDADE: só registra a mensagem na caixa de entrada se for uma conversa
     // do BOT (tem sessão, é um gatilho/opt-out, ou já existe conversa do bot).
     // Assim, se o número for usado também no pessoal, as conversas particulares
