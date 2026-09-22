@@ -1520,12 +1520,23 @@ async function enviarSemLog(phone, message) {
       const textoParam = message.replace(/\*/g, '').replace(/\s*\n+\s*/g, ' — ').slice(0, 1024);
       const info = await getTemplateInfo(cfg, template);
       const idioma = (info && info.idioma) || 'pt_BR';
+      // Preenche TODAS as variáveis que o template realmente pede (repetindo
+      // o mesmo texto do aviso em cada uma) — antes mandava sempre 1 parâmetro
+      // fixo, então qualquer template com mais de 1 variável (ex.: reusar um
+      // template de campanha que não foi feito pra isso) era recusado pela
+      // Meta por incompatibilidade de parâmetros, e o erro genérico escondia
+      // isso. O ideal continua sendo um template dedicado de 1 variável (ver
+      // dica abaixo), mas isso evita falha silenciosa se reusarem outro.
+      let nVars = info ? info.n : null;
+      if (nVars === null || nVars === undefined) nVars = 1;
+      const parametros = Array.from({ length: Math.max(nVars, 0) }, () => ({ type: 'text', text: textoParam }));
+      const components = parametros.length ? [{ type: 'body', parameters: parametros }] : [];
       // Envio direto (sem passar por sendTemplate) de propósito — é uma
       // notificação interna pro dono/atendente, não deve descontar do saldo
       // pré-pago (que é pra mensagens de/pra clientes).
       const r = await axios.post(metaMessagesUrl(cfg), {
         messaging_product: 'whatsapp', to: soDigitos(phone), type: 'template',
-        template: { name: template, language: { code: idioma }, components: [{ type: 'body', parameters: [{ type: 'text', text: textoParam }] }] }
+        template: { name: template, language: { code: idioma }, components }
       }, { headers: metaHeaders(cfg) });
       registrarMensagem({ empresaId: empresaIdAtual(), telefone: phone, direcao: 'out', texto: message, messageId: idMensagemMeta(r) });
       return true;
