@@ -566,6 +566,9 @@ function frasesGatilhoPresente(empresa) {
 }
 function ehGatilhoPresente(texto, empresa) {
   if (!texto) return false;
+  // Modo emergência: aceita QUALQUER mensagem como gatilho, sem exigir a frase
+  // configurada (ver comentário em EMPRESA_PADRAO.gatilhoLivre).
+  if (empresa && empresa.gatilhoLivre) return true;
   const t = texto.toLowerCase().trim();
   return frasesGatilhoPresente(empresa).some(f => t.includes(f));
 }
@@ -876,6 +879,11 @@ const EMPRESA_PADRAO = {
   recomendadoPerguntaChave: null,
   mensagemAntesPresente: '🎉 Boa notícia! Você ganhou {premio}. Aqui está o seu presente 👇',
   gatilhoPresente: 'quero meu presente',
+  // Modo emergência: aceita QUALQUER mensagem de um contato novo como gatilho,
+  // sem exigir a frase acima — pra quando o anúncio/link não deixa claro o que
+  // escrever e mensagens genéricas ("oi", "quero saber mais") ficavam sem
+  // resposta nenhuma por não bater com a frase exata. Desligado por padrão.
+  gatilhoLivre: false,
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
   //  'basic'  = o robô dispara pros amigos (atual, padrão).
   //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).

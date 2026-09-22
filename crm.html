@@ -863,6 +863,11 @@
           <label>O que o cliente envia no WhatsApp para o bot começar</label>
           <input type="text" id="gatilhoPresenteInput" placeholder="Ex: quero meu presente">
           <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">Pode cadastrar mais de uma, separadas por vírgula (ex: <i>quero meu presente, quero meu voucher, ativar presente</i>). Basta a mensagem do cliente conter uma delas.</p>
+          <label style="display:flex; align-items:center; gap:10px; margin:12px 0 0; cursor:pointer;">
+            <input type="checkbox" id="gatilhoLivreInput" style="width:18px;height:18px;">
+            <span style="font-weight:600;">🚨 Modo emergência: aceitar QUALQUER mensagem como gatilho</span>
+          </label>
+          <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">Liga isso se o anúncio/link não deixar claro o que a pessoa deve escrever — <b>qualquer</b> mensagem de um contato novo (mesmo "oi") já inicia a conversa, sem precisar bater com a frase acima. Cuidado: também aciona pra mensagem sem relação nenhuma.</p>
 
           <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">1) Boas-vindas (1ª mensagem enviada ao cliente)</p>
           <label>Mensagem de agradecimento</label>
@@ -2610,6 +2615,7 @@ async function carregarConfiguracao() {
 
     document.getElementById('empresaNomeInput').value = configuracaoAtual.nome || '';
     document.getElementById('gatilhoPresenteInput').value = configuracaoAtual.gatilhoPresente || 'quero meu presente';
+    document.getElementById('gatilhoLivreInput').checked = !!configuracaoAtual.gatilhoLivre;
     document.getElementById('empresaMsgInput').value = configuracaoAtual.mensagemAgradecimento || '';
     document.getElementById('empresaVendedoresInput').value = (configuracaoAtual.vendedores || []).join('\n');
 
@@ -2867,6 +2873,7 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   // Vazio salva '' (não null) de propósito: '' = não enviar; null cairia no padrão.
   const mensagemValidarAmigo = document.getElementById('mensagemValidarAmigoInput').value.trim();
   const gatilhoPresente = document.getElementById('gatilhoPresenteInput').value.trim() || 'quero meu presente';
+  const gatilhoLivre = document.getElementById('gatilhoLivreInput').checked;
   // Avisar os amigos (Segurar até confirmar + cadência + disparar mesmo assim).
   syncCrmBasicCadFromDom();
   const basicConfirmarAntesDisparo = document.getElementById('crmSegurarAtivo').checked;
@@ -2881,7 +2888,7 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
-      body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta, mensagemValidarAmigo, gatilhoPresente,
+      body: JSON.stringify({ mensagemAgradecimento, mensagemPedeNome, mensagemPedeVendedor, mensagemPedeContatos, mensagemColeta, mensagemValidarAmigo, gatilhoPresente, gatilhoLivre,
         basicConfirmarAntesDisparo, basicConfirmMensagem, basicConfirmado, followupJaAvisei: basicConfirmado, basicSemConfirmacao, basicConfirmacaoCadencia,
         basicTextoPronto, basicTextoProntoConfirma, basicAindaNao })
     });
