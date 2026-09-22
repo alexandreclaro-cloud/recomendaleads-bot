@@ -1575,6 +1575,9 @@ async function avisarAtendente(telefone, nomePessoa, empresa) {
       .set({ precisaAtendente: true, precisaAtendenteEm: new Date().toISOString() }, { merge: true });
   } catch (e) { /* best-effort */ }
   const numAt = await getNumeroAvisoAtendente(empresa);
+  if (!numAt) {
+    console.warn(`[AVISAR-ATENDENTE] ${telefone} (empresa ${empresa && empresa.id}, oferta ${empresa && empresa.ofertaId || '(nenhuma)'}) — ninguém pra avisar (sem atendente oficial nem número de aviso configurado)`);
+  }
   if (numAt) {
     const nome = (nomePessoa || '').split(' ')[0] || 'Um cliente';
     const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
