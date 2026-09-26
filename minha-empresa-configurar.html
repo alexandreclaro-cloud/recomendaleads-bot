@@ -1831,17 +1831,36 @@ async function carregarConfiguracao() {
 
 // ===================== DASHBOARD DE CONVERSÃO =====================
 let leadsVG = [];
+let clientesPipelineVG = [];
 let dashPeriodo = 'mes';
 
 async function carregarVisaoGeral() {
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-leads`);
-    const data = await resp.json();
-    const leads = (data && (data.leads || data)) || [];
-    if (!Array.isArray(leads)) return;
-    leadsVG = leads;
+    const [respLeads, respCli] = await Promise.all([
+      fetchAutenticado(`${API_BASE}/minha-leads`),
+      fetchAutenticado(`${API_BASE}/minha-clientes-pipeline`)
+    ]);
+    const dataLeads = await respLeads.json();
+    const leads = (dataLeads && (dataLeads.leads || dataLeads)) || [];
+    if (Array.isArray(leads)) leadsVG = leads;
+    const dataCli = await respCli.json();
+    const clientes = (dataCli && (dataCli.clientes || dataCli)) || [];
+    if (Array.isArray(clientes)) clientesPipelineVG = clientes;
     renderDashboardVG();
   } catch (err) {}
+}
+
+// Funil do CLIENTE (quem recomenda) — pipeline separado dos leads, ver
+// upsertClientePipeline no server. Estágios sempre avançam, nunca voltam.
+const _RANK_CLI_ETAPA_VG = { iniciou: 1, deu_nome: 2, recomendou: 3, recebeu_premio: 4 };
+function vgRankCliente(c) { return _RANK_CLI_ETAPA_VG[c.etapa] || 0; }
+function vgFiltrarCliente(a, b) { return clientesPipelineVG.filter(c => { const t = new Date(c.criadoEm || 0).getTime(); return t >= a.getTime() && t <= b.getTime(); }); }
+function vgCalcCliente(lista) {
+  return {
+    total: lista.length,
+    recomendaram: lista.filter(c => vgRankCliente(c) >= 3).length,
+    receberamPremio: lista.filter(c => vgRankCliente(c) >= 4).length
+  };
 }
 
 function vgEtapas() {
@@ -1890,6 +1909,9 @@ function vgCalc(lista) {
   return {
     total: lista.length,
     receb: lista.filter(vgRecebeu).length,
+    // "Aceitou a 1ª mensagem" = respondeu de verdade, diferente de só ter
+    // recebido (a gente ter mandado). Ver marcarLeadRespondeuPrimeiraMensagem.
+    respondeu: lista.filter(l => l.respondeuPrimeiraMensagem === true).length,
     compr: lista.filter(vgComprou).length,
     semResposta: lista.filter(l => vgEhNegativo(vgEtapas().find(e => e.id === l.etapa))).length,
     valor: lista.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0),
@@ -1903,9 +1925,11 @@ function renderDashboardVG() {
   const { a, b, pa, pb } = vgRange();
   const at = vgCalc(vgFiltrar(a, b));
   const an = vgCalc(vgFiltrar(pa, pb));
+  const atCli = vgCalcCliente(vgFiltrarCliente(a, b));
   const dpct = (c, p) => p > 0 ? Math.round((c - p) / p * 100) : (c > 0 ? 100 : 0);
   const tdr = v => v > 0 ? '▲' : (v < 0 ? '▼' : '▬');
   const cpct = (x) => at.total > 0 ? Math.round(x / at.total * 100) : 0;
+  const cpctCli = (x) => atCli.total > 0 ? Math.round(x / atCli.total * 100) : 0;
 
   const tile = (label, val, prev, d, cor) => `
     <div style="background:${cor};border-radius:14px;padding:16px 18px;color:#fff;">
@@ -1949,8 +1973,20 @@ function renderDashboardVG() {
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
       <div style="background:var(--surface-2,#fff);border:1px solid var(--border,#e3e6ea);border-radius:12px;padding:16px;">
-        <div style="font-weight:600;margin-bottom:12px;">Funil de conversão</div>
-        ${at.porEtapa.map((e, i) => barra(e.nome, e.n, cpct(e.n), ['#2e9e5b', '#3b82c4', '#8b5cf6', '#d98a2b', '#e0575b', '#0ea5e9'][i % 6])).join('')}
+        <div style="font-weight:600;margin-bottom:2px;">Funil do Cliente <span style="font-weight:400;color:var(--text-dim,#6b7280);">(quem recomenda)</span></div>
+        <p style="font-size:0.76rem;color:var(--text-dim,#6b7280);margin:0 0 12px;">De quem começou a usar o programa até quem realmente indicou um amigo.</p>
+        ${barra('👥 Número de clientes', atCli.total, 100, '#2e9e5b')}
+        ${barra('✅ Recomendaram', atCli.recomendaram, cpctCli(atCli.recomendaram), '#3b82c4')}
+        ${barra('🎁 Receberam o presente', atCli.receberamPremio, cpctCli(atCli.receberamPremio), '#d98a2b')}
+      </div>
+      <div style="background:var(--surface-2,#fff);border:1px solid var(--border,#e3e6ea);border-radius:12px;padding:16px;">
+        <div style="font-weight:600;margin-bottom:2px;">Funil do Recomendado <span style="font-weight:400;color:var(--text-dim,#6b7280);">(quem foi indicado)</span></div>
+        <p style="font-size:0.76rem;color:var(--text-dim,#6b7280);margin:0 0 12px;">Do amigo que recebeu a 1ª mensagem até quem comprou.</p>
+        ${at.porEtapa.map((e, i) => {
+          let html = barra(e.nome, e.n, cpct(e.n), ['#2e9e5b', '#3b82c4', '#8b5cf6', '#d98a2b', '#e0575b', '#0ea5e9'][i % 6]);
+          if (i === 0) html += barra('💬 Aceitou a 1ª mensagem (respondeu)', at.respondeu, cpct(at.respondeu), '#0d9488');
+          return html;
+        }).join('')}
         <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#e3e6ea);font-size:0.82rem;color:var(--text-dim,#6b7280);">
           🎯 Conversão final: <b style="color:var(--text,#1a1a1a);">${cpct(at.porEtapa.length ? at.porEtapa[at.porEtapa.length - 1].n : 0)}%</b>
           ${at.semResposta ? `&nbsp;·&nbsp;😶 Sem resposta/interesse: <b style="color:var(--text,#1a1a1a);">${at.semResposta}</b>` : ''}

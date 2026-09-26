@@ -3658,6 +3658,19 @@ async function marcarLeadRecebeuPremio(telefone, empresa) {
   }
 }
 
+// Marca a 1ª resposta de verdade do recomendado (distinto de "recebeu a
+// mensagem" — que só significa que NÓS mandamos). Sem isso, alguém que
+// respondeu mas ainda não aceitou o presente fica indistinguível de quem
+// nunca respondeu nada, os dois presos na mesma coluna "Recebeu Mensagem".
+// Só grava uma vez (a 1ª resposta da conversa), nunca sobrescreve depois.
+async function marcarLeadRespondeuPrimeiraMensagem(telefone) {
+  try {
+    const lead = await acharLeadRecPorTelefone(telefone);
+    if (!lead || lead.respondeuPrimeiraMensagem) return;
+    await atualizarLead(lead.id, { respondeuPrimeiraMensagem: true, primeiraRespostaEm: new Date().toISOString() });
+  } catch (e) { console.error('Erro ao marcar 1ª resposta do lead:', e.message); }
+}
+
 async function finalizarAgendamentoRec(telefone, sessao, empresa, periodoLabel, diaLabel) {
   const vars = { ...variaveisRec(sessao, empresa), dia: diaLabel, periodo: periodoLabel };
   await sendText(telefone, substituirVariaveis(empresa.posConfirmacaoAgendamento || EMPRESA_PADRAO.posConfirmacaoAgendamento, vars));
@@ -4073,6 +4086,8 @@ function verificarObjecao(texto, variaveis) {
 async function processarMensagemRecomendado(telefone, texto, empresa) {
   const sessao = await getSessaoRecomendado(telefone);
   if (!sessao) return false;
+
+  marcarLeadRespondeuPrimeiraMensagem(telefone).catch(() => {});
 
   // Opção "0 — Não quero receber mensagens" dos menus → descadastra na hora.
   if ((texto || '').trim() === '0') {
