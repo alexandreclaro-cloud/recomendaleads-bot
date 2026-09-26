@@ -164,6 +164,9 @@
   }
   .tab-btn:hover { color: var(--text); background: var(--surface-sunken); }
   .tab-btn.active { color: var(--gold-deep); background: var(--gold-soft); font-weight: 600; }
+  .tab-btn-funil { border: 1px solid #FCA5A5; background: #FEF2F2; color: #991B1B; font-weight: 600; margin-bottom: 4px; }
+  .tab-btn-funil:hover { background: #FEE2E2; color: #7f1d1d; }
+  .tab-btn-funil.active { background: #FCA5A5; color: #7f1d1d; }
   .crm-user { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
   .crm-main { flex: 1; min-width: 0; }
   @media (max-width: 860px) {
@@ -642,6 +645,9 @@
       <button class="tab-btn" data-tab="ranking">🏆 Ranking</button>
       <button class="tab-btn" data-tab="config">⚙️ Configurações</button>
       <a class="tab-btn" href="/conversas" style="text-decoration:none">💬 Conversas</a>
+      <div style="margin:14px 0 4px; padding:0 12px; font-size:0.7rem; font-weight:700; letter-spacing:0.04em; color:var(--text-dim,#9aa0a6); text-transform:uppercase;">Funis</div>
+      <button class="tab-btn tab-btn-funil" data-tab="funilNaoCliente" id="navFunilNaoCliente">🚪 Funil Não Cliente</button>
+      <button class="tab-btn tab-btn-funil" data-tab="funilBase" id="navFunilBase">📊 Funil Base</button>
     </nav>
     <div class="crm-user">
       <span class="logado-tag">Logado como<br><b id="empresaLogadaNome">—</b></span>
@@ -738,8 +744,6 @@
         <button class="subtab-btn" data-subtab="clienteConversa">Conversa do Cliente</button>
         <button class="subtab-btn" data-subtab="followupCliente" style="display:none">Lembrete p/ cliente avisar amigos</button>
         <button class="subtab-btn" data-subtab="premioCliente">Presente Cliente</button>
-        <button class="subtab-btn" data-subtab="funilNaoCliente">🚪 Funil Não Cliente</button>
-        <button class="subtab-btn" data-subtab="funilBase">📊 Funil Base (NPS)</button>
         <button class="subtab-btn" data-subtab="recomendado">Conversa do Recomendado</button>
         <button class="subtab-btn" data-subtab="infoNegocio">ℹ️ Informações do negócio</button>
         <button class="subtab-btn" data-subtab="faixas">Presente Recomendado</button>
@@ -998,62 +1002,6 @@
       <!-- Sub-aba: Prêmio Cliente -->
       <div class="subtab-panel" id="subtabPremioCliente">
         <div id="faixasContainerCliente"></div>
-      </div>
-
-      <!-- Sub-aba: Funil Não Cliente — 2ª porta de entrada, pra quem NÃO comprou -->
-      <div class="subtab-panel" id="subtabFunilNaoCliente">
-        <div class="config-card">
-          <h2>🚪 Funil Não Cliente</h2>
-          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 12px;">
-            Pra quando a venda não fecha: o vendedor manda um link/QR Code PRÓPRIO (diferente do Funil Start) e a pessoa ganha um <b>presente diferente</b> (geralmente um voucher de desconto pra usar depois) ao indicar 5 amigos. Depois disso, o fluxo é o mesmo de sempre — os amigos recebem a mensagem e são chamados pra vir comprar.
-          </p>
-          <label style="display:flex; align-items:center; gap:10px; margin:6px 0 14px; cursor:pointer;">
-            <input type="checkbox" id="ncAtivoInput" style="width:20px;height:20px;">
-            <span style="font-weight:700;">Ativar o Funil Não Cliente</span>
-          </label>
-
-          <label>🔓 Frase que ativa esse funil (diferente da frase do Funil Start)</label>
-          <input type="text" id="ncGatilhoInput" placeholder="Ex: quero meu voucher">
-          <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">Pode cadastrar mais de uma, separadas por vírgula. É essa frase que vai dentro do link/QR Code que o vendedor manda pra quem não comprou.</p>
-
-          <label style="margin-top:14px;">Mensagem de boas-vindas (1ª mensagem — explica o convite de quem não comprou)</label>
-          <textarea id="ncBoasVindasInput" rows="4"></textarea>
-
-          <div class="config-row-save">
-            <button class="config-save-btn" id="salvarNaoClienteBtn">Salvar Funil Não Cliente</button>
-            <span class="config-status-msg" id="statusNaoCliente"></span>
-          </div>
-
-          <div style="border-top:1px solid var(--border,#eee); margin-top:20px; padding-top:16px;">
-            <h2 style="margin:0 0 8px;">🔗 Link / QR Code desse funil</h2>
-            <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">O vendedor manda esse link (ou mostra o QR Code) pra quem não comprou, na hora de sair. Salve a frase-gatilho acima antes de gerar.</p>
-            <div id="ncLinkBox"><p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Salve a frase-gatilho acima pra gerar o link.</p></div>
-          </div>
-        </div>
-
-        <div class="config-card" style="margin-top:16px;">
-          <h2>🎁 Presente do Funil Não Cliente</h2>
-          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">O presente aqui é <b>independente</b> do presente do Funil Start — geralmente um voucher de desconto pra usar numa próxima compra.</p>
-          <div id="faixasContainerNaoCliente"></div>
-        </div>
-      </div>
-
-      <!-- Sub-aba: Funil Base (NPS) — em construção -->
-      <div class="subtab-panel" id="subtabFunilBase">
-        <div class="config-card">
-          <h2>📊 Funil Base (NPS)</h2>
-          <p style="font-size:0.85rem; color:var(--text-dim); margin:0 0 10px;">
-            Disparo em massa pra base de clientes com a pergunta: <i>"Em uma escala de 0 a 10, que nota você daria para recomendar um amigo pra comprar com a gente?"</i> A nota classifica o cliente e dispara um caminho diferente:
-          </p>
-          <ul style="font-size:0.85rem; color:var(--text-dim); margin:0 0 14px; padding-left:20px; line-height:1.7;">
-            <li><b>9-10 (Promotor):</b> agradece, avisa que ganhou um presente e já entra no fluxo de recomendação (pede os 5 amigos).</li>
-            <li><b>7-8 (Neutro):</b> avisa o gestor pra ligar e entender o motivo.</li>
-            <li><b>0-6 (Detrator):</b> alerta URGENTE pro gestor ligar na hora.</li>
-          </ul>
-          <p style="font-size:0.85rem; background:#FEF3C7; border:1px solid #FDE68A; color:#92400E; border-radius:10px; padding:10px 12px;">
-            🚧 Essa aba está reservada — o motor de disparo NPS (pergunta, as 3 ramificações e o dashboard de Promotor/Neutro/Detrator) ainda não foi construído. É a próxima etapa.
-          </p>
-        </div>
       </div>
 
       <!-- Sub-aba: Conversa do Recomendado (textos do recomendado) -->
@@ -1387,6 +1335,66 @@
     </div>
   </div>
 </div>
+
+<!-- ===================== ABA FUNIL NÃO CLIENTE ===================== -->
+<div class="tab-panel" id="tabFunilNaoCliente">
+  <div class="config-wrap">
+    <div class="config-card">
+      <h2>🚪 Funil Não Cliente</h2>
+      <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 12px;">
+        Pra quando a venda não fecha: o vendedor manda um link/QR Code PRÓPRIO (diferente do Funil Start) e a pessoa ganha um <b>presente diferente</b> (geralmente um voucher de desconto pra usar depois) ao recomendar 5 amigos. Depois disso, o fluxo é o mesmo de sempre — os amigos recebem a mensagem e são chamados pra vir comprar.
+      </p>
+      <label style="display:flex; align-items:center; gap:10px; margin:6px 0 14px; cursor:pointer;">
+        <input type="checkbox" id="ncAtivoInput" style="width:20px;height:20px;">
+        <span style="font-weight:700;">Ativar o Funil Não Cliente</span>
+      </label>
+
+      <label>🔓 Frase que ativa esse funil (diferente da frase do Funil Start)</label>
+      <input type="text" id="ncGatilhoInput" placeholder="Ex: quero meu voucher">
+      <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">Pode cadastrar mais de uma, separadas por vírgula. É essa frase que vai dentro do link/QR Code que o vendedor manda pra quem não comprou.</p>
+
+      <label style="margin-top:14px;">Mensagem de boas-vindas (1ª mensagem — explica o convite de quem não comprou)</label>
+      <textarea id="ncBoasVindasInput" rows="4"></textarea>
+
+      <div class="config-row-save">
+        <button class="config-save-btn" id="salvarNaoClienteBtn">Salvar Funil Não Cliente</button>
+        <span class="config-status-msg" id="statusNaoCliente"></span>
+      </div>
+
+      <div style="border-top:1px solid var(--border,#eee); margin-top:20px; padding-top:16px;">
+        <h2 style="margin:0 0 8px;">🔗 Link / QR Code desse funil</h2>
+        <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">O vendedor manda esse link (ou mostra o QR Code) pra quem não comprou, na hora de sair. Salve a frase-gatilho acima antes de gerar.</p>
+        <div id="ncLinkBox"><p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Salve a frase-gatilho acima pra gerar o link.</p></div>
+      </div>
+    </div>
+
+    <div class="config-card" style="margin-top:16px;">
+      <h2>🎁 Presente do Funil Não Cliente</h2>
+      <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">O presente aqui é <b>independente</b> do presente do Funil Start — geralmente um voucher de desconto pra usar numa próxima compra.</p>
+      <div id="faixasContainerNaoCliente"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ABA FUNIL BASE (NPS) — em construção ===================== -->
+<div class="tab-panel" id="tabFunilBase">
+  <div class="config-wrap">
+    <div class="config-card">
+      <h2>📊 Funil Base (NPS)</h2>
+      <p style="font-size:0.85rem; color:var(--text-dim); margin:0 0 10px;">
+        Disparo em massa pra base de clientes com a pergunta: <i>"Em uma escala de 0 a 10, que nota você daria para recomendar um amigo pra comprar com a gente?"</i> A nota classifica o cliente e dispara um caminho diferente:
+      </p>
+      <ul style="font-size:0.85rem; color:var(--text-dim); margin:0 0 14px; padding-left:20px; line-height:1.7;">
+        <li><b>9-10 (Promotor):</b> agradece, avisa que ganhou um presente e já entra no fluxo de recomendação (pede os 5 amigos).</li>
+        <li><b>7-8 (Neutro):</b> avisa o gestor pra ligar e entender o motivo.</li>
+        <li><b>0-6 (Detrator):</b> alerta URGENTE pro gestor ligar na hora.</li>
+      </ul>
+      <p style="font-size:0.85rem; background:#FEF3C7; border:1px solid #FDE68A; color:#92400E; border-radius:10px; padding:10px 12px;">
+        🚧 Essa aba está reservada — o motor de disparo NPS (pergunta, as 3 ramificações e o dashboard de Promotor/Neutro/Detrator) ainda não foi construído. É a próxima etapa.
+      </p>
+    </div>
+  </div>
+</div>
   </main>
 </div>
 
@@ -1413,8 +1421,10 @@ const EH_GESTOR = PAPEL === 'gestor';
 // específica (null = usuário matriz, vê/edita a rede toda).
 const MEU_OFERTA_ID = (empresaLogada && empresaLogada.ofertaId) || null;
 if (!EH_GESTOR) {
-  const cfgTab = document.querySelector('.tab-btn[data-tab="config"]');
-  if (cfgTab) cfgTab.style.display = 'none';
+  ['config', 'funilNaoCliente', 'funilBase'].forEach(t => {
+    const b = document.querySelector(`.tab-btn[data-tab="${t}"]`);
+    if (b) b.style.display = 'none';
+  });
 }
 
 document.getElementById('sairBtn').addEventListener('click', () => {
@@ -1471,6 +1481,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     } else if (btn.dataset.tab === 'ranking') {
       document.getElementById('tabRanking').classList.add('active');
       renderRanking();
+    } else if (btn.dataset.tab === 'funilNaoCliente' && EH_GESTOR) {
+      document.getElementById('tabFunilNaoCliente').classList.add('active');
+      if (!configuracaoCarregada) carregarConfiguracao();
+      else renderLinkNaoCliente();
+    } else if (btn.dataset.tab === 'funilBase' && EH_GESTOR) {
+      document.getElementById('tabFunilBase').classList.add('active');
     } else if (EH_GESTOR) {
       document.getElementById('tabConfig').classList.add('active');
       if (!configuracaoCarregada) carregarConfiguracao();
@@ -1487,8 +1503,6 @@ const MAPA_SUBTABS = {
   clienteConversa: 'subtabClienteConversa',
   followupCliente: 'subtabFollowupCliente',
   premioCliente: 'subtabPremioCliente',
-  funilNaoCliente: 'subtabFunilNaoCliente',
-  funilBase: 'subtabFunilBase',
   recomendado: 'subtabRecomendado',
   infoNegocio: 'subtabInfoNegocio',
   faixas: 'subtabFaixas',
@@ -4193,11 +4207,16 @@ carregarBadgeOferta();
 carregarLeads();
 setInterval(carregarLeads, 60000);
 
-// Abre direto a aba certa quando acessado via /crm#config ou /crm#ranking
+// Abre direto a aba certa quando acessado via /crm#config, /crm#ranking ou
+// /crm#funilNaoCliente / /crm#funilBase (links da página Início).
 if (location.hash === '#config' && EH_GESTOR) {
   const b = document.querySelector('.tab-btn[data-tab="config"]'); if (b) b.click();
 } else if (location.hash === '#ranking') {
   const b = document.querySelector('.tab-btn[data-tab="ranking"]'); if (b) b.click();
+} else if (location.hash === '#funilNaoCliente' && EH_GESTOR) {
+  const b = document.querySelector('.tab-btn[data-tab="funilNaoCliente"]'); if (b) b.click();
+} else if (location.hash === '#funilBase' && EH_GESTOR) {
+  const b = document.querySelector('.tab-btn[data-tab="funilBase"]'); if (b) b.click();
 }
 
 // ===================== AVISO GLOBAL (popup do dono) =====================

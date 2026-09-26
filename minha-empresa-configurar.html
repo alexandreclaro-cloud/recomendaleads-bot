@@ -40,6 +40,12 @@
   .row-save { display: flex; align-items: center; gap: 14px; margin-top: 20px; }
   .metric-action { text-decoration: none; color: inherit; display: flex; flex-direction: column; justify-content: center; cursor: pointer; }
   .metric-action:hover { border-color: var(--brand); }
+
+  .nav-label-funis { margin: 14px 0 4px; padding: 0 14px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; color: var(--text-faint); text-transform: uppercase; }
+  .nav-item-funil { border: 1px solid #FCA5A5 !important; background: #FEF2F2 !important; color: #991B1B !important; font-weight: 600; margin-bottom: 4px; }
+  .nav-item-funil:hover { background: #FEE2E2 !important; color: #7f1d1d !important; }
+  .funil-tile { border: 1px solid #FCA5A5 !important; background: #FEF2F2 !important; }
+  .funil-tile b { color: #991B1B; }
 </style>
 </head>
 <body>
@@ -66,6 +72,9 @@
       <button class="nav-item" data-section="script" data-gestor><i data-lucide="scroll-text"></i><span class="txt">Script de vendas</span></button>
       <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
       <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
+      <div class="nav-label-funis" data-gestor>Funis</div>
+      <a class="nav-item nav-item-funil" href="/crm#funilNaoCliente" data-gestor><i data-lucide="door-open"></i><span class="txt">Funil Não Cliente</span></a>
+      <a class="nav-item nav-item-funil" href="/crm#funilBase" data-gestor><i data-lucide="bar-chart-3"></i><span class="txt">Funil Base</span></a>
       <button class="nav-item" data-section="equipe" data-gestor><i data-lucide="users"></i><span class="txt">Equipe</span></button>
       <button class="nav-item" data-section="assinatura" data-gestor><i data-lucide="credit-card"></i><span class="txt">Assinatura</span></button>
       <!-- "Configurações" removido do menu: já existe o atalho na visão geral (evita duplicar). -->
@@ -123,6 +132,8 @@
           <a class="tile" data-go="whatsapp" data-gestor><div class="ic"><i data-lucide="smartphone"></i></div><b>WhatsApp</b><small>Conectar seu número</small></a>
           <a class="tile" href="/crm"><div class="ic"><i data-lucide="kanban"></i></div><b>CRM / Leads</b><small>Acompanhar recomendações</small></a>
           <a class="tile" data-go="equipe" data-gestor><div class="ic"><i data-lucide="users"></i></div><b>Equipe</b><small>Usuários e permissões</small></a>
+          <a class="tile funil-tile" href="/crm#funilNaoCliente" data-gestor><div class="ic"><i data-lucide="door-open"></i></div><b>🚪 Funil Não Cliente</b><small>Link/QR próprio pra quem não comprou</small></a>
+          <a class="tile funil-tile" href="/crm#funilBase" data-gestor><div class="ic"><i data-lucide="bar-chart-3"></i></div><b>📊 Funil Base (NPS)</b><small>Reservado — em construção</small></a>
         </div>
 
         <style>

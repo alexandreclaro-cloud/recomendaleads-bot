@@ -920,7 +920,7 @@ const EMPRESA_PADRAO = {
   // Desligado por padrão: só quem configurar entra nesse fluxo.
   naoClienteAtivo: false,
   naoClienteGatilho: 'quero meu voucher',
-  naoClienteMensagemBoasVindas: 'Oi! Antes de você ir, separamos um presente especial pra você 🎁 Indicando 5 amigos, você ganha um voucher pra usar numa próxima compra aqui. Posso te contar como funciona?',
+  naoClienteMensagemBoasVindas: 'Oi! Antes de você ir, separamos um presente especial pra você 🎁 Recomendando 5 amigos, você ganha um voucher pra usar numa próxima compra aqui. Posso te contar como funciona?',
   faixasBonusNaoCliente: [{ quantidade: 5, premio: '🎟️ Voucher de 10% de desconto pra usar numa próxima compra', arquivo: null, link: null, texto: '_(Exemplo — defina o desconto/valor real do voucher aqui)_' }],
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
   //  'basic'  = o robô dispara pros amigos (atual, padrão).
@@ -9062,7 +9062,7 @@ const COLUNAS_PIPELINE_DISPARO = {
   nao_entregou: 'Não entregou',
   sem_resposta: 'Entregue, sem resposta',
   respondeu_sem_nome: 'Respondeu, mas não deu o nome',
-  deu_nome_sem_indicar: 'Deu o nome, mas não indicou ninguém',
+  deu_nome_sem_recomendar: 'Deu o nome, mas não recomendou ninguém',
   recomendou: 'Recomendou pelo menos 1 amigo'
 };
 
@@ -9131,7 +9131,7 @@ async function calcularPipelineDisparo(disparo, empresaId) {
     if (st === 'falhou') coluna = 'nao_entregou';
     else if (!respondeu) coluna = 'sem_resposta';
     else if (jaRecomendou) coluna = 'recomendou';
-    else if (etapaPorTelefone[c.telefone] === 'coletando_contatos') coluna = 'deu_nome_sem_indicar';
+    else if (etapaPorTelefone[c.telefone] === 'coletando_contatos') coluna = 'deu_nome_sem_recomendar';
     else coluna = 'respondeu_sem_nome';
     colunas[coluna].push(item);
   }
