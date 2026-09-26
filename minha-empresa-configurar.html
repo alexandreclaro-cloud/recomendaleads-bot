@@ -1791,7 +1791,7 @@ async function carregarConfiguracao() {
     const entregaBox = document.getElementById('entregaAlertaBox');
     if (entregaBox) {
       if (em && em.ativo) {
-        document.getElementById('entregaAlertaTexto').textContent = `${em.falhas} de ${em.total} mensagens falharam nos últimos 30 minutos.`;
+        document.getElementById('entregaAlertaTexto').textContent = `${em.falhas} de ${em.total} mensagens falharam nos últimos 30 minutos.` + (em.ultimoErro ? ` Motivo: "${em.ultimoErro}".` : '');
         entregaBox.style.display = 'block';
       } else {
         entregaBox.style.display = 'none';

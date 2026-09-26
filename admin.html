@@ -616,7 +616,18 @@ function tempoDesde(iso) {
 function statusWhatsappPill(e) {
   // Oficial primeiro: empresa no modo oficial NÃO tem Z-API (e nem precisa),
   // então não pode cair no "Pendente" por falta de credencial Z-API.
-  if (e.whatsappTipo === 'oficial') return '<span class="pill ok">Oficial ✅</span>';
+  if (e.whatsappTipo === 'oficial') {
+    // Mesmo no Oficial, a entrega pode estar travada (cobrança pendente, template
+    // pausado/recusado, número desconectado) sem nenhuma "conexão" caindo — o
+    // Monitor de entrega detecta isso pelo resultado real dos envios. Sem isso,
+    // a linha do cliente ficava sempre verde mesmo com tudo parado.
+    const em = e.entregaMonitor;
+    if (em && em.ativo) {
+      const motivo = em.ultimoErro ? esc(em.ultimoErro) : '';
+      return `<span class="pill" style="background:#FEF3C7;color:#92400E;border-color:#FDE68A;cursor:help" title="${motivo}">⚠️ ${em.falhas}/${em.total} falhando</span>`;
+    }
+    return '<span class="pill ok">Oficial ✅</span>';
+  }
   if (!e.whatsappProvisionado) return '<span class="pill off">Pendente</span>';
   const m = e.whatsappMonitor;
   if (!m || m.conectado == null) return '<span class="pill">Provisionado</span>';
@@ -643,7 +654,7 @@ function renderAlertaConexao() {
 
   const comFalhaEntrega = (empresas || []).filter(e => e.entregaMonitor && e.entregaMonitor.ativo);
   if (comFalhaEntrega.length) {
-    const nomes = comFalhaEntrega.map(e => `<b>${esc(e.nome) || 'Cliente'}</b> (${e.entregaMonitor.falhas}/${e.entregaMonitor.total} falhando${e.entregaMonitor.desde ? `, ${tempoDesde(e.entregaMonitor.desde)}` : ''})`).join(' · ');
+    const nomes = comFalhaEntrega.map(e => `<b>${esc(e.nome) || 'Cliente'}</b> (${e.entregaMonitor.falhas}/${e.entregaMonitor.total} falhando${e.entregaMonitor.desde ? `, ${tempoDesde(e.entregaMonitor.desde)}` : ''}${e.entregaMonitor.ultimoErro ? ` — <i>${esc(e.entregaMonitor.ultimoErro)}</i>` : ''})`).join(' · ');
     partes.push(`<div style="background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;border-radius:12px;padding:12px 16px;font-size:0.92rem;">
       ⚠️ <b>${comFalhaEntrega.length} cliente(s) Oficial com entrega falhando</b> — checa cobrança/template: ${nomes}
     </div>`);

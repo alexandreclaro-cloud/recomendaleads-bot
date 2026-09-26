@@ -10168,15 +10168,21 @@ async function checarEntregaOficial(empresaId) {
   // Só filtros de igualdade (empresaId, direcao) — não precisa de índice composto,
   // igual já é feito em outros pontos do código. O corte por tempo/status é em JS.
   const snap = await MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'out').get();
-  let total = 0, falhas = 0;
+  let total = 0, falhas = 0, ultimoErro = null, ultimoErroEm = null;
   snap.forEach(doc => {
     const d = doc.data();
     if (!d.criadoEm || d.criadoEm < cutoff) return;
     if (!d.status) return; // ainda sem status resolvido (webhook pode demorar) — ignora
     total++;
-    if (d.status === 'falhou') falhas++;
+    if (d.status === 'falhou') {
+      falhas++;
+      // Guarda o motivo da falha MAIS RECENTE — é o que ajuda a diagnosticar
+      // rápido (cobrança travada, template pausado, número desconectado...)
+      // sem precisar abrir o log do Render.
+      if (d.erroEnvio && (!ultimoErroEm || d.criadoEm > ultimoErroEm)) { ultimoErro = d.erroEnvio; ultimoErroEm = d.criadoEm; }
+    }
   });
-  return { total, falhas };
+  return { total, falhas, ultimoErro };
 }
 async function monitorarEntregaOficial() {
   if (!db) return;
@@ -10188,7 +10194,7 @@ async function monitorarEntregaOficial() {
       let contagem;
       try { contagem = await checarEntregaOficial(empresa.id); }
       catch (e) { console.error(`[MONITOR-ENTREGA] erro ao checar ${empresa.id}:`, e.message); continue; }
-      const { total, falhas } = contagem;
+      const { total, falhas, ultimoErro } = contagem;
       // Exige um mínimo de volume (evita alarme falso com 1 mensagem isolada
       // que falhou por sorte) E maioria falhando — sintoma de algo sistêmico
       // (cobrança travada, template pausado), não de 1 número queimado.
@@ -10196,7 +10202,7 @@ async function monitorarEntregaOficial() {
       const agora = new Date().toISOString();
       const atual = empresa.entregaMonitor || {};
       const jaEstavaEmAlerta = !!atual.ativo;
-      const patch = { ativo: emAlerta, total, falhas, checadoEm: agora };
+      const patch = { ativo: emAlerta, total, falhas, ultimoErro: ultimoErro || null, checadoEm: agora };
       if (emAlerta && !jaEstavaEmAlerta) {
         patch.desde = agora;
         console.warn(`[MONITOR-ENTREGA] ${empresa.nome || empresa.id}: ${falhas}/${total} mensagens falharam nos últimos 30min`);
