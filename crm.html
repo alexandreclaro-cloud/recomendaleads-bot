@@ -738,6 +738,8 @@
         <button class="subtab-btn" data-subtab="clienteConversa">Conversa do Cliente</button>
         <button class="subtab-btn" data-subtab="followupCliente" style="display:none">Lembrete p/ cliente avisar amigos</button>
         <button class="subtab-btn" data-subtab="premioCliente">Presente Cliente</button>
+        <button class="subtab-btn" data-subtab="funilNaoCliente">🚪 Funil Não Cliente</button>
+        <button class="subtab-btn" data-subtab="funilBase">📊 Funil Base (NPS)</button>
         <button class="subtab-btn" data-subtab="recomendado">Conversa do Recomendado</button>
         <button class="subtab-btn" data-subtab="infoNegocio">ℹ️ Informações do negócio</button>
         <button class="subtab-btn" data-subtab="faixas">Presente Recomendado</button>
@@ -996,6 +998,62 @@
       <!-- Sub-aba: Prêmio Cliente -->
       <div class="subtab-panel" id="subtabPremioCliente">
         <div id="faixasContainerCliente"></div>
+      </div>
+
+      <!-- Sub-aba: Funil Não Cliente — 2ª porta de entrada, pra quem NÃO comprou -->
+      <div class="subtab-panel" id="subtabFunilNaoCliente">
+        <div class="config-card">
+          <h2>🚪 Funil Não Cliente</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 12px;">
+            Pra quando a venda não fecha: o vendedor manda um link/QR Code PRÓPRIO (diferente do Funil Start) e a pessoa ganha um <b>presente diferente</b> (geralmente um voucher de desconto pra usar depois) ao indicar 5 amigos. Depois disso, o fluxo é o mesmo de sempre — os amigos recebem a mensagem e são chamados pra vir comprar.
+          </p>
+          <label style="display:flex; align-items:center; gap:10px; margin:6px 0 14px; cursor:pointer;">
+            <input type="checkbox" id="ncAtivoInput" style="width:20px;height:20px;">
+            <span style="font-weight:700;">Ativar o Funil Não Cliente</span>
+          </label>
+
+          <label>🔓 Frase que ativa esse funil (diferente da frase do Funil Start)</label>
+          <input type="text" id="ncGatilhoInput" placeholder="Ex: quero meu voucher">
+          <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">Pode cadastrar mais de uma, separadas por vírgula. É essa frase que vai dentro do link/QR Code que o vendedor manda pra quem não comprou.</p>
+
+          <label style="margin-top:14px;">Mensagem de boas-vindas (1ª mensagem — explica o convite de quem não comprou)</label>
+          <textarea id="ncBoasVindasInput" rows="4"></textarea>
+
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarNaoClienteBtn">Salvar Funil Não Cliente</button>
+            <span class="config-status-msg" id="statusNaoCliente"></span>
+          </div>
+
+          <div style="border-top:1px solid var(--border,#eee); margin-top:20px; padding-top:16px;">
+            <h2 style="margin:0 0 8px;">🔗 Link / QR Code desse funil</h2>
+            <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">O vendedor manda esse link (ou mostra o QR Code) pra quem não comprou, na hora de sair. Salve a frase-gatilho acima antes de gerar.</p>
+            <div id="ncLinkBox"><p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Salve a frase-gatilho acima pra gerar o link.</p></div>
+          </div>
+        </div>
+
+        <div class="config-card" style="margin-top:16px;">
+          <h2>🎁 Presente do Funil Não Cliente</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">O presente aqui é <b>independente</b> do presente do Funil Start — geralmente um voucher de desconto pra usar numa próxima compra.</p>
+          <div id="faixasContainerNaoCliente"></div>
+        </div>
+      </div>
+
+      <!-- Sub-aba: Funil Base (NPS) — em construção -->
+      <div class="subtab-panel" id="subtabFunilBase">
+        <div class="config-card">
+          <h2>📊 Funil Base (NPS)</h2>
+          <p style="font-size:0.85rem; color:var(--text-dim); margin:0 0 10px;">
+            Disparo em massa pra base de clientes com a pergunta: <i>"Em uma escala de 0 a 10, que nota você daria para recomendar um amigo pra comprar com a gente?"</i> A nota classifica o cliente e dispara um caminho diferente:
+          </p>
+          <ul style="font-size:0.85rem; color:var(--text-dim); margin:0 0 14px; padding-left:20px; line-height:1.7;">
+            <li><b>9-10 (Promotor):</b> agradece, avisa que ganhou um presente e já entra no fluxo de recomendação (pede os 5 amigos).</li>
+            <li><b>7-8 (Neutro):</b> avisa o gestor pra ligar e entender o motivo.</li>
+            <li><b>0-6 (Detrator):</b> alerta URGENTE pro gestor ligar na hora.</li>
+          </ul>
+          <p style="font-size:0.85rem; background:#FEF3C7; border:1px solid #FDE68A; color:#92400E; border-radius:10px; padding:10px 12px;">
+            🚧 Essa aba está reservada — o motor de disparo NPS (pergunta, as 3 ramificações e o dashboard de Promotor/Neutro/Detrator) ainda não foi construído. É a próxima etapa.
+          </p>
+        </div>
       </div>
 
       <!-- Sub-aba: Conversa do Recomendado (textos do recomendado) -->
@@ -1429,6 +1487,8 @@ const MAPA_SUBTABS = {
   clienteConversa: 'subtabClienteConversa',
   followupCliente: 'subtabFollowupCliente',
   premioCliente: 'subtabPremioCliente',
+  funilNaoCliente: 'subtabFunilNaoCliente',
+  funilBase: 'subtabFunilBase',
   recomendado: 'subtabRecomendado',
   infoNegocio: 'subtabInfoNegocio',
   faixas: 'subtabFaixas',
@@ -2712,8 +2772,14 @@ async function carregarConfiguracao() {
     renderCadenciaCliente(configuracaoAtual.cadenciaFollowupClienteInicial || []);
     renderCadenciaClienteContatos(configuracaoAtual.cadenciaFollowupClienteContatos || []);
     carregarTemplatesMeta();
-    renderFaixas(configuracaoAtual.faixasBonus || []);
+    renderFaixas(configuracaoAtual.faixasBonus || [], ['faixasContainerCliente']);
+    renderFaixas(configuracaoAtual.faixasBonusNaoCliente || [], ['faixasContainerNaoCliente']);
     carregarFollowupCliente();
+    // Funil Não Cliente — gatilho/ativo/boas-vindas
+    document.getElementById('ncAtivoInput').checked = !!configuracaoAtual.naoClienteAtivo;
+    document.getElementById('ncGatilhoInput').value = configuracaoAtual.naoClienteGatilho || '';
+    document.getElementById('ncBoasVindasInput').value = configuracaoAtual.naoClienteMensagemBoasVindas || '';
+    renderLinkNaoCliente();
   } catch (err) {
     loadMsg.textContent = 'Não foi possível carregar a configuração.';
   }
@@ -3416,6 +3482,71 @@ document.getElementById('salvarBotDesligadoBtn').addEventListener('click', async
   finally { btn.disabled = false; }
 });
 
+// ============================================================
+// FUNIL NÃO CLIENTE — gatilho/mensagem + link/QR do link específico
+// ============================================================
+document.getElementById('salvarNaoClienteBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarNaoClienteBtn');
+  const statusEl = document.getElementById('statusNaoCliente');
+  const naoClienteAtivo = document.getElementById('ncAtivoInput').checked;
+  const naoClienteGatilho = document.getElementById('ncGatilhoInput').value.trim() || 'quero meu voucher';
+  const naoClienteMensagemBoasVindas = document.getElementById('ncBoasVindasInput').value;
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ naoClienteAtivo, naoClienteGatilho, naoClienteMensagemBoasVindas }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok';
+      configuracaoAtual = data.empresa;
+      renderLinkNaoCliente();
+    } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; }
+});
+
+// Link/QR do Funil Não Cliente — mesmo wa.me com a frase-gatilho dele, pro
+// vendedor mandar (ou imprimir o QR) na hora que a venda não fecha. Usa
+// /minha-whatsapp/numero — é o mesmo endpoint que já sabe descobrir o número
+// certo tanto no Z-API quanto na API Oficial (não dá pra confiar só no campo
+// numeroConectado cru: no modo Oficial o número real vem da própria Meta).
+async function renderLinkNaoCliente() {
+  const box = document.getElementById('ncLinkBox');
+  if (!box) return;
+  const gatilho = (configuracaoAtual.naoClienteGatilho || '').trim();
+  if (!gatilho) {
+    box.innerHTML = '<p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Salve a frase-gatilho acima pra gerar o link.</p>';
+    return;
+  }
+  box.innerHTML = '<p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Carregando número conectado...</p>';
+  let num = '';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/numero`);
+    const data = await resp.json();
+    num = String((data && data.numero) || '').replace(/\D/g, '');
+  } catch (e) {}
+  if (!num) {
+    box.innerHTML = '<p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Conecte o WhatsApp (aba WhatsApp) pra gerar o link.</p>';
+    return;
+  }
+  const num55 = num.startsWith('55') ? num : '55' + num;
+  const primeiraFrase = gatilho.split(/[\n,;]+/)[0].trim();
+  const link = `https://wa.me/${num55}?text=${encodeURIComponent(primeiraFrase)}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(link)}`;
+  box.innerHTML = `
+    <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+      <img src="${qrUrl}" alt="QR Code do Funil Não Cliente" style="width:180px;height:180px;border:1px solid var(--border,#eee);border-radius:10px;background:#fff;padding:8px;">
+      <div style="flex:1; min-width:220px;">
+        <label style="margin-top:0;">Link</label>
+        <input type="text" readonly value="${link}" style="width:100%;" onclick="this.select()">
+        <button type="button" class="config-save-btn" id="ncCopiarLinkBtn" style="margin-top:8px;">Copiar link</button>
+      </div>
+    </div>`;
+  const btnCopiar = document.getElementById('ncCopiarLinkBtn');
+  if (btnCopiar) btnCopiar.addEventListener('click', () => {
+    navigator.clipboard.writeText(link).then(() => { const t = btnCopiar.textContent; btnCopiar.textContent = 'Copiado!'; setTimeout(() => btnCopiar.textContent = t, 1500); });
+  });
+}
+
 document.getElementById('salvarCadenciaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarCadenciaBtn');
   const statusEl = document.getElementById('statusCadencia');
@@ -3523,8 +3654,8 @@ document.getElementById('salvarCadenciaClienteContatosBtn').addEventListener('cl
 // A primeira faixa tem a quantidade EDITÁVEL (input numérico).
 // As demais têm a quantidade como badge estático (somente leitura).
 // ============================================================
-function renderFaixas(faixas) {
-  ['faixasContainer', 'faixasContainerCliente'].forEach(containerId => {
+function renderFaixas(faixas, containerIds) {
+  (containerIds || ['faixasContainer', 'faixasContainerCliente']).forEach(containerId => {
     const container = document.getElementById(containerId);
     if (!container) return;
     container.innerHTML = '';
@@ -3617,14 +3748,17 @@ async function salvarAtivaFaixa(chk) {
   const btn = card.querySelector('.config-save-btn[data-quantidade]');
   const quantidade = parseInt(btn.dataset.quantidade);
   const containerId = card.closest('[id]').id;
+  // Qual array de faixas essa aba edita — o do Funil Não Cliente tem presente
+  // PRÓPRIO, separado do Funil Start.
+  const campo = containerId === 'faixasContainerNaoCliente' ? 'faixasBonusNaoCliente' : 'faixasBonus';
   const statusEl = card.querySelector(`[data-statusfor="${quantidade}_${containerId}"]`);
   if (statusEl) { statusEl.textContent = chk.checked ? 'Ativando...' : 'Desativando...'; statusEl.className = 'config-status-msg'; }
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, { method: 'POST', body: JSON.stringify({ quantidade, ativa: chk.checked }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config/faixa`, { method: 'POST', body: JSON.stringify({ quantidade, ativa: chk.checked, campo }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       if (statusEl) { statusEl.textContent = chk.checked ? '✅ Prêmio ativado' : '✅ Desligado — só o 1º será dado'; statusEl.className = 'config-status-msg ok'; }
-      const f = (configuracaoAtual.faixasBonus || []).find(x => x.quantidade === quantidade);
+      const f = (configuracaoAtual[campo] || []).find(x => x.quantidade === quantidade);
       if (f) f.ativa = chk.checked;
     } else {
       if (statusEl) { statusEl.textContent = '❌ ' + (data.erro || 'Erro'); statusEl.className = 'config-status-msg err'; }
@@ -3657,7 +3791,8 @@ async function salvarFaixa(btn) {
   if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg'; }
 
   try {
-    const body = { quantidade: quantidadeOriginal, premio, arquivo, link, texto };
+    const campo = containerId === 'faixasContainerNaoCliente' ? 'faixasBonusNaoCliente' : 'faixasBonus';
+    const body = { quantidade: quantidadeOriginal, premio, arquivo, link, texto, campo };
     if (ativaEl) body.ativa = ativaEl.checked;
     // Só envia novaQuantidade se for diferente da original (e for a primeira faixa)
     if (novaQuantidade && novaQuantidade !== quantidadeOriginal) {

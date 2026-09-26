@@ -1856,10 +1856,18 @@ const _RANK_CLI_ETAPA_VG = { iniciou: 1, deu_nome: 2, recomendou: 3, recebeu_pre
 function vgRankCliente(c) { return _RANK_CLI_ETAPA_VG[c.etapa] || 0; }
 function vgFiltrarCliente(a, b) { return clientesPipelineVG.filter(c => { const t = new Date(c.criadoEm || 0).getTime(); return t >= a.getTime() && t <= b.getTime(); }); }
 function vgCalcCliente(lista) {
+  // origem separa quem entrou pelo Funil Start (padrão) de quem entrou pelo
+  // Funil Não Cliente (venda que não fechou) — mesmo funil, portas diferentes.
+  const start = lista.filter(c => (c.origem || 'start') === 'start');
+  const naoCliente = lista.filter(c => c.origem === 'naoCliente');
   return {
     total: lista.length,
     recomendaram: lista.filter(c => vgRankCliente(c) >= 3).length,
-    receberamPremio: lista.filter(c => vgRankCliente(c) >= 4).length
+    receberamPremio: lista.filter(c => vgRankCliente(c) >= 4).length,
+    porOrigem: [
+      { label: '🚪 Funil Start', total: start.length, recomendaram: start.filter(c => vgRankCliente(c) >= 3).length },
+      { label: '🚫 Funil Não Cliente', total: naoCliente.length, recomendaram: naoCliente.filter(c => vgRankCliente(c) >= 3).length }
+    ]
   };
 }
 
@@ -1978,6 +1986,10 @@ function renderDashboardVG() {
         ${barra('👥 Número de clientes', atCli.total, 100, '#2e9e5b')}
         ${barra('✅ Recomendaram', atCli.recomendaram, cpctCli(atCli.recomendaram), '#3b82c4')}
         ${barra('🎁 Receberam o presente', atCli.receberamPremio, cpctCli(atCli.receberamPremio), '#d98a2b')}
+        ${atCli.porOrigem.some(o => o.total > 0) ? `
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#e3e6ea);font-size:0.8rem;color:var(--text-dim,#6b7280);">
+          ${atCli.porOrigem.map(o => `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>${o.label}</span><span><b style="color:var(--text,#1a1a1a);">${o.total}</b> · ${o.recomendaram} recomendaram</span></div>`).join('')}
+        </div>` : ''}
       </div>
       <div style="background:var(--surface-2,#fff);border:1px solid var(--border,#e3e6ea);border-radius:12px;padding:16px;">
         <div style="font-weight:600;margin-bottom:2px;">Funil do Recomendado <span style="font-weight:400;color:var(--text-dim,#6b7280);">(quem foi indicado)</span></div>

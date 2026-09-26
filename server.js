@@ -333,7 +333,7 @@ const SESSOES_AGENTE_SCRIPT_COL = () => db.collection('sessoes_agente_script');
 // Cria/atualiza o card do cliente no pipeline (só avança de estágio, nunca volta).
 // etapa: 'iniciou' -> 'deu_nome' -> 'recomendou'.
 const _RANK_CLI_ETAPA = { iniciou: 1, deu_nome: 2, recomendou: 3, recebeu_premio: 4 };
-async function upsertClientePipeline(telefone, nome, etapa, contatos) {
+async function upsertClientePipeline(telefone, nome, etapa, contatos, origem) {
   if (!db || !telefone) return;
   try {
     const empresaId = empresaIdAtual();
@@ -351,6 +351,9 @@ async function upsertClientePipeline(telefone, nome, etapa, contatos) {
       telefone: soDigitosTel(telefone),
       nome: (nome && nome.trim()) ? nome.trim() : (atual && atual.nome) || null,
       etapa: etapaFinal,
+      // Qual funil trouxe esse cliente — Start (padrão) ou Não Cliente. Grava só
+      // na 1ª vez (nunca sobrescreve o card já existente).
+      origem: (atual && atual.origem) || origem || 'start',
       criadoEm: (atual && atual.criadoEm) || agora,
       atualizadoEm: agora
     };
@@ -589,6 +592,21 @@ function ehGatilhoPresenteQualquerOferta(texto, empresa) {
   if (ehGatilhoPresente(texto, empresa)) return true;
   if (!empresa || !empresa.ofertasHabilitado || !empresa.ofertas) return false;
   return Object.values(empresa.ofertas).some(o => o && o.ativa && ehGatilhoPresente(texto, o));
+}
+
+// FUNIL NÃO CLIENTE — segunda porta de entrada pro mesmo motor de recomendação
+// (cliente → indica 5 amigos → recomendados recebem mensagem), só que pra quem
+// NÃO comprou (o vendedor oferece na saída, "gatilhoLivre" não se aplica aqui:
+// esse gatilho é sempre por frase própria, nunca "qualquer mensagem"). Fica
+// DESLIGADO por padrão (naoClienteAtivo) — só ativa quem configurar.
+function frasesGatilhoNaoCliente(empresa) {
+  const raw = (empresa && empresa.naoClienteGatilho) || EMPRESA_PADRAO.naoClienteGatilho;
+  return String(raw).split(/[\n,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+function ehGatilhoNaoCliente(texto, empresa) {
+  if (!texto || !empresa || !empresa.naoClienteAtivo) return false;
+  const t = texto.toLowerCase().trim();
+  return frasesGatilhoNaoCliente(empresa).some(f => t.includes(f));
 }
 
 // Detecta a intenção do cliente de RECOMENDAR mais pessoas depois que já
@@ -894,6 +912,16 @@ const EMPRESA_PADRAO = {
   // quem está atendendo. Pra emergência/evento ao vivo onde um humano assume
   // 100% do atendimento. Desligado (robô ativo normalmente) por padrão.
   botDesligado: false,
+  // FUNIL NÃO CLIENTE — segunda porta de entrada, pra quem NÃO comprou (o
+  // vendedor oferece um voucher na saída, com um link/QR PRÓPRIO, diferente do
+  // Funil Start). Reaproveita o mesmo motor (pede nome, pede contatos, entrega
+  // presente), só muda a frase-gatilho, a mensagem de boas-vindas e o presente
+  // (faixasBonusNaoCliente — se vazio, usa o presente normal do Funil Start).
+  // Desligado por padrão: só quem configurar entra nesse fluxo.
+  naoClienteAtivo: false,
+  naoClienteGatilho: 'quero meu voucher',
+  naoClienteMensagemBoasVindas: 'Oi! Antes de você ir, separamos um presente especial pra você 🎁 Indicando 5 amigos, você ganha um voucher pra usar numa próxima compra aqui. Posso te contar como funciona?',
+  faixasBonusNaoCliente: [{ quantidade: 5, premio: '🎟️ Voucher de 10% de desconto pra usar numa próxima compra', arquivo: null, link: null, texto: '_(Exemplo — defina o desconto/valor real do voucher aqui)_' }],
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
   //  'basic'  = o robô dispara pros amigos (atual, padrão).
   //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).
@@ -2167,27 +2195,40 @@ function mensagemNaoEntendiPorEtapa(etapa, empresa) {
 
 // Faixas de prêmio ATIVAS. O dono pode DESLIGAR as faixas extras (2ª em diante)
 // pra dar só o 1º prêmio. A 1ª está SEMPRE ativa; as demais valem se ativa !== false.
-function faixasAtivas(empresa) {
-  const todas = (empresa && empresa.faixasBonus) || [];
+// `sessao.origemFunil === 'naoCliente'` usa o presente PRÓPRIO do Funil Não
+// Cliente (faixasBonusNaoCliente) — se não tiver configurado, cai no presente
+// normal do Funil Start, pra nunca ficar sem prêmio nenhum por falta de config.
+function faixasAtivas(empresa, sessao) {
+  const usarNaoCliente = sessao && sessao.origemFunil === 'naoCliente'
+    && Array.isArray(empresa && empresa.faixasBonusNaoCliente) && empresa.faixasBonusNaoCliente.length > 0;
+  const todas = (usarNaoCliente ? empresa.faixasBonusNaoCliente : (empresa && empresa.faixasBonus)) || [];
   return todas.filter((f, i) => i === 0 || (f && f.ativa !== false));
 }
 
-async function iniciarConversa(telefone) {
+async function iniciarConversa(telefone, origem) {
   const empresa = await getEmpresa();
   const sessao = await getSessao(telefone);
+  if (origem === 'naoCliente') {
+    sessao.origemFunil = 'naoCliente';
+    await saveSessao(telefone, sessao);
+  }
   // Marca esta conversa como CLIENTE (recomendador) — usado pra separar Cliente
   // x Recomendado na aba Conversas. Se o mesmo número já tiver sido marcado
   // como Recomendado antes (raro — normalmente é gente diferente), prevalece
   // o papel mais recente.
   try { await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).set({ papel: 'cliente' }, { merge: true }); } catch (e) {}
-  // Pipeline do cliente: entrou (leu o QR / mandou o gatilho).
-  await upsertClientePipeline(telefone, null, 'iniciou');
+  // Pipeline do cliente: entrou (leu o QR / mandou o gatilho). origem separa o
+  // Funil Não Cliente do Funil Start nos relatórios (ver upsertClientePipeline).
+  await upsertClientePipeline(telefone, null, 'iniciou', null, origem);
   // A tela "Conversa do Cliente" anuncia {premio}/{quantidade} como variáveis
   // válidas em TODA a aba (inclusive nas Boas-vindas) — antes só {empresa} chegava
   // aqui, então quem usava {premio} na 1ª mensagem via o texto cru, sem substituir.
-  const faixaBoasVindas = faixasAtivas(empresa)[0];
+  const faixaBoasVindas = faixasAtivas(empresa, sessao)[0];
   const varsBoasVindas = { empresa: empresa.nome, premio: faixaBoasVindas ? faixaBoasVindas.premio : '', quantidade: faixaBoasVindas ? faixaBoasVindas.quantidade : '' };
-  await sendText(telefone, substituirVariaveis(empresa.mensagemAgradecimento, varsBoasVindas));
+  const mensagemBoasVindas = (origem === 'naoCliente')
+    ? (empresa.naoClienteMensagemBoasVindas || EMPRESA_PADRAO.naoClienteMensagemBoasVindas)
+    : empresa.mensagemAgradecimento;
+  await sendText(telefone, substituirVariaveis(mensagemBoasVindas, varsBoasVindas));
   // Pergunta o nome primeiro; no modo Full, a explicação das 2 fases vem DEPOIS
   // que o cliente responde o nome (ver handler 'aguardando_nome') — mais natural.
   await sendText(telefone, substituirVariaveis(empresa.mensagemPedeNome || EMPRESA_PADRAO.mensagemPedeNome, varsBoasVindas));
@@ -2205,7 +2246,7 @@ async function iniciarColetaContatos(telefone, sessao, empresa) {
   const marcaContatos = new Date().toISOString();
   sessao.ultimaAtividadeContatosEm = marcaContatos;
   await saveSessao(telefone, sessao);
-  const primeiraFaixa = faixasAtivas(empresa)[0];
+  const primeiraFaixa = faixasAtivas(empresa, sessao)[0];
   const varsCliente = { nomeRecomendado: (sessao.clienteNome || '').split(' ')[0], empresa: empresa.nome, premio: primeiraFaixa.premio, quantidade: primeiraFaixa.quantidade };
   if (modoRecAtual(empresa) === 'full') {
     await sendText(telefone, substituirVariaveis(empresa.fullMensagemAvisoInicial || EMPRESA_PADRAO.fullMensagemAvisoInicial, varsCliente));
@@ -2280,7 +2321,7 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
     await saveSessao(telefone, sessao);
 
     const listaVendedores = empresa.vendedores.map((v, i) => `${i + 1}️⃣ ${v}`).join('\n');
-    const faixaVend = faixasAtivas(empresa)[0];
+    const faixaVend = faixasAtivas(empresa, sessao)[0];
     const perguntaVendedor = substituirVariaveis(perguntaVend || EMPRESA_PADRAO.mensagemPedeVendedor, {
       nomeRecomendado: sessao.clienteNome.split(' ')[0], empresa: empresa.nome,
       premio: faixaVend ? faixaVend.premio : '', quantidade: faixaVend ? faixaVend.quantidade : ''
@@ -2357,7 +2398,7 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
     }
 
     if (novosContatos.length > 0) {
-      const faixaAtual = faixasAtivas(empresa)[sessao.indiceFaixaAtual];
+      const faixaAtual = faixasAtivas(empresa, sessao)[sessao.indiceFaixaAtual];
       const contatosFaixaAtual = [...(sessao.contatosFaixaAtual || []), ...novosContatos];
 
       sessao.contatos = [...(sessao.contatos || []), ...novosContatos];
@@ -2398,7 +2439,7 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
   if (sessao.etapa === 'aguardando_autorizacao_proxima_faixa') {
     if (respostaEhPositiva(texto)) {
       const proximoIndice = sessao.indiceFaixaAtual + 1;
-      const proximaFaixa = faixasAtivas(empresa)[proximoIndice];
+      const proximaFaixa = faixasAtivas(empresa, sessao)[proximoIndice];
       const excedentePendente = sessao.excedentePendente || [];
 
       sessao.indiceFaixaAtual = proximoIndice;
@@ -2944,7 +2985,7 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     sessao.contatosPendentesDisparo = [...(sessao.contatosPendentesDisparo || []), ...contatosDestaFaixa];
   }
 
-  const proximaFaixa = faixasAtivas(empresa)[sessao.indiceFaixaAtual + 1];
+  const proximaFaixa = faixasAtivas(empresa, sessao)[sessao.indiceFaixaAtual + 1];
 
   if (!proximaFaixa) {
     sessao.etapa = 'finalizado';
@@ -4513,7 +4554,7 @@ async function tratarWebhook(req, res) {
         else if ((await CONVERSAS_COL().doc(`${empresaIdAtual()}__${telefone}`).get()).exists) ehDoBot = true;
         else {
           const empLog = await getEmpresa();
-          ehDoBot = ehGatilhoPresenteQualquerOferta(texto, empLog) || !!detectarNichoDemo(texto, empLog) || !!detectarResgateFull(texto) || ehOptOut(texto);
+          ehDoBot = ehGatilhoPresenteQualquerOferta(texto, empLog) || ehGatilhoNaoCliente(texto, empLog) || !!detectarNichoDemo(texto, empLog) || !!detectarResgateFull(texto) || ehOptOut(texto);
         }
       } catch (e) { ehDoBot = false; }
       if (ehDoBot) {
@@ -4596,7 +4637,7 @@ async function tratarWebhook(req, res) {
     }
 
     // Se o número está pausado, só reage ao gatilho de ativação do presente
-    const ehGatilhoInicialParaPausa = ehGatilhoPresenteQualquerOferta(texto, empGatilho) || !!detectarNichoDemo(texto, empGatilho);
+    const ehGatilhoInicialParaPausa = ehGatilhoPresenteQualquerOferta(texto, empGatilho) || ehGatilhoNaoCliente(texto, empGatilho) || !!detectarNichoDemo(texto, empGatilho);
     if (!ehGatilhoInicialParaPausa && await numeroEstaPausado(telefone)) {
       console.log(`[PAUSA MANUAL] Mensagem ignorada — ${telefone} está pausado`);
       return res.sendStatus(200);
@@ -4634,6 +4675,9 @@ async function tratarWebhook(req, res) {
     // cliente finalizada não deve bloquear o fluxo de recomendado.
     const clienteAtivo = sessaoExiste && sessaoClienteEtapa !== 'finalizado';
     const ehGatilhoInicial = ehGatilhoPresenteQualquerOferta(texto, empGatilho);
+    // Funil Não Cliente — 2ª porta de entrada, gatilho próprio (ver EMPRESA_PADRAO).
+    const ehGatilhoNaoClienteInicial = ehGatilhoNaoCliente(texto, empGatilho);
+    const ehQualquerGatilhoInicial = ehGatilhoInicial || ehGatilhoNaoClienteInicial;
 
     // Um mesmo número pode ter sido cliente/recomendador antes e agora estar
     // recebendo o roteiro como RECOMENDADO. Se a sessão de cliente já está
@@ -4648,7 +4692,7 @@ async function tratarWebhook(req, res) {
     // por ele (contato sem sessão de cliente/recomendado nenhuma — ex: respondeu
     // um disparo em massa). Checado antes do roteamento normal porque esse
     // contato nunca teve sessaoExiste/sessaoRecomendado de verdade.
-    if (!sessaoExiste && !sessaoRecomendado && !ehGatilhoInicial) {
+    if (!sessaoExiste && !sessaoRecomendado && !ehQualquerGatilhoInicial) {
       const sessaoAgenteScript = await getSessaoAgenteScript(telefone);
       if (sessaoAgenteScript && !sessaoAgenteScript.finalizado) {
         const empresaAgente = await getEmpresa();
@@ -4660,7 +4704,7 @@ async function tratarWebhook(req, res) {
     // Pedido de ATENDENTE por frase natural ("atendente", "recepcionista", "humano",
     // "alguém pode me ajudar"...), em qualquer momento — desde que haja uma conversa
     // com o robô (cliente ou recomendado). Transfere pro humano na hora.
-    if (pedeAtendente(texto) && !ehGatilhoInicial && (sessaoExiste || sessaoRecomendado)) {
+    if (pedeAtendente(texto) && !ehQualquerGatilhoInicial && (sessaoExiste || sessaoRecomendado)) {
       const empresaAt = await getEmpresa();
       const nomePessoa = (sessaoExiste && sessaoExistenteSnap.data().clienteNome)
         || (sessaoRecomendado && sessaoRecomendado.nomeRecomendado) || '';
@@ -4726,7 +4770,7 @@ async function tratarWebhook(req, res) {
       return res.sendStatus(200);
     }
 
-    if (_sConf && (_sConf.aguardandoConfirmacaoDisparo || _sConf.aguardandoIntervaloConfirmacao) && !ehGatilhoInicial && !nichoDetectado) {
+    if (_sConf && (_sConf.aguardandoConfirmacaoDisparo || _sConf.aguardandoIntervaloConfirmacao) && !ehQualquerGatilhoInicial && !nichoDetectado) {
       const s = _sConf;
       const empresaC = await getEmpresa();
       const t = (texto || '').trim().toLowerCase();
@@ -4769,7 +4813,7 @@ async function tratarWebhook(req, res) {
 
     // Follow-up do recomendador: se está aguardando resposta ao lembrete
     // (1/2/3), trata aqui — antes do roteamento normal.
-    if (sessaoExiste && sessaoExistenteSnap.data().followupAguardando && !ehGatilhoInicial && !nichoDetectado) {
+    if (sessaoExiste && sessaoExistenteSnap.data().followupAguardando && !ehQualquerGatilhoInicial && !nichoDetectado) {
       const tratou = await tratarRespostaFollowupRecomendador(telefone, texto, sessaoExistenteSnap.data());
       if (tratou) return res.sendStatus(200);
     }
@@ -4798,7 +4842,7 @@ async function tratarWebhook(req, res) {
     // está no meio do fluxo (cliente ou recomendado ativo).
     const querRecomendar = querRecomendarMais(texto) && sessaoExiste && !clienteAtivo && !recomendadoAtivo;
 
-    if (ehGatilhoInicial || nichoDetectado || querRecomendar) {
+    if (ehQualquerGatilhoInicial || nichoDetectado || querRecomendar) {
       // Rede de lojas: ninguém resolveu ainda qual loja é (2+ ofertas ativas,
       // nenhuma frase-gatilho específica bateu) — manda o menu e espera a
       // resposta antes de iniciar qualquer fluxo.
@@ -4814,7 +4858,9 @@ async function tratarWebhook(req, res) {
         return res.sendStatus(200);
       }
       await resetSessao(telefone);
-      await iniciarConversa(telefone);
+      // Só é Funil Não Cliente se foi ESSE gatilho que bateu (e não o do Funil
+      // Start) — texto/nicho/"quero recomendar mais" continuam no Start normal.
+      await iniciarConversa(telefone, (ehGatilhoNaoClienteInicial && !ehGatilhoInicial) ? 'naoCliente' : undefined);
       if (nichoEfetivo) await saveSessao(telefone, { nicho: nichoEfetivo });
       // Rede de lojas: carimba a oferta na sessão que ACABOU de ser criada aqui.
       // O carimbo lá em cima (perto de resolverOfertaSilenciosa) só cobre sessão
@@ -7488,6 +7534,10 @@ app.post('/minha-conversas/:telefone/resetar', exigirLoginEmpresa, exigirGestor,
 app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOferta, async (req, res) => {
   try {
     const { quantidade, novaQuantidade, arquivo, link, texto, premio, ativa } = req.body;
+    // 'campo' escolhe QUAL array de faixas edita — o do Funil Start (padrão) ou
+    // o do Funil Não Cliente (presente diferente, próprio). Whitelist explícita
+    // pra nunca deixar o body escrever num campo arbitrário da configuração.
+    const campo = req.body.campo === 'faixasBonusNaoCliente' ? 'faixasBonusNaoCliente' : 'faixasBonus';
     const configuracao = req.empresaLogin.configuracao || { ...EMPRESA_PADRAO, nome: req.empresaLogin.nome };
 
     // Múltiplas ofertas: ?oferta=<id> edita as faixas DENTRO dessa oferta, não as
@@ -7504,10 +7554,10 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOf
     // estava quebrado: a correção anterior usava só o exemplo genérico, que pode
     // ter uma quantidade diferente da que a empresa já usa). Copia os itens (não
     // usa a referência direta) pra não mutar um array compartilhado.
-    const faixasBase = configuracao.faixasBonus || EMPRESA_PADRAO.faixasBonus;
-    alvo.faixasBonus = alvo.faixasBonus || faixasBase.map(f => ({ ...f }));
+    const faixasBase = configuracao[campo] || EMPRESA_PADRAO[campo];
+    alvo[campo] = alvo[campo] || faixasBase.map(f => ({ ...f }));
 
-    const faixa = alvo.faixasBonus.find(f => f.quantidade === quantidade);
+    const faixa = alvo[campo].find(f => f.quantidade === quantidade);
     if (!faixa) {
       return res.status(404).json({ ok: false, erro: 'Faixa não encontrada para essa quantidade' });
     }
@@ -7518,20 +7568,20 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOf
     if (ativa !== undefined) faixa.ativa = !!ativa;
     if (novaQuantidade && novaQuantidade !== quantidade) {
       // Não pode ter duas etapas com o mesmo número de recomendações.
-      if (alvo.faixasBonus.some(f => f !== faixa && f.quantidade === novaQuantidade)) {
+      if (alvo[campo].some(f => f !== faixa && f.quantidade === novaQuantidade)) {
         return res.status(400).json({ ok: false, erro: 'Já existe uma etapa com esse número de recomendações' });
       }
       faixa.quantidade = novaQuantidade;
     }
 
     // Mantém as etapas SEMPRE em ordem crescente de quantidade (o fluxo avança por ordem).
-    alvo.faixasBonus.sort((a, b) => (a.quantidade || 0) - (b.quantidade || 0));
+    alvo[campo].sort((a, b) => (a.quantidade || 0) - (b.quantidade || 0));
 
     if (usaOferta) {
       alvo.atualizadoEm = new Date().toISOString();
       configuracao.ofertas[ofertaId] = alvo;
       // Espelha no topo se for a oferta conectada ao WhatsApp.
-      if (ofertaId === configuracao.ofertaAtivaPadrao) configuracao.faixasBonus = alvo.faixasBonus;
+      if (ofertaId === configuracao.ofertaAtivaPadrao) configuracao[campo] = alvo[campo];
     }
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao }, { merge: true });
     res.json({ ok: true, faixa });
@@ -8812,6 +8862,13 @@ async function iniciarDisparoMassa(empresa, template, contatos, headerMediaUrl) 
   // Background: dispara com um pequeno intervalo entre mensagens (anti-flood).
   (async () => {
     const oficial = oficialDaEmpresa(empresa);
+    // Guarda quem falhou nessa passada — a Meta às vezes recusa um envio sem
+    // motivo nenhum ("a Meta não mandou detalhe do erro") e o MESMO número,
+    // MESMO template, funciona numa 2ª tentativa minutos depois (confirmado na
+    // prática: 2 falhas em disparo de massa, sucesso ao reenviar manual pouco
+    // depois). Em vez de depender de alguém notar e clicar "Disparar pra esta
+    // coluna" de novo, tenta sozinho 1 vez, mais tarde.
+    const falhasContatos = [];
     for (const c of contatos) {
       try {
         if (await estaDescadastrado(c.telefone)) { status.optout++; continue; }
@@ -8827,8 +8884,9 @@ async function iniciarDisparoMassa(empresa, template, contatos, headerMediaUrl) 
           const preco = precoDaCategoria(d, 'marketing');
           if (d.prepagoAtivo && (d.saldoCentavos || 0) < preco) { status.semSaldo = true; break; }
           status.falhas++;
+          falhasContatos.push(c);
         }
-      } catch (e) { status.falhas++; }
+      } catch (e) { status.falhas++; falhasContatos.push(c); }
       await new Promise(r => setTimeout(r, 350));
     }
     const processados = status.enviados + status.falhas + status.optout + status.bloqueados;
@@ -8841,9 +8899,41 @@ async function iniciarDisparoMassa(empresa, template, contatos, headerMediaUrl) 
       }, { merge: true });
     } catch (e) { console.error('[DISPARO] erro ao salvar resumo final:', e.message); }
     console.log(`[DISPARO] empresa=${empresa.id} enviados=${status.enviados} bloqueados=${status.bloqueados} falhas=${status.falhas} optout=${status.optout}`);
+
+    // Não tenta de novo se travou por saldo (vai falhar tudo de novo igual) ou
+    // se ninguém falhou. Espera 10min — tempo suficiente pra qualquer bloqueio
+    // passageiro da Meta liberar — e tenta CADA falha 1 única vez.
+    if (!status.semSaldo && falhasContatos.length) {
+      setTimeout(() => {
+        reenviarFalhasDisparo(empresa, template, falhasContatos, campanhaId, headerMediaUrl, oficial)
+          .catch(e => console.error('[DISPARO-RETRY] erro:', e.message));
+      }, 10 * 60 * 1000).unref?.();
+    }
   })().catch(e => { status.terminado = true; console.error('[DISPARO] erro no loop:', e.message); });
 
   return { campanhaId, total: contatos.length };
+}
+
+// Reenvia UMA VEZ, 10min depois, só pra quem falhou na passada original de
+// iniciarDisparoMassa — a Meta às vezes recusa um envio sem detalhe nenhum de
+// erro e aceita numa 2ª tentativa pouco depois (comportamento da própria Meta,
+// não um bug daqui). Fica de olho pra ninguém que já tinha falhado ficar
+// esquecido, sem precisar ninguém notar e clicar em "Disparar pra esta coluna"
+// de novo na mão.
+async function reenviarFalhasDisparo(empresa, template, contatosFalhos, campanhaId, headerMediaUrl, oficial) {
+  let recuperados = 0;
+  for (const c of contatosFalhos) {
+    try {
+      if (await estaDescadastrado(c.telefone)) continue;
+      let ok = false;
+      await tenantContext.run({ empresa, empresaId: empresa.id, oficial }, async () => {
+        ok = await sendTemplate(c.telefone, template, c.params, 'pt_BR', { campanhaId, headerMediaUrl });
+      });
+      if (ok) recuperados++;
+    } catch (e) { /* já registrado como falha por sendTemplate/registrarMensagem — segue pro próximo */ }
+    await new Promise(r => setTimeout(r, 350));
+  }
+  console.log(`[DISPARO-RETRY] empresa=${empresa.id} campanha=${campanhaId} — ${recuperados}/${contatosFalhos.length} recuperados na 2ª tentativa`);
 }
 
 // Confere ANTES de disparar se o template tem cabeçalho com mídia (imagem/vídeo/
@@ -8984,8 +9074,16 @@ const COLUNAS_PIPELINE_DISPARO = {
 async function calcularPipelineDisparo(disparo, empresaId) {
   const campanhaId = disparo._id;
   const msgsSnap = await MENSAGENS_CHAT_COL().where('campanhaId', '==', campanhaId).get();
-  const statusPorTelefone = {};
-  msgsSnap.forEach(d => { const m = d.data(); statusPorTelefone[m.telefone] = m.status || 'enviado'; });
+  // Um contato pode ter mais de uma mensagem nessa campanha (reenvio automático
+  // pra quem falhou, ver reenviarFalhasDisparo) — usa sempre a MAIS RECENTE, pra
+  // um sucesso na 2ª tentativa substituir a falha da 1ª em vez de ficar ambíguo.
+  const statusPorTelefone = {}, criadoEmPorTelefone = {};
+  msgsSnap.forEach(d => {
+    const m = d.data();
+    if (criadoEmPorTelefone[m.telefone] && m.criadoEm <= criadoEmPorTelefone[m.telefone]) return;
+    statusPorTelefone[m.telefone] = m.status || 'enviado';
+    criadoEmPorTelefone[m.telefone] = m.criadoEm;
+  });
 
   // Casa pela chave "solta" (últimos 8 dígitos) — o telefone da conversa vem
   // do wa_id que a MESMA Meta devolveu de quem respondeu de verdade, que pode
@@ -9151,11 +9249,18 @@ app.get('/minha-disparos/template/:template/relatorio', exigirLoginEmpresa, exig
     const agregado = await montarDisparoAgregado(req.empresaLogin.id, template);
     if (!agregado) return res.status(404).json({ ok: false, erro: 'Nenhum disparo encontrado com esse template.' });
 
-    const statusPorTelefone = {};
+    // Mesma lógica do relatório de um lote só: fica com a mensagem MAIS RECENTE
+    // por telefone (cobre o reenvio automático de quem falhou na 1ª tentativa).
+    const statusPorTelefone = {}, criadoEmPorTelefone = {};
     for (let i = 0; i < agregado.campanhaIds.length; i += 30) {
       const lote = agregado.campanhaIds.slice(i, i + 30);
       const msgsSnap = await MENSAGENS_CHAT_COL().where('campanhaId', 'in', lote).get();
-      msgsSnap.forEach(d => { const m = d.data(); statusPorTelefone[m.telefone] = m.status || 'enviado'; });
+      msgsSnap.forEach(d => {
+        const m = d.data();
+        if (criadoEmPorTelefone[m.telefone] && m.criadoEm <= criadoEmPorTelefone[m.telefone]) return;
+        statusPorTelefone[m.telefone] = m.status || 'enviado';
+        criadoEmPorTelefone[m.telefone] = m.criadoEm;
+      });
     }
     let entregues = 0, lidos = 0, falharam = 0;
     agregado.contatos.forEach(c => {
@@ -9812,7 +9917,7 @@ async function processarAgendamentoInterno(agendamento) {
     const proximo = cadencia[indiceFollowup];
     if (!proximo) return;
 
-    const faixaAtual = faixasAtivas(empresa)[sessaoAtual.indiceFaixaAtual || 0] || {};
+    const faixaAtual = faixasAtivas(empresa, sessaoAtual)[sessaoAtual.indiceFaixaAtual || 0] || {};
     const jaMandou = (sessaoAtual.contatosFaixaAtual || []).length;
     const variaveisFollowup = {
       nomeRecomendado: sessaoAtual.clienteNome ? sessaoAtual.clienteNome.split(' ')[0] : '',
