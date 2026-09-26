@@ -368,7 +368,7 @@ async function upsertClientePipeline(telefone, nome, etapa, contatos) {
 
 // Grava uma mensagem (recebida ou enviada) no histórico da conversa e atualiza
 // o resumo da conversa. Usado para a caixa de entrada do WhatsApp.
-async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo, midiaUrl, contatosArray, messageId, campanhaId }) {
+async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, tipo, midiaUrl, contatosArray, messageId, campanhaId, status, erroEnvio }) {
   if (!db || !telefone) return;
   const agora = new Date().toISOString();
   try {
@@ -388,7 +388,12 @@ async function registrarMensagem({ empresaId, telefone, nome, direcao, texto, ti
       // status (sent/delivered/read) e desenhar o risquinho de confirmação, igual
       // o WhatsApp. Só existe pra mensagens NOSSAS mandadas via API Oficial.
       messageId: messageId || null,
-      status: (direcao === 'out' && messageId) ? 'enviado' : null,
+      // status explícito (ex.: 'falhou' num envio que nem chegou a sair — cobrança
+      // travada, sem saldo) tem prioridade; senão, o padrão de sempre.
+      status: status || ((direcao === 'out' && messageId) ? 'enviado' : null),
+      // Motivo de uma falha de ENVIO (antes de existir messageId — nunca chegou a
+      // ir pra Meta). Diferente de erro de ENTREGA (esse vem do webhook de status).
+      erroEnvio: erroEnvio || null,
       // Marca de qual disparo em massa esta mensagem veio (ver DISPAROS_COL) —
       // usado só pro relatório da campanha, cruzando com o status acima.
       campanhaId: campanhaId || null,
@@ -1930,6 +1935,12 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
   // de um envio que já sabemos que vai falhar).
   const headerFormat = info && info.headerFormat;
   const precisaHeaderMidia = headerFormat && headerFormat !== 'TEXT' && headerFormat !== 'NONE';
+  // Texto REAL (corpo do template com as variáveis já substituídas), não só
+  // "[template: nome]" — usado tanto no registro de sucesso quanto de falha,
+  // pra quem olhar Conversas ver o que a pessoa DEVERIA ter recebido.
+  const textoReal = (info && info.texto)
+    ? bodyParams.reduce((acc, val, i) => acc.replace(new RegExp(`\\{\\{\\s*${i + 1}\\s*\\}\\}`, 'g'), String(val)), info.texto)
+    : `[template: ${templateName}]`;
   if (precisaHeaderMidia && !opts.headerMediaUrl) {
     console.error(`[TEMPLATE] "${templateName}" tem cabeçalho ${headerFormat} — falta a URL da imagem/mídia (headerMediaUrl). Envio NÃO feito.`);
     return false;
@@ -1937,6 +1948,11 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
   const cobranca = await cobrarEnvioOficial(empresaId, categoria);
   if (!cobranca.permitido) {
     console.warn(`[PREPAGO] envio BLOQUEADO por saldo insuficiente — empresa=${empresaId} template=${templateName} (precisa ${cobranca.valorCentavos}c, saldo ${cobranca.saldoDepois}c)`);
+    // Registra como falha de ENVIO (nunca chegou a ir pra Meta) — sem isso, esse
+    // tipo de bloqueio ficava invisível pro Monitor de entrega (só contava quem
+    // chegou a tentar e recebeu status da Meta de volta), então nem o painel
+    // admin nem o cliente eram avisados até alguém reclamar.
+    registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: textoReal, campanhaId: opts.campanhaId || null, status: 'falhou', erroEnvio: 'Saldo pré-pago insuficiente' });
     return false;
   }
   try {
@@ -1951,16 +1967,16 @@ async function sendTemplate(phone, templateName, bodyParams = [], lang = 'pt_BR'
       template: { name: templateName, language: { code: idioma }, components }
     }, { headers: metaHeaders(cfg) });
     console.log(`[TEMPLATE ENVIADO/oficial] ${templateName} → ${phone}`);
-    // Guarda o texto REAL (corpo do template com as variáveis já substituídas),
-    // não só "[template: nome]" — antes disso, quem olhava Conversas via só o
-    // nome do template, sem saber o que a pessoa recebeu de fato.
-    const textoReal = (info && info.texto)
-      ? bodyParams.reduce((acc, val, i) => acc.replace(new RegExp(`\\{\\{\\s*${i + 1}\\s*\\}\\}`, 'g'), String(val)), info.texto)
-      : `[template: ${templateName}]`;
     registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: textoReal, messageId: idMensagemMeta(r), campanhaId: opts.campanhaId || null });
     return true;
   } catch (err) {
+    const erroMeta = (err.response && err.response.data && err.response.data.error && err.response.data.error.message) || err.message;
     console.error('Erro ao enviar template (Oficial):', err.response?.data || err.message);
+    // Mesmo motivo do bloqueio de saldo acima: sem registrar aqui, uma recusa da
+    // Meta na hora do ENVIO (cobrança travada, template pausado/recusado, número
+    // desconectado) nunca vira nem uma linha em Conversas nem conta pro Monitor
+    // de entrega — ficava só no log do Render, ninguém via até um cliente reclamar.
+    registrarMensagem({ empresaId, telefone: phone, direcao: 'out', texto: textoReal, campanhaId: opts.campanhaId || null, status: 'falhou', erroEnvio: erroMeta });
     // Estorna a cobrança se o envio falhou (não cobra mensagem que não saiu).
     if (cobranca.valorCentavos > 0) {
       try { await creditarSaldo(empresaId, cobranca.valorCentavos, `Estorno — envio falhou (${templateName})`); } catch (e) {}
