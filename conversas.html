@@ -389,7 +389,11 @@ function ticksMsg(m) {
   if (m.direcao !== 'out') return '';
   // Clicável (não só hover) — hover em título nativo é chato de capturar em print
   // pra investigar erro de entrega; clique mostra o erro completo na hora.
-  if (m.status === 'falhou') return ` <span class="tick-erro" data-erro="${esc(m.erroEntrega || 'Não entregou (a Meta não mandou detalhe do erro)')}" title="Clique pra ver o erro" style="cursor:pointer;">⚠️</span>`;
+  // erroEntrega = webhook de status (falha DEPOIS de aceitar o envio).
+  // erroEnvio = a Meta recusou na hora de mandar (nunca chegou a sair) — sem
+  // esse fallback, esse motivo (o mais informativo dos dois) nunca aparecia
+  // aqui, mesmo já estando salvo no banco.
+  if (m.status === 'falhou') return ` <span class="tick-erro" data-erro="${esc(m.erroEntrega || m.erroEnvio || 'Não entregou (a Meta não mandou detalhe do erro)')}" title="Clique pra ver o erro" style="cursor:pointer;">⚠️</span>`;
   if (m.status === 'lido') return ' <span title="Lida" style="color:#34B7F1;">✓✓</span>';
   if (m.status === 'entregue') return ' <span title="Entregue">✓✓</span>';
   if (m.status === 'enviado') return ' <span title="Enviada" style="opacity:.6;">✓</span>';
