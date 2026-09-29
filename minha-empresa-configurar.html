@@ -1899,6 +1899,12 @@ function vgRecebeu(l) {
 // no funil sequencial — são ramificação, não um passo à frente. Ficam de fora
 // da contagem "alcançou esse estágio", e aparecem só como total à parte.
 function vgEhNegativo(e) { return !!e && (/n[ãa]o respond|n[ãa]o tem interesse|sem interesse|perdid|desistiu|cancelad/i.test(e.nome || '') || /nao_respondeu|nao_tem_interesse|perdid|desistiu|cancelad/i.test(e.id || '')); }
+// Separa as duas ramificações negativas — antes eram uma coisa só
+// ("semResposta"), mas "recusou de propósito" (o robô já fecha e marca isso
+// sozinho — ver marcarLeadRecusou no server) e "nunca respondeu nada" são
+// informações diferentes pra saber quantos aceitam x recusam x ficam mudos.
+function vgEhRecusa(e) { return !!e && (/n[ãa]o tem interesse|sem interesse|recus/i.test(e.nome || '') || /nao_tem_interesse|recus/i.test(e.id || '')); }
+function vgEhSemResposta(e) { return !!e && (/n[ãa]o respond/i.test(e.nome || '') || /nao_respondeu/i.test(e.id || '')); }
 function vgEtapasFunil() { return vgEtapas().filter(e => !vgEhNegativo(e)); }
 function vgRankFunil(l) { return vgEtapasFunil().findIndex(e => e.id === l.etapa); }
 function vgBRL(n) { return (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
@@ -1933,6 +1939,8 @@ function vgCalc(lista) {
     respondeu: lista.filter(l => l.respondeuPrimeiraMensagem === true).length,
     compr: lista.filter(vgComprou).length,
     semResposta: lista.filter(l => vgEhNegativo(vgEtapas().find(e => e.id === l.etapa))).length,
+    recusaram: lista.filter(l => vgEhRecusa(vgEtapas().find(e => e.id === l.etapa))).length,
+    naoResponderam: lista.filter(l => vgEhSemResposta(vgEtapas().find(e => e.id === l.etapa))).length,
     valor: lista.reduce((s, l) => s + (Number(l.valorCompra) || 0), 0),
     porEtapa
   };
@@ -2012,7 +2020,8 @@ function renderDashboardVG() {
         }).join('')}
         <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#e3e6ea);font-size:0.82rem;color:var(--text-dim,#6b7280);">
           🎯 Conversão final: <b style="color:var(--text,#1a1a1a);">${cpct(at.porEtapa.length ? at.porEtapa[at.porEtapa.length - 1].n : 0)}%</b>
-          ${at.semResposta ? `&nbsp;·&nbsp;😶 Sem resposta/interesse: <b style="color:var(--text,#1a1a1a);">${at.semResposta}</b>` : ''}
+          ${at.recusaram ? `&nbsp;·&nbsp;🚫 Recusaram: <b style="color:var(--text,#1a1a1a);">${at.recusaram}</b>` : ''}
+          ${at.naoResponderam ? `&nbsp;·&nbsp;😶 Não responderam: <b style="color:var(--text,#1a1a1a);">${at.naoResponderam}</b>` : ''}
         </div>
       </div>
       <div style="background:var(--surface-2,#fff);border:1px solid var(--border,#e3e6ea);border-radius:12px;padding:16px;">
@@ -2673,7 +2682,7 @@ if (contratoSairBtn) contratoSairBtn.addEventListener('click', () => {
   window.location.href = '/login';
 });
 
-// ===================== ASSINATURA (Stripe) =====================
+// ===================== ASSINATURA (Asaas) =====================
 const ROTULO_STATUS = {
   sem_assinatura: ['Sem assinatura', 'badge-danger'],
   trial: ['Período de teste', 'badge-success'],
@@ -2702,7 +2711,7 @@ async function carregarAssinatura() {
     else if (a.status === 'sem_assinatura') extra = `<p class="sub">Você ainda não tem um plano ativo. Escolha um abaixo.</p>`;
     stEl.innerHTML = `<span class="badge ${cls}">${rotulo}</span>${extra}`;
 
-    if (!data.stripeConfigurado) {
+    if (!data.pagamentoConfigurado) {
       planosEl.innerHTML = '<div class="empty">Pagamento em configuração. Tente novamente em breve.</div>';
       return;
     }
@@ -2740,7 +2749,7 @@ async function verificarAcesso() {
   } catch (err) {}
 }
 
-// Mensagem de retorno do checkout do Stripe.
+// Mensagem de retorno do checkout do Asaas.
 (function () {
   const p = new URLSearchParams(location.search);
   if (p.get('assinatura') === 'ok') { setTimeout(() => { if (EH_GESTOR) trocarSecao('assinatura'); }, 300); }

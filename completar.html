@@ -76,12 +76,12 @@
 
 <script>
 const API_BASE = window.location.origin;
-const sessionId = new URLSearchParams(location.search).get('session_id');
+const refPagamento = new URLSearchParams(location.search).get('ref');
 
 async function verificar(tentativa) {
-  if (!sessionId) { mostrarErro('Link inválido. Sessão de pagamento ausente.'); return; }
+  if (!refPagamento) { mostrarErro('Link inválido. Referência de pagamento ausente.'); return; }
   try {
-    const resp = await fetch(`${API_BASE}/completar/status?session_id=${encodeURIComponent(sessionId)}`);
+    const resp = await fetch(`${API_BASE}/completar/status?ref=${encodeURIComponent(refPagamento)}`);
     const data = await resp.json();
     if (data.ok && data.pronto) {
       if (data.jaCompleto) { mostrarErro('Este cadastro já foi concluído. Faça login para entrar.'); return; }
@@ -130,7 +130,7 @@ document.getElementById('finalizarBtn').addEventListener('click', async () => {
   try {
     const resp = await fetch(`${API_BASE}/completar`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, dados, senha, aceiteContrato: true })
+      body: JSON.stringify({ ref: refPagamento, dados, senha, aceiteContrato: true })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) {

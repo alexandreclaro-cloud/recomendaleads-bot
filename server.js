@@ -69,12 +69,23 @@ const limiteLogin = rateLimit({ windowMs: 5 * 60 * 1000, max: 10, prefix: 'login
 const limiteAdmin = rateLimit({ windowMs: 5 * 60 * 1000, max: 20, prefix: 'admin' });
 
 // ============================================================
-// CONFIGURAÇÃO — STRIPE (assinaturas)
+// CONFIGURAÇÃO — ASAAS (assinaturas)
 // ============================================================
-// Chaves vêm do ambiente (Render). Em teste use sk_test_... / whsec_... .
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
-const stripe = STRIPE_SECRET_KEY ? require('stripe')(STRIPE_SECRET_KEY) : null;
+// Chaves vêm do ambiente (Render). ASAAS_ENV=sandbox (padrão, testes) ou
+// 'production' (dinheiro de verdade). ASAAS_WEBHOOK_TOKEN é o mesmo valor
+// cadastrado como "authToken" do Webhook lá no painel/API do Asaas — ele
+// devolve esse valor no cabeçalho `asaas-access-token` em toda notificação,
+// é assim que a gente confirma que a chamada é legítima (não é assinatura
+// criptográfica como no Stripe, é comparação de token fixo).
+const ASAAS_API_KEY = process.env.ASAAS_API_KEY || '';
+const ASAAS_WEBHOOK_TOKEN = process.env.ASAAS_WEBHOOK_TOKEN || '';
+const ASAAS_ENV = process.env.ASAAS_ENV || 'sandbox';
+const ASAAS_BASE_URL = ASAAS_ENV === 'production' ? 'https://api.asaas.com/v3' : 'https://api-sandbox.asaas.com/v3';
+const asaas = ASAAS_API_KEY ? axios.create({
+  baseURL: ASAAS_BASE_URL,
+  headers: { access_token: ASAAS_API_KEY, 'Content-Type': 'application/json' },
+  timeout: 15000
+}) : null;
 // Dias de tolerância após o vencimento antes de bloquear o painel.
 const CARENCIA_DIAS = 7;
 
@@ -124,13 +135,50 @@ function billingStatus(empresa) {
   return { status: 'bloqueada', acesso: false, acessoAte: a.acessoAte, ciclo: a.ciclo || null, diasAtraso };
 }
 
-// Acha a empresa dona de um customer do Stripe (eventos de webhook).
-async function acharEmpresaPorStripeCustomer(customerId) {
+// Acha a empresa dona de um customer do Asaas (eventos de webhook).
+async function acharEmpresaPorAsaasCustomer(customerId) {
   if (!customerId) return null;
-  const snap = await EMPRESAS_COL().where('assinatura.stripeCustomerId', '==', customerId).limit(1).get();
+  const snap = await EMPRESAS_COL().where('assinatura.asaasCustomerId', '==', customerId).limit(1).get();
   if (snap.empty) return null;
   const d = snap.docs[0];
   return { id: d.id, ...d.data() };
+}
+
+// Cria uma sessão de checkout hospedada no Asaas (Asaas Checkout) — o
+// equivalente ao stripe.checkout.sessions.create. Devolve { id, link } —
+// `link` é pra onde o front redireciona o cliente. `metodos` em português
+// ('card'/'pix'/'boleto') é traduzido pro enum da Asaas. Se um método pedido
+// não for aceito nesse tipo de cobrança, cai pra cartão só (mesma resiliência
+// que já existia com o Stripe — ver comentário no criarCheckoutSession antigo).
+function _billingTypesAsaas(metodos) {
+  const mapa = { card: 'CREDIT_CARD', pix: 'PIX', boleto: 'BOLETO' };
+  return (metodos && metodos.length ? metodos : ['card']).map(m => mapa[m]).filter(Boolean);
+}
+async function criarCheckoutAsaas({ plano, planoId, empresaId, externalReference, successUrl, cancelUrl, metodos, customerData }) {
+  const billingTypes = _billingTypesAsaas(metodos);
+  const body = {
+    billingTypes,
+    chargeTypes: [plano.tipo === 'assinatura' ? 'RECURRENT' : 'DETACHED'],
+    items: [{ name: `RecomendaLeads — ${plano.nome}`, description: plano.descricao, quantity: 1, value: plano.valorCentavos / 100 }],
+    minutesToExpire: 120,
+    externalReference,
+    callback: { successUrl, cancelUrl, expiredUrl: cancelUrl, autoRedirect: true }
+  };
+  if (plano.tipo === 'assinatura') body.subscription = { cycle: 'MONTHLY' };
+  if (customerData) body.customerData = customerData;
+  try {
+    const { data } = await asaas.post('/checkouts', body);
+    return data;
+  } catch (err) {
+    const msg = (err.response && err.response.data && JSON.stringify(err.response.data)) || err.message;
+    // Método não aceito nesse tipo de cobrança — tenta só cartão antes de desistir.
+    if (billingTypes.length > 1 && /billingType|billing type/i.test(msg)) {
+      console.warn('[ASAAS] método não aceito, caindo pra cartão:', msg);
+      const { data } = await asaas.post('/checkouts', { ...body, billingTypes: ['CREDIT_CARD'] });
+      return data;
+    }
+    throw err;
+  }
 }
 
 // ============================================================
@@ -542,6 +590,11 @@ const MARKETING_ENVIOS_COL = () => db.collection('marketing_envios');
 const AVISOS_COL = () => db.collection('avisos');
 // Comissões de vendedores (20% de cada pagamento de assinatura).
 const COMISSOES_COL = () => db.collection('comissoes');
+// Cadastro público (self-service, /assinar) ainda não pago — guarda plano e
+// vendedor por uma `ref` gerada ANTES do checkout, pra achar de novo quando o
+// pagamento confirmar (webhook) ou quando o cliente volta pro /completar
+// (sem precisar decodificar nada da resposta do Asaas).
+const SIGNUPS_PENDENTES_COL = () => db.collection('signups_pendentes');
 const COMISSAO_PCT = 20;
 // Contas de vendedor (login próprio no /admin, com acesso limitado).
 const VENDEDORES_COL = () => db.collection('vendedores');
@@ -884,6 +937,9 @@ const EMPRESA_PADRAO = {
   mensagemInicialRecomendado2: '',
   mensagemInicialRecomendado3: '',
   mensagemAguardandoConfirmacao: 'Prometo que é rapidinho e sem compromisso 😊 Posso te mostrar o que prepararam pra você? 🎁',
+  // Recusa explícita ("não quero", "não, obrigado"...) — encerra na hora, sem
+  // insistir de novo. Ver comentário em processarMensagemRecomendado.
+  mensagemRecusaRecomendado: 'Sem problema, entendo! 😊 Agradeço muito e fico à disposição se quiser saber mais depois. Um abraço!',
   // Modo direto: quando o recomendado responder ao template, o robô NÃO roda o
   // fluxo do presente — manda 1 mensagem curta, avisa o vendedor e passa a conversa
   // pro humano (cai em Conversas). Default OFF (segue o fluxo automático de sempre).
@@ -3715,6 +3771,26 @@ async function marcarLeadRecebeuPremio(telefone, empresa) {
   }
 }
 
+// Move o card do recomendado pra "Não tem interesse" quando ele recusa
+// explicitamente ("não quero", "não, obrigado"...) — pra virar dado de verdade
+// no Kanban/dashboard (quantos aceitam x recusam x nunca respondem), em vez de
+// só sumir sem deixar rastro. Sempre marca (recusa só acontece bem no início do
+// fluxo, antes de qualquer avanço real, então não tem risco de "puxar pra trás"
+// um lead que já tinha ido mais longe).
+async function marcarLeadRecusou(telefone, empresa) {
+  try {
+    const lead = await acharLeadRecPorTelefone(telefone);
+    if (!lead) return;
+    const etapas = (empresa.etapasKanban && empresa.etapasKanban.length) ? empresa.etapasKanban : EMPRESA_PADRAO.etapasKanban;
+    const alvo = etapas.find(e => /n[ãa]o tem interesse|sem interesse|recus/i.test(e.nome || '') || /nao_tem_interesse|recus/i.test(e.id || ''));
+    if (!alvo) return;
+    await atualizarLead(lead.id, { etapa: alvo.id, recusouEm: new Date().toISOString() });
+    console.log(`[LEAD AUTO-MOVE] ${telefone} → ${alvo.nome} (recusou)`);
+  } catch (e) {
+    console.error('Erro ao mover lead para "Não tem interesse":', e.message);
+  }
+}
+
 // Marca a 1ª resposta de verdade do recomendado (distinto de "recebeu a
 // mensagem" — que só significa que NÓS mandamos). Sem isso, alguém que
 // respondeu mas ainda não aceitou o presente fica indistinguível de quem
@@ -4185,19 +4261,19 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
     // objeção (que entrega o presente na hora) só porque compartilha alguma
     // palavra com um gatilho de ceticismo/curiosidade.
     if (respostaEhNegativa(texto)) {
-      // Recusa explícita ("não", "não quero", "para", "não posso"): faz um convite
-      // gentil + follow-up, sem forçar o presente. Checado ANTES da positiva de
-      // propósito — "não posso, obrigado" (texto de um botão de template) contém a
-      // palavra solta "posso", que por si só já casa como positiva; sem essa ordem,
-      // uma recusa clara nunca chegaria a ser tratada como recusa.
-      // Marca 'jaRecusouAguardandoConfirmacao' pra lembrar dessa recusa na PRÓXIMA
-      // mensagem (ver comentário no fallback abaixo) — sem isso, uma recusa
-      // explícita virava só um obstáculo temporário: qualquer resposta ambígua
-      // seguinte entregava o presente do mesmo jeito, ignorando o "não" que ela
-      // já tinha dado.
-      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo, jaRecusouAguardandoConfirmacao: true });
-      await sendText(telefone, substituirVariaveis(empresa.mensagemAguardandoConfirmacao || 'Sem problema 😊 É rapidinho e sem compromisso — posso te mostrar o presente que prepararam pra você? 🎁', variaveis));
-      await agendarProximoFollowup(telefone, empresa, marcaTempo, 0);
+      // Recusa explícita ("não", "não quero", "para", "não posso"): encerra na
+      // hora com um agradecimento educado — sem insistir de novo, sem agendar
+      // follow-up. Checado ANTES da positiva de propósito — "não posso,
+      // obrigado" (texto de um botão de template) contém a palavra solta
+      // "posso", que por si só já casa como positiva; sem essa ordem, uma
+      // recusa clara nunca chegaria a ser tratada como recusa.
+      // Antes disso o robô respondia com um segundo convite ("Prometo que é
+      // rapidinho...") e ainda agendava um lembrete futuro, ignorando o "não"
+      // que a pessoa já tinha dado — repetido em massa (confirmado em vários
+      // contatos reais da mesma campanha).
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo, etapa: 'finalizado_negativo' });
+      await sendText(telefone, substituirVariaveis(empresa.mensagemRecusaRecomendado || EMPRESA_PADRAO.mensagemRecusaRecomendado, variaveis));
+      await marcarLeadRecusou(telefone, empresa);
     } else if (respostaEhPositiva(texto)) {
       // Resposta positiva — envia prêmio imediatamente.
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
@@ -4209,13 +4285,12 @@ async function processarMensagemRecomendado(telefone, texto, empresa) {
       await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
       await enviarPremioRecomendado(telefone, sessao, empresa);
     } else if (sessao.jaRecusouAguardandoConfirmacao) {
-      // ELA JÁ RECUSOU uma vez antes, e essa resposta não é claramente um "sim"
-      // (verificado acima) — NÃO entrega o presente por conta própria de novo.
-      // Fazer isso ignoraria a recusa explícita dela, o que é o oposto de
-      // "sem compromisso" e aumenta risco de denúncia. Só repete o convite,
-      // sem forçar — só entrega se ela confirmar claramente dessa vez.
-      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo });
-      await sendText(telefone, substituirVariaveis(empresa.mensagemAguardandoConfirmacao || 'Sem problema 😊 É rapidinho e sem compromisso — posso te mostrar o presente que prepararam pra você? 🎁', variaveis));
+      // Sessão antiga, de antes dessa correção (a recusa não fechava a conversa
+      // na hora) — se chegou até aqui é porque já tinha recusado antes e agora
+      // mandou algo ambíguo. Fecha aqui também, em vez de insistir de novo.
+      await saveSessaoRecomendado(telefone, { ultimaMensagemEm: marcaTempo, etapa: 'finalizado_negativo' });
+      await sendText(telefone, substituirVariaveis(empresa.mensagemRecusaRecomendado || EMPRESA_PADRAO.mensagemRecusaRecomendado, variaveis));
+      await marcarLeadRecusou(telefone, empresa);
     } else {
       // Primeira resposta ambígua dela (nunca recusou explicitamente antes):
       // entrega o presente direto, sem ficar perguntando de novo — evita o
@@ -5216,86 +5291,80 @@ function dataMaisMeses(meses) {
   return d.toISOString();
 }
 
-app.post('/webhook-stripe', async (req, res) => {
-  if (!stripe || !STRIPE_WEBHOOK_SECRET) return res.sendStatus(200);
-  let evento;
-  try {
-    const sig = req.headers['stripe-signature'];
-    evento = stripe.webhooks.constructEvent(req.rawBody, sig, STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error('[STRIPE] assinatura do webhook inválida:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+// Verificação do Asaas: token fixo no cabeçalho `asaas-access-token`, igual ao
+// authToken cadastrado no Webhook (não é assinatura criptográfica como o
+// Stripe usava — ver comentário na configuração ASAAS lá em cima).
+app.post('/webhook-asaas', async (req, res) => {
+  if (!ASAAS_WEBHOOK_TOKEN) return res.sendStatus(200);
+  const tokenRecebido = req.headers['asaas-access-token'];
+  if (tokenRecebido !== ASAAS_WEBHOOK_TOKEN) {
+    console.error('[ASAAS] token de webhook inválido/ausente');
+    return res.sendStatus(401);
   }
   try {
-    const obj = evento.data.object;
-    if (evento.type === 'checkout.session.completed') {
-      // Cadastro self-service (sem empresa ainda): cria a conta como backup.
-      if (obj.metadata && obj.metadata.tipo === 'signup') {
+    const { event, payment } = req.body || {};
+    if (!payment) return res.sendStatus(200);
+    const valorCentavos = Math.round((Number(payment.value) || 0) * 100);
+    // "Pago" cobre os dois: PAYMENT_CONFIRMED (cartão, confirma na hora) e
+    // PAYMENT_RECEIVED (pix/boleto, confirma quando o dinheiro compensa).
+    if (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED') {
+      // externalReference é OU um JSON {empresaId, plano} (empresa já existe,
+      // checkout autenticado — ver /minha-assinatura/checkout) OU uma `ref`
+      // solta (uuid, cadastro público — ver /assinar/checkout), que não é
+      // JSON válido, então o parse abaixo falha e cai no signup.
+      let ref = {}, signupRef = null;
+      try { ref = JSON.parse(payment.externalReference || '{}'); } catch (e) { signupRef = payment.externalReference || null; }
+      if (signupRef) {
         try {
-          const emp = await garantirContaSignup(obj);
-          // Pagamento único (semestral/anual): comissão aqui. Mensal: no invoice.paid.
-          if (emp && obj.mode === 'payment') await registrarComissao(emp, obj.amount_total, 'venda-avista');
-          console.log('[STRIPE] conta de signup garantida via webhook');
-        } catch (e) { console.error('[STRIPE] erro ao criar conta de signup:', e.message); }
+          let email = '';
+          try { const cli = await asaas.get(`/customers/${payment.customer}`); email = cli.data.email || ''; } catch (e2) {}
+          const emp = await garantirContaSignup({ ref: signupRef, email, asaasCustomerId: payment.customer, asaasSubscriptionId: payment.subscription });
+          if (emp && !payment.subscription) await registrarComissao(emp, valorCentavos, 'venda-avista');
+          console.log('[ASAAS] conta de signup garantida via webhook');
+        } catch (e) { console.error('[ASAAS] erro ao criar conta de signup:', e.message); }
         return res.sendStatus(200);
       }
-      const empresaId = (obj.metadata && obj.metadata.empresaId) || obj.client_reference_id;
-      const planoId = obj.metadata && obj.metadata.plano;
-      const plano = PLANOS[planoId];
-      if (empresaId && plano) {
+      const plano = PLANOS[ref.plano];
+      if (ref.empresaId && plano) {
+        // 1ª cobrança de uma empresa já existente (assinou um plano novo).
         const base = {
-          stripeCustomerId: obj.customer || null,
-          ciclo: planoId,
+          asaasCustomerId: payment.customer || null,
+          asaasSubscriptionId: payment.subscription || null,
+          ciclo: ref.plano,
           status: 'ativa',
+          acessoAte: dataMaisMeses(plano.tipo === 'assinatura' ? 1 : plano.meses),
           atualizadoEm: new Date().toISOString()
         };
-        if (obj.mode === 'payment') {
-          // Pagamento único: libera N meses a partir de agora.
-          base.acessoAte = dataMaisMeses(plano.meses);
-        } else if (obj.mode === 'subscription') {
-          base.stripeSubId = obj.subscription || null;
-          base.acessoAte = dataMaisMeses(1); // corrigido no invoice.paid
+        await gravarAssinatura(ref.empresaId, base);
+        if (!payment.subscription) {
+          const ed = await EMPRESAS_COL().doc(ref.empresaId).get();
+          if (ed.exists) await registrarComissao({ id: ed.id, ...ed.data() }, valorCentavos, 'venda-avista');
         }
-        await gravarAssinatura(empresaId, base);
-        // Pagamento único de empresa existente: comissão aqui (assinatura → invoice.paid).
-        if (obj.mode === 'payment') {
-          const ed = await EMPRESAS_COL().doc(empresaId).get();
-          if (ed.exists) await registrarComissao({ id: ed.id, ...ed.data() }, obj.amount_total, 'venda-avista');
+        console.log(`[ASAAS] checkout concluído — empresa ${ref.empresaId}, plano ${ref.plano}`);
+      } else if (payment.subscription || payment.customer) {
+        // Sem externalReference reconhecível (ex.: cobrança recorrente de
+        // ciclos seguintes) — acha pelo customer do Asaas, igual o Stripe
+        // fazia via invoice.paid.
+        const empresa = await acharEmpresaPorAsaasCustomer(payment.customer);
+        if (empresa) {
+          await gravarAssinatura(empresa.id, {
+            ...(empresa.assinatura || {}), status: 'ativa', acessoAte: dataMaisMeses(1), atualizadoEm: new Date().toISOString()
+          });
+          await registrarComissao(empresa, valorCentavos, 'mensalidade');
+          console.log(`[ASAAS] mensalidade paga — empresa ${empresa.id}`);
         }
-        console.log(`[STRIPE] checkout concluído — empresa ${empresaId}, plano ${planoId}`);
       }
-    } else if (evento.type === 'invoice.paid') {
-      const empresa = await acharEmpresaPorStripeCustomer(obj.customer);
-      if (empresa) {
-        let acessoAte = dataMaisMeses(1);
-        const linha = obj.lines && obj.lines.data && obj.lines.data[0];
-        if (linha && linha.period && linha.period.end) acessoAte = new Date(linha.period.end * 1000).toISOString();
-        await gravarAssinatura(empresa.id, {
-          ...(empresa.assinatura || {}), status: 'ativa', acessoAte, atualizadoEm: new Date().toISOString()
-        });
-        // Comissão a cada mensalidade paga (inclui a 1ª da assinatura mensal).
-        await registrarComissao(empresa, obj.amount_paid, 'mensalidade');
-        console.log(`[STRIPE] fatura paga — empresa ${empresa.id}`);
-      }
-    } else if (evento.type === 'invoice.payment_failed') {
-      const empresa = await acharEmpresaPorStripeCustomer(obj.customer);
+    } else if (event === 'PAYMENT_OVERDUE') {
+      const empresa = await acharEmpresaPorAsaasCustomer(payment.customer);
       if (empresa) {
         await gravarAssinatura(empresa.id, {
           ...(empresa.assinatura || {}), status: 'atrasada', atualizadoEm: new Date().toISOString()
         });
-        console.log(`[STRIPE] pagamento falhou — empresa ${empresa.id}`);
-      }
-    } else if (evento.type === 'customer.subscription.deleted') {
-      const empresa = await acharEmpresaPorStripeCustomer(obj.customer);
-      if (empresa) {
-        await gravarAssinatura(empresa.id, {
-          ...(empresa.assinatura || {}), status: 'cancelada', atualizadoEm: new Date().toISOString()
-        });
-        console.log(`[STRIPE] assinatura cancelada — empresa ${empresa.id}`);
+        console.log(`[ASAAS] pagamento atrasado — empresa ${empresa.id}`);
       }
     }
   } catch (err) {
-    console.error('[STRIPE] erro ao processar evento:', err.message);
+    console.error('[ASAAS] erro ao processar evento:', err.message);
   }
   res.sendStatus(200);
 });
@@ -5559,7 +5628,7 @@ app.post('/meu-contrato/aceitar', exigirLoginEmpresa, exigirGestor, async (req, 
 });
 
 // ============================================================
-// ASSINATURA — Stripe (status, checkout)
+// ASSINATURA — Asaas (status, checkout)
 // ============================================================
 
 // Status da assinatura da empresa logada + planos disponíveis.
@@ -5570,7 +5639,7 @@ app.get('/minha-assinatura', exigirLoginEmpresa, async (req, res) => {
       id, nome: p.nome, tipo: p.tipo, meses: p.meses,
       valorCentavos: p.valorCentavos, descricao: p.descricao
     }));
-    res.json({ ok: true, assinatura: st, planos, stripeConfigurado: !!stripe });
+    res.json({ ok: true, assinatura: st, planos, pagamentoConfigurado: !!asaas });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -5601,69 +5670,33 @@ app.get('/aviso', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
-// Cria a sessão de checkout tentando os métodos pedidos; se algum (pix/boleto)
-// não estiver ativado no painel do Stripe, cai pra CARTÃO em vez de quebrar tudo.
-async function criarCheckoutSession(params, metodos) {
-  const lista = (metodos && metodos.length) ? metodos : ['card'];
-  try {
-    return await stripe.checkout.sessions.create({ ...params, payment_method_types: lista });
-  } catch (err) {
-    const msg = (err && err.message) || '';
-    if (lista.some(m => m !== 'card') && /payment[_ ]method|is invalid|not activated|ativad/i.test(msg)) {
-      console.warn('[STRIPE] método não ativado, caindo pra cartão:', msg);
-      return await stripe.checkout.sessions.create({ ...params, payment_method_types: ['card'] });
-    }
-    throw err;
-  }
-}
-
-// Cria a sessão de checkout do Stripe para o plano escolhido (apenas gestor).
+// Cria o checkout do Asaas para o plano escolhido (apenas gestor).
 app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (req, res) => {
   try {
-    if (!stripe) return res.status(503).json({ ok: false, erro: 'Pagamento ainda não configurado.' });
+    if (!asaas) return res.status(503).json({ ok: false, erro: 'Pagamento ainda não configurado.' });
     const planoId = String((req.body && req.body.plano) || '').toLowerCase();
     const plano = PLANOS[planoId];
     if (!plano) return res.status(400).json({ ok: false, erro: 'Plano inválido' });
 
     const empresa = req.empresaLogin;
-    // Reaproveita ou cria o customer do Stripe para esta empresa.
-    let customerId = empresa.assinatura && empresa.assinatura.stripeCustomerId;
-    if (!customerId) {
-      const cliente = await stripe.customers.create({
-        email: empresa.email || undefined,
-        name: empresa.nome || undefined,
-        metadata: { empresaId: empresa.id }
-      });
-      customerId = cliente.id;
-      await EMPRESAS_COL().doc(empresa.id).set(
-        { assinatura: { ...(empresa.assinatura || {}), stripeCustomerId: customerId } },
-        { merge: true }
-      );
-    }
-
+    // Não precisa pré-criar o customer do Asaas aqui — diferente do Stripe, o
+    // Asaas Checkout resolve/cria o cliente sozinho a partir do que a pessoa
+    // preenche na própria página (nome/e-mail/CPF-CNPJ). Pré-criar exigiria
+    // CNPJ, que nem toda empresa já tem preenchido nesse ponto. O
+    // asaasCustomerId real chega depois, no webhook (payment.customer).
     const base = urlBase(req);
-    const ehAssinatura = plano.tipo === 'assinatura';
-    const session = await criarCheckoutSession({
-      mode: ehAssinatura ? 'subscription' : 'payment',
-      customer: customerId,
-      client_reference_id: empresa.id,
-      metadata: { empresaId: empresa.id, plano: planoId },
-      ...(ehAssinatura ? { subscription_data: { metadata: { empresaId: empresa.id, plano: planoId } } } : {}),
-      line_items: [{
-        quantity: 1,
-        price_data: {
-          currency: 'brl',
-          unit_amount: plano.valorCentavos,
-          product_data: { name: `RecomendaLeads — Plano ${plano.nome}` },
-          ...(ehAssinatura ? { recurring: { interval: plano.intervalo, interval_count: plano.intervaloQtd } } : {})
-        }
-      }],
-      success_url: `${base}/minha-empresa/configurar?assinatura=ok`,
-      cancel_url: `${base}/minha-empresa/configurar?assinatura=cancelado`
-    }, ehAssinatura ? ['card'] : plano.metodos);
-    res.json({ ok: true, url: session.url });
+    const checkout = await criarCheckoutAsaas({
+      plano, planoId, empresaId: empresa.id,
+      externalReference: JSON.stringify({ empresaId: empresa.id, plano: planoId }),
+      successUrl: `${base}/minha-empresa/configurar?assinatura=ok`,
+      cancelUrl: `${base}/minha-empresa/configurar?assinatura=cancelado`,
+      metodos: plano.tipo === 'assinatura' ? ['card'] : plano.metodos,
+      customerData: { name: empresa.nome, email: empresa.email }
+    });
+    res.json({ ok: true, url: checkout.link });
   } catch (err) {
-    console.error('Erro no checkout Stripe:', err.message);
+    const msg = (err.response && err.response.data && JSON.stringify(err.response.data)) || err.message;
+    console.error('Erro no checkout Asaas:', msg);
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
@@ -5730,80 +5763,95 @@ app.post('/cadastro', async (req, res) => {
   }
 });
 
-// Checkout público (sem login) — cria a sessão e manda pro Stripe.
+// Checkout público (sem login) — cria uma `ref` própria ANTES de chamar o
+// Asaas (guardada em SIGNUPS_PENDENTES_COL com plano/vendedor) e manda essa
+// ref no externalReference — assim nem o webhook nem o /completar precisam
+// decodificar nada da resposta do Asaas, só consultam essa ref.
 app.post('/assinar/checkout', async (req, res) => {
   try {
-    if (!stripe) return res.status(503).json({ ok: false, erro: 'Pagamento ainda não configurado.' });
+    if (!asaas) return res.status(503).json({ ok: false, erro: 'Pagamento ainda não configurado.' });
     const planoId = String((req.body && req.body.plano) || '').toLowerCase();
     const plano = PLANOS[planoId];
     if (!plano) return res.status(400).json({ ok: false, erro: 'Plano inválido' });
     const vendedor = String((req.body && req.body.vendedor) || '').trim().slice(0, 60);
     const base = urlBase(req);
-    const ehAssinatura = plano.tipo === 'assinatura';
     // Boleto só entra quando o VENDEDOR manda o link com ?boleto=1 (não no automático).
     const comBoleto = !!(req.body && req.body.boleto);
-    const metodos = ehAssinatura ? ['card'] : ((comBoleto && plano.metodosVendedor) ? plano.metodosVendedor : plano.metodos);
-    const meta = { tipo: 'signup', plano: planoId, ...(vendedor ? { vendedor } : {}) };
-    const session = await criarCheckoutSession({
-      mode: ehAssinatura ? 'subscription' : 'payment',
-      metadata: meta,
-      ...(ehAssinatura ? { subscription_data: { metadata: meta } } : { customer_creation: 'always' }),
-      line_items: [{
-        quantity: 1,
-        price_data: {
-          currency: 'brl',
-          unit_amount: plano.valorCentavos,
-          product_data: { name: `RecomendaLeads — Plano ${plano.nome}` },
-          ...(ehAssinatura ? { recurring: { interval: plano.intervalo, interval_count: plano.intervaloQtd } } : {})
-        }
-      }],
-      success_url: `${base}/completar?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${base}/assinar?cancelado=1`
-    }, metodos);
-    res.json({ ok: true, url: session.url });
+    const metodos = plano.tipo === 'assinatura' ? ['card'] : ((comBoleto && plano.metodosVendedor) ? plano.metodosVendedor : plano.metodos);
+
+    const ref = crypto.randomUUID();
+    await SIGNUPS_PENDENTES_COL().doc(ref).set({
+      plano: planoId, vendedor: vendedor || null, criadoEm: new Date().toISOString()
+    });
+
+    const checkout = await criarCheckoutAsaas({
+      plano, planoId,
+      externalReference: ref,
+      successUrl: `${base}/completar?ref=${ref}`,
+      cancelUrl: `${base}/assinar?cancelado=1`,
+      metodos
+    });
+    res.json({ ok: true, url: checkout.link });
   } catch (err) {
-    console.error('Erro no checkout público:', err.message);
+    const msg = (err.response && err.response.data && JSON.stringify(err.response.data)) || err.message;
+    console.error('Erro no checkout público:', msg);
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
 
-// Cria a conta (empresa) a partir de uma sessão de checkout paga (idempotente).
-async function garantirContaSignup(session) {
-  const plano = PLANOS[session.metadata && session.metadata.plano];
+// Cria a conta (empresa) a partir de um pagamento de signup confirmado
+// (idempotente — nunca cria 2 empresas pra mesma `ref`, não importa quantas
+// vezes seja chamada: webhook, /completar/status (poll) e /completar podem
+// chamar essa função pra mesma ref, de propósito — resiliência contra o
+// webhook atrasar ou falhar).
+async function garantirContaSignup({ ref, email, asaasCustomerId, asaasSubscriptionId }) {
+  const pend = await SIGNUPS_PENDENTES_COL().doc(ref).get();
+  if (!pend.exists) return null;
+  const { plano: planoId, vendedor } = pend.data();
+  const plano = PLANOS[planoId];
   if (!plano) return null;
-  const existe = await EMPRESAS_COL().where('assinatura.stripeSessionId', '==', session.id).limit(1).get();
+  const existe = await EMPRESAS_COL().where('assinatura.asaasSignupRef', '==', ref).limit(1).get();
   if (!existe.empty) { const d = existe.docs[0]; return { id: d.id, ...d.data() }; }
-  const email = ((session.customer_details && session.customer_details.email) || session.customer_email || '').toLowerCase();
-  const ref = await EMPRESAS_COL().add({
+  const novaRef = await EMPRESAS_COL().add({
     nome: 'Nova empresa',
-    email,
+    email: (email || '').toLowerCase(),
     cadastroIncompleto: true,
-    ...(session.metadata && session.metadata.vendedor ? { vendedorComissao: session.metadata.vendedor } : {}),
+    ...(vendedor ? { vendedorComissao: vendedor } : {}),
     assinatura: {
-      stripeSessionId: session.id,
-      stripeCustomerId: session.customer || null,
-      stripeSubId: session.subscription || null,
-      ciclo: session.metadata.plano,
+      asaasSignupRef: ref,
+      asaasCustomerId: asaasCustomerId || null,
+      asaasSubscriptionId: asaasSubscriptionId || null,
+      ciclo: planoId,
       status: 'ativa',
       acessoAte: dataMaisMeses(plano.tipo === 'assinatura' ? 1 : plano.meses),
       atualizadoEm: new Date().toISOString()
     },
     criadoEm: new Date().toISOString()
   });
-  const snap = await ref.get();
-  return { id: ref.id, ...snap.data() };
+  const snap = await novaRef.get();
+  return { id: novaRef.id, ...snap.data() };
+}
+
+// Busca o pagamento do Asaas pela nossa `ref` (externalReference) — usado
+// pelas duas rotas abaixo pra confirmar que já foi pago de verdade, sem
+// depender só do webhook já ter chegado.
+async function buscarPagamentoAsaasPorRef(ref) {
+  const { data } = await asaas.get('/payments', { params: { externalReference: ref, limit: 1 } });
+  return (data && data.data && data.data[0]) || null;
 }
 
 // Status pós-pagamento: confirma o pagamento e garante a conta criada.
 app.get('/completar/status', async (req, res) => {
   try {
-    if (!stripe) return res.status(503).json({ ok: false, erro: 'Pagamento não configurado.' });
-    const sid = String(req.query.session_id || '');
-    if (!sid) return res.status(400).json({ ok: false, erro: 'Sessão ausente' });
-    const session = await stripe.checkout.sessions.retrieve(sid);
-    if (session.payment_status !== 'paid') return res.json({ ok: true, pronto: false });
-    const empresa = await garantirContaSignup(session);
-    if (!empresa) return res.status(400).json({ ok: false, erro: 'Sessão inválida' });
+    if (!asaas) return res.status(503).json({ ok: false, erro: 'Pagamento não configurado.' });
+    const ref = String(req.query.ref || '');
+    if (!ref) return res.status(400).json({ ok: false, erro: 'Referência ausente' });
+    const pagamento = await buscarPagamentoAsaasPorRef(ref);
+    if (!pagamento || !['CONFIRMED', 'RECEIVED'].includes(pagamento.status)) return res.json({ ok: true, pronto: false });
+    let email = '';
+    try { const cli = await asaas.get(`/customers/${pagamento.customer}`); email = cli.data.email || ''; } catch (e) {}
+    const empresa = await garantirContaSignup({ ref, email, asaasCustomerId: pagamento.customer, asaasSubscriptionId: pagamento.subscription });
+    if (!empresa) return res.status(400).json({ ok: false, erro: 'Referência inválida' });
     res.json({ ok: true, pronto: true, email: empresa.email || '', jaCompleto: !empresa.cadastroIncompleto });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -5814,14 +5862,16 @@ app.get('/completar/status', async (req, res) => {
 // do contrato e devolve um token (auto-login).
 app.post('/completar', async (req, res) => {
   try {
-    if (!stripe) return res.status(503).json({ ok: false, erro: 'Pagamento não configurado.' });
-    const { session_id, dados, senha, aceiteContrato } = req.body || {};
+    if (!asaas) return res.status(503).json({ ok: false, erro: 'Pagamento não configurado.' });
+    const { ref, dados, senha, aceiteContrato } = req.body || {};
     if (!senha || String(senha).length < 6) return res.status(400).json({ ok: false, erro: 'A senha precisa ter ao menos 6 caracteres.' });
     if (!aceiteContrato) return res.status(400).json({ ok: false, erro: 'É necessário aceitar o contrato.' });
-    const session = await stripe.checkout.sessions.retrieve(String(session_id || ''));
-    if (session.payment_status !== 'paid') return res.status(400).json({ ok: false, erro: 'Pagamento não confirmado.' });
-    const empresa = await garantirContaSignup(session);
-    if (!empresa) return res.status(400).json({ ok: false, erro: 'Sessão inválida' });
+    const pagamento = await buscarPagamentoAsaasPorRef(String(ref || ''));
+    if (!pagamento || !['CONFIRMED', 'RECEIVED'].includes(pagamento.status)) return res.status(400).json({ ok: false, erro: 'Pagamento não confirmado.' });
+    let email = '';
+    try { const cli = await asaas.get(`/customers/${pagamento.customer}`); email = cli.data.email || ''; } catch (e) {}
+    const empresa = await garantirContaSignup({ ref, email, asaasCustomerId: pagamento.customer, asaasSubscriptionId: pagamento.subscription });
+    if (!empresa) return res.status(400).json({ ok: false, erro: 'Referência inválida' });
 
     const emailNorm = (empresa.email || '').toLowerCase();
     const jaExiste = await USUARIOS_COL().where('email', '==', emailNorm).limit(1).get();

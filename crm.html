@@ -1060,6 +1060,10 @@
           <label>Mensagem repetida enquanto a pessoa não confirma</label>
           <input type="text" id="mensagemAguardandoConfirmacaoInput" placeholder="Ex: Posso te contar mais sobre isso?">
 
+          <label>🛑 Mensagem quando a pessoa recusa (encerra a conversa, sem insistir)</label>
+          <input type="text" id="mensagemRecusaRecomendadoInput" placeholder="Ex: Sem problema, entendo! Um abraço!">
+          <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">Enviada quando a pessoa diz claramente que não quer ("não quero", "não, obrigado"...) — o robô agradece e para por aí, não manda mais nenhum convite.</p>
+
           <label>2️⃣ Mensagem antes do presente (enviada logo após a pessoa responder, antes do banner)</label>
           <textarea id="mensagemAntesPresenteInput" rows="2" placeholder="Ex: Como forma de agradecer essa recomendação, preparamos um presente especial para você."></textarea>
 
@@ -2749,6 +2753,7 @@ async function carregarConfiguracao() {
     const tplRecBox = document.getElementById('oficialTemplateRecomendadoBox');
     if (tplRecBox) tplRecBox.style.display = (configuracaoAtual.whatsappTipo === 'oficial') ? 'block' : 'none';
     document.getElementById('mensagemAguardandoConfirmacaoInput').value = configuracaoAtual.mensagemAguardandoConfirmacao || '';
+    document.getElementById('mensagemRecusaRecomendadoInput').value = configuracaoAtual.mensagemRecusaRecomendado || '';
     document.getElementById('mensagemAntesPresenteInput').value = configuracaoAtual.mensagemAntesPresente || '';
     document.getElementById('mensagemPedeNomeInput').value = configuracaoAtual.mensagemPedeNome || '';
     document.getElementById('mensagemPedeVendedorInput').value = configuracaoAtual.mensagemPedeVendedor || '';
@@ -3139,6 +3144,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
   const mensagemInicialRecomendado2 = document.getElementById('mensagemInicialRecomendado2Input').value.trim();
   const mensagemInicialRecomendado3 = document.getElementById('mensagemInicialRecomendado3Input').value.trim();
   const mensagemAguardandoConfirmacao = document.getElementById('mensagemAguardandoConfirmacaoInput').value.trim();
+  const mensagemRecusaRecomendado = document.getElementById('mensagemRecusaRecomendadoInput').value.trim();
   const mensagemAntesPresente = document.getElementById('mensagemAntesPresenteInput').value.trim();
   const tempoEsperaConversaoMin = parseInt(document.getElementById('tempoEsperaConversaoMinInput').value) || 60;
   const posMensagemConexao = document.getElementById('posMensagemConexaoInput').value.trim();
@@ -3179,7 +3185,7 @@ document.getElementById('salvarRecomendadoBtn').addEventListener('click', async 
     const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
       method: 'POST',
       body: JSON.stringify({
-        mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemAntesPresente, tempoEsperaConversaoMin,
+        mensagemInicialRecomendado, mensagemInicialRecomendado2, mensagemInicialRecomendado3, mensagemAguardandoConfirmacao, mensagemRecusaRecomendado, mensagemAntesPresente, tempoEsperaConversaoMin,
         posMensagemConexao, posMenuPrincipal, linkAgendamento, posLinkAgendamento, posPerguntaPeriodo, posPerguntaDia, diasFechados,
         posConfirmacaoAgendamento, avisoAgendamentoAtivo, posConfirmacaoCheck, posMenuDepois, posLembrete, posLembretePrazoDias, oficialTemplateLembreteDepois, posLembreteMensagem, posMenuDuvidas,
         faqComoFunciona, faqValidade, posAtendente,
