@@ -8996,6 +8996,14 @@ app.post('/minha-leads/coluna/:etapa/disparar', exigirLoginEmpresa, exigirGestor
     if (erroHeader) return res.status(400).json({ ok: false, erro: erroHeader });
     const etapa = req.params.etapa;
 
+    // Quantas variáveis esse template PRECISA de verdade — sem isso, mandava
+    // sempre 3 (nome do recomendado, quem recomendou, vendedor) fixo, não
+    // importa o template escolhido. Um template com menos variáveis que isso
+    // (ex.: follow_up_botao_port) sempre voltava "(#132000) Number of
+    // parameters does not match" — 100% de falha, pra QUALQUER contato.
+    const infoTpl = await getTemplateInfo(oficialDaEmpresa(empresa), template);
+    const nVars = infoTpl ? infoTpl.n : 3;
+
     let leads = await getLeadsPorEmpresa(req.empresaLogin.id);
     const ofertaFiltro = (req.usuario && req.usuario.ofertaId) || (req.query && req.query.oferta) || null;
     if (ofertaFiltro) leads = leads.filter(l => l.ofertaId === ofertaFiltro);
@@ -9012,7 +9020,12 @@ app.post('/minha-leads/coluna/:etapa/disparar', exigirLoginEmpresa, exigirGestor
       const tel = soDigitos(l.telefoneRecomendado || '');
       if (tel.length < 10 || vistos.has(tel)) continue;
       vistos.add(tel);
-      contatos.push({ telefone: tel, params: [l.nomeRecomendado || '', l.nomeRecomendador || '', l.vendedor || empresa.nome] });
+      // Ordem fixa {{1}} nome do recomendado · {{2}} quem recomendou · {{3}}
+      // vendedor — ajusta pro N exato que o template pede (corta se pedir
+      // menos, completa com vazio se pedir mais — nunca manda quantidade errada).
+      const paramsCompletos = [l.nomeRecomendado || '', l.nomeRecomendador || '', l.vendedor || empresa.nome];
+      while (paramsCompletos.length < nVars) paramsCompletos.push('');
+      contatos.push({ telefone: tel, params: paramsCompletos.slice(0, nVars) });
     }
     if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Nenhum contato válido nessa coluna.' });
     if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Mais de 1000 contatos nessa coluna — não dá num disparo só (limite de 1000).' });
