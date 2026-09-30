@@ -733,6 +733,27 @@
             <span class="status-msg" id="reconstruirUltimoStatus"></span>
           </div>
         </div>
+
+        <div class="card" style="margin-top:16px;">
+          <div class="block-title"><i data-lucide="repeat"></i> Follow-up automático pra quem não abriu</div>
+          <p class="sub">Depois de um disparo em massa, reenvia sozinho — sem precisar voltar aqui — pra quem o WhatsApp nunca confirmou que leu. Quem já respondeu recusando NUNCA entra, nem aqui nem em disparos manuais.</p>
+          <label style="display:flex; align-items:center; gap:10px; margin:14px 0; cursor:pointer;">
+            <input type="checkbox" id="followupNaoAbriuAtivo" style="width:18px; height:18px;">
+            <span style="font-weight:600;">Ativar o follow-up automático</span>
+          </label>
+          <label class="label">Reenviar depois de (dias)</label>
+          <input class="input" type="number" min="1" max="30" id="followupNaoAbriuDias" placeholder="3" style="max-width:140px;">
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin-top:10px;">
+            <label class="label" style="margin-top:0;">🟢 Template do reenvio (API Oficial)</label>
+            <input class="input" type="text" id="followupNaoAbriuTemplate" list="templatesMetaDatalist" placeholder="ex: lembrete_recomendacao">
+            <div id="followupNaoAbriuTemplateBadge" style="margin-top:4px;"></div>
+            <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Sempre fora das 24h → precisa de template aprovado. Pode ser um template diferente do disparo original (ex: mais direto, com botão).</div>
+          </div>
+          <div class="row-save" style="align-items:center;margin-top:14px;">
+            <button class="btn btn-action" id="salvarFollowupNaoAbriuBtn">Salvar follow-up</button>
+            <span class="status-msg" id="statusFollowupNaoAbriu"></span>
+          </div>
+        </div>
       </section>
 
       <!-- Modal de relatório de uma campanha de disparo em massa -->
@@ -1185,6 +1206,12 @@ async function carregarDisparo() {
   disparoHeaderImageUrl = (configuracaoAtual && configuracaoAtual.disparoTemplateImagemUrl) || null;
   atualizarHeaderImgUI();
   atualizarResumoDisparo();
+  if (configuracaoAtual) {
+    document.getElementById('followupNaoAbriuAtivo').checked = !!configuracaoAtual.followupNaoAbriuAtivo;
+    document.getElementById('followupNaoAbriuDias').value = configuracaoAtual.followupNaoAbriuDias || 3;
+    document.getElementById('followupNaoAbriuTemplate').value = configuracaoAtual.followupNaoAbriuTemplate || '';
+    atualizarBadgeTemplate('followupNaoAbriuTemplate', 'followupNaoAbriuTemplateBadge');
+  }
   // Se um disparo já estiver rodando (começou numa visita anterior à tela, ou
   // até em outra aba), retoma sozinho o acompanhamento — antes, sair da tela e
   // voltar fazia a barra de progresso sumir mesmo o disparo continuando normal
@@ -1198,6 +1225,13 @@ async function carregarDisparo() {
       pollDisparo();
     }
   } catch (e) {}
+  // Precisa rodar SEMPRE, mesmo pra quem não usa saldo pré-pago — o bloco de
+  // saldo logo abaixo tem um `return` antecipado pra esse caso (só saldo/
+  // extrato não fazem sentido sem cobrança), e esse `return` estava cortando
+  // também o carregamento do histórico de campanhas, que não tem nada a ver
+  // com saldo. Resultado: "Histórico de campanhas" ficava preso em
+  // "Carregando..." pra sempre em qualquer empresa sem saldo pré-pago ativo.
+  carregarDisparosHistorico();
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-saldo`);
     const d = await resp.json();
@@ -1220,7 +1254,6 @@ async function carregarDisparo() {
         <span style="font-weight:700;white-space:nowrap;color:${t.tipo==='credito'?'#166534':'#b45309'};">${t.tipo==='credito'?'+':'−'}${fmtReaisCliente(t.valorCentavos)}</span>
       </div>`).join('') : '<span class="sub">Sem lançamentos ainda.</span>';
   } catch (e) { const sv = document.getElementById('saldoValor'); if (sv) sv.textContent = '—'; }
-  carregarDisparosHistorico();
 }
 
 // ===================== HISTÓRICO + RELATÓRIO DE CAMPANHAS =====================
@@ -3453,6 +3486,27 @@ document.getElementById('followupTesteBtn').addEventListener('click', async () =
     else { st.textContent = '❌ Não enviou (' + (data.via || '?') + '): ' + (data.erro || 'erro'); st.className = 'status-msg err'; }
   } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
   finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 6000); }
+});
+
+document.getElementById('followupNaoAbriuTemplate').addEventListener('input', () => atualizarBadgeTemplate('followupNaoAbriuTemplate', 'followupNaoAbriuTemplateBadge'));
+document.getElementById('salvarFollowupNaoAbriuBtn').addEventListener('click', async () => {
+  const st = document.getElementById('statusFollowupNaoAbriu');
+  const ativo = document.getElementById('followupNaoAbriuAtivo').checked;
+  const template = document.getElementById('followupNaoAbriuTemplate').value.trim();
+  if (ativo && !template) { st.textContent = '❌ Informe o template do reenvio.'; st.className = 'status-msg err'; return; }
+  const body = {
+    followupNaoAbriuAtivo: ativo,
+    followupNaoAbriuDias: parseInt(document.getElementById('followupNaoAbriuDias').value, 10) || 3,
+    followupNaoAbriuTemplate: template
+  };
+  st.textContent = 'Salvando...'; st.className = 'status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { configuracaoAtual = data.empresa || Object.assign({}, configuracaoAtual, body); st.textContent = '✅ Salvo!'; st.className = 'status-msg ok'; }
+    else { st.textContent = '❌ ' + (data.erro || 'Erro'); st.className = 'status-msg err'; }
+  } catch (e) { st.textContent = '❌ Erro de conexão'; st.className = 'status-msg err'; }
+  finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
 });
 
 // ===================== DEMONSTRAÇÃO POR NICHO =====================

@@ -1861,7 +1861,11 @@ document.getElementById('board').addEventListener('click', (e) => {
 // do Kanban agora (sem precisar exportar CSV e montar lista na mão).
 function abrirModalDisparoColuna(etapaId, etapaNome) {
   const modalContainer = document.getElementById('modalContainer');
-  const qtd = leads.filter(l => l.etapa === etapaId).length;
+  const leadsColuna = leads.filter(l => l.etapa === etapaId);
+  const qtd = leadsColuna.length;
+  const qtdRecusou = leadsColuna.filter(l => l.situacaoUltimoDisparo === 'recusou').length;
+  const qtdNaoAbriu = leadsColuna.filter(l => l.situacaoUltimoDisparo === 'nao_abriu').length;
+  const qtdNaoRespondeu = leadsColuna.filter(l => l.situacaoUltimoDisparo === 'abriu_sem_responder').length;
   const ultimoTemplate = localStorage.getItem('ultimoTemplateDisparoColuna') || '';
 
   modalContainer.innerHTML = `
@@ -1873,7 +1877,16 @@ function abrirModalDisparoColuna(etapaId, etapaNome) {
         </div>
         <p style="font-size:0.82rem;color:var(--text-dim);margin:0 0 12px;">
           ${qtd} contato${qtd === 1 ? '' : 's'} nessa coluna agora. Vai mandar o template abaixo (aprovado na Meta) pra cada um. Funciona só no modo API Oficial.
+          ${qtdRecusou ? ` <b>${qtdRecusou} já recusou</b> um disparo antes e não entra em nenhuma opção abaixo — nunca disparamos de novo pra quem recusou.` : ''}
         </p>
+        <div class="modal-field">
+          <label style="margin-top:0;">Pra quem?</label>
+          <select id="disparoColunaGrupo" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border,#ddd);">
+            <option value="">Todos elegíveis da coluna (${qtd - qtdRecusou})</option>
+            <option value="nao_abriu">📬 Só quem não abriu o último disparo (${qtdNaoAbriu})</option>
+            <option value="abriu_sem_responder">😶 Só quem abriu mas não respondeu (${qtdNaoRespondeu})</option>
+          </select>
+        </div>
         <div class="modal-field" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;">
           <label style="margin-top:0;">🟢 Escolher da lista (templates aprovados na Meta)</label>
           <select id="disparoColunaTemplateSelect" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border,#ddd);margin-bottom:8px;">
@@ -1924,8 +1937,10 @@ async function disparaColuna(etapaId) {
   const btn = document.getElementById('disparoColunaBtn');
   const st = document.getElementById('disparoColunaStatus');
   const template = document.getElementById('disparoColunaTemplate').value.trim();
+  const apenasSituacao = document.getElementById('disparoColunaGrupo').value;
   if (!template) { st.textContent = '❌ Informe o nome do template.'; st.className = 'modal-status err'; return; }
-  if (!confirm(`Confirma disparar o template "${template}" pra essa coluna? Não dá pra desfazer depois de começar.`)) return;
+  const alvoTxt = apenasSituacao ? ' pro grupo escolhido' : ' pra essa coluna';
+  if (!confirm(`Confirma disparar o template "${template}"${alvoTxt}? Não dá pra desfazer depois de começar.`)) return;
 
   btn.disabled = true; st.textContent = 'Iniciando...'; st.className = 'modal-status';
   try {
@@ -1935,7 +1950,7 @@ async function disparaColuna(etapaId) {
     const headerImageUrl = (configuracaoAtual && configuracaoAtual.disparoTemplateImagemUrl) || null;
     const resp = await fetchAutenticado(`${API_BASE}/minha-leads/coluna/${etapaId}/disparar`, {
       method: 'POST',
-      body: JSON.stringify({ template, headerImageUrl })
+      body: JSON.stringify({ template, headerImageUrl, apenasSituacao })
     });
     const data = await resp.json();
     if (resp.ok && data.ok) {
@@ -1999,6 +2014,7 @@ function leadsFiltrados() {
   const atendenteId = atendenteSel ? atendenteSel.value : '';
   const termo = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
   let res = vendedor ? leads.filter(l => l.vendedor === vendedor) : leads;
+  res = filtrarPorPeriodo(res, periodoSelLeads);
   if (atendenteId) res = res.filter(l => l.atendenteId === atendenteId);
   if (termo) {
     res = res.filter(l =>
@@ -2117,6 +2133,7 @@ function renderBoard() {
           <span class="vendedor-tag">${esc(lead.vendedor) || 'Sem vendedor'}</span>
           <span class="data-tag">🕒 ${esc(ultimaComCard(lead.telefoneRecomendado, lead.criadoEm))}</span>
         </div>
+        ${badgeSituacaoDisparo(lead.situacaoUltimoDisparo)}
         ${telLimpoCard ? `<a class="card-conversa-link" href="/conversas?tel=${telLimpoCard}" target="_blank" title="Abrir a conversa desta pessoa">💬 Ver conversa</a>` : ''}
         ${lead.valorCompra != null ? `<div class="valor-compra" style="margin-top:8px; font-weight:700; color:var(--success, #1d9e75);">💰 ${fmtBRL(lead.valorCompra)}</div>` : ''}
         ${lead.atendenteId
@@ -2297,6 +2314,20 @@ function ultimaComCard(telefone, fallbackIso) {
   const iso = (d && ultimaComMap[d]) || fallbackIso;
   if (!iso) return '';
   return `${rotuloDataCard(iso)} ${horaCard(iso)}`.trim();
+}
+// Selo no card com a situação do disparo em massa mais recente dessa pessoa —
+// só aparece pra quem já recebeu algum disparo (situacaoUltimoDisparo vem null
+// pra quem nunca recebeu). 'recusou' fica em vermelho de propósito: esse grupo
+// já sai automaticamente de qualquer disparo futuro, nunca precisa de ação.
+function badgeSituacaoDisparo(situacao) {
+  const mapa = {
+    nao_abriu: { texto: '📬 Não abriu', bg: '#FEF3C7', cor: '#92400E' },
+    abriu_sem_responder: { texto: '😶 Não respondeu', bg: '#E0E7FF', cor: '#3730A3' },
+    recusou: { texto: '🚫 Não quer mais', bg: '#FEE2E2', cor: '#991B1B' }
+  };
+  const b = mapa[situacao];
+  if (!b) return '';
+  return `<div class="badge-situacao-disparo" style="margin-top:6px;font-size:0.72rem;font-weight:600;color:${b.cor};background:${b.bg};border-radius:6px;padding:2px 8px;display:inline-block;">${b.texto}</div>`;
 }
 // Amigos que um cliente (recomendador) indicou. Retorna a lista COMPLETA (guardada no
 // card) unida com os leads. Cada item: { nome, telefone, lead } — lead=null = ainda não
@@ -3946,6 +3977,7 @@ document.querySelectorAll('#periodoBarLeads .periodo-btn[data-periodo]').forEach
     document.querySelectorAll('#periodoBarLeads .periodo-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     renderStatLeads();
+    renderBoard();
   });
 });
 document.getElementById('periodoAplicarLeads').addEventListener('click', () => {
@@ -3953,6 +3985,7 @@ document.getElementById('periodoAplicarLeads').addEventListener('click', () => {
   document.querySelectorAll('#periodoBarLeads .periodo-btn').forEach(x => x.classList.remove('active'));
   document.getElementById('periodoAplicarLeads').classList.add('active');
   renderStatLeads();
+  renderBoard();
 });
 
 document.querySelectorAll('#periodoBar .periodo-btn[data-periodo]').forEach(b => {

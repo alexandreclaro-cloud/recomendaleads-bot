@@ -930,6 +930,12 @@ const EMPRESA_PADRAO = {
   marketingArquivo: null,
   marketingLink: null,
   marketingTexto: null,
+  // Follow-up automático de disparo em massa: reenvia sozinho, N dias depois,
+  // pra quem recebeu mas o WhatsApp nunca confirmou leitura (✓✓ azul) daquele
+  // disparo — sem precisar voltar e clicar em nada.
+  followupNaoAbriuAtivo: false,
+  followupNaoAbriuDias: 3,
+  followupNaoAbriuTemplate: '',
   ctaRecomendado: 'Que tal aproveitar e passar pra retirar o seu? 😊',
   mensagemInicialRecomendado: 'Olá {nomeRecomendado}, tudo bem? 😊 Aqui é {vendedor}, da {empresa}. O(a) {recomendador} recomendou você para receber um presente que separamos 🎁 Posso te explicar rapidinho?',
   // Anti-ban: variações da 1ª mensagem ao recomendado. O robô SORTEIA entre as
@@ -7687,6 +7693,16 @@ app.get('/minha-leads', exigirLoginEmpresa, async (req, res) => {
     } else if (req.query.atendenteId) {
       leads = leads.filter(l => l.atendenteId === req.query.atendenteId);
     }
+
+    // Situação do disparo em massa mais recente de cada telefone — o CRM usa
+    // isso pra destacar no card quem "📬 Não abriu", "😶 Não respondeu" ou
+    // "🚫 Não quer mais", sem precisar abrir o relatório de disparo.
+    const situacaoDisparoPorTelefone = await situacaoUltimoDisparoPorTelefone(req.empresaLogin.id);
+    leads = leads.map(l => ({
+      ...l,
+      situacaoUltimoDisparo: (situacaoDisparoPorTelefone[soDigitos(l.telefoneRecomendado || '')] || {}).situacao || null
+    }));
+
     res.json({ ok: true, leads });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -8973,6 +8989,23 @@ async function iniciarDisparoMassa(empresa, template, contatos, headerMediaUrl) 
     } catch (e) { console.error('[DISPARO] erro ao salvar resumo final:', e.message); }
     console.log(`[DISPARO] empresa=${empresa.id} enviados=${status.enviados} bloqueados=${status.bloqueados} falhas=${status.falhas} optout=${status.optout}`);
 
+    // Follow-up automático pra quem não abriu: agenda um reenvio (outro
+    // template, configurado à parte) pra N dias depois — na hora em que ele
+    // roda (executarAgendamentosPendentes → tipo 'followup_disparo_nao_abriu'),
+    // recalcula quem ainda não tem confirmação de leitura DESSE disparo e
+    // manda só pra esses. Só agenda se algo saiu (sem isso, criava agendamento
+    // até pra disparo 100% bloqueado por saldo, sem ninguém pra reenviar).
+    if (empresa.followupNaoAbriuAtivo && empresa.followupNaoAbriuTemplate && status.enviados > 0) {
+      const dias = Math.max(1, parseInt(empresa.followupNaoAbriuDias, 10) || 3);
+      try {
+        await tenantContext.run({ empresa, empresaId: empresa.id }, () => criarAgendamento({
+          tipo: 'followup_disparo_nao_abriu',
+          executarEm: new Date(Date.now() + dias * 86400000).toISOString(),
+          dados: { campanhaId, template: empresa.followupNaoAbriuTemplate, headerMediaUrl: headerMediaUrl || null }
+        }));
+      } catch (e) { console.error('[FOLLOWUP-NAO-ABRIU] erro ao agendar:', e.message); }
+    }
+
     // Não tenta de novo se travou por saldo (vai falhar tudo de novo igual) ou
     // se ninguém falhou. Espera 10min — tempo suficiente pra qualquer bloqueio
     // passageiro da Meta liberar — e tenta CADA falha 1 única vez.
@@ -9085,6 +9118,21 @@ app.post('/minha-leads/coluna/:etapa/disparar', exigirLoginEmpresa, exigirGestor
     }
     leads = leads.filter(l => l.etapa === etapa);
 
+    // Situação do disparo em massa mais recente de cada telefone — pra 2 coisas:
+    // (1) excluir quem já RECUSOU um disparo anterior, sempre, incondicional —
+    // ninguém que respondeu "não quero" a uma campanha deveria receber outra;
+    // (2) filtro opcional (apenasSituacao) pra reenviar só pra um grupo
+    // específico ('nao_abriu' ou 'abriu_sem_responder'), mesmo critério dos
+    // selos do card no CRM.
+    const apenasSituacao = String((req.body && req.body.apenasSituacao) || '');
+    const situacaoDisparoPorTelefone = await situacaoUltimoDisparoPorTelefone(req.empresaLogin.id);
+    leads = leads.filter(l => {
+      const situacao = (situacaoDisparoPorTelefone[soDigitos(l.telefoneRecomendado || '')] || {}).situacao;
+      if (situacao === 'recusou') return false;
+      if (apenasSituacao) return situacao === apenasSituacao;
+      return true;
+    });
+
     // Dedup por telefone — a mesma pessoa pode ter mais de um lead na coluna
     // (indicada por gente diferente, por exemplo).
     const vistos = new Set();
@@ -9100,7 +9148,7 @@ app.post('/minha-leads/coluna/:etapa/disparar', exigirLoginEmpresa, exigirGestor
       while (paramsCompletos.length < nVars) paramsCompletos.push('');
       contatos.push({ telefone: tel, params: paramsCompletos.slice(0, nVars) });
     }
-    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Nenhum contato válido nessa coluna.' });
+    if (!contatos.length) return res.status(400).json({ ok: false, erro: apenasSituacao ? 'Ninguém nesse grupo agora (ou só sobrou quem já recusou — esses ficam sempre de fora).' : 'Nenhum contato válido nessa coluna.' });
     if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Mais de 1000 contatos nessa coluna — não dá num disparo só (limite de 1000).' });
 
     const rodando = _disparoStatus[empresa.id];
@@ -9137,6 +9185,59 @@ app.get('/minha-disparos', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOfe
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
+
+// Mapa telefone → { situacao, campanhaId } da campanha de DISPARO EM MASSA
+// mais recente pra cada telefone (campanhaId != null — não entra mensagem 1:1
+// do fluxo automático). `situacao` é um destes:
+//   'nao_entregou'        — a Meta recusou o envio
+//   'nao_abriu'           — entregue, WhatsApp nunca confirmou leitura
+//   'abriu_sem_responder' — leu (✓✓ azul), mas não respondeu depois
+//   'recusou'             — respondeu e a resposta é uma recusa (respostaEhNegativa)
+//   'respondeu'           — respondeu qualquer outra coisa
+// Usado pra separar nos cards do CRM quem "📬 Não abriu" / "😶 Não respondeu" /
+// "🚫 Não quer mais", e pra EXCLUIR quem recusou de qualquer disparo futuro
+// automaticamente — sem precisar de opt-out manual pra isso.
+async function situacaoUltimoDisparoPorTelefone(empresaId) {
+  const [outSnap, inSnap] = await Promise.all([
+    MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'out').get(),
+    MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'in').get()
+  ]);
+
+  const dispatchPorTelefone = {};
+  outSnap.forEach(d => {
+    const m = d.data();
+    if (!m.campanhaId || !m.telefone) return;
+    const atual = dispatchPorTelefone[m.telefone];
+    if (atual && m.criadoEm <= atual.criadoEm) return;
+    dispatchPorTelefone[m.telefone] = { status: m.status || 'enviado', criadoEm: m.criadoEm, campanhaId: m.campanhaId };
+  });
+
+  // Primeira resposta de cada telefone DEPOIS do disparo mais recente dele —
+  // mesma convenção de calcularRespostasPorBotao (primeira, não a última),
+  // pra bater com quem clica um botão de template do jeito esperado.
+  const primeiraRespostaPorTelefone = {};
+  inSnap.forEach(d => {
+    const m = d.data();
+    if (!m.telefone) return;
+    const disparo = dispatchPorTelefone[m.telefone];
+    if (!disparo || !disparo.criadoEm || m.criadoEm <= disparo.criadoEm) return;
+    const atual = primeiraRespostaPorTelefone[m.telefone];
+    if (!atual || m.criadoEm < atual.criadoEm) primeiraRespostaPorTelefone[m.telefone] = { texto: m.texto || '', criadoEm: m.criadoEm };
+  });
+
+  const resultado = {};
+  for (const [telefone, disparo] of Object.entries(dispatchPorTelefone)) {
+    let situacao;
+    if (disparo.status === 'falhou') situacao = 'nao_entregou';
+    else {
+      const resposta = primeiraRespostaPorTelefone[telefone];
+      if (!resposta) situacao = disparo.status === 'lido' ? 'abriu_sem_responder' : 'nao_abriu';
+      else situacao = respostaEhNegativa(resposta.texto) ? 'recusou' : 'respondeu';
+    }
+    resultado[telefone] = { situacao, campanhaId: disparo.campanhaId };
+  }
+  return resultado;
+}
 
 // Relatório de uma campanha: cruza os contatos que foram no disparo com o
 // status de entrega/leitura (MENSAGENS_CHAT_COL, casado por campanhaId), se
@@ -9745,6 +9846,34 @@ async function processarAgendamento(agendamento) {
 
 async function processarAgendamentoInterno(agendamento) {
   const empresa = await getEmpresa();
+
+  // Follow-up automático de disparo em massa: N dias depois do disparo
+  // original, reenvia (outro template, configurado à parte) só pra quem, a
+  // essa altura, está 'nao_abriu' ou 'abriu_sem_responder' — recalcula na
+  // hora (não confia em nada guardado no momento do agendamento), então já
+  // exclui sozinho quem recusou ou respondeu depois desse meio-tempo.
+  if (agendamento.tipo === 'followup_disparo_nao_abriu') {
+    const { campanhaId, template, headerMediaUrl } = agendamento.dados || {};
+    if (!campanhaId || !template) return;
+    const doc = await DISPAROS_COL().doc(campanhaId).get();
+    if (!doc.exists) return;
+    const contatosOrigem = doc.data().contatos || [];
+    const situacaoPorTelefone = await situacaoUltimoDisparoPorTelefone(empresa.id);
+    const alvo = contatosOrigem.filter(c => {
+      const situacao = (situacaoPorTelefone[c.telefone] || {}).situacao;
+      return situacao === 'nao_abriu' || situacao === 'abriu_sem_responder';
+    });
+    if (!alvo.length) return;
+    const infoTpl = await getTemplateInfo(oficialDaEmpresa(empresa), template);
+    const nVars = infoTpl ? infoTpl.n : 0;
+    const contatos = alvo.map(c => {
+      const params = [];
+      while (params.length < nVars) params.push('');
+      return { telefone: c.telefone, params };
+    });
+    await iniciarDisparoMassa(empresa, template, contatos, headerMediaUrl);
+    return;
+  }
 
   if (agendamento.tipo === 'confirmar_agendamento_check') {
     const { telefone } = agendamento.dados;
