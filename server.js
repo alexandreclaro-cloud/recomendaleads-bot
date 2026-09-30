@@ -164,7 +164,7 @@ async function criarCheckoutAsaas({ plano, planoId, empresaId, externalReference
     externalReference,
     callback: { successUrl, cancelUrl, expiredUrl: cancelUrl, autoRedirect: true }
   };
-  if (plano.tipo === 'assinatura') body.subscription = { cycle: 'MONTHLY' };
+  if (plano.tipo === 'assinatura') body.subscription = { cycle: 'MONTHLY', nextDueDate: new Date().toISOString().slice(0, 10) };
   if (customerData) body.customerData = customerData;
   try {
     const { data } = await asaas.post('/checkouts', body);
