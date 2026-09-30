@@ -5853,7 +5853,13 @@ app.get('/debug-asaas-ref2', async (req, res) => {
     }
     const r2 = await asaas.get('/payments', { params: { externalReference: ref, limit: 5 } });
     porExtRef = r2.data;
-    res.json({ ok: true, ref, pendData: pend.exists ? pend.data() : null, porSessao, porExtRef });
+    let subsPorExtRef = null, subsRecentes = null, paymentsPorSub = null;
+    try { subsPorExtRef = (await asaas.get('/subscriptions', { params: { externalReference: ref, limit: 5 } })).data; } catch (e) { subsPorExtRef = { erro: e.message }; }
+    try { subsRecentes = (await asaas.get('/subscriptions', { params: { limit: 3 } })).data; } catch (e) { subsRecentes = { erro: e.message }; }
+    if (subsPorExtRef && subsPorExtRef.data && subsPorExtRef.data[0]) {
+      try { paymentsPorSub = (await asaas.get('/payments', { params: { subscription: subsPorExtRef.data[0].id, limit: 5 } })).data; } catch (e) { paymentsPorSub = { erro: e.message }; }
+    }
+    res.json({ ok: true, ref, pendData: pend.exists ? pend.data() : null, porSessao, porExtRef, subsPorExtRef, subsRecentes, paymentsPorSub });
   } catch (err) {
     res.status(500).json({ ok: false, erro: (err.response && err.response.data) || err.message });
   }
