@@ -5791,6 +5791,7 @@ app.post('/assinar/checkout', async (req, res) => {
       cancelUrl: `${base}/assinar?cancelado=1`,
       metodos
     });
+    console.log('[ASAAS DEBUG] checkout criado:', JSON.stringify(checkout));
     await SIGNUPS_PENDENTES_COL().doc(ref).update({ checkoutId: checkout.id || null });
     res.json({ ok: true, url: checkout.link });
   } catch (err) {
@@ -5843,12 +5844,15 @@ async function garantirContaSignup({ ref, email, asaasCustomerId, asaasSubscript
 async function buscarPagamentoAsaasPorRef(ref) {
   const pend = await SIGNUPS_PENDENTES_COL().doc(ref).get();
   const checkoutId = pend.exists ? pend.data().checkoutId : null;
+  console.log('[ASAAS DEBUG] buscarPagamentoAsaasPorRef ref=', ref, 'checkoutId=', checkoutId);
   if (checkoutId) {
     const { data } = await asaas.get('/payments', { params: { checkoutSession: checkoutId, limit: 1 } });
+    console.log('[ASAAS DEBUG] resposta checkoutSession:', JSON.stringify(data));
     const pagamento = (data && data.data && data.data[0]) || null;
     if (pagamento) return pagamento;
   }
   const { data } = await asaas.get('/payments', { params: { externalReference: ref, limit: 1 } });
+  console.log('[ASAAS DEBUG] resposta externalReference:', JSON.stringify(data));
   return (data && data.data && data.data[0]) || null;
 }
 
