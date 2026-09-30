@@ -9090,11 +9090,25 @@ app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOfe
     const headerImageUrl = String((req.body && req.body.headerImageUrl) || '').trim() || null;
     const erroHeader = await validarHeaderTemplate(empresa, template, headerImageUrl);
     if (erroHeader) return res.status(400).json({ ok: false, erro: erroHeader });
+
+    // Quantas variáveis esse template PRECISA de verdade — sem isso, mandava
+    // exatamente o que a lista colada trouxe, não importa quantas colunas o
+    // dono digitou. Um template com N variáveis diferente do que foi colado
+    // sempre voltava "(#132000) Number of parameters does not match" —
+    // 100% de falha, pra TODOS os contatos (mesmo bug já corrigido no disparo
+    // por coluna, mas esse endpoint manual nunca tinha recebido o fix).
+    const infoTpl = await getTemplateInfo(oficialDaEmpresa(empresa), template);
+    const nVars = infoTpl ? infoTpl.n : null;
+
     let contatos = Array.isArray(req.body && req.body.contatos) ? req.body.contatos : [];
-    contatos = contatos.map(c => ({
-      telefone: soDigitos((c && (c.telefone || c.tel)) || ''),
-      params: Array.isArray(c && c.params) ? c.params.map(x => String(x == null ? '' : x)) : []
-    })).filter(c => c.telefone.length >= 10);
+    contatos = contatos.map(c => {
+      let params = Array.isArray(c && c.params) ? c.params.map(x => String(x == null ? '' : x)) : [];
+      if (nVars != null) {
+        params = params.slice(0, nVars);
+        while (params.length < nVars) params.push('');
+      }
+      return { telefone: soDigitos((c && (c.telefone || c.tel)) || ''), params };
+    }).filter(c => c.telefone.length >= 10);
     if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Nenhum contato válido — cada linha precisa de telefone com DDD.' });
     if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Máximo de 1000 contatos por disparo.' });
     const rodando = _disparoStatus[empresa.id];
@@ -9543,7 +9557,12 @@ app.post('/minha-disparos/template/:template/resposta/disparar', exigirLoginEmpr
     if (!agregado) return res.status(404).json({ ok: false, erro: 'Nenhum disparo encontrado com esse template.' });
     const grupos = await calcularRespostasPorBotao({ criadoEm: agregado.criadoEm, contatos: agregado.contatos }, req.empresaLogin.id);
     const alvo = grupos.find(g => g.resposta === resposta);
-    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
+    // Template do REDISPARO pode pedir uma quantidade de variáveis diferente
+    // do original — [] fixo sempre falhava com "Number of parameters does not
+    // match" pra qualquer template que precisasse de ao menos 1 variável.
+    const infoTplResp = await getTemplateInfo(oficialDaEmpresa(empresa), template);
+    const nVarsResp = infoTplResp ? infoTplResp.n : 0;
+    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: Array(nVarsResp).fill('') }));
     if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém com essa resposta agora — nada pra disparar.' });
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
@@ -9579,7 +9598,11 @@ app.post('/minha-disparos/:id/pipeline/disparar', exigirLoginEmpresa, exigirGest
 
     const { colunas } = await calcularPipelineDisparo(disparo, req.empresaLogin.id);
     const alvo = colunas.find(c => c.id === coluna);
-    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
+    // Mesmo fix do redisparo por resposta: o template escolhido aqui pode
+    // pedir variáveis diferentes do original — nunca manda [] fixo.
+    const infoTplCol = await getTemplateInfo(oficialDaEmpresa(empresa), template);
+    const nVarsCol = infoTplCol ? infoTplCol.n : 0;
+    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: Array(nVarsCol).fill('') }));
     if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém nessa coluna agora — nada pra disparar.' });
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos);
@@ -9618,7 +9641,11 @@ app.post('/minha-disparos/:id/resposta/disparar', exigirLoginEmpresa, exigirGest
 
     const grupos = await calcularRespostasPorBotao(disparo, req.empresaLogin.id);
     const alvo = grupos.find(g => g.resposta === resposta);
-    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
+    // Mesmo fix: o template do redisparo pode pedir variáveis diferentes do
+    // original — nunca manda [] fixo.
+    const infoTplResp2 = await getTemplateInfo(oficialDaEmpresa(empresa), template);
+    const nVarsResp2 = infoTplResp2 ? infoTplResp2.n : 0;
+    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: Array(nVarsResp2).fill('') }));
     if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém com essa resposta agora — nada pra disparar.' });
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);

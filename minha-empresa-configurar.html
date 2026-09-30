@@ -1364,30 +1364,32 @@ async function abrirRelatorioAgregado(template) {
   _disparoRelatorioAgregado = true;
   await carregarRelatorio(`${API_BASE}/minha-disparos/template/${encodeURIComponent(template)}/relatorio`);
 }
-// Funil visual DE VERDADE (topo largo, afunilando até o fundo) — cada estágio
-// é um trapézio cuja largura de cima bate com a largura de baixo do estágio
-// anterior, então o funil afunila de forma contínua, não em degraus soltos.
-// A largura de cada trapézio é proporcional ao valor daquele estágio sobre o
-// 1º estágio (sempre 100%). `valorMinPct` garante uma faixa mínima visível
-// mesmo quando um estágio zera, pra não sumir o rótulo.
+// Funil visual DE VERDADE (formato de funil de despejar líquido — silhueta
+// contínua afunilando até um bico na base). A FORMA é sempre a mesma, fixa,
+// não importa os números — só o valor/rótulo/% escrito DENTRO de cada fatia
+// muda. Pedido explícito: nunca deixar a forma mudar de tamanho conforme os
+// dados (evita fatia sumir/ficar esquisita quando um estágio zera).
 function renderFunilVisual(etapas) {
-  const cores = ['#2e9e5b', '#3b82c4', '#8b5cf6', '#d98a2b', '#e0575b'];
-  const W = 460, stageH = 64, gap = 3;
+  const cores = ['#e0575b', '#2c3e50', '#d98a2b', '#2e9e5b'];
+  // Coordenadas fixas de cada fatia (topo largo → base estreita) + onde
+  // escrever o número grande e o rótulo pequeno dentro dela. Suporta até 4
+  // estágios — é exatamente quantos o relatório de disparo sempre manda.
+  const fatias = [
+    { pontos: '140,40 540,40 460,130 220,130', cx: 340, cyNum: 76, cyTxt: 98, numSize: 22, txtSize: 13 },
+    { pontos: '220,132 460,132 410,210 270,210', cx: 340, cyNum: 162, cyTxt: 184, numSize: 22, txtSize: 13 },
+    { pontos: '270,212 410,212 380,278 300,278', cx: 340, cyNum: 240, cyTxt: 260, numSize: 20, txtSize: 13 },
+    { pontos: '300,280 380,280 355,340 325,340', cx: 340, cyNum: 304, cyTxt: 322, numSize: 18, txtSize: 12 }
+  ];
   const base = etapas[0].valor || 1;
-  const H = etapas.length * (stageH + gap) - gap;
-  const pct = v => Math.max(v / base, 0.14);
-  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="max-width:460px;display:block;margin:0 auto;">`;
-  etapas.forEach((e, i) => {
-    const wTop = pct(i === 0 ? base : etapas[i - 1].valor) * W;
-    const wBot = pct(e.valor) * W;
-    const y0 = i * (stageH + gap), y1 = y0 + stageH;
-    const xTop0 = (W - wTop) / 2, xTop1 = xTop0 + wTop;
-    const xBot0 = (W - wBot) / 2, xBot1 = xBot0 + wBot;
+  let svg = `<svg viewBox="0 0 680 420" width="100%" style="max-width:460px;display:block;margin:0 auto;">`;
+  etapas.slice(0, fatias.length).forEach((e, i) => {
+    const f = fatias[i];
     const pctTxt = i === 0 ? '100%' : `${Math.round((e.valor / base) * 100)}%`;
-    svg += `<polygon points="${xTop0},${y0} ${xTop1},${y0} ${xBot1},${y1} ${xBot0},${y1}" fill="${cores[i % cores.length]}" />`;
-    svg += `<text x="${W / 2}" y="${y0 + stageH / 2 - 6}" text-anchor="middle" fill="#fff" font-size="17" font-weight="800">${e.valor}</text>`;
-    svg += `<text x="${W / 2}" y="${y0 + stageH / 2 + 14}" text-anchor="middle" fill="#fff" font-size="11.5" opacity="0.95">${escapeHtml(e.label)} · ${pctTxt}</text>`;
+    svg += `<polygon points="${f.pontos}" fill="${cores[i % cores.length]}" />`;
+    svg += `<text x="${f.cx}" y="${f.cyNum}" text-anchor="middle" fill="#fff" font-size="${f.numSize}" font-weight="700">${e.valor}</text>`;
+    svg += `<text x="${f.cx}" y="${f.cyTxt}" text-anchor="middle" fill="#fff" font-size="${f.txtSize}">${escapeHtml(e.label)} · ${pctTxt}</text>`;
   });
+  svg += `<rect x="330" y="342" width="20" height="30" fill="#8b6b23" />`;
   svg += `</svg>`;
   return svg;
 }
