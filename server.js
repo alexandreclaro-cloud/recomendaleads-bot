@@ -984,6 +984,14 @@ const EMPRESA_PADRAO = {
   naoClienteGatilho: 'quero meu voucher',
   naoClienteMensagemBoasVindas: 'Oi! Antes de você ir, separamos um presente especial pra você 🎁 Recomendando 5 amigos, você ganha um voucher pra usar numa próxima compra aqui. Posso te contar como funciona?',
   faixasBonusNaoCliente: [{ quantidade: 5, premio: '🎟️ Voucher de 10% de desconto pra usar numa próxima compra', arquivo: null, link: null, texto: '_(Exemplo — defina o desconto/valor real do voucher aqui)_' }],
+  // Resto das perguntas da conversa (vendedor, pedir contatos, coleta, validar
+  // com o amigo) — textos PRÓPRIOS opcionais pro Funil Não Cliente, pra poder
+  // ser mais curto/direto que o Funil Start. Vazio = cai no texto do Start
+  // (mesmo campo de sempre), sem precisar duplicar nada pra quem não quiser.
+  naoClienteMensagemPedeVendedor: '',
+  naoClienteMensagemPedeContatos: '',
+  naoClienteMensagemColeta: '',
+  naoClienteMensagemValidarAmigo: '',
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
   //  'basic'  = o robô dispara pros amigos (atual, padrão).
   //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).
@@ -2313,8 +2321,13 @@ async function iniciarColetaContatos(telefone, sessao, empresa) {
   if (modoRecAtual(empresa) === 'full') {
     await sendText(telefone, substituirVariaveis(empresa.fullMensagemAvisoInicial || EMPRESA_PADRAO.fullMensagemAvisoInicial, varsCliente));
   }
-  await sendText(telefone, substituirVariaveis(empresa.mensagemPedeContatos || EMPRESA_PADRAO.mensagemPedeContatos, varsCliente));
-  await sendText(telefone, substituirVariaveis(empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta, varsCliente));
+  // Funil Não Cliente pode ter texto PRÓPRIO (mais curto/direto) pra essas 2
+  // mensagens — vazio cai no texto do Funil Start, mesmo campo de sempre.
+  const ehNaoCliente = sessao.origemFunil === 'naoCliente';
+  const txtPedeContatos = (ehNaoCliente && empresa.naoClienteMensagemPedeContatos) || empresa.mensagemPedeContatos || EMPRESA_PADRAO.mensagemPedeContatos;
+  const txtColeta = (ehNaoCliente && empresa.naoClienteMensagemColeta) || empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta;
+  await sendText(telefone, substituirVariaveis(txtPedeContatos, varsCliente));
+  await sendText(telefone, substituirVariaveis(txtColeta, varsCliente));
   // Follow-up — Sem resposta (Cliente): agenda o 1º lembrete caso ele trave
   // aqui sem mandar nenhuma indicação. Vazio na config = não agenda nada.
   await agendarProximoFollowupClienteContatos(telefone, empresa, marcaContatos, 0);
@@ -2368,7 +2381,10 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
     await upsertClientePipeline(telefone, sessao.clienteNome, 'deu_nome');
 
     const temVendedores = empresa.vendedores && empresa.vendedores.length > 0;
-    const perguntaVend = (empresa.mensagemPedeVendedor || '').trim();
+    // Funil Não Cliente pode ter essa pergunta com texto próprio — vazio cai
+    // no texto do Funil Start (mesmo campo de sempre, mesma regra de "vazio =
+    // não pergunta" quando NENHUM dos dois estiver preenchido).
+    const perguntaVend = ((sessao.origemFunil === 'naoCliente' && empresa.naoClienteMensagemPedeVendedor) || empresa.mensagemPedeVendedor || '').trim();
     // Pula "quem te atendeu?" quando não há vendedores OU a frase está VAZIA (o dono
     // escolheu não perguntar — ex.: só tem recepcionista). Nesse caso o robô usa o
     // 1º vendedor cadastrado pra se apresentar ao recomendado. Se a frase estiver
@@ -3018,7 +3034,10 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   // "recomendou", ao completar a faixa, antes de qualquer coisa ser entregue).
   await upsertClientePipeline(telefone, sessao.clienteNome, 'recebeu_premio');
 
-  const msgValidarAmigo = empresa.mensagemValidarAmigo ?? EMPRESA_PADRAO.mensagemValidarAmigo;
+  // Funil Não Cliente pode ter esse aviso com texto próprio — vazio cai no
+  // texto do Funil Start, mesma regra de sempre (campo vazio = não envia nada).
+  const msgValidarAmigo = (sessao.origemFunil === 'naoCliente' && empresa.naoClienteMensagemValidarAmigo)
+    || (empresa.mensagemValidarAmigo ?? EMPRESA_PADRAO.mensagemValidarAmigo);
   if (msgValidarAmigo && msgValidarAmigo.trim()) {
     await sendText(telefone, substituirVariaveis(msgValidarAmigo, {
       nomeRecomendado: (sessao.clienteNome || '').split(' ')[0],
@@ -7668,25 +7687,6 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOf
     }
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao }, { merge: true });
     res.json({ ok: true, faixa });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// TEMP DEBUG — apaga só os 3 leads de teste que caíram na pipeline real da
-// Evoque (ids confirmados com o dono antes de rodar). Remover depois de usar.
-app.post('/debug-apagar-leads-teste-evoque', async (req, res) => {
-  const ids = ['llq4K00WpC7cjvVZ5Uzn', 'wAXtnGsyVWyxlvsoIeFd', 'iNVSfjAalnD0pfir6uW1'];
-  try {
-    const apagados = [];
-    for (const id of ids) {
-      const doc = await LEADS_COL().doc(id).get();
-      if (doc.exists && doc.data().empresaId === EMPRESA_ID_PDN) {
-        await LEADS_COL().doc(id).delete();
-        apagados.push(id);
-      }
-    }
-    res.json({ ok: true, apagados });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

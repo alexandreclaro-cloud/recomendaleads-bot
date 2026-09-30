@@ -1360,6 +1360,20 @@
       <label style="margin-top:14px;">Mensagem de boas-vindas (1ª mensagem — explica o convite de quem não comprou)</label>
       <textarea id="ncBoasVindasInput" rows="4"></textarea>
 
+      <p style="font-size:0.78rem;color:var(--text-dim);margin:18px 0 4px;">O resto da conversa (abaixo) reaproveita o texto do Funil Start por padrão. Preencha aqui só o que quiser deixar diferente/mais curto pra quem não comprou — <b>deixe vazio pra continuar usando o texto do Start</b>.</p>
+
+      <label style="margin-top:12px;">3) Pergunta o vendedor <span style="font-weight:400;color:var(--text-dim);">(opcional)</span></label>
+      <textarea id="ncPedeVendedorInput" rows="2" placeholder="Vazio = usa o texto do Funil Start"></textarea>
+
+      <label style="margin-top:12px;">4) Pede os contatos — convite <span style="font-weight:400;color:var(--text-dim);">(use {premio})</span></label>
+      <textarea id="ncPedeContatosInput" rows="2" placeholder="Vazio = usa o texto do Funil Start"></textarea>
+
+      <label style="margin-top:12px;">Instrução de coleta <span style="font-weight:400;color:var(--text-dim);">(use {quantidade})</span></label>
+      <textarea id="ncColetaInput" rows="3" placeholder="Vazio = usa o texto do Funil Start"></textarea>
+
+      <label style="margin-top:12px;">5) Validar com o amigo <span style="font-weight:400;color:var(--text-dim);">(logo após o presente)</span></label>
+      <textarea id="ncValidarAmigoInput" rows="2" placeholder="Vazio = usa o texto do Funil Start"></textarea>
+
       <div class="config-row-save">
         <button class="config-save-btn" id="salvarNaoClienteBtn" disabled>Salvar Funil Não Cliente</button>
         <span class="config-status-msg" id="statusNaoCliente"></span>
@@ -2836,9 +2850,17 @@ async function carregarConfiguracao() {
     document.getElementById('ncAtivoInput').checked = !!configuracaoAtual.naoClienteAtivo;
     document.getElementById('ncGatilhoInput').value = configuracaoAtual.naoClienteGatilho || '';
     document.getElementById('ncBoasVindasInput').value = configuracaoAtual.naoClienteMensagemBoasVindas || '';
+    document.getElementById('ncPedeVendedorInput').value = configuracaoAtual.naoClienteMensagemPedeVendedor || '';
+    document.getElementById('ncPedeContatosInput').value = configuracaoAtual.naoClienteMensagemPedeContatos || '';
+    document.getElementById('ncColetaInput').value = configuracaoAtual.naoClienteMensagemColeta || '';
+    document.getElementById('ncValidarAmigoInput').value = configuracaoAtual.naoClienteMensagemValidarAmigo || '';
     document.getElementById('ncAtivoInput').disabled = false;
     document.getElementById('ncGatilhoInput').disabled = false;
     document.getElementById('ncBoasVindasInput').disabled = false;
+    document.getElementById('ncPedeVendedorInput').disabled = false;
+    document.getElementById('ncPedeContatosInput').disabled = false;
+    document.getElementById('ncColetaInput').disabled = false;
+    document.getElementById('ncValidarAmigoInput').disabled = false;
     document.getElementById('salvarNaoClienteBtn').disabled = false;
     renderLinkNaoCliente();
   } catch (err) {
@@ -3553,9 +3575,13 @@ document.getElementById('salvarNaoClienteBtn').addEventListener('click', async (
   const naoClienteAtivo = document.getElementById('ncAtivoInput').checked;
   const naoClienteGatilho = document.getElementById('ncGatilhoInput').value.trim() || 'quero meu voucher';
   const naoClienteMensagemBoasVindas = document.getElementById('ncBoasVindasInput').value;
+  const naoClienteMensagemPedeVendedor = document.getElementById('ncPedeVendedorInput').value;
+  const naoClienteMensagemPedeContatos = document.getElementById('ncPedeContatosInput').value;
+  const naoClienteMensagemColeta = document.getElementById('ncColetaInput').value;
+  const naoClienteMensagemValidarAmigo = document.getElementById('ncValidarAmigoInput').value;
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ naoClienteAtivo, naoClienteGatilho, naoClienteMensagemBoasVindas }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ naoClienteAtivo, naoClienteGatilho, naoClienteMensagemBoasVindas, naoClienteMensagemPedeVendedor, naoClienteMensagemPedeContatos, naoClienteMensagemColeta, naoClienteMensagemValidarAmigo }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok';
