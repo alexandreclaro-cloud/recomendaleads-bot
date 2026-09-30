@@ -5796,7 +5796,7 @@ app.post('/assinar/checkout', async (req, res) => {
   } catch (err) {
     const msg = (err.response && err.response.data && JSON.stringify(err.response.data)) || err.message;
     console.error('Erro no checkout público:', msg);
-    res.status(500).json({ ok: false, erro: err.message });
+    res.status(500).json({ ok: false, erro: msg });
   }
 });
 
