@@ -5791,6 +5791,7 @@ app.post('/assinar/checkout', async (req, res) => {
       cancelUrl: `${base}/assinar?cancelado=1`,
       metodos
     });
+    await SIGNUPS_PENDENTES_COL().doc(ref).update({ checkoutId: checkout.id || null });
     res.json({ ok: true, url: checkout.link });
   } catch (err) {
     const msg = (err.response && err.response.data && JSON.stringify(err.response.data)) || err.message;
@@ -5832,10 +5833,21 @@ async function garantirContaSignup({ ref, email, asaasCustomerId, asaasSubscript
   return { id: novaRef.id, ...snap.data() };
 }
 
-// Busca o pagamento do Asaas pela nossa `ref` (externalReference) — usado
-// pelas duas rotas abaixo pra confirmar que já foi pago de verdade, sem
-// depender só do webhook já ter chegado.
+// Busca o pagamento do Asaas pela nossa `ref` — usado pelas duas rotas
+// abaixo pra confirmar que já foi pago de verdade, sem depender só do
+// webhook já ter chegado. Prioriza `checkoutSession` (o id do checkout
+// devolvido pelo Asaas ao criar): diferente do `externalReference`, que a
+// Asaas nem sempre copia do checkout pro pagamento gerado, o checkoutSession
+// é garantido pela própria Asaas pra esse fim. externalReference fica como
+// fallback pra refs antigas (criadas antes desse fix) que não têm checkoutId salvo.
 async function buscarPagamentoAsaasPorRef(ref) {
+  const pend = await SIGNUPS_PENDENTES_COL().doc(ref).get();
+  const checkoutId = pend.exists ? pend.data().checkoutId : null;
+  if (checkoutId) {
+    const { data } = await asaas.get('/payments', { params: { checkoutSession: checkoutId, limit: 1 } });
+    const pagamento = (data && data.data && data.data[0]) || null;
+    if (pagamento) return pagamento;
+  }
   const { data } = await asaas.get('/payments', { params: { externalReference: ref, limit: 1 } });
   return (data && data.data && data.data[0]) || null;
 }
