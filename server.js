@@ -5840,38 +5840,24 @@ async function garantirContaSignup({ ref, email, asaasCustomerId, asaasSubscript
 // Asaas nem sempre copia do checkout pro pagamento gerado, o checkoutSession
 // é garantido pela própria Asaas pra esse fim. externalReference fica como
 // fallback pra refs antigas (criadas antes desse fix) que não têm checkoutId salvo.
-// TEMP DEBUG — remover depois de diagnosticar o plano recorrente.
-app.get('/debug-asaas-ref2', async (req, res) => {
-  try {
-    const ref = String(req.query.ref || '');
-    const pend = await SIGNUPS_PENDENTES_COL().doc(ref).get();
-    const checkoutId = pend.exists ? pend.data().checkoutId : null;
-    let porSessao = null, porExtRef = null;
-    if (checkoutId) {
-      const r1 = await asaas.get('/payments', { params: { checkoutSession: checkoutId, limit: 5 } });
-      porSessao = r1.data;
-    }
-    const r2 = await asaas.get('/payments', { params: { externalReference: ref, limit: 5 } });
-    porExtRef = r2.data;
-    let subsPorExtRef = null, subsRecentes = null, paymentsPorSub = null;
-    try { subsPorExtRef = (await asaas.get('/subscriptions', { params: { externalReference: ref, limit: 5 } })).data; } catch (e) { subsPorExtRef = { erro: e.message }; }
-    try { subsRecentes = (await asaas.get('/subscriptions', { params: { limit: 3 } })).data; } catch (e) { subsRecentes = { erro: e.message }; }
-    if (subsPorExtRef && subsPorExtRef.data && subsPorExtRef.data[0]) {
-      try { paymentsPorSub = (await asaas.get('/payments', { params: { subscription: subsPorExtRef.data[0].id, limit: 5 } })).data; } catch (e) { paymentsPorSub = { erro: e.message }; }
-    }
-    res.json({ ok: true, ref, pendData: pend.exists ? pend.data() : null, porSessao, porExtRef, subsPorExtRef, subsRecentes, paymentsPorSub });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: (err.response && err.response.data) || err.message });
-  }
-});
-
 async function buscarPagamentoAsaasPorRef(ref) {
   const pend = await SIGNUPS_PENDENTES_COL().doc(ref).get();
   const checkoutId = pend.exists ? pend.data().checkoutId : null;
   if (checkoutId) {
+    // Cobrança única (DETACHED): o Payment em si carrega o checkoutSession.
     const { data } = await asaas.get('/payments', { params: { checkoutSession: checkoutId, limit: 1 } });
     const pagamento = (data && data.data && data.data[0]) || null;
     if (pagamento) return pagamento;
+    // Assinatura recorrente (RECURRENT): quem carrega o checkoutSession é a
+    // Subscription, não o Payment — busca a subscription primeiro e depois
+    // o pagamento (a 1ª cobrança) vinculado a ela.
+    const { data: subs } = await asaas.get('/subscriptions', { params: { checkoutSession: checkoutId, limit: 1 } });
+    const sub = (subs && subs.data && subs.data[0]) || null;
+    if (sub) {
+      const { data: pagos } = await asaas.get('/payments', { params: { subscription: sub.id, limit: 1 } });
+      const pagamentoSub = (pagos && pagos.data && pagos.data[0]) || null;
+      if (pagamentoSub) return pagamentoSub;
+    }
   }
   const { data } = await asaas.get('/payments', { params: { externalReference: ref, limit: 1 } });
   return (data && data.data && data.data[0]) || null;
