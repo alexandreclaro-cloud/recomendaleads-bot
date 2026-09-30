@@ -9094,22 +9094,31 @@ app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOfe
     // Quantas variáveis esse template PRECISA de verdade — sem isso, mandava
     // exatamente o que a lista colada trouxe, não importa quantas colunas o
     // dono digitou. Um template com N variáveis diferente do que foi colado
-    // sempre voltava "(#132000) Number of parameters does not match" —
-    // 100% de falha, pra TODOS os contatos (mesmo bug já corrigido no disparo
-    // por coluna, mas esse endpoint manual nunca tinha recebido o fix).
+    // sempre voltava "(#132000) Number of parameters does not match" — 100%
+    // de falha, pra TODOS os contatos (mesmo bug já corrigido no disparo por
+    // coluna, mas esse endpoint manual nunca tinha recebido o fix).
     const infoTpl = await getTemplateInfo(oficialDaEmpresa(empresa), template);
     const nVars = infoTpl ? infoTpl.n : null;
 
     let contatos = Array.isArray(req.body && req.body.contatos) ? req.body.contatos : [];
-    contatos = contatos.map(c => {
-      let params = Array.isArray(c && c.params) ? c.params.map(x => String(x == null ? '' : x)) : [];
-      if (nVars != null) {
-        params = params.slice(0, nVars);
-        while (params.length < nVars) params.push('');
-      }
-      return { telefone: soDigitos((c && (c.telefone || c.tel)) || ''), params };
-    }).filter(c => c.telefone.length >= 10);
+    contatos = contatos.map(c => ({
+      telefone: soDigitos((c && (c.telefone || c.tel)) || ''),
+      params: Array.isArray(c && c.params) ? c.params.map(x => String(x == null ? '' : x)) : []
+    })).filter(c => c.telefone.length >= 10);
     if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Nenhum contato válido — cada linha precisa de telefone com DDD.' });
+
+    // A Meta recusa parâmetro de template em BRANCO (não é só contagem) — não
+    // dá pra "consertar" completando com texto vazio, só disfarça o problema e
+    // a Meta recusa os 100% igual, só que com uma mensagem genérica de contagem
+    // difícil de entender. Em vez disso, avisa ANTES de disparar (e gastar a
+    // tentativa) exatamente quantas colunas de texto faltam colar.
+    if (nVars != null && nVars > 0) {
+      const faltaDado = contatos.some(c => c.params.length < nVars || c.params.slice(0, nVars).some(p => !p || !p.trim()));
+      if (faltaDado) {
+        return res.status(400).json({ ok: false, erro: `O template "${template}" precisa de ${nVars} coluna(s) de texto preenchida(s) além do telefone (a Meta recusa variável em branco). Confira se toda linha colada tem ${nVars} valor(es) depois do telefone.` });
+      }
+      contatos = contatos.map(c => ({ ...c, params: c.params.slice(0, nVars) }));
+    }
     if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Máximo de 1000 contatos por disparo.' });
     const rodando = _disparoStatus[empresa.id];
     if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
@@ -9557,12 +9566,13 @@ app.post('/minha-disparos/template/:template/resposta/disparar', exigirLoginEmpr
     if (!agregado) return res.status(404).json({ ok: false, erro: 'Nenhum disparo encontrado com esse template.' });
     const grupos = await calcularRespostasPorBotao({ criadoEm: agregado.criadoEm, contatos: agregado.contatos }, req.empresaLogin.id);
     const alvo = grupos.find(g => g.resposta === resposta);
-    // Template do REDISPARO pode pedir uma quantidade de variáveis diferente
-    // do original — [] fixo sempre falhava com "Number of parameters does not
-    // match" pra qualquer template que precisasse de ao menos 1 variável.
+    // Template do REDISPARO pode pedir variáveis, mas aqui só temos o telefone
+    // (sem nome/recomendador por contato) — a Meta recusa parâmetro em branco,
+    // então um template com variável não dá pra usar nesse redisparo.
     const infoTplResp = await getTemplateInfo(oficialDaEmpresa(empresa), template);
     const nVarsResp = infoTplResp ? infoTplResp.n : 0;
-    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: Array(nVarsResp).fill('') }));
+    if (nVarsResp > 0) return res.status(400).json({ ok: false, erro: `O template "${template}" precisa de ${nVarsResp} variável(is), mas esse redisparo só tem o telefone de cada contato (a Meta recusa variável em branco). Escolha um template SEM variáveis no corpo.` });
+    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
     if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém com essa resposta agora — nada pra disparar.' });
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
@@ -9598,11 +9608,12 @@ app.post('/minha-disparos/:id/pipeline/disparar', exigirLoginEmpresa, exigirGest
 
     const { colunas } = await calcularPipelineDisparo(disparo, req.empresaLogin.id);
     const alvo = colunas.find(c => c.id === coluna);
-    // Mesmo fix do redisparo por resposta: o template escolhido aqui pode
-    // pedir variáveis diferentes do original — nunca manda [] fixo.
+    // Mesmo caso do redisparo por resposta: aqui só temos o telefone de cada
+    // contato — template com variável não dá (Meta recusa parâmetro em branco).
     const infoTplCol = await getTemplateInfo(oficialDaEmpresa(empresa), template);
     const nVarsCol = infoTplCol ? infoTplCol.n : 0;
-    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: Array(nVarsCol).fill('') }));
+    if (nVarsCol > 0) return res.status(400).json({ ok: false, erro: `O template "${template}" precisa de ${nVarsCol} variável(is), mas esse disparo por coluna só tem o telefone de cada contato. Escolha um template SEM variáveis no corpo.` });
+    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
     if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém nessa coluna agora — nada pra disparar.' });
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos);
@@ -9641,11 +9652,12 @@ app.post('/minha-disparos/:id/resposta/disparar', exigirLoginEmpresa, exigirGest
 
     const grupos = await calcularRespostasPorBotao(disparo, req.empresaLogin.id);
     const alvo = grupos.find(g => g.resposta === resposta);
-    // Mesmo fix: o template do redisparo pode pedir variáveis diferentes do
-    // original — nunca manda [] fixo.
+    // Mesmo caso: aqui só temos o telefone de cada contato — template com
+    // variável não dá (Meta recusa parâmetro em branco).
     const infoTplResp2 = await getTemplateInfo(oficialDaEmpresa(empresa), template);
     const nVarsResp2 = infoTplResp2 ? infoTplResp2.n : 0;
-    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: Array(nVarsResp2).fill('') }));
+    if (nVarsResp2 > 0) return res.status(400).json({ ok: false, erro: `O template "${template}" precisa de ${nVarsResp2} variável(is), mas esse redisparo só tem o telefone de cada contato. Escolha um template SEM variáveis no corpo.` });
+    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
     if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém com essa resposta agora — nada pra disparar.' });
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
@@ -9938,11 +9950,23 @@ async function processarAgendamentoInterno(agendamento) {
     if (!alvo.length) return;
     const infoTpl = await getTemplateInfo(oficialDaEmpresa(empresa), template);
     const nVars = infoTpl ? infoTpl.n : 0;
-    const contatos = alvo.map(c => {
-      const params = [];
-      while (params.length < nVars) params.push('');
-      return { telefone: c.telefone, params };
-    });
+    // Reaproveita os PARÂMETROS REAIS (nome, recomendador etc.) que o disparo
+    // original já tinha pra cada contato — nunca preenche com texto vazio
+    // (a Meta recusa parâmetro de template em branco). Quem não tem dado
+    // suficiente pro template escolhido fica de fora dessa leva, sem quebrar
+    // o resto — e loga pra dar pra perceber que ficou gente de fora.
+    let semDadoSuficiente = 0;
+    const contatos = alvo
+      .map(c => ({ telefone: c.telefone, params: (c.params || []).map(x => String(x == null ? '' : x)) }))
+      .filter(c => {
+        if (nVars === 0) return true;
+        const ok = c.params.length >= nVars && c.params.slice(0, nVars).every(p => p.trim());
+        if (!ok) semDadoSuficiente++;
+        return ok;
+      })
+      .map(c => ({ telefone: c.telefone, params: c.params.slice(0, nVars) }));
+    if (semDadoSuficiente) console.warn(`[FOLLOWUP-NAO-ABRIU] ${semDadoSuficiente} contato(s) sem dado suficiente pro template "${template}" (precisa de ${nVars} variável(is)) — ficaram de fora dessa leva.`);
+    if (!contatos.length) return;
     await iniciarDisparoMassa(empresa, template, contatos, headerMediaUrl);
     return;
   }
