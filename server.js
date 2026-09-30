@@ -7669,6 +7669,27 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOf
   }
 });
 
+// TEMP DEBUG — remover depois de localizar/limpar o lead de teste (PDN/Evoque)
+// e confirmar se a faixa do Funil Não Cliente realmente tem arquivo salvo.
+app.get('/debug-pdn-leads-recentes', async (req, res) => {
+  try {
+    const snap = await LEADS_COL().where('empresaId', '==', EMPRESA_ID_PDN).orderBy('criadoEm', 'desc').limit(8).get();
+    const leads = [];
+    snap.forEach(d => { const l = d.data(); leads.push({ id: d.id, nomeRecomendado: l.nomeRecomendado, telefoneRecomendado: l.telefoneRecomendado, nomeRecomendador: l.nomeRecomendador, ofertaId: l.ofertaId, etapa: l.etapa, criadoEm: l.criadoEm }); });
+
+    const empDoc = await EMPRESAS_COL().doc(EMPRESA_ID_PDN).get();
+    const cfg = (empDoc.exists && empDoc.data().configuracao) || {};
+    const ofertas = cfg.ofertas || {};
+    const faixasNaoClienteTopo = cfg.faixasBonusNaoCliente || null;
+    const faixasPorOferta = {};
+    Object.entries(ofertas).forEach(([id, o]) => { faixasPorOferta[id] = { nomeOferta: o && o.nomeOferta, naoClienteAtivo: o && o.naoClienteAtivo, faixasBonusNaoCliente: o && o.faixasBonusNaoCliente }; });
+
+    res.json({ ok: true, leads, faixasNaoClienteTopo, ofertasAtivas: Object.entries(ofertas).map(([id, o]) => ({ id, nome: o && o.nomeOferta, ativa: o && o.ativa })), faixasPorOferta });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // ============================================================
 // LEADS ISOLADOS POR EMPRESA
 // ============================================================
