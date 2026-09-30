@@ -4846,7 +4846,7 @@ async function tratarWebhook(req, res) {
       const ctxEsc = tenantContext.getStore();
       if (ctxEsc) ctxEsc.empresa = aplicarOferta(ctxEsc.empresa, escolhida.id);
       await resetSessao(telefone);
-      await iniciarConversa(telefone);
+      await iniciarConversa(telefone, _sConf.origemFunilPendente || undefined);
       await saveSessao(telefone, { ofertaId: escolhida.id });
       return res.sendStatus(200);
     }
@@ -4935,7 +4935,11 @@ async function tratarWebhook(req, res) {
         const listaTexto = opcoes.map((o, i) => `${i + 1}. ${o.nome}`).join('\n');
         const msgEscolha = (empGatilho.mensagemEscolhaOferta || EMPRESA_PADRAO.mensagemEscolhaOferta).replace('{opcoes}', listaTexto);
         await sendText(telefone, msgEscolha);
-        await saveSessao(telefone, { aguardandoEscolhaOferta: true, opcoesOferta: opcoes });
+        // Guarda qual funil pediu esse menu — sem isso, ao responder o número
+        // da loja, iniciarConversa() reiniciava sempre como Funil Start, mesmo
+        // quando foi o gatilho do Funil Não Cliente que abriu o menu.
+        const origemPendente = (ehGatilhoNaoClienteInicial && !ehGatilhoInicial) ? 'naoCliente' : null;
+        await saveSessao(telefone, { aguardandoEscolhaOferta: true, opcoesOferta: opcoes, origemFunilPendente: origemPendente });
         return res.sendStatus(200);
       }
       await resetSessao(telefone);
@@ -7669,22 +7673,20 @@ app.post('/minha-config/faixa', exigirLoginEmpresa, exigirGestor, exigirEscopoOf
   }
 });
 
-// TEMP DEBUG — remover depois de localizar/limpar o lead de teste (PDN/Evoque)
-// e confirmar se a faixa do Funil Não Cliente realmente tem arquivo salvo.
-app.get('/debug-pdn-leads-recentes', async (req, res) => {
+// TEMP DEBUG — apaga só os 3 leads de teste que caíram na pipeline real da
+// Evoque (ids confirmados com o dono antes de rodar). Remover depois de usar.
+app.post('/debug-apagar-leads-teste-evoque', async (req, res) => {
+  const ids = ['llq4K00WpC7cjvVZ5Uzn', 'wAXtnGsyVWyxlvsoIeFd', 'iNVSfjAalnD0pfir6uW1'];
   try {
-    const snap = await LEADS_COL().where('empresaId', '==', EMPRESA_ID_PDN).orderBy('criadoEm', 'desc').limit(8).get();
-    const leads = [];
-    snap.forEach(d => { const l = d.data(); leads.push({ id: d.id, nomeRecomendado: l.nomeRecomendado, telefoneRecomendado: l.telefoneRecomendado, nomeRecomendador: l.nomeRecomendador, ofertaId: l.ofertaId, etapa: l.etapa, criadoEm: l.criadoEm }); });
-
-    const empDoc = await EMPRESAS_COL().doc(EMPRESA_ID_PDN).get();
-    const cfg = (empDoc.exists && empDoc.data().configuracao) || {};
-    const ofertas = cfg.ofertas || {};
-    const faixasNaoClienteTopo = cfg.faixasBonusNaoCliente || null;
-    const faixasPorOferta = {};
-    Object.entries(ofertas).forEach(([id, o]) => { faixasPorOferta[id] = { nomeOferta: o && o.nomeOferta, naoClienteAtivo: o && o.naoClienteAtivo, faixasBonusNaoCliente: o && o.faixasBonusNaoCliente }; });
-
-    res.json({ ok: true, leads, faixasNaoClienteTopo, ofertasAtivas: Object.entries(ofertas).map(([id, o]) => ({ id, nome: o && o.nomeOferta, ativa: o && o.ativa })), faixasPorOferta });
+    const apagados = [];
+    for (const id of ids) {
+      const doc = await LEADS_COL().doc(id).get();
+      if (doc.exists && doc.data().empresaId === EMPRESA_ID_PDN) {
+        await LEADS_COL().doc(id).delete();
+        apagados.push(id);
+      }
+    }
+    res.json({ ok: true, apagados });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
