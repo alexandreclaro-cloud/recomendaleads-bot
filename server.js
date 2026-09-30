@@ -9291,7 +9291,15 @@ async function calcularPipelineDisparo(disparo, empresaId) {
 
   const leadsSnap = await LEADS_COL().where('empresaId', '==', empresaId).get();
   const recomendouChaves = new Set();
-  leadsSnap.forEach(d => { const l = d.data(); if (l.telefoneRecomendador) recomendouChaves.add(chaveTelefoneFuzzy(l.telefoneRecomendador)); });
+  // Etapa do PRÓPRIO lead desse telefone (ele é o recomendado) — usado só pra
+  // saber quem, dos contatos desse disparo, já está hoje na etapa "Comprou"
+  // (pro funil visual enviadas→abertas→aceitas→compraram do relatório).
+  const etapaPorTelefoneRecomendado = {};
+  leadsSnap.forEach(d => {
+    const l = d.data();
+    if (l.telefoneRecomendador) recomendouChaves.add(chaveTelefoneFuzzy(l.telefoneRecomendador));
+    if (l.telefoneRecomendado) etapaPorTelefoneRecomendado[l.telefoneRecomendado] = l.etapa;
+  });
 
   const contatos = disparo.contatos || [];
   const chave = (tel) => (empresaId === EMPRESA_ID_PDN ? tel : `${empresaId}__${tel}`);
@@ -9300,7 +9308,7 @@ async function calcularPipelineDisparo(disparo, empresaId) {
   sessoes.forEach((snap, i) => { if (snap.exists) etapaPorTelefone[contatos[i].telefone] = snap.data().etapa; });
 
   const colunas = {}; Object.keys(COLUNAS_PIPELINE_DISPARO).forEach(k => { colunas[k] = []; });
-  let entregues = 0, lidos = 0, falharam = 0, responderam = 0, recomendaram = 0;
+  let entregues = 0, lidos = 0, falharam = 0, responderam = 0, recomendaram = 0, compraram = 0;
 
   for (const c of contatos) {
     const st = statusPorTelefone[c.telefone];
@@ -9312,6 +9320,7 @@ async function calcularPipelineDisparo(disparo, empresaId) {
     if (respondeu) responderam++;
     const jaRecomendou = recomendouChaves.has(chaveTelefoneFuzzy(c.telefone));
     if (jaRecomendou) recomendaram++;
+    if (/comprou|comprad/i.test(etapaPorTelefoneRecomendado[c.telefone] || '')) compraram++;
 
     const item = { telefone: c.telefone, nome: (c.params && c.params[0]) || null };
     let coluna;
@@ -9324,7 +9333,7 @@ async function calcularPipelineDisparo(disparo, empresaId) {
   }
 
   return {
-    resumo: { total: contatos.length, entregues, lidos, falharam, responderam, recomendaram },
+    resumo: { total: contatos.length, entregues, lidos, falharam, responderam, recomendaram, compraram },
     colunas: Object.entries(COLUNAS_PIPELINE_DISPARO).map(([id, nome]) => ({ id, nome, contatos: colunas[id] }))
   };
 }
@@ -9396,13 +9405,26 @@ app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, exigi
     const respostas = await calcularRespostasPorBotao(disparo, req.empresaLogin.id);
     const diagnostico = { mensagensRecebidasNoPeriodo: await contarInboundNoPeriodo(req.empresaLogin.id, disparo.criadoEm) };
 
+    // Funil visual (literal, topo largo → fundo estreito): Enviadas → Abertas
+    // (confirmação de leitura) → Aceitas (respondeu sem recusar — usa a mesma
+    // classificação dos selos "📬/😶/🚫" do CRM) → Compraram.
+    const situacaoPorTelefone = await situacaoUltimoDisparoPorTelefone(req.empresaLogin.id);
+    const aceitas = (disparo.contatos || []).filter(c => (situacaoPorTelefone[c.telefone] || {}).situacao === 'respondeu').length;
+    const funil = [
+      { label: 'Enviadas', valor: resumo.total },
+      { label: 'Abertas', valor: resumo.lidos },
+      { label: 'Aceitas', valor: aceitas },
+      { label: 'Compraram', valor: resumo.compraram }
+    ];
+
     res.json({
       ok: true,
       disparo: { id: doc.id, template: disparo.template, total: disparo.total, criadoEm: disparo.criadoEm, status: disparo.status },
       resumo,
       colunas,
       respostas,
-      diagnostico
+      diagnostico,
+      funil
     });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

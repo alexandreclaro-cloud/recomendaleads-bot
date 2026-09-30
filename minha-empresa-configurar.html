@@ -766,6 +766,7 @@
             </div>
             <button type="button" id="disparoRelFecharBtn" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text-dim);line-height:1;">✕</button>
           </div>
+          <div id="disparoRelFunil" style="margin:16px 0;"></div>
           <div id="disparoRelStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-top:16px;"></div>
           <div id="disparoRelDiagnostico" style="font-size:0.76rem;color:var(--text-dim);margin-top:8px;line-height:1.5;"></div>
 
@@ -1151,9 +1152,22 @@ function headerFormatDoTemplate(nome) {
 function renderHeaderImgPreview() {
   const box = document.getElementById('disparoHeaderImgPreviewBox');
   if (!box) return;
-  box.innerHTML = disparoHeaderImageUrl
-    ? `<div style="font-size:0.8rem;color:#166534;">✅ Arquivo enviado — <a href="${disparoHeaderImageUrl}" target="_blank" style="color:inherit;">ver</a></div>`
-    : `<div style="font-size:0.8rem;color:#991B1B;">⚠️ Nenhum arquivo enviado ainda — obrigatório pra disparar esse template.</div>`;
+  if (!disparoHeaderImageUrl) {
+    box.innerHTML = `<div style="font-size:0.8rem;color:#991B1B;">⚠️ Nenhum arquivo enviado ainda — obrigatório pra disparar esse template.</div>`;
+    return;
+  }
+  // Mostra a imagem/vídeo de verdade, estampada na tela — antes só tinha o
+  // link "ver", e não dava pra saber o que estava salvo sem clicar toda vez.
+  const nome = (document.getElementById('disparoTemplate') || {}).value || '';
+  const fmt = headerFormatDoTemplate(nome);
+  const ehImagem = fmt === 'IMAGE' || (!fmt && /\.(jpe?g|png|gif|webp)(\?|$)/i.test(disparoHeaderImageUrl));
+  const ehVideo = fmt === 'VIDEO' || (!fmt && /\.(mp4|mov|webm)(\?|$)/i.test(disparoHeaderImageUrl));
+  const preview = ehVideo
+    ? `<video src="${disparoHeaderImageUrl}" controls style="max-width:220px;max-height:160px;border-radius:8px;display:block;margin-top:6px;"></video>`
+    : ehImagem
+      ? `<img src="${disparoHeaderImageUrl}" style="max-width:220px;max-height:160px;border-radius:8px;display:block;margin-top:6px;object-fit:contain;background:#f3f4f6;border:1px solid var(--border,#e3e6ea);">`
+      : '';
+  box.innerHTML = `<div style="font-size:0.8rem;color:#166534;">✅ Arquivo enviado — <a href="${disparoHeaderImageUrl}" target="_blank" style="color:inherit;">ver</a></div>${preview}`;
 }
 function atualizarHeaderImgUI() {
   const box = document.getElementById('disparoHeaderImgBox');
@@ -1350,10 +1364,39 @@ async function abrirRelatorioAgregado(template) {
   _disparoRelatorioAgregado = true;
   await carregarRelatorio(`${API_BASE}/minha-disparos/template/${encodeURIComponent(template)}/relatorio`);
 }
+// Funil visual DE VERDADE (topo largo, afunilando até o fundo) — cada estágio
+// é um trapézio cuja largura de cima bate com a largura de baixo do estágio
+// anterior, então o funil afunila de forma contínua, não em degraus soltos.
+// A largura de cada trapézio é proporcional ao valor daquele estágio sobre o
+// 1º estágio (sempre 100%). `valorMinPct` garante uma faixa mínima visível
+// mesmo quando um estágio zera, pra não sumir o rótulo.
+function renderFunilVisual(etapas) {
+  const cores = ['#2e9e5b', '#3b82c4', '#8b5cf6', '#d98a2b', '#e0575b'];
+  const W = 460, stageH = 64, gap = 3;
+  const base = etapas[0].valor || 1;
+  const H = etapas.length * (stageH + gap) - gap;
+  const pct = v => Math.max(v / base, 0.14);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="max-width:460px;display:block;margin:0 auto;">`;
+  etapas.forEach((e, i) => {
+    const wTop = pct(i === 0 ? base : etapas[i - 1].valor) * W;
+    const wBot = pct(e.valor) * W;
+    const y0 = i * (stageH + gap), y1 = y0 + stageH;
+    const xTop0 = (W - wTop) / 2, xTop1 = xTop0 + wTop;
+    const xBot0 = (W - wBot) / 2, xBot1 = xBot0 + wBot;
+    const pctTxt = i === 0 ? '100%' : `${Math.round((e.valor / base) * 100)}%`;
+    svg += `<polygon points="${xTop0},${y0} ${xTop1},${y0} ${xBot1},${y1} ${xBot0},${y1}" fill="${cores[i % cores.length]}" />`;
+    svg += `<text x="${W / 2}" y="${y0 + stageH / 2 - 6}" text-anchor="middle" fill="#fff" font-size="17" font-weight="800">${e.valor}</text>`;
+    svg += `<text x="${W / 2}" y="${y0 + stageH / 2 + 14}" text-anchor="middle" fill="#fff" font-size="11.5" opacity="0.95">${escapeHtml(e.label)} · ${pctTxt}</text>`;
+  });
+  svg += `</svg>`;
+  return svg;
+}
+
 async function carregarRelatorio(url) {
   const overlay = document.getElementById('disparoRelatorioOverlay');
   overlay.style.display = 'flex';
   document.getElementById('disparoRelTitulo').textContent = 'Carregando...';
+  document.getElementById('disparoRelFunil').innerHTML = '';
   document.getElementById('disparoRelStats').innerHTML = '';
   document.getElementById('disparoRelDiagnostico').innerHTML = '';
   document.getElementById('disparoRelPipeline').innerHTML = '';
@@ -1364,6 +1407,7 @@ async function carregarRelatorio(url) {
     if (!resp.ok || !d.ok) { document.getElementById('disparoRelTitulo').textContent = '❌ ' + (d.erro || 'Erro ao carregar'); return; }
     document.getElementById('disparoRelTitulo').textContent = d.disparo.template + (_disparoRelatorioAgregado ? ` — consolidado (${d.disparo.lotes} lote${d.disparo.lotes === 1 ? '' : 's'})` : '');
     document.getElementById('disparoRelSub').textContent = `${fmtDataHoraCliente(d.disparo.criadoEm)} · ${d.disparo.total} contato(s) únicos`;
+    document.getElementById('disparoRelFunil').innerHTML = (d.funil && d.funil.length) ? renderFunilVisual(d.funil) : '';
     const r = d.resumo;
     const stat = (label, valor, cor) => `<div style="background:var(--brand-soft,#eff4ff);border-radius:10px;padding:10px;text-align:center;">
       <div style="font-size:1.4rem;font-weight:800;${cor ? 'color:' + cor + ';' : ''}">${valor}</div>
@@ -2186,11 +2230,12 @@ function renderFaixas(faixas) {
   container.querySelectorAll('.btn-action').forEach(btn => btn.addEventListener('click', () => salvarFaixa(btn)));
   container.querySelectorAll('.faixa-ativa').forEach(chk => chk.addEventListener('change', () => salvarAtivaFaixa(chk)));
 
-  container.querySelectorAll('.card').forEach(card => {
+  container.querySelectorAll('.card').forEach((card, idx) => {
     const uploadBtn = card.querySelector('.upload-btn');
     const fileInput = card.querySelector('.arquivo-file');
     const arquivoInput = card.querySelector('[data-field="arquivo"]');
     const statusEl = card.querySelector('.upload-status');
+    mostrarPreviewArquivo(arquivoInput, faixas[idx] && faixas[idx].arquivo);
     if (uploadBtn && fileInput) {
       uploadBtn.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', () => uploadArquivo(fileInput, arquivoInput, statusEl));
@@ -2210,6 +2255,7 @@ async function uploadArquivo(inputFile, inputTexto, statusEl) {
     const data = await resp.json();
     if (resp.ok && data.ok) {
       inputTexto.value = data.url;
+      mostrarPreviewArquivo(inputTexto, data.url);
       statusEl.textContent = '✅ Arquivo enviado! Clique em "Salvar faixa" para confirmar.';
       statusEl.style.color = 'var(--success-dark)';
     } else {
@@ -2221,6 +2267,24 @@ async function uploadArquivo(inputFile, inputTexto, statusEl) {
     statusEl.style.color = 'var(--danger-dark)';
   }
   inputFile.value = '';
+}
+
+// Mostra a imagem estampada na tela, logo abaixo do campo de URL — antes só
+// tinha o link cru, impossível saber o que tava configurado sem abrir numa
+// aba nova. Idempotente: reaproveita o <img> já criado (marcado via
+// data-preview-for) tanto no carregamento da config quanto após um upload novo.
+function mostrarPreviewArquivo(inputTexto, url) {
+  if (!inputTexto) return;
+  let img = inputTexto.nextElementSibling;
+  if (!img || img.dataset.previewFor !== 'true') {
+    img = document.createElement('img');
+    img.dataset.previewFor = 'true';
+    img.style.cssText = 'display:none;max-width:160px;max-height:160px;border-radius:8px;margin-top:6px;object-fit:contain;background:#f3f4f6;border:1px solid var(--border,#e3e6ea);';
+    inputTexto.insertAdjacentElement('afterend', img);
+  }
+  const ehImagem = /\.(jpe?g|png|gif|webp)(\?|$)/i.test(url || '');
+  if (url && ehImagem) { img.src = url; img.style.display = 'block'; }
+  else { img.style.display = 'none'; img.removeAttribute('src'); }
 }
 
 // Liga/desliga um prêmio extra na hora (auto-salva).
@@ -3702,12 +3766,14 @@ function renderNichoPremios() {
     const file = card.querySelector('.nicho-arquivo-file');
     const arq = card.querySelector('[data-f="arquivo"]');
     const st = card.querySelector('.nicho-upload-status');
+    mostrarPreviewArquivo(arq, arq.value);
     if (btn && file) { btn.addEventListener('click', () => file.click()); file.addEventListener('change', () => uploadArquivo(file, arq, st)); }
   });
   const recBtn = document.getElementById('nichoArqRecBtn');
   const recFile = document.getElementById('nichoArqRecFile');
   const recArq = document.getElementById('nichoArqRec');
   const recSt = document.getElementById('nichoArqRecStatus');
+  mostrarPreviewArquivo(recArq, arqRec);
   if (recBtn && recFile) { recBtn.addEventListener('click', () => recFile.click()); recFile.addEventListener('change', () => uploadArquivo(recFile, recArq, recSt)); }
   if (window.lucide) lucide.createIcons();
 }

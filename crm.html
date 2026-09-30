@@ -1349,7 +1349,7 @@
         Pra quando a venda não fecha: o vendedor manda um link/QR Code PRÓPRIO (diferente do Funil Start) e a pessoa ganha um <b>presente diferente</b> (geralmente um voucher de desconto pra usar depois) ao recomendar 5 amigos. Depois disso, o fluxo é o mesmo de sempre — os amigos recebem a mensagem e são chamados pra vir comprar.
       </p>
       <label style="display:flex; align-items:center; gap:10px; margin:6px 0 14px; cursor:pointer;">
-        <input type="checkbox" id="ncAtivoInput" style="width:20px;height:20px;">
+        <input type="checkbox" id="ncAtivoInput" style="width:20px;height:20px;" disabled title="Carregando...">
         <span style="font-weight:700;">Ativar o Funil Não Cliente</span>
       </label>
 
@@ -1361,7 +1361,7 @@
       <textarea id="ncBoasVindasInput" rows="4"></textarea>
 
       <div class="config-row-save">
-        <button class="config-save-btn" id="salvarNaoClienteBtn">Salvar Funil Não Cliente</button>
+        <button class="config-save-btn" id="salvarNaoClienteBtn" disabled>Salvar Funil Não Cliente</button>
         <span class="config-status-msg" id="statusNaoCliente"></span>
       </div>
 
@@ -2743,6 +2743,7 @@ async function carregarConfiguracao() {
 
     document.getElementById('premioRecomendadoInput').value = configuracaoAtual.premioRecomendado || '';
     document.getElementById('arquivoRecomendadoInput').value = configuracaoAtual.arquivoRecomendado || '';
+    mostrarPreviewArquivo(document.getElementById('arquivoRecomendadoInput'), configuracaoAtual.arquivoRecomendado);
     document.getElementById('linkRecomendadoInput').value = configuracaoAtual.linkRecomendado || '';
     document.getElementById('textoRecomendadoInput').value = configuracaoAtual.textoRecomendado || '';
     document.getElementById('entregaDiretaInput').checked = configuracaoAtual.presentePrecisaAgendamento === false;
@@ -2750,6 +2751,7 @@ async function carregarConfiguracao() {
     document.getElementById('mensagemVendaInput').value = configuracaoAtual.mensagemVenda || '';
     document.getElementById('premioVendaInput').value = configuracaoAtual.premioVenda || '';
     document.getElementById('arquivoVendaInput').value = configuracaoAtual.arquivoVenda || '';
+    mostrarPreviewArquivo(document.getElementById('arquivoVendaInput'), configuracaoAtual.arquivoVenda);
     document.getElementById('linkVendaInput').value = configuracaoAtual.linkVenda || '';
     document.getElementById('textoVendaInput').value = configuracaoAtual.textoVenda || '';
     document.getElementById('marketingAtivoInput').checked = !!configuracaoAtual.marketingAtivo;
@@ -2757,6 +2759,7 @@ async function carregarConfiguracao() {
     document.getElementById('marketingMensagemInput').value = configuracaoAtual.marketingMensagem || '';
     document.getElementById('marketingPremioInput').value = configuracaoAtual.marketingPremio || '';
     document.getElementById('marketingArquivoInput').value = configuracaoAtual.marketingArquivo || '';
+    mostrarPreviewArquivo(document.getElementById('marketingArquivoInput'), configuracaoAtual.marketingArquivo);
     document.getElementById('marketingLinkInput').value = configuracaoAtual.marketingLink || '';
     document.getElementById('marketingTextoInput').value = configuracaoAtual.marketingTexto || '';
     // Templates da API Oficial nos cards de Marketing e Venda (só aparecem se oficial).
@@ -2825,10 +2828,18 @@ async function carregarConfiguracao() {
     renderFaixas(configuracaoAtual.faixasBonus || [], ['faixasContainerCliente']);
     renderFaixas(configuracaoAtual.faixasBonusNaoCliente || [], ['faixasContainerNaoCliente']);
     carregarFollowupCliente();
-    // Funil Não Cliente — gatilho/ativo/boas-vindas
+    // Funil Não Cliente — gatilho/ativo/boas-vindas. Campos nascem `disabled`
+    // (ver HTML) e só liberam aqui: como carregarConfiguracao() é assíncrono
+    // (busca no servidor), clicar no checkbox ANTES da resposta chegar fazia
+    // esse mesmo trecho sobrescrever o clique de volta pro valor antigo
+    // (false) segundos depois — parecia que o checkbox "desmarcava sozinho".
     document.getElementById('ncAtivoInput').checked = !!configuracaoAtual.naoClienteAtivo;
     document.getElementById('ncGatilhoInput').value = configuracaoAtual.naoClienteGatilho || '';
     document.getElementById('ncBoasVindasInput').value = configuracaoAtual.naoClienteMensagemBoasVindas || '';
+    document.getElementById('ncAtivoInput').disabled = false;
+    document.getElementById('ncGatilhoInput').disabled = false;
+    document.getElementById('ncBoasVindasInput').disabled = false;
+    document.getElementById('salvarNaoClienteBtn').disabled = false;
     renderLinkNaoCliente();
   } catch (err) {
     loadMsg.textContent = 'Não foi possível carregar a configuração.';
@@ -3777,6 +3788,7 @@ function renderFaixas(faixas, containerIds) {
       const inputFileFaixa = card.querySelector(`#arquivoFaixaFile_${containerId}_${faixa.quantidade}`);
       const inputArquivoFaixa = card.querySelector('[data-field="arquivo"]');
       const statusFaixa = card.querySelector(`#uploadStatusFaixa_${containerId}_${faixa.quantidade}`);
+      mostrarPreviewArquivo(inputArquivoFaixa, faixa.arquivo);
       if (inputFileFaixa) {
         inputFileFaixa.addEventListener('change', function() {
           uploadArquivo(this, inputArquivoFaixa, statusFaixa);
@@ -3892,6 +3904,7 @@ async function uploadArquivo(inputFile, inputTexto, statusEl) {
     const data = await resp.json();
     if (data.ok) {
       inputTexto.value = data.url;
+      mostrarPreviewArquivo(inputTexto, data.url);
       statusEl.textContent = '✅ Arquivo enviado! Agora clique em "Salvar" para confirmar.';
       statusEl.style.color = '#16A34A';
       statusEl.style.fontWeight = '600';
@@ -3905,6 +3918,26 @@ async function uploadArquivo(inputFile, inputTexto, statusEl) {
     statusEl.style.color = '#DC2626';
   }
   inputFile.value = '';
+}
+
+// Mostra a imagem estampada na tela, logo abaixo do campo de URL — antes só
+// tinha o link cru, impossível saber o que tava configurado sem abrir numa
+// aba nova. Idempotente: pode chamar de novo no mesmo input (reaproveita o
+// <img> já criado, marcado via data-preview-for) tanto no carregamento da
+// config quanto logo depois de um upload novo. PDF/outros formatos não tem
+// como pré-visualizar como imagem — só o link continua servindo pra esses.
+function mostrarPreviewArquivo(inputTexto, url) {
+  if (!inputTexto) return;
+  let img = inputTexto.nextElementSibling;
+  if (!img || img.dataset.previewFor !== 'true') {
+    img = document.createElement('img');
+    img.dataset.previewFor = 'true';
+    img.style.cssText = 'display:none;max-width:160px;max-height:160px;border-radius:8px;margin-top:6px;object-fit:contain;background:#f3f4f6;border:1px solid #e5e7eb;';
+    inputTexto.insertAdjacentElement('afterend', img);
+  }
+  const ehImagem = /\.(jpe?g|png|gif|webp)(\?|$)/i.test(url || '');
+  if (url && ehImagem) { img.src = url; img.style.display = 'block'; }
+  else { img.style.display = 'none'; img.removeAttribute('src'); }
 }
 
 document.getElementById('arquivoRecomendadoFile').addEventListener('change', function() {
