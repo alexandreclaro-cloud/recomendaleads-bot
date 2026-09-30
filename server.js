@@ -5856,6 +5856,27 @@ async function buscarPagamentoAsaasPorRef(ref) {
   return (data && data.data && data.data[0]) || null;
 }
 
+// TEMP DEBUG — remover depois de diagnosticar o /completar/status.
+app.get('/debug-asaas-ref', async (req, res) => {
+  try {
+    const ref = String(req.query.ref || '');
+    const pend = await SIGNUPS_PENDENTES_COL().doc(ref).get();
+    const pagamento = await buscarPagamentoAsaasPorRef(ref);
+    res.json({ ok: true, ref, pendExists: pend.exists, pendData: pend.exists ? pend.data() : null, pagamento });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: (err.response && err.response.data) || err.message });
+  }
+});
+app.get('/debug-asaas-session', async (req, res) => {
+  try {
+    const checkoutId = String(req.query.checkoutId || '');
+    const { data } = await asaas.get('/payments', { params: { checkoutSession: checkoutId, limit: 5 } });
+    res.json({ ok: true, checkoutId, resposta: data });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: (err.response && err.response.data) || err.message });
+  }
+});
+
 // Status pós-pagamento: confirma o pagamento e garante a conta criada.
 app.get('/completar/status', async (req, res) => {
   try {
