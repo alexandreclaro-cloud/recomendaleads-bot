@@ -58,8 +58,6 @@ async function carregar() {
     const resp = await fetch(`${API_BASE}/planos`);
     const data = await resp.json();
     let planos = (data && data.planos) || [];
-    // Site normal: só Semestral + Anual. Vendedor: todos (inclui Mensal recorrente).
-    if (!modoVendedor) planos = planos.filter(p => p.id !== 'mensal');
     const cont = document.getElementById('planos');
     cont.innerHTML = planos.map(p => {
       const destaque = p.id === 'anual' || p.id === planoUrl;
