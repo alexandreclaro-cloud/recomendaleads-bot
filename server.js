@@ -5857,6 +5857,15 @@ async function buscarPagamentoAsaasPorRef(ref) {
 }
 
 // TEMP DEBUG — remover depois de diagnosticar o /completar/status.
+app.get('/debug-asaas-ultimos', async (req, res) => {
+  try {
+    const snap = await SIGNUPS_PENDENTES_COL().orderBy('criadoEm', 'desc').limit(5).get();
+    const lista = snap.docs.map(d => ({ ref: d.id, ...d.data() }));
+    res.json({ ok: true, lista });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
 app.get('/debug-asaas-ref', async (req, res) => {
   try {
     const ref = String(req.query.ref || '');
