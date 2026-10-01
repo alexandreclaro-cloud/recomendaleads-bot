@@ -9566,14 +9566,28 @@ app.post('/minha-disparos/template/:template/resposta/disparar', exigirLoginEmpr
     if (!agregado) return res.status(404).json({ ok: false, erro: 'Nenhum disparo encontrado com esse template.' });
     const grupos = await calcularRespostasPorBotao({ criadoEm: agregado.criadoEm, contatos: agregado.contatos }, req.empresaLogin.id);
     const alvo = grupos.find(g => g.resposta === resposta);
-    // Template do REDISPARO pode pedir variáveis, mas aqui só temos o telefone
-    // (sem nome/recomendador por contato) — a Meta recusa parâmetro em branco,
-    // então um template com variável não dá pra usar nesse redisparo.
+    // Reaproveita os parâmetros (nome, recomendador etc.) que o disparo ORIGINAL
+    // já tinha pra cada contato — a Meta recusa parâmetro de template em branco,
+    // então nunca manda [] fixo pra um template que precisa de variável.
     const infoTplResp = await getTemplateInfo(oficialDaEmpresa(empresa), template);
     const nVarsResp = infoTplResp ? infoTplResp.n : 0;
-    if (nVarsResp > 0) return res.status(400).json({ ok: false, erro: `O template "${template}" precisa de ${nVarsResp} variável(is), mas esse redisparo só tem o telefone de cada contato (a Meta recusa variável em branco). Escolha um template SEM variáveis no corpo.` });
-    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
-    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém com essa resposta agora — nada pra disparar.' });
+    const paramsOrigemPorTelResp = {};
+    agregado.contatos.forEach(c => { paramsOrigemPorTelResp[c.telefone] = c.params || []; });
+    let semDadoResp = 0;
+    const contatos = (alvo ? alvo.contatos : [])
+      .map(c => ({ telefone: c.telefone, params: (paramsOrigemPorTelResp[c.telefone] || []).map(x => String(x == null ? '' : x)) }))
+      .filter(c => {
+        if (nVarsResp === 0) return true;
+        const ok = c.params.length >= nVarsResp && c.params.slice(0, nVarsResp).every(p => p.trim());
+        if (!ok) semDadoResp++;
+        return ok;
+      })
+      .map(c => ({ telefone: c.telefone, params: c.params.slice(0, nVarsResp) }));
+    if (!contatos.length) {
+      return res.status(400).json({ ok: false, erro: semDadoResp
+        ? `Ninguém com essa resposta tem os ${nVarsResp} dado(s) que o template "${template}" precisa (nome/recomendador do disparo original) — escolha um template SEM variáveis no corpo.`
+        : 'Ninguém com essa resposta agora — nada pra disparar.' });
+    }
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
     res.json({ ok: true, ...resultado, resposta, disparadoDeTemplate: templateOrigem });
@@ -9608,13 +9622,27 @@ app.post('/minha-disparos/:id/pipeline/disparar', exigirLoginEmpresa, exigirGest
 
     const { colunas } = await calcularPipelineDisparo(disparo, req.empresaLogin.id);
     const alvo = colunas.find(c => c.id === coluna);
-    // Mesmo caso do redisparo por resposta: aqui só temos o telefone de cada
-    // contato — template com variável não dá (Meta recusa parâmetro em branco).
+    // Reaproveita os parâmetros (nome, recomendador etc.) que o disparo ORIGINAL
+    // já tinha pra cada contato — nunca manda [] fixo (Meta recusa variável em branco).
     const infoTplCol = await getTemplateInfo(oficialDaEmpresa(empresa), template);
     const nVarsCol = infoTplCol ? infoTplCol.n : 0;
-    if (nVarsCol > 0) return res.status(400).json({ ok: false, erro: `O template "${template}" precisa de ${nVarsCol} variável(is), mas esse disparo por coluna só tem o telefone de cada contato. Escolha um template SEM variáveis no corpo.` });
-    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
-    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém nessa coluna agora — nada pra disparar.' });
+    const paramsOrigemPorTelCol = {};
+    (disparo.contatos || []).forEach(c => { paramsOrigemPorTelCol[c.telefone] = c.params || []; });
+    let semDadoCol = 0;
+    const contatos = (alvo ? alvo.contatos : [])
+      .map(c => ({ telefone: c.telefone, params: (paramsOrigemPorTelCol[c.telefone] || []).map(x => String(x == null ? '' : x)) }))
+      .filter(c => {
+        if (nVarsCol === 0) return true;
+        const ok = c.params.length >= nVarsCol && c.params.slice(0, nVarsCol).every(p => p.trim());
+        if (!ok) semDadoCol++;
+        return ok;
+      })
+      .map(c => ({ telefone: c.telefone, params: c.params.slice(0, nVarsCol) }));
+    if (!contatos.length) {
+      return res.status(400).json({ ok: false, erro: semDadoCol
+        ? `Ninguém nessa coluna tem os ${nVarsCol} dado(s) que o template "${template}" precisa (nome/recomendador do disparo original) — escolha um template SEM variáveis no corpo.`
+        : 'Ninguém nessa coluna agora — nada pra disparar.' });
+    }
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos);
     res.json({ ok: true, ...resultado, coluna, disparadoDe: req.params.id });
@@ -9652,13 +9680,27 @@ app.post('/minha-disparos/:id/resposta/disparar', exigirLoginEmpresa, exigirGest
 
     const grupos = await calcularRespostasPorBotao(disparo, req.empresaLogin.id);
     const alvo = grupos.find(g => g.resposta === resposta);
-    // Mesmo caso: aqui só temos o telefone de cada contato — template com
-    // variável não dá (Meta recusa parâmetro em branco).
+    // Reaproveita os parâmetros (nome, recomendador etc.) que o disparo ORIGINAL
+    // já tinha pra cada contato — nunca manda [] fixo (Meta recusa variável em branco).
     const infoTplResp2 = await getTemplateInfo(oficialDaEmpresa(empresa), template);
     const nVarsResp2 = infoTplResp2 ? infoTplResp2.n : 0;
-    if (nVarsResp2 > 0) return res.status(400).json({ ok: false, erro: `O template "${template}" precisa de ${nVarsResp2} variável(is), mas esse redisparo só tem o telefone de cada contato. Escolha um template SEM variáveis no corpo.` });
-    const contatos = (alvo ? alvo.contatos : []).map(c => ({ telefone: c.telefone, params: [] }));
-    if (!contatos.length) return res.status(400).json({ ok: false, erro: 'Ninguém com essa resposta agora — nada pra disparar.' });
+    const paramsOrigemPorTelResp2 = {};
+    (disparo.contatos || []).forEach(c => { paramsOrigemPorTelResp2[c.telefone] = c.params || []; });
+    let semDadoResp2 = 0;
+    const contatos = (alvo ? alvo.contatos : [])
+      .map(c => ({ telefone: c.telefone, params: (paramsOrigemPorTelResp2[c.telefone] || []).map(x => String(x == null ? '' : x)) }))
+      .filter(c => {
+        if (nVarsResp2 === 0) return true;
+        const ok = c.params.length >= nVarsResp2 && c.params.slice(0, nVarsResp2).every(p => p.trim());
+        if (!ok) semDadoResp2++;
+        return ok;
+      })
+      .map(c => ({ telefone: c.telefone, params: c.params.slice(0, nVarsResp2) }));
+    if (!contatos.length) {
+      return res.status(400).json({ ok: false, erro: semDadoResp2
+        ? `Ninguém com essa resposta tem os ${nVarsResp2} dado(s) que o template "${template}" precisa (nome/recomendador do disparo original) — escolha um template SEM variáveis no corpo.`
+        : 'Ninguém com essa resposta agora — nada pra disparar.' });
+    }
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
     res.json({ ok: true, ...resultado, resposta, disparadoDe: req.params.id });
