@@ -9183,18 +9183,24 @@ app.post('/minha-leads/coluna/:etapa/disparar', exigirLoginEmpresa, exigirGestor
     // (indicada por gente diferente, por exemplo).
     const vistos = new Set();
     const contatos = [];
+    let semDadoLead = 0;
     for (const l of leads) {
       const tel = soDigitos(l.telefoneRecomendado || '');
       if (tel.length < 10 || vistos.has(tel)) continue;
       vistos.add(tel);
       // Ordem fixa {{1}} nome do recomendado · {{2}} quem recomendou · {{3}}
       // vendedor — ajusta pro N exato que o template pede (corta se pedir
-      // menos, completa com vazio se pedir mais — nunca manda quantidade errada).
-      const paramsCompletos = [l.nomeRecomendado || '', l.nomeRecomendador || '', l.vendedor || empresa.nome];
-      while (paramsCompletos.length < nVars) paramsCompletos.push('');
-      contatos.push({ telefone: tel, params: paramsCompletos.slice(0, nVars) });
+      // menos). Se faltar dado (ex.: lead sem nome salvo) pro N pedido, NUNCA
+      // manda em branco — a Meta recusa — fica de fora dessa leva.
+      const paramsCompletos = [l.nomeRecomendado || '', l.nomeRecomendador || '', l.vendedor || empresa.nome].slice(0, nVars);
+      if (paramsCompletos.length < nVars || paramsCompletos.some(p => !p.trim())) { semDadoLead++; continue; }
+      contatos.push({ telefone: tel, params: paramsCompletos });
     }
-    if (!contatos.length) return res.status(400).json({ ok: false, erro: apenasSituacao ? 'Ninguém nesse grupo agora (ou só sobrou quem já recusou — esses ficam sempre de fora).' : 'Nenhum contato válido nessa coluna.' });
+    if (!contatos.length) {
+      return res.status(400).json({ ok: false, erro: apenasSituacao
+        ? 'Ninguém nesse grupo agora (ou só sobrou quem já recusou, ou sem nome salvo — esses ficam sempre de fora).'
+        : (semDadoLead ? `Nenhum lead dessa coluna tem os ${nVars} dado(s) que o template "${template}" precisa (nome/recomendador/vendedor).` : 'Nenhum contato válido nessa coluna.') });
+    }
     if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Mais de 1000 contatos nessa coluna — não dá num disparo só (limite de 1000).' });
 
     const rodando = _disparoStatus[empresa.id];
