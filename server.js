@@ -10684,6 +10684,32 @@ function iniciarMonitorEntregaOficial() {
   setInterval(monitorarEntregaOficial, 15 * 60 * 1000).unref?.(); // depois, de 15 em 15 min
 }
 
+// TEMP DEBUG — inspeciona as últimas mensagens de ÁUDIO recebidas de um
+// telefone (diagnóstico do áudio cortado em 2s). Remover depois do uso.
+app.get('/debug-audio-telefone', async (req, res) => {
+  try {
+    const tel = soDigitos(req.query.telefone || '');
+    if (!tel) return res.status(400).json({ ok: false, erro: 'Informe ?telefone=' });
+    const snap = await MENSAGENS_CHAT_COL().where('telefone', '==', tel).where('tipo', '==', 'audio').get();
+    const msgs = [];
+    snap.forEach(d => { const m = d.data(); msgs.push({ id: d.id, direcao: m.direcao, midiaUrl: m.midiaUrl, criadoEm: m.criadoEm }); });
+    msgs.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+    const detalhes = [];
+    for (const m of msgs.slice(0, 3)) {
+      let tamanho = null, contentType = null;
+      if (m.midiaUrl) {
+        try {
+          const head = await axios.head(m.midiaUrl, { timeout: 8000 });
+          tamanho = head.headers['content-length'];
+          contentType = head.headers['content-type'];
+        } catch (e) { tamanho = `erro: ${e.message}`; }
+      }
+      detalhes.push({ ...m, tamanhoBytes: tamanho, contentType });
+    }
+    res.json({ ok: true, total: msgs.length, detalhes });
+  } catch (err) { res.status(500).json({ ok: false, erro: err.message }); }
+});
+
 // ============================================================
 // INICIALIZAÇÃO DO SERVIDOR
 // ============================================================
