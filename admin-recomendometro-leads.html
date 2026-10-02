@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recomendômetro — leads | RecomendaLeads</title>
+<link rel="stylesheet" href="/theme.css">
+<style>
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 14px; flex-wrap: wrap; }
+  .toolbar .search-box { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 12px; }
+  .toolbar .search-box input { flex: 1; border: none; background: transparent; outline: none; font-family: inherit; font-size: 0.9rem; color: var(--text); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+  tbody tr:hover { background: var(--surface-2); }
+  .btn-mini { padding: 6px 12px; font-size: 0.78rem; }
+  #gate { max-width: 380px; margin: 70px auto; text-align: center; padding: 34px 28px; }
+</style>
+</head>
+<body>
+
+<div id="gate" class="card" style="display:none;">
+  <img src="/assets/logo.png" alt="RecomendaLeads" style="height:64px;width:auto;margin:0 auto 14px;display:block">
+  <h1 style="font-size:1.2rem;margin:0 0 12px;">Faça login no painel do dono primeiro</h1>
+  <a class="btn btn-brand" href="/admin" style="width:100%;">Ir pro /admin</a>
+</div>
+
+<div class="app-shell" id="app" style="display:none;">
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="/assets/logo-symbol.png" alt="" style="height:32px;width:auto;display:block">
+      <div><b>RecomendaLeads</b><span>Painel do Dono</span></div>
+    </div>
+    <nav class="nav">
+      <a class="nav-item" href="/admin"><i data-lucide="users"></i><span class="txt">Clientes</span></a>
+      <button class="nav-item active"><i data-lucide="bar-chart-3"></i><span class="txt">Recomendômetro</span></button>
+      <a class="nav-item" href="/admin/criar-empresa"><i data-lucide="plus"></i><span class="txt">Cadastrar cliente</span></a>
+      <a class="nav-item" href="/"><i data-lucide="home"></i><span class="txt">Início</span></a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="page-head">
+      <h1>Leads do Recomendômetro</h1>
+      <p>Quem preencheu o diagnóstico em /recomendometro.</p>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-box">
+        <i data-lucide="search" style="width:16px;height:16px;color:var(--text-dim)"></i>
+        <input type="text" id="busca" placeholder="Buscar por nome, telefone ou e-mail...">
+      </div>
+      <button class="btn btn-secondary" id="atualizarBtn">↻ Atualizar</button>
+    </div>
+
+    <div class="card" style="padding:0;overflow:auto;">
+      <table>
+        <thead>
+          <tr><th>Nome</th><th>WhatsApp</th><th>E-mail</th><th>Ramo</th><th>Perda/ano</th><th>Data</th><th></th></tr>
+        </thead>
+        <tbody id="tabela"><tr><td colspan="7" class="muted" style="padding:18px;">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+const API_BASE = window.location.origin;
+const ADMIN_KEY = localStorage.getItem('recomendaleads_admin_key') || '';
+const DONO_TOKEN = localStorage.getItem('recomendaleads_dono_token') || '';
+
+function icons() { try { lucide.createIcons(); } catch (e) {} }
+
+if (!ADMIN_KEY && !DONO_TOKEN) {
+  document.getElementById('gate').style.display = 'block';
+  icons();
+} else {
+  document.getElementById('app').style.display = 'flex';
+  icons();
+  iniciar();
+}
+
+function adminFetch(url, options = {}) {
+  const h = { ...(options.headers || {}) };
+  if (ADMIN_KEY) h['X-Admin-Key'] = ADMIN_KEY;
+  else if (DONO_TOKEN) h['Authorization'] = 'Bearer ' + DONO_TOKEN;
+  return fetch(url, { ...options, headers: h });
+}
+
+function esc(s) { return (s || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function moeda(v) { return (v || v === 0) ? 'R$ ' + Number(v).toLocaleString('pt-BR') : '—'; }
+
+let leads = [];
+
+async function iniciar() {
+  document.getElementById('atualizarBtn').addEventListener('click', carregar);
+  document.getElementById('busca').addEventListener('input', render);
+  await carregar();
+}
+
+async function carregar() {
+  const tbody = document.getElementById('tabela');
+  tbody.innerHTML = '<tr><td colspan="7" class="muted" style="padding:18px;">Carregando...</td></tr>';
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/recomendometro-leads`);
+    if (resp.status === 401) {
+      localStorage.removeItem('recomendaleads_admin_key');
+      localStorage.removeItem('recomendaleads_dono_token');
+      location.href = '/admin';
+      return;
+    }
+    const data = await resp.json();
+    leads = (data && data.leads) || [];
+    render();
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted" style="padding:18px;">Erro ao carregar.</td></tr>';
+  }
+}
+
+async function excluirLead(id, nome) {
+  if (!confirm(`Excluir o lead "${nome}"? Essa ação não tem volta.`)) return;
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/recomendometro-leads/${id}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { leads = leads.filter(l => l.id !== id); render(); }
+    else alert('Erro ao excluir: ' + (data.erro || ''));
+  } catch (e) { alert('Erro de conexão.'); }
+}
+
+function render() {
+  const busca = (document.getElementById('busca').value || '').toLowerCase().trim();
+  const filtrados = busca
+    ? leads.filter(l => [l.nome, l.telefone, l.email].some(v => (v || '').toLowerCase().includes(busca)))
+    : leads;
+  const tbody = document.getElementById('tabela');
+  if (!filtrados.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted" style="padding:18px;">Nenhum lead encontrado.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtrados.map(l => {
+    const tel = (l.telefone || '').replace(/\D/g, '');
+    const data = l.criadoEm ? new Date(l.criadoEm).toLocaleString('pt-BR') : '—';
+    return `<tr>
+      <td>${esc(l.nome)}</td>
+      <td>${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener">${esc(l.telefone)}</a>` : '—'}</td>
+      <td>${esc(l.email) || '—'}</td>
+      <td>${esc(l.ramo) || '—'}</td>
+      <td>${moeda(l.perda12)}</td>
+      <td>${data}</td>
+      <td><button class="btn btn-secondary btn-mini" onclick="excluirLead('${l.id}', '${esc(l.nome).replace(/'/g, "\\'")}')">Excluir</button></td>
+    </tr>`;
+  }).join('');
+}
+</script>
+</body>
+</html>

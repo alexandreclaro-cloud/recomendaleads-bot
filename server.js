@@ -5440,6 +5440,18 @@ app.post('/recomendometro/lead', async (req, res) => {
       criadoEm: new Date().toISOString()
     });
     res.json({ ok: true });
+
+    // Avisa o dono no WhatsApp (sem travar a resposta ao visitante nem derrubar
+    // o cadastro do lead se o envio falhar) — usa o número/canal da própria PDN.
+    (async () => {
+      try {
+        const empresaPdn = await getEmpresaById(EMPRESA_ID_PDN);
+        const msg = `📊 Novo lead do Recomendômetro!\n\n*${nome}*\nWhatsApp: ${telefone || '—'}\nE-mail: ${email || '—'}\nRamo: ${b.ramo || '—'}`;
+        await tenantContext.run({ empresa: empresaPdn, empresaId: EMPRESA_ID_PDN }, async () => {
+          await sendText('11913269690', msg);
+        });
+      } catch (e) { console.error('[RECOMENDOMETRO] falha ao avisar no WhatsApp:', e.message); }
+    })();
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -5455,6 +5467,19 @@ app.get('/admin/recomendometro-leads', exigirAdmin, async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
+});
+
+app.delete('/admin/recomendometro-leads/:id', exigirAdmin, async (req, res) => {
+  try {
+    await db.collection('recomendometro_leads').doc(req.params.id).delete();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.get('/admin/recomendometro', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin-recomendometro-leads.html'));
 });
 
 app.get('/cabeleireiro', (req, res) => res.sendFile(path.join(__dirname, 'recomendometro-cabeleireiro.html')));
@@ -10683,16 +10708,6 @@ function iniciarMonitorEntregaOficial() {
   setTimeout(monitorarEntregaOficial, 45000); // 1ª checagem 45s após subir
   setInterval(monitorarEntregaOficial, 15 * 60 * 1000).unref?.(); // depois, de 15 em 15 min
 }
-
-// TEMP DEBUG — só pra conferir se já tem leads do Recomendômetro. Remover depois.
-app.get('/debug-recomendometro-count', async (req, res) => {
-  try {
-    const snap = await db.collection('recomendometro_leads').get();
-    const leads = snap.docs.map(d => ({ nome: d.data().nome, telefone: d.data().telefone, criadoEm: d.data().criadoEm }))
-      .sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
-    res.json({ ok: true, total: snap.size, leads });
-  } catch (err) { res.status(500).json({ ok: false, erro: err.message }); }
-});
 
 // ============================================================
 // INICIALIZAÇÃO DO SERVIDOR
