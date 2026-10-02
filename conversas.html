@@ -688,6 +688,11 @@ async function carregarMensagens(scroll) {
       pausar.style.display = 'inline-flex';
     }
     const msgs = document.getElementById('msgs');
+    // O polling de 4 em 4s recriava TODO o HTML da conversa, destruindo e
+    // recriando qualquer <audio>/<video> em reprodução — por isso um áudio de
+    // 20s só tocava uns 2s antes de "resetar" sozinho. Enquanto o atendente
+    // estiver ouvindo, pula esse refresh (a próxima rodada de 4s já resolve).
+    if ([...msgs.querySelectorAll('audio,video')].some(el => !el.paused)) return;
     const estavaNoFim = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
     msgs.innerHTML = (data.mensagens || []).map(m => `
       <div class="bubble ${m.direcao === 'out' ? 'out' : 'in'}">${renderConteudoMsg(m)}<small>${horaCompleta(m.criadoEm)}${ticksMsg(m)}</small></div>
