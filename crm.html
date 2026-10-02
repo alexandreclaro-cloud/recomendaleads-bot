@@ -1415,6 +1415,7 @@
 
       <label>Template da pergunta (aprovado na Meta)</label>
       <input type="text" id="npsTemplateNotaInput" list="templatesMetaDatalist" placeholder="ex: pesquisa_nps_0_10" disabled>
+      <div style="margin-top:4px;"><span id="npsTemplateBadge"></span></div>
       <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">A pergunta "de 0 a 10..." precisa ser um template aprovado — a API Oficial não manda texto livre em disparo de massa. O cliente responde digitando o número, em texto livre.</p>
 
       <label style="margin-top:14px;">Mensagem — nota 0 a 6 (Detrator)</label>
@@ -1425,6 +1426,12 @@
 
       <label style="margin-top:12px;">Mensagem final — depois que o Neutro responde o motivo</label>
       <textarea id="npsNeutroFinalInput" rows="2" disabled></textarea>
+
+      <label style="display:flex; align-items:center; gap:10px; margin:10px 0 4px; cursor:pointer;">
+        <input type="checkbox" id="npsPedirRecNeutroInput" style="width:20px;height:20px;" disabled title="Carregando...">
+        <span style="font-weight:600;">Também pedir as 5 recomendações pra quem deu nota 7-8 (Neutro)</span>
+      </label>
+      <p style="font-size:0.74rem;color:var(--text-dim);margin:0 0 12px;">Opcional — desligado por padrão. Se ligar, depois do motivo e do aviso ao gestor, o Neutro também entra no pedido de recomendação (sem presente na hora — se completar, ganha o presente normal no final, igual ao Funil Start).</p>
 
       <label style="margin-top:12px;">Mensagem — nota 9 ou 10 (Promotor), antes do presente</label>
       <textarea id="npsPromotorInput" rows="2" disabled></textarea>
@@ -2918,10 +2925,13 @@ async function carregarConfiguracao() {
     document.getElementById('npsNeutroFinalInput').value = configuracaoAtual.npsMensagemNeutroFinal || '';
     document.getElementById('npsPromotorInput').value = configuracaoAtual.npsMensagemPromotor || '';
     document.getElementById('npsTelefoneGestorInput').value = configuracaoAtual.npsTelefoneGestorEmergencia || '';
+    document.getElementById('npsPedirRecNeutroInput').checked = !!configuracaoAtual.npsPedirRecomendacaoNeutro;
+    document.getElementById('npsPedirRecNeutroInput').disabled = false;
     ['npsAtivoInput', 'npsTemplateNotaInput', 'npsDetratorInput', 'npsNeutroAgradInput', 'npsNeutroFinalInput', 'npsPromotorInput', 'npsTelefoneGestorInput'].forEach(id => {
       document.getElementById(id).disabled = false;
     });
     document.getElementById('salvarNpsBtn').disabled = false;
+    { const b = document.getElementById('npsTemplateBadge'); if (b) b.innerHTML = categoriaBadgeHtml(configuracaoAtual.npsTemplateNota || ''); }
   } catch (err) {
     loadMsg.textContent = 'Não foi possível carregar a configuração.';
   }
@@ -3661,9 +3671,10 @@ document.getElementById('salvarNpsBtn').addEventListener('click', async () => {
   const npsMensagemNeutroFinal = document.getElementById('npsNeutroFinalInput').value;
   const npsMensagemPromotor = document.getElementById('npsPromotorInput').value;
   const npsTelefoneGestorEmergencia = document.getElementById('npsTelefoneGestorInput').value.trim();
+  const npsPedirRecomendacaoNeutro = document.getElementById('npsPedirRecNeutroInput').checked;
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ npsAtivo, npsTemplateNota, npsMensagemDetrator, npsMensagemNeutroAgradecimento, npsMensagemNeutroFinal, npsMensagemPromotor, npsTelefoneGestorEmergencia }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ npsAtivo, npsTemplateNota, npsMensagemDetrator, npsMensagemNeutroAgradecimento, npsMensagemNeutroFinal, npsMensagemPromotor, npsTelefoneGestorEmergencia, npsPedirRecomendacaoNeutro }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok';
@@ -3690,6 +3701,16 @@ document.getElementById('npsDispararBtn').addEventListener('click', async () => 
 });
 
 document.getElementById('npsAtualizarBtn').addEventListener('click', carregarNpsDashboard);
+
+(() => {
+  const inp = document.getElementById('npsTemplateNotaInput');
+  const atualizarBadge = async () => {
+    await carregarTemplatesMeta();
+    const b = document.getElementById('npsTemplateBadge');
+    if (b) b.innerHTML = categoriaBadgeHtml(inp.value);
+  };
+  inp.addEventListener('input', atualizarBadge);
+})();
 
 async function carregarNpsDashboard() {
   const box = document.getElementById('npsDashboard');

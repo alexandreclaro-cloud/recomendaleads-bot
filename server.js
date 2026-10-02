@@ -1023,6 +1023,12 @@ const EMPRESA_PADRAO = {
   // Telefone (com DDD) que recebe o alerta de nota baixa/neutra. Vazio = usa o
   // mesmo número de aviso de atendimento humano (numeroAtendente/atendente oficial).
   npsTelefoneGestorEmergencia: '',
+  // Opcional (desligado por padrão): também pedir as 5 recomendações pra quem
+  // deu nota 7-8 (Neutro), não só pra quem deu 9-10 (Promotor) — cada empresa
+  // decide se quer isso. Quando ligado, roda DEPOIS do motivo + aviso ao
+  // gestor, sem presente imediato (o presente normal vem no final, igual o
+  // Funil Start de sempre).
+  npsPedirRecomendacaoNeutro: false,
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
   //  'basic'  = o robô dispara pros amigos (atual, padrão).
   //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).
@@ -2434,6 +2440,20 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
       await saveSessao(telefone, sessao);
     } else {
       await sendText(telefone, substituirVariaveis(empresa.npsMensagemPromotor || EMPRESA_PADRAO.npsMensagemPromotor, varsNps));
+      // Promotor ganha o presente JÁ, na hora — diferente do Funil Start normal,
+      // que só entrega depois de coletar as 5 recomendações. Marca a sessão pra
+      // finalizarFaixa não entregar de novo (duplicado) no final.
+      const faixaNps = faixasAtivas(empresa, sessao)[0];
+      if (faixaNps) {
+        if (faixaNps.arquivo) {
+          await enviarVoucher(telefone, faixaNps.arquivo, faixaNps.premio, faixaNps.premio);
+          await new Promise(r => setTimeout(r, 2500));
+        } else if (faixaNps.premio) {
+          await sendText(telefone, faixaNps.premio);
+        }
+        if (faixaNps.texto) await sendText(telefone, faixaNps.texto);
+      }
+      sessao.npsPresenteJaEntregue = true;
       await iniciarColetaContatos(telefone, sessao, empresa);
     }
     return;
@@ -2445,9 +2465,17 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
     } catch (e) { console.error('[NPS] erro ao salvar motivo:', e.message); }
     await sendText(telefone, substituirVariaveis(empresa.npsMensagemNeutroFinal || EMPRESA_PADRAO.npsMensagemNeutroFinal, { empresa: empresa.nome }));
     const notaSalva = sessao.npsNota;
-    sessao.etapa = 'finalizado';
-    await saveSessao(telefone, sessao);
     await alertarGestorNps(telefone, sessao.clienteNome, notaSalva, empresa, 'neutro');
+    // Opcional (desligado por padrão): a empresa pode escolher pedir as 5
+    // recomendações pra quem deu nota 7-8 também, não só 9-10. Sem presente
+    // imediato aqui — se completar, recebe o presente normal no final (igual
+    // qualquer recomendador do Funil Start).
+    if (empresa.npsPedirRecomendacaoNeutro) {
+      await iniciarColetaContatos(telefone, sessao, empresa);
+    } else {
+      sessao.etapa = 'finalizado';
+      await saveSessao(telefone, sessao);
+    }
     return;
   }
 
@@ -3109,26 +3137,32 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     await finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDestaFaixa);
     return;
   }
-  await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
-  await sendText(telefone, `🎁 Aqui está o seu presente:`);
-
-  // Ordem congruente: presente (imagem) → mensagem de orientação → link
-  if (faixa.arquivo) {
-    await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
-    // A mídia (imagem/PDF) demora pra ser processada e entregue pelo WhatsApp — sem
-    // esse respiro o texto de orientação ("clique no link abaixo") CHEGA ANTES da
-    // imagem. Espera um pouco pra garantir que a imagem apareça primeiro.
-    await new Promise(r => setTimeout(r, 2500));
+  // NPS Promotor já recebeu o presente na hora, antes de pedir as recomendações
+  // (ver nps_aguardando_nota) — não entrega de novo aqui, só reconhece.
+  if (sessao.npsPresenteJaEntregue) {
+    await sendText(telefone, `🎉 Perfeito! Recomendações registradas, muito obrigado!`);
   } else {
-    await sendText(telefone, faixa.premio);
-  }
+    await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
+    await sendText(telefone, `🎁 Aqui está o seu presente:`);
 
-  if (faixa.texto) {
-    await sendText(telefone, faixa.texto);
-  }
+    // Ordem congruente: presente (imagem) → mensagem de orientação → link
+    if (faixa.arquivo) {
+      await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
+      // A mídia (imagem/PDF) demora pra ser processada e entregue pelo WhatsApp — sem
+      // esse respiro o texto de orientação ("clique no link abaixo") CHEGA ANTES da
+      // imagem. Espera um pouco pra garantir que a imagem apareça primeiro.
+      await new Promise(r => setTimeout(r, 2500));
+    } else {
+      await sendText(telefone, faixa.premio);
+    }
 
-  if (faixa.link) {
-    await sendText(telefone, faixa.link);
+    if (faixa.texto) {
+      await sendText(telefone, faixa.texto);
+    }
+
+    if (faixa.link) {
+      await sendText(telefone, faixa.link);
+    }
   }
 
   // Pipeline do cliente: só avança pra "recebeu o prêmio" AQUI, depois que o
