@@ -10684,6 +10684,16 @@ function iniciarMonitorEntregaOficial() {
   setInterval(monitorarEntregaOficial, 15 * 60 * 1000).unref?.(); // depois, de 15 em 15 min
 }
 
+// TEMP DEBUG — só pra conferir se já tem leads do Recomendômetro. Remover depois.
+app.get('/debug-recomendometro-count', async (req, res) => {
+  try {
+    const snap = await db.collection('recomendometro_leads').get();
+    const leads = snap.docs.map(d => ({ nome: d.data().nome, telefone: d.data().telefone, criadoEm: d.data().criadoEm }))
+      .sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, total: snap.size, leads });
+  } catch (err) { res.status(500).json({ ok: false, erro: err.message }); }
+});
+
 // ============================================================
 // INICIALIZAÇÃO DO SERVIDOR
 // ============================================================
