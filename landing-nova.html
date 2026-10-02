@@ -63,8 +63,11 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   .lead b{color:var(--ink)}
   .cta-row{display:flex;gap:12px;flex-wrap:wrap}
   .subcta{margin-top:14px;font-size:.84rem;color:var(--faint)}
-  .mini{margin-top:18px;font-size:.85rem;color:var(--faint);display:flex;gap:18px;flex-wrap:wrap}
-  .mini span{display:inline-flex;align-items:center;gap:6px}
+  .capabilities{margin-top:22px;display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;font-size:.86rem;color:var(--dim);max-width:460px}
+  .capabilities span{display:flex;align-items:center;gap:8px}
+  .capabilities i{width:16px;height:16px;color:var(--brand);flex-shrink:0}
+  @media(max-width:480px){.capabilities{grid-template-columns:1fr}}
+  .demo-badge{display:inline-block;background:#FEF3C7;color:#92400E;font-size:.72rem;font-weight:700;padding:4px 12px;border-radius:999px;letter-spacing:.02em}
 
   .phone{justify-self:center;width:300px;max-width:100%;background:#0B141A;border-radius:30px;padding:12px;box-shadow:0 30px 60px rgba(15,23,42,.22)}
   .phone .screen{background:#E5DDD5;border-radius:20px;overflow:hidden}
@@ -87,7 +90,8 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   .cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
   @media(max-width:820px){.cards3{grid-template-columns:1fr}}
   .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:26px}
-  .card .ic{font-size:1.5rem;margin-bottom:10px}
+  .card .ic{width:40px;height:40px;border-radius:11px;background:#EFF6FF;display:grid;place-items:center;margin-bottom:12px}
+  .card .ic i{width:20px;height:20px;color:var(--brand)}
   .card h3{font-size:1.08rem;margin-bottom:6px}
   .card p{color:var(--dim);font-size:.94rem}
 
@@ -142,17 +146,30 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   @media(max-width:760px){.diff{grid-template-columns:1fr}}
   .diffbox{border:1px solid var(--line);border-radius:16px;padding:24px;background:#fff}
   .diffbox.hl{border:2px solid var(--brand)}
-  .diffbox h3{font-size:1rem;margin-bottom:12px}
+  .diffbox h3{font-size:1rem;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .diffbox h3 i{width:18px;height:18px;color:var(--brand)}
   .diffbox ul{list-style:none;display:flex;flex-direction:column;gap:9px}
   .diffbox li{font-size:.92rem;color:var(--dim);display:flex;gap:8px}
 
-  .pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
   @media(max-width:900px){.pillars{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:520px){.pillars{grid-template-columns:1fr}}
   .pillar{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px}
-  .pillar .ic{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:1.3rem;background:#EFF6FF;margin-bottom:12px}
+  .pillar .ic{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;background:#EFF6FF;margin-bottom:12px}
+  .pillar .ic i{width:22px;height:22px;color:var(--brand)}
   .pillar h3{font-size:1.02rem;margin-bottom:5px}
   .pillar p{color:var(--dim);font-size:.9rem}
+
+  /* Fluxo WhatsApp -> Software -> Resultado */
+  .flowgrid{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+  @media(max-width:760px){.flowgrid{grid-template-columns:1fr}}
+  .flowlabel{font-weight:700;font-size:.82rem;color:var(--dim);margin-bottom:10px;text-align:center;text-transform:uppercase;letter-spacing:.03em}
+  .flow-step{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);font-size:.92rem}
+  .flow-step:last-child{border-bottom:none}
+  .flow-step i{width:19px;height:19px;flex-shrink:0}
+  .flow-step.done i{color:var(--wpp-deep)}
+  .flow-step.pending{color:var(--faint)}
+  .flow-step.pending i{color:var(--line)}
 
   .conta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   @media(max-width:760px){.conta{grid-template-columns:repeat(2,1fr)}}
@@ -172,6 +189,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   /* Confiança */
   .trustbar{display:flex;flex-wrap:wrap;justify-content:center;gap:28px;color:var(--dim);font-size:.86rem}
   .trustbar span{display:inline-flex;align-items:center;gap:7px}
+  .trustbar i{width:17px;height:17px;color:var(--brand)}
 
   .authority-fold{background:linear-gradient(135deg,#0F172A 0%,#172339 55%,#0F172A 100%);color:#fff;padding:56px 0;overflow:hidden}
   .authority-fold .badge{display:inline-flex;gap:8px;background:rgba(245,158,11,.15);color:#FCD34D;font-weight:700;font-size:.8rem;padding:6px 13px;border-radius:999px;margin-bottom:16px}
@@ -180,10 +198,11 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   .authority-fold p{color:#CBD5E1;margin:14px 0 22px;font-size:1.02rem;max-width:620px}
   .af-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:18px;align-items:center}
   @media(max-width:760px){.af-grid{grid-template-columns:1fr;gap:18px}}
-  .af-photo{position:relative;min-height:340px}
-  .af-photo img{width:100%;height:100%;max-height:440px;object-fit:cover;object-position:top center;opacity:.95;-webkit-mask-image:linear-gradient(100deg,transparent 2%,#000 42%);mask-image:linear-gradient(100deg,transparent 2%,#000 42%)}
-  .af-photo .fb{position:absolute;inset:0;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;text-align:center;color:#3f4d63;font-weight:600;font-size:.85rem}
-  .af-photo .fb b{color:#64748B;font-size:1rem}
+  .af-photo{position:relative;min-height:340px;border-radius:18px;overflow:hidden;background:linear-gradient(135deg,#1E293B,#334155);display:flex;align-items:center;justify-content:center}
+  .af-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;opacity:.95;-webkit-mask-image:linear-gradient(100deg,transparent 2%,#000 42%);mask-image:linear-gradient(100deg,transparent 2%,#000 42%)}
+  .af-photo .avatar-fallback{display:none;width:118px;height:118px;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.18);color:#CBD5E1;font-size:2.1rem;font-weight:800;align-items:center;justify-content:center}
+  .af-photo.noimg img{display:none}
+  .af-photo.noimg .avatar-fallback{display:flex}
   @media(max-width:760px){.af-photo{min-height:280px}.af-photo img{-webkit-mask-image:linear-gradient(#000 72%,transparent);mask-image:linear-gradient(#000 72%,transparent)}}
   .astats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   @media(max-width:760px){.astats{grid-template-columns:repeat(2,1fr)}}
@@ -227,16 +246,18 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
 <header class="hero"><div class="wrap grid">
   <div>
-    <span class="tag">⚙️ Plataforma de recomendação</span>
+    <span class="tag">Plataforma de vendas por recomendação</span>
     <h1 class="title">Você já pagou para conquistar seus clientes. Agora faça eles <span class="hl">trazerem os próximos.</span></h1>
-    <p class="lead">O RecomendaLeads organiza, automatiza e mensura o programa de recomendação da sua empresa — transformando sua base de clientes num canal previsível de novas oportunidades.</p>
+    <p class="lead">O RecomendaLeads transforma sua base de clientes em um canal estruturado, automatizado e mensurável de novas oportunidades.</p>
     <div class="cta-row">
-      <a class="btn btn-wpp" href="https://wa.me/5511913269690?text=Quero%20saber%20mais%20sobre%20o%20RecomendaLeads">Falar no WhatsApp →</a>
+      <a class="btn btn-brand" href="#demo">Ver demonstração</a>
       <a class="btn btn-ghost" href="/recomendometro">Calcular meu potencial</a>
     </div>
-    <p class="subcta">Programa de recomendação + WhatsApp + automação + acompanhamento, em um único lugar.</p>
-    <div class="mini">
-      <span>✓ +10 anos de experiência</span><span>✓ R$45M gerados em recomendação</span><span>✓ Automação real no WhatsApp</span>
+    <div class="capabilities">
+      <span><i data-lucide="message-circle"></i> Ativação pelo WhatsApp</span>
+      <span><i data-lucide="share-2"></i> Rastreamento de recomendações</span>
+      <span><i data-lucide="briefcase"></i> Gestão de oportunidades</span>
+      <span><i data-lucide="bar-chart-3"></i> Dashboard de resultados</span>
     </div>
   </div>
   <div class="phone">
@@ -259,9 +280,9 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     <h2 class="sec">Você já conquistou o cliente. Mas a venda termina cedo demais.</h2>
     <p class="secsub">Tráfego pago, outbound, eventos e conteúdo continuam importantes. Mas sua empresa já tem um canal de aquisição que provavelmente ainda não foi estruturado: os clientes que você já conquistou.</p>
     <div class="cards3">
-      <div class="card"><div class="ic">💳</div><h3>O custo já foi pago</h3><p>Você já investiu pra conquistar esse cliente. Assim que a venda fecha, essa oportunidade de multiplicação se perde.</p></div>
-      <div class="card"><div class="ic">🎲</div><h3>Recomendação no improviso</h3><p>Quando acontece, é por sorte — depende do cliente lembrar de você na hora certa.</p></div>
-      <div class="card"><div class="ic">📉</div><h3>Sem rastreio, sem repetição</h3><p>Sem processo, não dá pra saber quem recomendou, quem converteu, nem repetir o resultado.</p></div>
+      <div class="card"><div class="ic"><i data-lucide="credit-card"></i></div><h3>O custo já foi pago</h3><p>Você já investiu pra conquistar esse cliente. Assim que a venda fecha, essa oportunidade de multiplicação se perde.</p></div>
+      <div class="card"><div class="ic"><i data-lucide="shuffle"></i></div><h3>Recomendação no improviso</h3><p>Quando acontece, é por sorte — depende do cliente lembrar de você na hora certa.</p></div>
+      <div class="card"><div class="ic"><i data-lucide="trending-down"></i></div><h3>Sem rastreio, sem repetição</h3><p>Sem processo, não dá pra saber quem recomendou, quem converteu, nem repetir o resultado.</p></div>
     </div>
   </div>
 </section>
@@ -304,11 +325,48 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   </div>
 </section>
 
+<section class="block">
+  <div class="wrap">
+    <p class="eyebrow">Do WhatsApp ao resultado</p>
+    <h2 class="sec">O que acontece em cada recomendação</h2>
+    <p class="secsub" style="margin-bottom:14px">Conectando a conversa no WhatsApp ao que fica registrado no seu painel.</p>
+    <p style="text-align:center;margin:0 0 32px"><span class="demo-badge">Ambiente de demonstração — nomes e números ilustrativos</span></p>
+    <div class="flowgrid">
+      <div>
+        <div class="flowlabel">O que seu cliente recomendado vê</div>
+        <div class="screen-card">
+          <div class="shead"><span class="dot" style="background:#F87171"></span><span class="dot" style="background:#FBBF24"></span><span class="dot" style="background:#34D399"></span></div>
+          <div class="sbody">
+            <div class="chat" style="min-height:0;gap:9px">
+              <div class="bub out">Oi João! O Pedro, seu amigo, te recomendou pra conhecer a gente.<div class="t">09:41 ✓✓</div></div>
+              <div class="bub in">Pode sim!<div class="t">09:42</div></div>
+              <div class="bub out">Show! Você ganhou um voucher de <b>R$ 500,00</b> 🙌<div class="t">09:42 ✓✓</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="flowlabel">O que sua empresa vê</div>
+        <div class="screen-card">
+          <div class="shead"><span class="dot" style="background:#F87171"></span><span class="dot" style="background:#FBBF24"></span><span class="dot" style="background:#34D399"></span></div>
+          <div class="sbody">
+            <div class="flow-step done"><i data-lucide="check-circle-2"></i> Pedro recomendou João</div>
+            <div class="flow-step done"><i data-lucide="check-circle-2"></i> João respondeu</div>
+            <div class="flow-step done"><i data-lucide="check-circle-2"></i> Oportunidade criada</div>
+            <div class="flow-step pending"><i data-lucide="circle"></i> Venda em andamento</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="block" id="demo">
   <div class="wrap">
     <p class="eyebrow">Veja como funciona na prática</p>
     <h2 class="sec">O RecomendaLeads organizando cada etapa da recomendação</h2>
-    <p class="secsub">Da campanha à venda, tudo acompanhado em um painel só.</p>
+    <p class="secsub" style="margin-bottom:14px">Da campanha à venda, tudo acompanhado em um painel só.</p>
+    <p style="text-align:center;margin:0 0 32px"><span class="demo-badge">Ambiente de demonstração — nomes e números ilustrativos</span></p>
     <div class="screens">
       <div class="screen-card">
         <div class="shead"><span class="dot" style="background:#F87171"></span><span class="dot" style="background:#FBBF24"></span><span class="dot" style="background:#34D399"></span></div>
@@ -362,7 +420,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     <p class="secsub">Enquanto o CRM ajuda sua equipe a gerenciar as oportunidades que já chegaram, o RecomendaLeads ativa sua base de clientes para gerar as próximas.</p>
     <div class="diff">
       <div class="diffbox">
-        <h3>📋 CRM</h3>
+        <h3><i data-lucide="layout-list"></i> CRM</h3>
         <ul>
           <li>— Organiza leads que já chegaram</li>
           <li>— Depende de oportunidades vindas de outro canal</li>
@@ -370,7 +428,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
         </ul>
       </div>
       <div class="diffbox hl">
-        <h3>⚙️ RecomendaLeads</h3>
+        <h3><i data-lucide="zap"></i> RecomendaLeads</h3>
         <ul>
           <li>— Ativa clientes que já compraram</li>
           <li>— Gera novas oportunidades, não só organiza</li>
@@ -383,17 +441,17 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
 <section class="block">
   <div class="wrap">
-    <p class="eyebrow">A conta</p>
-    <h2 class="sec">A matemática da recomendação</h2>
-    <p class="secsub">A conta é simples. O resultado, não.</p>
+    <p class="eyebrow">Simulação</p>
+    <h2 class="sec">Veja o potencial estimado da sua base</h2>
+    <p class="secsub">Um exemplo de como a recomendação pode se comportar na prática.</p>
     <div class="conta">
       <div class="cstep"><div class="v">10</div><div class="l">vendas por dia</div></div>
-      <div class="cstep"><div class="v">×5</div><div class="l">recomendações por venda</div></div>
-      <div class="cstep"><div class="v" style="color:var(--brand)">50</div><div class="l">novos leads por dia</div></div>
-      <div class="cstep"><div class="v" style="color:var(--wpp-deep)">+1000</div><div class="l">oportunidades no mês</div></div>
+      <div class="cstep"><div class="v">20%</div><div class="l">dos clientes ativados</div></div>
+      <div class="cstep"><div class="v">×3</div><div class="l">recomendações por cliente ativado</div></div>
+      <div class="cstep"><div class="v" style="color:var(--brand)">+6</div><div class="l">novas oportunidades por dia</div></div>
     </div>
-    <div class="resultado">Se só <b>10%</b> comprarem algo, <span class="hl">você aumenta 50% as suas vendas</span> — sem contratar mais vendedores e sem aumentar a verba de mídia.</div>
-    <p class="disclaimer">Exemplo ilustrativo. O resultado real depende da sua base de clientes, ticket médio e taxa de conversão.</p>
+    <div class="resultado">Isso representa <span class="hl">cerca de 180 novas oportunidades por mês</span>, geradas a partir de clientes que você já conquistou.</div>
+    <p class="disclaimer">Simulação estimada. Resultados reais variam de acordo com adesão, ticket, oferta, processo e conversão.</p>
   </div>
 </section>
 
@@ -410,14 +468,16 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 
 <section class="block">
   <div class="wrap">
-    <p class="eyebrow">O programa completo</p>
-    <h2 class="sec">Tecnologia, processo e automação, juntos</h2>
-    <p class="secsub">Não é um CRM nem "mais um software". É uma plataforma completa de recomendação.</p>
+    <p class="eyebrow">O que você recebe</p>
+    <h2 class="sec">Tudo o que você precisa para operar seu canal de recomendação</h2>
+    <p class="secsub">Funcionalidades reais da plataforma, não conceitos abstratos.</p>
     <div class="pillars">
-      <div class="pillar"><div class="ic">🎯</div><h3>Método Funil Infinito</h3><p>O processo que faz do cliente uma fonte contínua de recomendação.</p></div>
-      <div class="pillar"><div class="ic">⚙️</div><h3>Tecnologia</h3><p>O sistema contata cada recomendado automaticamente, sem esforço manual.</p></div>
-      <div class="pillar"><div class="ic">🤖</div><h3>Automação inteligente</h3><p>A automação integrada ao WhatsApp trabalha enquanto sua equipe vende.</p></div>
-      <div class="pillar"><div class="ic">♾️</div><h3>Retrovenda</h3><p>Uma máquina que se retroalimenta nas vendas. Cada cliente novo gera o próximo.</p></div>
+      <div class="pillar"><div class="ic"><i data-lucide="megaphone"></i></div><h3>Campanhas</h3><p>Crie campanhas de recomendação com recompensa, texto e público definidos.</p></div>
+      <div class="pillar"><div class="ic"><i data-lucide="users"></i></div><h3>Clientes</h3><p>Acompanhe cada cliente do seu programa, da entrada até a recomendação.</p></div>
+      <div class="pillar"><div class="ic"><i data-lucide="share-2"></i></div><h3>Recomendações</h3><p>Veja quem recomendou quem, com rastreamento completo.</p></div>
+      <div class="pillar"><div class="ic"><i data-lucide="message-circle"></i></div><h3>WhatsApp</h3><p>Toda a conversa com o recomendado acontece automaticamente, no seu número.</p></div>
+      <div class="pillar"><div class="ic"><i data-lucide="briefcase"></i></div><h3>Oportunidades</h3><p>Cada recomendado vira uma oportunidade registrada e organizada por etapa.</p></div>
+      <div class="pillar"><div class="ic"><i data-lucide="bar-chart-3"></i></div><h3>Analytics</h3><p>Acompanhe envios, aberturas, aceites e vendas em um painel só.</p></div>
     </div>
   </div>
 </section>
@@ -425,10 +485,10 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 <section class="block alt">
   <div class="wrap">
     <div class="trustbar">
-      <span>🔒 Dados protegidos (LGPD)</span>
-      <span>☎️ Suporte humano</span>
-      <span>✅ API Oficial do WhatsApp (Meta)</span>
-      <span>🔄 Backup automático</span>
+      <span><i data-lucide="shield-check"></i> Dados protegidos (LGPD)</span>
+      <span><i data-lucide="phone-call"></i> Suporte humano</span>
+      <span><i data-lucide="badge-check"></i> API Oficial do WhatsApp (Meta)</span>
+      <span><i data-lucide="refresh-cw"></i> Backup automático</span>
     </div>
   </div>
 </section>
@@ -436,7 +496,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
 <section class="authority-fold">
   <div class="wrap af-grid">
     <div>
-      <span class="badge">⭐ Quem está por trás da plataforma</span>
+      <span class="badge">Quem está por trás da plataforma</span>
       <h2>Criado por <span class="name">Alexandre Claro</span></h2>
       <p>Há mais de 10 anos ajuda empresários a transformar recomendação em canal estruturado de vendas. Como executivo de uma instituição de ensino, 40% das vendas vinham da recomendação ativa. Morou <b style="color:#fff">2 anos nos Estados Unidos</b>, estudou de perto o mercado americano de vendas e trouxe para o Brasil o que lá chamam de <b style="color:#FCD34D">Terceira Onda das Vendas</b> — criando o Método Funil Infinito e o conceito de Retrovenda.</p>
       <div class="astats">
@@ -446,9 +506,9 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
         <div class="astat"><div class="v">2 anos</div><div class="l">estudando o mercado dos EUA</div></div>
       </div>
     </div>
-    <div class="af-photo">
-      <div class="fb"><b>Alexandre Claro</b><span>sua foto entra aqui</span></div>
-      <img id="fotoAlexandre" src="/assets/alexandre.jpg" alt="Alexandre Claro" style="display:block" onerror="this.style.display='none'">
+    <div class="af-photo" id="afPhoto">
+      <img id="fotoAlexandre" src="/assets/alexandre.jpg" alt="Alexandre Claro" onerror="document.getElementById('afPhoto').classList.add('noimg')">
+      <div class="avatar-fallback">AC</div>
     </div>
   </div>
 </section>
@@ -499,7 +559,7 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
     <h2>Nunca termine uma venda sem começar a próxima.</h2>
     <p>Transforme sua base de clientes em um novo canal de aquisição.</p>
     <div class="cta-row">
-      <a class="btn btn-wpp" href="https://wa.me/5511913269690?text=Quero%20saber%20mais%20sobre%20o%20RecomendaLeads">Quero ver funcionando →</a>
+      <a class="btn btn-wpp" href="https://wa.me/5511913269690?text=Quero%20saber%20mais%20sobre%20o%20RecomendaLeads">Começar com RecomendaLeads →</a>
     </div>
   </div>
 </section>
@@ -508,6 +568,11 @@ src="https://www.facebook.com/tr?id=36374431388871687&ev=PageView&noscript=1"/><
   <span><b>RecomendaLeads</b> · Alexandre Claro</span>
   <a href="https://www.recomendaleads.com.br">www.recomendaleads.com.br</a>
 </div></footer>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+try { lucide.createIcons(); } catch(_) {}
+</script>
 
 <!-- Meta Pixel: evento Contact ao clicar no WhatsApp -->
 <script>
