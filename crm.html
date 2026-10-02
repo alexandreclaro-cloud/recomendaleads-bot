@@ -1394,7 +1394,7 @@
   </div>
 </div>
 
-<!-- ===================== ABA FUNIL BASE (NPS) — em construção ===================== -->
+<!-- ===================== ABA FUNIL BASE (NPS) ===================== -->
 <div class="tab-panel" id="tabFunilBase">
   <div class="config-wrap">
     <div class="config-card">
@@ -1404,12 +1404,55 @@
       </p>
       <ul style="font-size:0.85rem; color:var(--text-dim); margin:0 0 14px; padding-left:20px; line-height:1.7;">
         <li><b>9-10 (Promotor):</b> agradece, avisa que ganhou um presente e já entra no fluxo de recomendação (pede os 5 amigos).</li>
-        <li><b>7-8 (Neutro):</b> avisa o gestor pra ligar e entender o motivo.</li>
-        <li><b>0-6 (Detrator):</b> alerta URGENTE pro gestor ligar na hora.</li>
+        <li><b>7-8 (Neutro):</b> agradece, pergunta o motivo e avisa o gestor pra ligar e entender melhor.</li>
+        <li><b>0-6 (Detrator):</b> pede desculpas e alerta URGENTE pro gestor ligar na hora.</li>
       </ul>
-      <p style="font-size:0.85rem; background:#FEF3C7; border:1px solid #FDE68A; color:#92400E; border-radius:10px; padding:10px 12px;">
-        🚧 Essa aba está reservada — o motor de disparo NPS (pergunta, as 3 ramificações e o dashboard de Promotor/Neutro/Detrator) ainda não foi construído. É a próxima etapa.
-      </p>
+
+      <label style="display:flex; align-items:center; gap:10px; margin:6px 0 14px; cursor:pointer;">
+        <input type="checkbox" id="npsAtivoInput" style="width:20px;height:20px;" disabled title="Carregando...">
+        <span style="font-weight:700;">Ativar o Funil Base (NPS)</span>
+      </label>
+
+      <label>Template da pergunta (aprovado na Meta)</label>
+      <input type="text" id="npsTemplateNotaInput" list="templatesMetaDatalist" placeholder="ex: pesquisa_nps_0_10" disabled>
+      <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">A pergunta "de 0 a 10..." precisa ser um template aprovado — a API Oficial não manda texto livre em disparo de massa. O cliente responde digitando o número, em texto livre.</p>
+
+      <label style="margin-top:14px;">Mensagem — nota 0 a 6 (Detrator)</label>
+      <textarea id="npsDetratorInput" rows="2" disabled></textarea>
+
+      <label style="margin-top:12px;">Agradecimento — nota 7 ou 8 (Neutro), antes de perguntar o motivo</label>
+      <textarea id="npsNeutroAgradInput" rows="2" disabled></textarea>
+
+      <label style="margin-top:12px;">Mensagem final — depois que o Neutro responde o motivo</label>
+      <textarea id="npsNeutroFinalInput" rows="2" disabled></textarea>
+
+      <label style="margin-top:12px;">Mensagem — nota 9 ou 10 (Promotor), antes do presente</label>
+      <textarea id="npsPromotorInput" rows="2" disabled></textarea>
+
+      <label style="margin-top:12px;">Telefone de emergência do gestor <span style="font-weight:400;color:var(--text-dim);">(com DDD — vazio usa o número de aviso de atendimento)</span></label>
+      <input type="text" id="npsTelefoneGestorInput" placeholder="Ex: 11999998888" disabled>
+
+      <div class="config-row-save">
+        <button class="config-save-btn" id="salvarNpsBtn" disabled>Salvar Funil Base</button>
+        <span class="config-status-msg" id="statusNps"></span>
+      </div>
+    </div>
+
+    <div class="config-card" style="margin-top:16px;">
+      <h2>🚀 Disparar pergunta pra base de clientes</h2>
+      <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 12px;">Dispara pra todo mundo que já passou pelo bot (mesma base do Kanban "Funil do Cliente"), usando o template configurado acima. Exclui automaticamente quem já recusou um disparo anterior.</p>
+      <div class="config-row-save">
+        <button class="config-save-btn" id="npsDispararBtn">Disparar NPS</button>
+        <span class="config-status-msg" id="npsDispararStatus"></span>
+      </div>
+    </div>
+
+    <div class="config-card" style="margin-top:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <h2 style="margin:0;">📈 Resultado</h2>
+        <button class="config-save-btn" id="npsAtualizarBtn" style="padding:6px 12px;font-size:0.8rem;">↻ Atualizar</button>
+      </div>
+      <div id="npsDashboard" style="margin-top:12px;"><p class="sub" style="font-size:0.85rem;color:var(--text-dim);">Carregando...</p></div>
     </div>
   </div>
 </div>
@@ -1505,6 +1548,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       else renderLinkNaoCliente();
     } else if (btn.dataset.tab === 'funilBase' && EH_GESTOR) {
       document.getElementById('tabFunilBase').classList.add('active');
+      if (!configuracaoCarregada) carregarConfiguracao();
+      carregarNpsDashboard();
     } else if (EH_GESTOR) {
       document.getElementById('tabConfig').classList.add('active');
       if (!configuracaoCarregada) carregarConfiguracao();
@@ -2863,6 +2908,20 @@ async function carregarConfiguracao() {
     document.getElementById('ncValidarAmigoInput').disabled = false;
     document.getElementById('salvarNaoClienteBtn').disabled = false;
     renderLinkNaoCliente();
+
+    // Funil Base (NPS) — mesmo cuidado de nascer `disabled` e só liberar aqui
+    // (ver comentário do Funil Não Cliente acima).
+    document.getElementById('npsAtivoInput').checked = !!configuracaoAtual.npsAtivo;
+    document.getElementById('npsTemplateNotaInput').value = configuracaoAtual.npsTemplateNota || '';
+    document.getElementById('npsDetratorInput').value = configuracaoAtual.npsMensagemDetrator || '';
+    document.getElementById('npsNeutroAgradInput').value = configuracaoAtual.npsMensagemNeutroAgradecimento || '';
+    document.getElementById('npsNeutroFinalInput').value = configuracaoAtual.npsMensagemNeutroFinal || '';
+    document.getElementById('npsPromotorInput').value = configuracaoAtual.npsMensagemPromotor || '';
+    document.getElementById('npsTelefoneGestorInput').value = configuracaoAtual.npsTelefoneGestorEmergencia || '';
+    ['npsAtivoInput', 'npsTemplateNotaInput', 'npsDetratorInput', 'npsNeutroAgradInput', 'npsNeutroFinalInput', 'npsPromotorInput', 'npsTelefoneGestorInput'].forEach(id => {
+      document.getElementById(id).disabled = false;
+    });
+    document.getElementById('salvarNpsBtn').disabled = false;
   } catch (err) {
     loadMsg.textContent = 'Não foi possível carregar a configuração.';
   }
@@ -3591,6 +3650,78 @@ document.getElementById('salvarNaoClienteBtn').addEventListener('click', async (
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
   finally { btn.disabled = false; }
 });
+
+document.getElementById('salvarNpsBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarNpsBtn');
+  const statusEl = document.getElementById('statusNps');
+  const npsAtivo = document.getElementById('npsAtivoInput').checked;
+  const npsTemplateNota = document.getElementById('npsTemplateNotaInput').value.trim();
+  const npsMensagemDetrator = document.getElementById('npsDetratorInput').value;
+  const npsMensagemNeutroAgradecimento = document.getElementById('npsNeutroAgradInput').value;
+  const npsMensagemNeutroFinal = document.getElementById('npsNeutroFinalInput').value;
+  const npsMensagemPromotor = document.getElementById('npsPromotorInput').value;
+  const npsTelefoneGestorEmergencia = document.getElementById('npsTelefoneGestorInput').value.trim();
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ npsAtivo, npsTemplateNota, npsMensagemDetrator, npsMensagemNeutroAgradecimento, npsMensagemNeutroFinal, npsMensagemPromotor, npsTelefoneGestorEmergencia }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok';
+      configuracaoAtual = data.empresa;
+    } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; }
+});
+
+document.getElementById('npsDispararBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('npsDispararBtn');
+  const statusEl = document.getElementById('npsDispararStatus');
+  if (!confirm('Disparar a pergunta do NPS pra toda a base de clientes agora?')) return;
+  btn.disabled = true; statusEl.textContent = 'Disparando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nps/disparar`, { method: 'POST', body: JSON.stringify({}) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      statusEl.textContent = `✅ Disparando pra ${data.total} cliente(s)!`; statusEl.className = 'config-status-msg ok';
+      setTimeout(carregarNpsDashboard, 8000);
+    } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao disparar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; }
+});
+
+document.getElementById('npsAtualizarBtn').addEventListener('click', carregarNpsDashboard);
+
+async function carregarNpsDashboard() {
+  const box = document.getElementById('npsDashboard');
+  box.innerHTML = '<p class="sub" style="font-size:0.85rem;color:var(--text-dim);">Carregando...</p>';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nps/relatorio`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) { box.innerHTML = `<p class="sub" style="font-size:0.85rem;color:#b91c1c;">${esc(data.erro || 'Erro ao carregar')}</p>`; return; }
+    const pctResp = data.totalDisparado ? Math.round((data.totalRespondido / data.totalDisparado) * 100) : 0;
+    let html = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div style="flex:1;min-width:140px;background:var(--bg-2,#f8f9fb);border-radius:10px;padding:12px;"><div style="font-size:0.72rem;color:var(--text-dim);">Disparados</div><div style="font-size:1.4rem;font-weight:800;">${data.totalDisparado}</div></div>
+        <div style="flex:1;min-width:140px;background:var(--bg-2,#f8f9fb);border-radius:10px;padding:12px;"><div style="font-size:0.72rem;color:var(--text-dim);">Respondidos</div><div style="font-size:1.4rem;font-weight:800;">${data.totalRespondido} <span style="font-size:0.75rem;font-weight:400;color:var(--text-dim);">(${pctResp}%)</span></div></div>
+        <div style="flex:1;min-width:140px;background:#ECFDF5;border-radius:10px;padding:12px;"><div style="font-size:0.72rem;color:#065F46;">🟢 Promotores (9-10)</div><div style="font-size:1.4rem;font-weight:800;color:#065F46;">${data.promotor}</div></div>
+        <div style="flex:1;min-width:140px;background:#FFFBEB;border-radius:10px;padding:12px;"><div style="font-size:0.72rem;color:#92400E;">🟡 Neutros (7-8)</div><div style="font-size:1.4rem;font-weight:800;color:#92400E;">${data.neutro}</div></div>
+        <div style="flex:1;min-width:140px;background:#FEF2F2;border-radius:10px;padding:12px;"><div style="font-size:0.72rem;color:#991B1B;">🔴 Detratores (0-6)</div><div style="font-size:1.4rem;font-weight:800;color:#991B1B;">${data.detrator}</div></div>
+      </div>
+      <div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:6px;">Respostas por nota</div>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:90px;">`;
+    const maxNota = Math.max(1, ...data.porNota);
+    for (let n = 0; n <= 10; n++) {
+      const qtd = data.porNota[n] || 0;
+      const h = Math.round((qtd / maxNota) * 100);
+      const cor = n >= 9 ? '#22C55E' : (n >= 7 ? '#F59E0B' : '#EF4444');
+      html += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div title="${qtd} resposta(s)" style="width:100%;background:${cor};border-radius:3px 3px 0 0;height:${qtd ? Math.max(h, 4) : 0}%;"></div><div style="font-size:0.66rem;color:var(--text-dim);margin-top:3px;">${n}</div></div>`;
+    }
+    html += `</div>`;
+    box.innerHTML = html;
+  } catch (err) {
+    box.innerHTML = '<p class="sub" style="font-size:0.85rem;color:#b91c1c;">Erro de conexão.</p>';
+  }
+}
 
 // Link/QR do Funil Não Cliente — mesmo wa.me com a frase-gatilho dele, pro
 // vendedor mandar (ou imprimir o QR) na hora que a venda não fecha. Usa

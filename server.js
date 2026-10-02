@@ -377,6 +377,9 @@ const CLIENTES_PIPELINE_COL = () => db.collection('clientes_pipeline');
 // Sessão do agente de IA que conduz a conversa pelo Script de vendas (ex: quem
 // respondeu um disparo em massa e não tem sessão de cliente/recomendado nenhuma).
 const SESSOES_AGENTE_SCRIPT_COL = () => db.collection('sessoes_agente_script');
+// Respostas do Funil Base (NPS) — 1 doc por pessoa que respondeu a nota 0-10,
+// pra alimentar o dashboard sem precisar reprocessar o histórico de mensagens.
+const NPS_RESPOSTAS_COL = () => db.collection('nps_respostas');
 
 // Cria/atualiza o card do cliente no pipeline (só avança de estágio, nunca volta).
 // etapa: 'iniciou' -> 'deu_nome' -> 'recomendou'.
@@ -872,6 +875,18 @@ function respostaEhNegativa(texto) {
   ].some(frase => normalizado.includes(frase));
 }
 
+// Extrai uma nota de 0 a 10 de uma resposta livre do NPS (ex.: "9", "nota 8",
+// "8/10", "eu daria 7"). Pega o primeiro número válido no texto — fora do
+// intervalo ou sem número nenhum retorna null, pra pedir de novo em vez de
+// assumir uma nota errada.
+function extrairNotaNps(texto) {
+  if (!texto) return null;
+  const m = String(texto).match(/\b(10|[0-9])\b/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return (n >= 0 && n <= 10) ? n : null;
+}
+
 // Sem fallback fraco: se a env var não estiver configurada, quebra alto no
 // boot (visível no log do Render) em vez de rodar em produção com um segredo
 // previsível que qualquer um lendo o código consegue forjar.
@@ -992,6 +1007,22 @@ const EMPRESA_PADRAO = {
   naoClienteMensagemPedeContatos: '',
   naoClienteMensagemColeta: '',
   naoClienteMensagemValidarAmigo: '',
+  // FUNIL BASE (NPS) — disparo em massa pra base de clientes com "de 0 a 10,
+  // que nota você daria pra recomendar um amigo". A nota decide o caminho:
+  // 0-6 detrator (desculpa + aviso urgente pro gestor), 7-8 neutro (pergunta o
+  // motivo, depois agradece e avisa o gestor), 9-10 promotor (presente +
+  // reaproveita o mesmo pedido de recomendações do Funil Start). Desligado por
+  // padrão. A pergunta em si PRECISA ser um template aprovado na Meta (disparo
+  // em massa só funciona na API Oficial — ver iniciarDisparoMassa).
+  npsAtivo: false,
+  npsTemplateNota: '',
+  npsMensagemDetrator: 'Poxa, sentimos muito que sua experiência não tenha sido a que esperávamos. Um de nossos gestores vai entrar em contato com você rapidinho pra resolver isso.',
+  npsMensagemNeutroAgradecimento: 'Obrigado pela nota! Pra gente melhorar ainda mais, pode nos contar rapidinho o que faltou pra você dar um 9 ou 10?',
+  npsMensagemNeutroFinal: 'Entendido, muito obrigado pelo retorno! Vamos trabalhar pra melhorar, e sentimos muito se não conseguimos atender 100% das suas expectativas.',
+  npsMensagemPromotor: 'Que ótimo! Fico muito feliz com isso 🙌 Separamos um presente especial pra te agradecer:',
+  // Telefone (com DDD) que recebe o alerta de nota baixa/neutra. Vazio = usa o
+  // mesmo número de aviso de atendimento humano (numeroAtendente/atendente oficial).
+  npsTelefoneGestorEmergencia: '',
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
   //  'basic'  = o robô dispara pros amigos (atual, padrão).
   //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).
@@ -1772,6 +1803,23 @@ async function avisarAgendamento(telefone, sessao, empresa, diaLabel, periodoLab
   } catch (e) { console.error('avisarAgendamento:', e.message); }
 }
 
+// Alerta o gestor quando o NPS vem baixo (detrator) ou neutro — tipo decide o
+// tom (urgente x só um aviso). Usa um telefone de emergência dedicado, se
+// configurado; senão cai no mesmo número de aviso de atendimento humano.
+async function alertarGestorNps(telefone, nomeCliente, nota, empresa, tipo) {
+  try {
+    const numero = soDigitosTel(empresa.npsTelefoneGestorEmergencia) || await getNumeroAvisoAtendente(empresa);
+    if (!numero) return;
+    const nome = (nomeCliente || '').split(' ')[0] || 'Um cliente';
+    const base = process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
+    const link = `${base}/conversas?tel=${encodeURIComponent(soDigitosTel(telefone))}`;
+    const msg = tipo === 'detrator'
+      ? `🚨 *URGENTE — nota baixa no NPS*\n\n${nome} deu nota *${nota}* (0 a 10) pra recomendar a gente. Ligue ou chame o quanto antes.\n\n👉 Ver conversa:\n${link}`
+      : `⚠️ *NPS neutro*\n\n${nome} deu nota *${nota}* (0 a 10). Vale uma ligação pra entender o que faltou.\n\n👉 Ver conversa:\n${link}`;
+    await enviarSemLog(numero, msg);
+  } catch (e) { console.error('alertarGestorNps:', e.message); }
+}
+
 // ============================================================
 // REVEZAMENTO DE ATENDIMENTO — distribui entre os atendentes ONLINE, em
 // carrossel. Se ninguém responder (assumir) em 1 min, escala pro próximo
@@ -2256,6 +2304,12 @@ function mensagemNaoEntendiPorEtapa(etapa, empresa) {
   if (etapa === 'aguardando_autorizacao_proxima_faixa') {
     return 'Não entendi essa última mensagem. Você quer liberar o próximo prêmio? Pode responder com sim ou não.';
   }
+  if (etapa === 'nps_aguardando_nota') {
+    return 'Desculpa, não entendi! Pode responder só com um número de 0 a 10? 🙂';
+  }
+  if (etapa === 'nps_aguardando_motivo_neutro') {
+    return 'Pode me contar com suas palavras o que faltou pra uma nota mais alta? 🙂';
+  }
   return null;
 }
 
@@ -2348,6 +2402,54 @@ function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 async function _processarMensagemInterno(telefone, texto, vCard, contatosMultiplos) {
   const empresa = await getEmpresa();
   const sessao = await getSessao(telefone);
+
+  // FUNIL BASE (NPS) — aguardando a nota de 0 a 10. A nota decide o caminho:
+  // 0-6 detrator, 7-8 neutro (pergunta o motivo antes de fechar), 9-10
+  // promotor (reaproveita o mesmo pedido de recomendações do Funil Start).
+  if (sessao.etapa === 'nps_aguardando_nota') {
+    const nota = extrairNotaNps(texto);
+    if (nota == null) {
+      await sendText(telefone, 'Desculpa, não entendi! Pode responder só com um número de 0 a 10? 🙂');
+      return;
+    }
+    let respostaId = null;
+    try {
+      const ref = await NPS_RESPOSTAS_COL().add({
+        empresaId: empresaIdAtual(), telefone, nome: sessao.clienteNome || null, nota, motivo: null,
+        campanhaId: sessao.npsCampanhaId || null, criadoEm: new Date().toISOString()
+      });
+      respostaId = ref.id;
+    } catch (e) { console.error('[NPS] erro ao salvar resposta:', e.message); }
+    const varsNps = { nomeRecomendado: (sessao.clienteNome || '').split(' ')[0], empresa: empresa.nome, nota };
+    if (nota <= 6) {
+      await sendText(telefone, substituirVariaveis(empresa.npsMensagemDetrator || EMPRESA_PADRAO.npsMensagemDetrator, varsNps));
+      sessao.etapa = 'finalizado';
+      await saveSessao(telefone, sessao);
+      await alertarGestorNps(telefone, sessao.clienteNome, nota, empresa, 'detrator');
+    } else if (nota <= 8) {
+      await sendText(telefone, substituirVariaveis(empresa.npsMensagemNeutroAgradecimento || EMPRESA_PADRAO.npsMensagemNeutroAgradecimento, varsNps));
+      sessao.etapa = 'nps_aguardando_motivo_neutro';
+      sessao.npsNota = nota;
+      sessao.npsRespostaId = respostaId;
+      await saveSessao(telefone, sessao);
+    } else {
+      await sendText(telefone, substituirVariaveis(empresa.npsMensagemPromotor || EMPRESA_PADRAO.npsMensagemPromotor, varsNps));
+      await iniciarColetaContatos(telefone, sessao, empresa);
+    }
+    return;
+  }
+
+  if (sessao.etapa === 'nps_aguardando_motivo_neutro') {
+    try {
+      if (sessao.npsRespostaId) await NPS_RESPOSTAS_COL().doc(sessao.npsRespostaId).update({ motivo: texto || '' });
+    } catch (e) { console.error('[NPS] erro ao salvar motivo:', e.message); }
+    await sendText(telefone, substituirVariaveis(empresa.npsMensagemNeutroFinal || EMPRESA_PADRAO.npsMensagemNeutroFinal, { empresa: empresa.nome }));
+    const notaSalva = sessao.npsNota;
+    sessao.etapa = 'finalizado';
+    await saveSessao(telefone, sessao);
+    await alertarGestorNps(telefone, sessao.clienteNome, notaSalva, empresa, 'neutro');
+    return;
+  }
 
   if (sessao.etapa === 'aguardando_nome') {
     // Recusa explícita ("não quero, obrigado") não é o nome dela — sem essa
@@ -3118,7 +3220,7 @@ function substituirVariaveis(template, variaveis) {
     recomendador: v.recomendador, amigo: v.recomendador, recomendou: v.recomendador,
     vendedor: v.vendedor, atendente: v.vendedor, consultor: v.vendedor,
     empresa: v.empresa, negocio: v.empresa,
-    premio: v.premio, dia: v.dia, periodo: v.periodo, quantidade: v.quantidade, prazo: v.prazo
+    premio: v.premio, dia: v.dia, periodo: v.periodo, quantidade: v.quantidade, prazo: v.prazo, nota: v.nota
   };
   return template.replace(/\{(\w+)\}/g, (match, chave) => {
     const val = mapa[chave.toLowerCase()];
@@ -9068,6 +9170,62 @@ async function iniciarDisparoMassa(empresa, template, contatos, headerMediaUrl) 
   return { campanhaId, total: contatos.length };
 }
 
+// Disparo da pergunta de NPS (Funil Base) pra base de clientes. Parecido com
+// iniciarDisparoMassa, mas além de mandar o template grava a SESSÃO de cada
+// contato como "aguardando a nota" — sem isso a resposta (ex.: "9") cairia no
+// agente de script genérico em vez de entrar no fluxo do NPS.
+async function dispararNps(empresa, template, contatos) {
+  const agora = new Date().toISOString();
+  const disparoRef = await DISPAROS_COL().add({
+    empresaId: empresa.id, template, contatos, total: contatos.length, tipo: 'nps',
+    status: 'em_andamento', criadoEm: agora, terminadoEm: null
+  });
+  const campanhaId = disparoRef.id;
+  const status = { campanhaId, total: contatos.length, enviados: 0, bloqueados: 0, falhas: 0, optout: 0, terminado: false, semSaldo: false, template, em: agora };
+  _disparoStatus[empresa.id] = status;
+
+  (async () => {
+    const oficial = oficialDaEmpresa(empresa);
+    for (const c of contatos) {
+      try {
+        if (await estaDescadastrado(c.telefone)) { status.optout++; continue; }
+        let ok = false;
+        await tenantContext.run({ empresa, empresaId: empresa.id, oficial }, async () => {
+          ok = await sendTemplate(c.telefone, template, c.params, 'pt_BR', { campanhaId });
+          if (ok) {
+            const sessao = await getSessao(c.telefone);
+            sessao.etapa = 'nps_aguardando_nota';
+            sessao.clienteNome = c.nome || sessao.clienteNome || null;
+            sessao.npsCampanhaId = campanhaId;
+            await saveSessao(c.telefone, sessao);
+          }
+        });
+        if (ok) status.enviados++;
+        else {
+          const snap = await EMPRESAS_COL().doc(empresa.id).get();
+          const d = snap.exists ? snap.data() : {};
+          const preco = precoDaCategoria(d, 'marketing');
+          if (d.prepagoAtivo && (d.saldoCentavos || 0) < preco) { status.semSaldo = true; break; }
+          status.falhas++;
+        }
+      } catch (e) { status.falhas++; }
+      await new Promise(r => setTimeout(r, 350));
+    }
+    const processados = status.enviados + status.falhas + status.optout + status.bloqueados;
+    if (status.semSaldo && processados < status.total) status.bloqueados += (status.total - processados);
+    status.terminado = true; status.fimEm = new Date().toISOString();
+    try {
+      await disparoRef.set({
+        status: 'concluido', terminadoEm: status.fimEm,
+        enviados: status.enviados, bloqueados: status.bloqueados, falhas: status.falhas, optout: status.optout
+      }, { merge: true });
+    } catch (e) { console.error('[NPS-DISPARO] erro ao salvar resumo final:', e.message); }
+    console.log(`[NPS-DISPARO] empresa=${empresa.id} enviados=${status.enviados} bloqueados=${status.bloqueados} falhas=${status.falhas} optout=${status.optout}`);
+  })().catch(e => { status.terminado = true; console.error('[NPS-DISPARO] erro no loop:', e.message); });
+
+  return { campanhaId, total: contatos.length };
+}
+
 // Reenvia UMA VEZ, 10min depois, só pra quem falhou na passada original de
 // iniciarDisparoMassa — a Meta às vezes recusa um envio sem detalhe nenhum de
 // erro e aceita numa 2ª tentativa pouco depois (comportamento da própria Meta,
@@ -9150,6 +9308,77 @@ app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOfe
 
     const resultado = await iniciarDisparoMassa(empresa, template, contatos, headerImageUrl);
     res.json({ ok: true, ...resultado });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// FUNIL BASE (NPS) — dispara a pergunta "de 0 a 10..." pra base de clientes
+// (clientes_pipeline, a mesma base do Kanban "Funil do Cliente"). Mesmas
+// regras de qualquer disparo em massa: só API Oficial, template aprovado,
+// nunca manda variável em branco.
+app.post('/minha-nps/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') {
+      return res.status(400).json({ ok: false, erro: 'O disparo em massa só funciona no modo API Oficial da Meta.' });
+    }
+    const template = String((req.body && req.body.template) || empresa.npsTemplateNota || '').trim();
+    if (!template) return res.status(400).json({ ok: false, erro: 'Configure o template da pergunta do NPS antes de disparar.' });
+
+    const infoTpl = await getTemplateInfo(oficialDaEmpresa(empresa), template);
+    const nVars = infoTpl ? infoTpl.n : 0;
+
+    const [snap, situacaoPorTelefone] = await Promise.all([
+      CLIENTES_PIPELINE_COL().where('empresaId', '==', empresa.id).get(),
+      situacaoUltimoDisparoPorTelefone(empresa.id)
+    ]);
+    let semNome = 0;
+    const contatos = [];
+    snap.forEach(doc => {
+      const c = doc.data();
+      const tel = soDigitos(c.telefone || '');
+      if (tel.length < 10) return;
+      // Nunca manda de novo pra quem já recusou um disparo anterior.
+      if ((situacaoPorTelefone[tel] || {}).situacao === 'recusou') return;
+      const nome = (c.nome || '').trim();
+      if (nVars > 0 && !nome) { semNome++; return; }
+      contatos.push({ telefone: tel, nome: nome || null, params: nVars > 0 ? [nome] : [] });
+    });
+    if (!contatos.length) {
+      return res.status(400).json({ ok: false, erro: semNome ? `Nenhum cliente da base tem nome salvo (o template "${template}" precisa de nome).` : 'Nenhum cliente na base pra disparar.' });
+    }
+    if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Mais de 1000 clientes na base — não dá num disparo só (limite de 1000).' });
+
+    const rodando = _disparoStatus[empresa.id];
+    if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });
+
+    const resultado = await dispararNps(empresa, template, contatos);
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Dashboard do Funil Base (NPS): total disparado, total respondido e o
+// detalhamento de cada nota (0 a 10) agrupado em Promotor/Neutro/Detrator.
+app.get('/minha-nps/relatorio', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const [disparosSnap, respostasSnap] = await Promise.all([
+      DISPAROS_COL().where('empresaId', '==', req.empresaLogin.id).where('tipo', '==', 'nps').get(),
+      NPS_RESPOSTAS_COL().where('empresaId', '==', req.empresaLogin.id).get()
+    ]);
+    let totalDisparado = 0;
+    disparosSnap.forEach(d => { totalDisparado += (d.data().enviados || 0); });
+    const porNota = Array(11).fill(0);
+    let promotor = 0, neutro = 0, detrator = 0;
+    respostasSnap.forEach(d => {
+      const nota = d.data().nota;
+      if (nota == null || nota < 0 || nota > 10) return;
+      porNota[nota]++;
+      if (nota >= 9) promotor++; else if (nota >= 7) neutro++; else detrator++;
+    });
+    res.json({ ok: true, totalDisparado, totalRespondido: respostasSnap.size, porNota, promotor, neutro, detrator });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
