@@ -2413,7 +2413,6 @@ function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 async function _processarMensagemInterno(telefone, texto, vCard, contatosMultiplos) {
   const empresa = await getEmpresa();
   const sessao = await getSessao(telefone);
-  console.log(`[DEBUG-ROTA] telefone=${telefone} empresaId=${empresaIdAtual()} etapa="${sessao.etapa}" texto="${(texto || '').slice(0, 40)}"`);
 
   // FUNIL BASE (NPS) — aguardando a nota de 0 a 10. A nota decide o caminho:
   // 0-6 detrator, 7-8 neutro (pergunta o motivo antes de fechar), 9-10
@@ -4916,7 +4915,6 @@ async function tratarWebhook(req, res) {
     // Cliente "ativo" = sessão em andamento (não finalizada). Uma sessão de
     // cliente finalizada não deve bloquear o fluxo de recomendado.
     const clienteAtivo = sessaoExiste && sessaoClienteEtapa !== 'finalizado';
-    console.log(`[DEBUG-ROTA2] telefone=${telefone} chave=${chaveSessao(telefone)} sessaoExiste=${sessaoExiste} etapa="${sessaoClienteEtapa}" aguardandoEscolhaOferta=${sessaoExiste ? !!sessaoExistenteSnap.data().aguardandoEscolhaOferta : null}`);
     const ehGatilhoInicial = ehGatilhoPresenteQualquerOferta(texto, empGatilho);
     // Funil Não Cliente — 2ª porta de entrada, gatilho próprio (ver EMPRESA_PADRAO).
     const ehGatilhoNaoClienteInicial = ehGatilhoNaoCliente(texto, empGatilho);
@@ -9418,8 +9416,12 @@ app.post('/minha-nps/teste', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemO
     }
     const template = String((req.body && req.body.template) || empresa.npsTemplateNota || '').trim();
     if (!template) return res.status(400).json({ ok: false, erro: 'Configure o template da pergunta do NPS antes de testar.' });
-    const telefone = soDigitos((req.body && req.body.telefone) || '');
+    let telefone = soDigitos((req.body && req.body.telefone) || '');
     if (telefone.length < 10) return res.status(400).json({ ok: false, erro: 'Informe um telefone válido com DDD.' });
+    // Sem o DDI 55, a sessão fica salva numa chave diferente da que o webhook
+    // usa quando a resposta chega de verdade (telefone vem sempre com 55) — a
+    // resposta nunca "encontrava" a sessão, parecia que o robô ficava mudo.
+    if ((telefone.length === 10 || telefone.length === 11) && !telefone.startsWith('55')) telefone = '55' + telefone;
     const nome = String((req.body && req.body.nome) || '').trim() || 'Teste';
 
     const infoTpl = await getTemplateInfo(oficialDaEmpresa(empresa), template);
