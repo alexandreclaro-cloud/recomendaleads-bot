@@ -1446,6 +1446,23 @@
     </div>
 
     <div class="config-card" style="margin-top:16px;">
+      <h2>🧪 Testar antes de disparar</h2>
+      <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 12px;">Manda a pergunta só pra UM número (ex.: o seu celular) — já deixa pronto pra você responder de verdade e ver o funil completo rodar (presente/pergunta do motivo/aviso ao gestor), sem mexer na base de clientes de verdade.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="flex:1;min-width:160px;">
+          <label style="margin:0;">Seu telefone (com DDD)</label>
+          <input type="text" id="npsTesteTelefoneInput" placeholder="Ex: 11999998888">
+        </div>
+        <div style="flex:1;min-width:140px;">
+          <label style="margin:0;">Nome (opcional)</label>
+          <input type="text" id="npsTesteNomeInput" placeholder="Ex: Alexandre">
+        </div>
+        <button class="config-save-btn" id="npsTesteBtn" style="white-space:nowrap;">Enviar teste</button>
+      </div>
+      <span class="config-status-msg" id="npsTesteStatus"></span>
+    </div>
+
+    <div class="config-card" style="margin-top:16px;">
       <h2>🚀 Disparar pergunta pra base de clientes</h2>
       <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 12px;">Dispara pra todo mundo que já passou pelo bot (mesma base do Kanban "Funil do Cliente"), usando o template configurado acima. Exclui automaticamente quem já recusou um disparo anterior.</p>
       <div class="config-row-save">
@@ -1455,8 +1472,13 @@
     </div>
 
     <div class="config-card" style="margin-top:16px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-        <h2 style="margin:0;">📈 Resultado</h2>
+      <h2>📋 Histórico de disparos</h2>
+      <div id="npsHistLista" style="margin-top:8px;"><span class="sub" style="font-size:0.85rem;color:var(--text-dim);">Carregando...</span></div>
+    </div>
+
+    <div class="config-card" style="margin-top:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;flex-wrap:wrap;">
+        <h2 style="margin:0;" id="npsDashboardTitulo">📈 Resultado — todas as campanhas</h2>
         <button class="config-save-btn" id="npsAtualizarBtn" style="padding:6px 12px;font-size:0.8rem;">↻ Atualizar</button>
       </div>
       <div id="npsDashboard" style="margin-top:12px;"><p class="sub" style="font-size:0.85rem;color:var(--text-dim);">Carregando...</p></div>
@@ -1556,6 +1578,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     } else if (btn.dataset.tab === 'funilBase' && EH_GESTOR) {
       document.getElementById('tabFunilBase').classList.add('active');
       if (!configuracaoCarregada) carregarConfiguracao();
+      carregarNpsHistorico();
       carregarNpsDashboard();
     } else if (EH_GESTOR) {
       document.getElementById('tabConfig').classList.add('active');
@@ -3684,6 +3707,22 @@ document.getElementById('salvarNpsBtn').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 
+document.getElementById('npsTesteBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('npsTesteBtn');
+  const statusEl = document.getElementById('npsTesteStatus');
+  const telefone = document.getElementById('npsTesteTelefoneInput').value.trim();
+  const nome = document.getElementById('npsTesteNomeInput').value.trim();
+  if (!telefone) { statusEl.textContent = '❌ Informe um telefone'; statusEl.className = 'config-status-msg err'; return; }
+  btn.disabled = true; statusEl.textContent = 'Enviando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nps/teste`, { method: 'POST', body: JSON.stringify({ telefone, nome }) });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Enviado! Responde no WhatsApp pra testar o fluxo.'; statusEl.className = 'config-status-msg ok'; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao enviar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; }
+});
+
 document.getElementById('npsDispararBtn').addEventListener('click', async () => {
   const btn = document.getElementById('npsDispararBtn');
   const statusEl = document.getElementById('npsDispararStatus');
@@ -3694,13 +3733,13 @@ document.getElementById('npsDispararBtn').addEventListener('click', async () => 
     const data = await resp.json();
     if (resp.ok && data.ok) {
       statusEl.textContent = `✅ Disparando pra ${data.total} cliente(s)!`; statusEl.className = 'config-status-msg ok';
-      setTimeout(carregarNpsDashboard, 8000);
+      setTimeout(() => { carregarNpsHistorico(); carregarNpsDashboard(); }, 8000);
     } else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao disparar'); statusEl.className = 'config-status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
   finally { btn.disabled = false; }
 });
 
-document.getElementById('npsAtualizarBtn').addEventListener('click', carregarNpsDashboard);
+document.getElementById('npsAtualizarBtn').addEventListener('click', () => carregarNpsDashboard());
 
 (() => {
   const inp = document.getElementById('npsTemplateNotaInput');
@@ -3712,11 +3751,41 @@ document.getElementById('npsAtualizarBtn').addEventListener('click', carregarNps
   inp.addEventListener('input', atualizarBadge);
 })();
 
-async function carregarNpsDashboard() {
+async function carregarNpsHistorico() {
+  const box = document.getElementById('npsHistLista');
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nps/disparos`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error();
+    const disparos = data.disparos || [];
+    if (!disparos.length) { box.innerHTML = '<span class="sub" style="font-size:0.85rem;color:var(--text-dim);">Nenhum disparo ainda.</span>'; return; }
+    box.innerHTML = disparos.map(x => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border,#eee);padding:10px 0;">
+        <div>
+          <b>${esc(x.template || '')}</b>
+          <span style="font-size:0.78rem;color:var(--text-dim);margin-left:6px;">${fmtDataHoraBr(x.criadoEm)} · ${x.total} contato(s) · ${x.status === 'concluido' ? `✅ ${x.enviados} enviado(s)` : '⏳ em andamento'}</span>
+        </div>
+        <button type="button" class="config-save-btn" data-nps-rel-id="${x.id}" style="padding:6px 12px;font-size:0.8rem;">📊 Ver relatório</button>
+      </div>`).join('');
+    box.querySelectorAll('[data-nps-rel-id]').forEach(btn => {
+      btn.addEventListener('click', () => carregarNpsDashboard(btn.dataset.npsRelId, btn.closest('div').querySelector('b').textContent));
+    });
+  } catch (e) { box.innerHTML = '<span class="sub" style="font-size:0.85rem;color:var(--text-dim);">Não foi possível carregar o histórico.</span>'; }
+}
+
+function fmtDataHoraBr(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; }
+}
+
+async function carregarNpsDashboard(campanhaId, templateLabel) {
   const box = document.getElementById('npsDashboard');
+  const titulo = document.getElementById('npsDashboardTitulo');
+  titulo.textContent = campanhaId ? `📈 Resultado — ${templateLabel || 'campanha'}` : '📈 Resultado — todas as campanhas';
   box.innerHTML = '<p class="sub" style="font-size:0.85rem;color:var(--text-dim);">Carregando...</p>';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-nps/relatorio`);
+    const url = campanhaId ? `${API_BASE}/minha-nps/relatorio?campanhaId=${encodeURIComponent(campanhaId)}` : `${API_BASE}/minha-nps/relatorio`;
+    const resp = await fetchAutenticado(url);
     const data = await resp.json();
     if (!resp.ok || !data.ok) { box.innerHTML = `<p class="sub" style="font-size:0.85rem;color:#b91c1c;">${esc(data.erro || 'Erro ao carregar')}</p>`; return; }
     const pctResp = data.totalDisparado ? Math.round((data.totalRespondido / data.totalDisparado) * 100) : 0;

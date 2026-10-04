@@ -9394,16 +9394,81 @@ app.post('/minha-nps/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioS
   }
 });
 
+// Manda a pergunta do NPS pra UM número só (ex.: o próprio celular do dono),
+// antes de disparar pra base inteira — e já deixa a sessão pronta pra testar
+// o fluxo completo (responder uma nota de verdade e ver pra onde cai).
+app.post('/minha-nps/teste', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    if (empresa.whatsappTipo !== 'oficial') {
+      return res.status(400).json({ ok: false, erro: 'O disparo em massa só funciona no modo API Oficial da Meta.' });
+    }
+    const template = String((req.body && req.body.template) || empresa.npsTemplateNota || '').trim();
+    if (!template) return res.status(400).json({ ok: false, erro: 'Configure o template da pergunta do NPS antes de testar.' });
+    const telefone = soDigitos((req.body && req.body.telefone) || '');
+    if (telefone.length < 10) return res.status(400).json({ ok: false, erro: 'Informe um telefone válido com DDD.' });
+    const nome = String((req.body && req.body.nome) || '').trim() || 'Teste';
+
+    const infoTpl = await getTemplateInfo(oficialDaEmpresa(empresa), template);
+    const nVars = infoTpl ? infoTpl.n : 0;
+    const params = nVars > 0 ? [nome] : [];
+
+    const oficial = oficialDaEmpresa(empresa);
+    let ok = false;
+    await tenantContext.run({ empresa, empresaId: empresa.id, oficial }, async () => {
+      ok = await sendTemplate(telefone, template, params, 'pt_BR', {});
+      if (ok) {
+        const sessao = await getSessao(telefone);
+        sessao.etapa = 'nps_aguardando_nota';
+        sessao.clienteNome = nome;
+        sessao.npsCampanhaId = null; // teste avulso, não entra em nenhuma campanha
+        await saveSessao(telefone, sessao);
+      }
+    });
+    if (!ok) return res.status(400).json({ ok: false, erro: 'Não consegui enviar — confira o template e o número.' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Histórico de disparos do NPS (mais recente primeiro) — igual ao histórico
+// do disparo em massa normal, só filtrado pros disparos tipo 'nps'.
+app.get('/minha-nps/disparos', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+  try {
+    const snap = await DISPAROS_COL().where('empresaId', '==', req.empresaLogin.id).where('tipo', '==', 'nps').get();
+    const disparos = [];
+    snap.forEach(d => {
+      const x = d.data();
+      disparos.push({ id: d.id, template: x.template, total: x.total, status: x.status, criadoEm: x.criadoEm, enviados: x.enviados || 0, falhas: x.falhas || 0 });
+    });
+    disparos.sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, disparos });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Dashboard do Funil Base (NPS): total disparado, total respondido e o
 // detalhamento de cada nota (0 a 10) agrupado em Promotor/Neutro/Detrator.
+// Sem ?campanhaId= soma TUDO (todas as campanhas já disparadas); com
+// ?campanhaId= mostra só aquele disparo específico (igual ao "Ver relatório"
+// do disparo em massa normal).
 app.get('/minha-nps/relatorio', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
   try {
-    const [disparosSnap, respostasSnap] = await Promise.all([
-      DISPAROS_COL().where('empresaId', '==', req.empresaLogin.id).where('tipo', '==', 'nps').get(),
-      NPS_RESPOSTAS_COL().where('empresaId', '==', req.empresaLogin.id).get()
-    ]);
+    const campanhaId = String(req.query.campanhaId || '').trim() || null;
     let totalDisparado = 0;
-    disparosSnap.forEach(d => { totalDisparado += (d.data().enviados || 0); });
+    let respostasQuery = NPS_RESPOSTAS_COL().where('empresaId', '==', req.empresaLogin.id);
+    if (campanhaId) {
+      const doc = await DISPAROS_COL().doc(campanhaId).get();
+      if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) return res.status(404).json({ ok: false, erro: 'Disparo não encontrado' });
+      totalDisparado = doc.data().enviados || 0;
+      respostasQuery = respostasQuery.where('campanhaId', '==', campanhaId);
+    } else {
+      const disparosSnap = await DISPAROS_COL().where('empresaId', '==', req.empresaLogin.id).where('tipo', '==', 'nps').get();
+      disparosSnap.forEach(d => { totalDisparado += (d.data().enviados || 0); });
+    }
+    const respostasSnap = await respostasQuery.get();
     const porNota = Array(11).fill(0);
     let promotor = 0, neutro = 0, detrator = 0;
     respostasSnap.forEach(d => {
