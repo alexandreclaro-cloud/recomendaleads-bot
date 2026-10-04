@@ -1024,7 +1024,7 @@ const EMPRESA_PADRAO = {
   npsMensagemDetrator: 'Poxa, sentimos muito que sua experiência não tenha sido a que esperávamos. Um de nossos gestores vai entrar em contato com você rapidinho pra resolver isso.',
   npsMensagemNeutroAgradecimento: 'Obrigado pela nota! Pra gente melhorar ainda mais, pode nos contar rapidinho o que faltou pra você dar um 9 ou 10?',
   npsMensagemNeutroFinal: 'Entendido, muito obrigado pelo retorno! Vamos trabalhar pra melhorar, e sentimos muito se não conseguimos atender 100% das suas expectativas.',
-  npsMensagemPromotor: 'Que ótimo! Fico muito feliz com isso 🙌 Separamos um presente especial pra te agradecer:',
+  npsMensagemPromotor: 'Que ótimo! Fico muito feliz com isso 🙌 Separamos um presente especial pra te agradecer — é só nos recomendar pra garantir o seu.',
   // Telefone (com DDD) que recebe o alerta de nota baixa/neutra. Vazio = usa o
   // mesmo número de aviso de atendimento humano (numeroAtendente/atendente oficial).
   npsTelefoneGestorEmergencia: '',
@@ -1034,6 +1034,13 @@ const EMPRESA_PADRAO = {
   // gestor, sem presente imediato (o presente normal vem no final, igual o
   // Funil Start de sempre).
   npsPedirRecomendacaoNeutro: false,
+  // Resto da conversa de pedir recomendação (pede contatos, instrução de
+  // coleta, validar com o amigo) — textos PRÓPRIOS opcionais pro Funil Base,
+  // mesma regra do Funil Não Cliente: vazio cai no texto do Funil Start
+  // (mesmo campo de sempre), sem precisar duplicar nada pra quem não quiser.
+  npsMensagemPedeContatos: '',
+  npsMensagemColeta: '',
+  npsMensagemValidarAmigo: '',
   // Modo de recomendação (ver [[modelo-inbound-recomendacao]]):
   //  'basic'  = o robô dispara pros amigos (atual, padrão).
   //  'full'   = inbound: cliente compartilha link, o amigo é quem chama a gente (ban≈0).
@@ -2386,11 +2393,12 @@ async function iniciarColetaContatos(telefone, sessao, empresa) {
   if (modoRecAtual(empresa) === 'full') {
     await sendText(telefone, substituirVariaveis(empresa.fullMensagemAvisoInicial || EMPRESA_PADRAO.fullMensagemAvisoInicial, varsCliente));
   }
-  // Funil Não Cliente pode ter texto PRÓPRIO (mais curto/direto) pra essas 2
+  // Funil Não Cliente e Funil Base (NPS) podem ter texto PRÓPRIO pra essas 2
   // mensagens — vazio cai no texto do Funil Start, mesmo campo de sempre.
   const ehNaoCliente = sessao.origemFunil === 'naoCliente';
-  const txtPedeContatos = (ehNaoCliente && empresa.naoClienteMensagemPedeContatos) || empresa.mensagemPedeContatos || EMPRESA_PADRAO.mensagemPedeContatos;
-  const txtColeta = (ehNaoCliente && empresa.naoClienteMensagemColeta) || empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta;
+  const ehNps = sessao.origemFunil === 'nps';
+  const txtPedeContatos = (ehNaoCliente && empresa.naoClienteMensagemPedeContatos) || (ehNps && empresa.npsMensagemPedeContatos) || empresa.mensagemPedeContatos || EMPRESA_PADRAO.mensagemPedeContatos;
+  const txtColeta = (ehNaoCliente && empresa.naoClienteMensagemColeta) || (ehNps && empresa.npsMensagemColeta) || empresa.mensagemColeta || EMPRESA_PADRAO.mensagemColeta;
   await sendText(telefone, substituirVariaveis(txtPedeContatos, varsCliente));
   await sendText(telefone, substituirVariaveis(txtColeta, varsCliente));
   // Follow-up — Sem resposta (Cliente): agenda o 1º lembrete caso ele trave
@@ -2444,21 +2452,13 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
       sessao.npsRespostaId = respostaId;
       await saveSessao(telefone, sessao);
     } else {
+      // Avisa que vai ganhar um presente (pode até descrever qual é, em texto),
+      // mas a entrega de verdade (voucher/imagem) só acontece depois de
+      // completar as recomendações — igual o Funil Start sempre funcionou.
+      // Precisa ficar claro que o presente é a RECOMPENSA de recomendar, não
+      // algo que já chegou antes de pedir nada.
       await sendText(telefone, substituirVariaveis(empresa.npsMensagemPromotor || EMPRESA_PADRAO.npsMensagemPromotor, varsNps));
-      // Promotor ganha o presente JÁ, na hora — diferente do Funil Start normal,
-      // que só entrega depois de coletar as 5 recomendações. Marca a sessão pra
-      // finalizarFaixa não entregar de novo (duplicado) no final.
-      const faixaNps = faixasAtivas(empresa, sessao)[0];
-      if (faixaNps) {
-        if (faixaNps.arquivo) {
-          await enviarVoucher(telefone, faixaNps.arquivo, faixaNps.premio, faixaNps.premio);
-          await new Promise(r => setTimeout(r, 2500));
-        } else if (faixaNps.premio) {
-          await sendText(telefone, faixaNps.premio);
-        }
-        if (faixaNps.texto) await sendText(telefone, faixaNps.texto);
-      }
-      sessao.npsPresenteJaEntregue = true;
+      sessao.origemFunil = 'nps';
       await iniciarColetaContatos(telefone, sessao, empresa);
     }
     return;
@@ -2476,6 +2476,7 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
     // imediato aqui — se completar, recebe o presente normal no final (igual
     // qualquer recomendador do Funil Start).
     if (empresa.npsPedirRecomendacaoNeutro) {
+      sessao.origemFunil = 'nps';
       await iniciarColetaContatos(telefone, sessao, empresa);
     } else {
       sessao.etapa = 'finalizado';
@@ -3142,32 +3143,26 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     await finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDestaFaixa);
     return;
   }
-  // NPS Promotor já recebeu o presente na hora, antes de pedir as recomendações
-  // (ver nps_aguardando_nota) — não entrega de novo aqui, só reconhece.
-  if (sessao.npsPresenteJaEntregue) {
-    await sendText(telefone, `🎉 Perfeito! Recomendações registradas, muito obrigado!`);
+  await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
+  await sendText(telefone, `🎁 Aqui está o seu presente:`);
+
+  // Ordem congruente: presente (imagem) → mensagem de orientação → link
+  if (faixa.arquivo) {
+    await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
+    // A mídia (imagem/PDF) demora pra ser processada e entregue pelo WhatsApp — sem
+    // esse respiro o texto de orientação ("clique no link abaixo") CHEGA ANTES da
+    // imagem. Espera um pouco pra garantir que a imagem apareça primeiro.
+    await new Promise(r => setTimeout(r, 2500));
   } else {
-    await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
-    await sendText(telefone, `🎁 Aqui está o seu presente:`);
+    await sendText(telefone, faixa.premio);
+  }
 
-    // Ordem congruente: presente (imagem) → mensagem de orientação → link
-    if (faixa.arquivo) {
-      await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
-      // A mídia (imagem/PDF) demora pra ser processada e entregue pelo WhatsApp — sem
-      // esse respiro o texto de orientação ("clique no link abaixo") CHEGA ANTES da
-      // imagem. Espera um pouco pra garantir que a imagem apareça primeiro.
-      await new Promise(r => setTimeout(r, 2500));
-    } else {
-      await sendText(telefone, faixa.premio);
-    }
+  if (faixa.texto) {
+    await sendText(telefone, faixa.texto);
+  }
 
-    if (faixa.texto) {
-      await sendText(telefone, faixa.texto);
-    }
-
-    if (faixa.link) {
-      await sendText(telefone, faixa.link);
-    }
+  if (faixa.link) {
+    await sendText(telefone, faixa.link);
   }
 
   // Pipeline do cliente: só avança pra "recebeu o prêmio" AQUI, depois que o
@@ -3175,9 +3170,11 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   // "recomendou", ao completar a faixa, antes de qualquer coisa ser entregue).
   await upsertClientePipeline(telefone, sessao.clienteNome, 'recebeu_premio');
 
-  // Funil Não Cliente pode ter esse aviso com texto próprio — vazio cai no
-  // texto do Funil Start, mesma regra de sempre (campo vazio = não envia nada).
+  // Funil Não Cliente e Funil Base (NPS) podem ter esse aviso com texto
+  // próprio — vazio cai no texto do Funil Start, mesma regra de sempre
+  // (campo vazio = não envia nada).
   const msgValidarAmigo = (sessao.origemFunil === 'naoCliente' && empresa.naoClienteMensagemValidarAmigo)
+    || (sessao.origemFunil === 'nps' && empresa.npsMensagemValidarAmigo)
     || (empresa.mensagemValidarAmigo ?? EMPRESA_PADRAO.mensagemValidarAmigo);
   if (msgValidarAmigo && msgValidarAmigo.trim()) {
     await sendText(telefone, substituirVariaveis(msgValidarAmigo, {

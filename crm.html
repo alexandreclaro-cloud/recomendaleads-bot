@@ -1403,7 +1403,7 @@
         Disparo em massa pra base de clientes com a pergunta: <i>"Em uma escala de 0 a 10, que nota você daria para recomendar um amigo pra comprar com a gente?"</i> A nota classifica o cliente e dispara um caminho diferente:
       </p>
       <ul style="font-size:0.85rem; color:var(--text-dim); margin:0 0 14px; padding-left:20px; line-height:1.7;">
-        <li><b>9-10 (Promotor):</b> agradece, avisa que ganhou um presente e já entra no fluxo de recomendação (pede os 5 amigos).</li>
+        <li><b>9-10 (Promotor):</b> agradece e já pede as 5 recomendações — o presente só é entregue DEPOIS de completar.</li>
         <li><b>7-8 (Neutro):</b> agradece, pergunta o motivo e avisa o gestor pra ligar e entender melhor.</li>
         <li><b>0-6 (Detrator):</b> pede desculpas e alerta URGENTE pro gestor ligar na hora.</li>
       </ul>
@@ -1418,25 +1418,50 @@
       <div style="margin-top:4px;"><span id="npsTemplateBadge"></span></div>
       <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">A pergunta "de 0 a 10..." precisa ser um template aprovado — a API Oficial não manda texto livre em disparo de massa. O cliente responde digitando um número OU clicando num botão de 3 faixas ("9 a 10" / "7 a 8" / "0 a 6") — o sistema entende os dois formatos.</p>
 
-      <label style="margin-top:14px;">Mensagem — nota 0 a 6 (Detrator)</label>
-      <textarea id="npsDetratorInput" rows="2" disabled></textarea>
+      <div style="margin-top:18px;border-top:1px solid var(--border,#eee);padding-top:14px;">
+        <div style="font-weight:700;color:#991B1B;margin-bottom:10px;">🔴 Sequência — Detrator (nota 0 a 6)</div>
+        <label>1️⃣ Mensagem de desculpa</label>
+        <textarea id="npsDetratorInput" rows="2" disabled></textarea>
+        <p style="font-size:0.74rem;color:var(--text-dim);margin:6px 0 0;">2️⃣ <i>(automático)</i> Alerta URGENTE pro gestor — número configurado mais abaixo.</p>
+      </div>
 
-      <label style="margin-top:12px;">Agradecimento — nota 7 ou 8 (Neutro), antes de perguntar o motivo</label>
-      <textarea id="npsNeutroAgradInput" rows="2" disabled></textarea>
+      <div style="margin-top:18px;border-top:1px solid var(--border,#eee);padding-top:14px;">
+        <div style="font-weight:700;color:#92400E;margin-bottom:10px;">🟡 Sequência — Neutro (nota 7 ou 8)</div>
+        <label>1️⃣ Agradecimento + pergunta o motivo</label>
+        <textarea id="npsNeutroAgradInput" rows="2" disabled></textarea>
 
-      <label style="margin-top:12px;">Mensagem final — depois que o Neutro responde o motivo</label>
-      <textarea id="npsNeutroFinalInput" rows="2" disabled></textarea>
+        <label style="margin-top:12px;">2️⃣ Mensagem final — depois que ele responde o motivo</label>
+        <textarea id="npsNeutroFinalInput" rows="2" disabled></textarea>
 
-      <label style="display:flex; align-items:center; gap:10px; margin:10px 0 4px; cursor:pointer;">
-        <input type="checkbox" id="npsPedirRecNeutroInput" style="width:20px;height:20px;" disabled title="Carregando...">
-        <span style="font-weight:600;">Também pedir as 5 recomendações pra quem deu nota 7-8 (Neutro)</span>
-      </label>
-      <p style="font-size:0.74rem;color:var(--text-dim);margin:0 0 12px;">Opcional — desligado por padrão. Se ligar, depois do motivo e do aviso ao gestor, o Neutro também entra no pedido de recomendação (sem presente na hora — se completar, ganha o presente normal no final, igual ao Funil Start).</p>
+        <p style="font-size:0.74rem;color:var(--text-dim);margin:6px 0 0;">3️⃣ <i>(automático)</i> Alerta pro gestor — número configurado mais abaixo.</p>
 
-      <label style="margin-top:12px;">Mensagem — nota 9 ou 10 (Promotor), antes do presente</label>
-      <textarea id="npsPromotorInput" rows="2" disabled></textarea>
+        <label style="display:flex; align-items:center; gap:10px; margin:12px 0 4px; cursor:pointer;">
+          <input type="checkbox" id="npsPedirRecNeutroInput" style="width:20px;height:20px;" disabled title="Carregando...">
+          <span style="font-weight:600;">4️⃣ (opcional) Também pedir as 5 recomendações</span>
+        </label>
+        <p style="font-size:0.74rem;color:var(--text-dim);margin:0;">Desligado por padrão. Se ligar, depois do motivo e do aviso ao gestor, o Neutro também entra no pedido de recomendação (sem presente na hora — só ganha se completar, igual ao Promotor).</p>
+      </div>
 
-      <label style="margin-top:12px;">Telefone de emergência do gestor <span style="font-weight:400;color:var(--text-dim);">(com DDD — vazio usa o número de aviso de atendimento)</span></label>
+      <div style="margin-top:18px;border-top:1px solid var(--border,#eee);padding-top:14px;">
+        <div style="font-weight:700;color:#065F46;margin-bottom:10px;">🟢 Sequência — Promotor (nota 9 ou 10)</div>
+        <label>1️⃣ Agradecimento <span style="font-weight:400;color:var(--text-dim);">(pode até descrever o presente, mas NÃO entrega ainda)</span></label>
+        <textarea id="npsPromotorInput" rows="2" disabled></textarea>
+
+        <p style="font-size:0.78rem;color:var(--text-dim);margin:14px 0 4px;">O resto da conversa (abaixo) reaproveita o texto do Funil Start por padrão — vale pro Promotor e também pro Neutro, se você ligou a opção acima. Preencha só o que quiser deixar diferente; <b>deixe vazio pra continuar usando o texto do Start</b>.</p>
+
+        <label style="margin-top:10px;">2️⃣ Pede os contatos — convite <span style="font-weight:400;color:var(--text-dim);">(use {premio})</span></label>
+        <textarea id="npsPedeContatosInput" rows="2" placeholder="Vazio = usa o texto do Funil Start" disabled></textarea>
+
+        <label style="margin-top:10px;">Instrução de coleta <span style="font-weight:400;color:var(--text-dim);">(use {quantidade})</span></label>
+        <textarea id="npsColetaInput" rows="2" placeholder="Vazio = usa o texto do Funil Start" disabled></textarea>
+
+        <label style="margin-top:10px;">3️⃣ Validar com o amigo <span style="font-weight:400;color:var(--text-dim);">(logo após o presente)</span></label>
+        <textarea id="npsValidarAmigoInput" rows="2" placeholder="Vazio = usa o texto do Funil Start" disabled></textarea>
+
+        <p style="font-size:0.74rem;color:var(--text-dim);margin:10px 0 0;">4️⃣ <i>(automático)</i> Só DEPOIS de completar as 5: entrega o presente de verdade (voucher/imagem).</p>
+      </div>
+
+      <label style="margin-top:18px;">Telefone de emergência do gestor <span style="font-weight:400;color:var(--text-dim);">(com DDD — vazio usa o número de aviso de atendimento)</span></label>
       <input type="text" id="npsTelefoneGestorInput" placeholder="Ex: 11999998888" disabled>
 
       <div class="config-row-save">
@@ -2947,10 +2972,13 @@ async function carregarConfiguracao() {
     document.getElementById('npsNeutroAgradInput').value = configuracaoAtual.npsMensagemNeutroAgradecimento || '';
     document.getElementById('npsNeutroFinalInput').value = configuracaoAtual.npsMensagemNeutroFinal || '';
     document.getElementById('npsPromotorInput').value = configuracaoAtual.npsMensagemPromotor || '';
+    document.getElementById('npsPedeContatosInput').value = configuracaoAtual.npsMensagemPedeContatos || '';
+    document.getElementById('npsColetaInput').value = configuracaoAtual.npsMensagemColeta || '';
+    document.getElementById('npsValidarAmigoInput').value = configuracaoAtual.npsMensagemValidarAmigo || '';
     document.getElementById('npsTelefoneGestorInput').value = configuracaoAtual.npsTelefoneGestorEmergencia || '';
     document.getElementById('npsPedirRecNeutroInput').checked = !!configuracaoAtual.npsPedirRecomendacaoNeutro;
     document.getElementById('npsPedirRecNeutroInput').disabled = false;
-    ['npsAtivoInput', 'npsTemplateNotaInput', 'npsDetratorInput', 'npsNeutroAgradInput', 'npsNeutroFinalInput', 'npsPromotorInput', 'npsTelefoneGestorInput'].forEach(id => {
+    ['npsAtivoInput', 'npsTemplateNotaInput', 'npsDetratorInput', 'npsNeutroAgradInput', 'npsNeutroFinalInput', 'npsPromotorInput', 'npsPedeContatosInput', 'npsColetaInput', 'npsValidarAmigoInput', 'npsTelefoneGestorInput'].forEach(id => {
       document.getElementById(id).disabled = false;
     });
     document.getElementById('salvarNpsBtn').disabled = false;
@@ -3693,11 +3721,14 @@ document.getElementById('salvarNpsBtn').addEventListener('click', async () => {
   const npsMensagemNeutroAgradecimento = document.getElementById('npsNeutroAgradInput').value;
   const npsMensagemNeutroFinal = document.getElementById('npsNeutroFinalInput').value;
   const npsMensagemPromotor = document.getElementById('npsPromotorInput').value;
+  const npsMensagemPedeContatos = document.getElementById('npsPedeContatosInput').value;
+  const npsMensagemColeta = document.getElementById('npsColetaInput').value;
+  const npsMensagemValidarAmigo = document.getElementById('npsValidarAmigoInput').value;
   const npsTelefoneGestorEmergencia = document.getElementById('npsTelefoneGestorInput').value.trim();
   const npsPedirRecomendacaoNeutro = document.getElementById('npsPedirRecNeutroInput').checked;
   btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ npsAtivo, npsTemplateNota, npsMensagemDetrator, npsMensagemNeutroAgradecimento, npsMensagemNeutroFinal, npsMensagemPromotor, npsTelefoneGestorEmergencia, npsPedirRecomendacaoNeutro }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ npsAtivo, npsTemplateNota, npsMensagemDetrator, npsMensagemNeutroAgradecimento, npsMensagemNeutroFinal, npsMensagemPromotor, npsMensagemPedeContatos, npsMensagemColeta, npsMensagemValidarAmigo, npsTelefoneGestorEmergencia, npsPedirRecomendacaoNeutro }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok';
