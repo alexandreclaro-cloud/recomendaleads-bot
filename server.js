@@ -875,13 +875,18 @@ function respostaEhNegativa(texto) {
   ].some(frase => normalizado.includes(frase));
 }
 
-// Extrai uma nota de 0 a 10 de uma resposta livre do NPS (ex.: "9", "nota 8",
-// "8/10", "eu daria 7"). Pega o primeiro número válido no texto — fora do
-// intervalo ou sem número nenhum retorna null, pra pedir de novo em vez de
-// assumir uma nota errada.
+// Extrai uma nota de 0 a 10 da resposta do NPS. Cobre os dois formatos
+// possíveis de template aprovado na Meta: BOTÕES de 3 faixas ("9 a 10", "7 a
+// 8", "0 a 6" — chega como texto do botão) ou resposta livre com um número
+// solto ("9", "nota 8", "8/10"). Fora do intervalo ou sem número nenhum
+// retorna null, pra pedir de novo em vez de assumir uma nota errada.
 function extrairNotaNps(texto) {
   if (!texto) return null;
-  const m = String(texto).match(/\b(10|[0-9])\b/);
+  const t = String(texto).trim().toLowerCase();
+  if (/\b9\s*a\s*10\b/.test(t)) return 9;
+  if (/\b7\s*a\s*8\b/.test(t)) return 7;
+  if (/\b0\s*a\s*6\b/.test(t)) return 0;
+  const m = t.match(/\b(10|[0-9])\b/);
   if (!m) return null;
   const n = parseInt(m[1], 10);
   return (n >= 0 && n <= 10) ? n : null;
@@ -9227,9 +9232,15 @@ async function dispararNps(empresa, template, contatos) {
         await tenantContext.run({ empresa, empresaId: empresa.id, oficial }, async () => {
           ok = await sendTemplate(c.telefone, template, c.params, 'pt_BR', { campanhaId });
           if (ok) {
+            // Reseta a sessão ANTES de montar a nova — esse contato já pode ter
+            // passado pelo bot antes (é a base de clientes!) e sobrado alguma
+            // flag/etapa antiga (ex.: menu de loja, disparo pendente). Sem isso,
+            // o roteamento do webhook intercepta a resposta da nota antes de
+            // ela chegar na lógica do NPS, e o cliente "não recebe mais nada".
+            await resetSessao(c.telefone);
             const sessao = await getSessao(c.telefone);
             sessao.etapa = 'nps_aguardando_nota';
-            sessao.clienteNome = c.nome || sessao.clienteNome || null;
+            sessao.clienteNome = c.nome || null;
             sessao.npsCampanhaId = campanhaId;
             await saveSessao(c.telefone, sessao);
           }
@@ -9418,6 +9429,11 @@ app.post('/minha-nps/teste', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemO
     await tenantContext.run({ empresa, empresaId: empresa.id, oficial }, async () => {
       ok = await sendTemplate(telefone, template, params, 'pt_BR', {});
       if (ok) {
+        // Reseta a sessão ANTES de montar a nova — esse número já pode ter
+        // testado outros fluxos antes (menu de loja, disparo, etc.) e sobrado
+        // flag antiga que intercepta a resposta da nota antes de chegar na
+        // lógica do NPS (parece que "o sistema não respondeu mais nada").
+        await resetSessao(telefone);
         const sessao = await getSessao(telefone);
         sessao.etapa = 'nps_aguardando_nota';
         sessao.clienteNome = nome;
