@@ -2413,6 +2413,7 @@ function processarMensagem(telefone, texto, vCard, contatosMultiplos) {
 async function _processarMensagemInterno(telefone, texto, vCard, contatosMultiplos) {
   const empresa = await getEmpresa();
   const sessao = await getSessao(telefone);
+  console.log(`[DEBUG-ROTA] telefone=${telefone} empresaId=${empresaIdAtual()} etapa="${sessao.etapa}" texto="${(texto || '').slice(0, 40)}"`);
 
   // FUNIL BASE (NPS) — aguardando a nota de 0 a 10. A nota decide o caminho:
   // 0-6 detrator, 7-8 neutro (pergunta o motivo antes de fechar), 9-10
@@ -4915,6 +4916,7 @@ async function tratarWebhook(req, res) {
     // Cliente "ativo" = sessão em andamento (não finalizada). Uma sessão de
     // cliente finalizada não deve bloquear o fluxo de recomendado.
     const clienteAtivo = sessaoExiste && sessaoClienteEtapa !== 'finalizado';
+    console.log(`[DEBUG-ROTA2] telefone=${telefone} chave=${chaveSessao(telefone)} sessaoExiste=${sessaoExiste} etapa="${sessaoClienteEtapa}" aguardandoEscolhaOferta=${sessaoExiste ? !!sessaoExistenteSnap.data().aguardandoEscolhaOferta : null}`);
     const ehGatilhoInicial = ehGatilhoPresenteQualquerOferta(texto, empGatilho);
     // Funil Não Cliente — 2ª porta de entrada, gatilho próprio (ver EMPRESA_PADRAO).
     const ehGatilhoNaoClienteInicial = ehGatilhoNaoCliente(texto, empGatilho);
