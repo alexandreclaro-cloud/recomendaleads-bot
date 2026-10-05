@@ -9371,26 +9371,41 @@ app.post('/minha-nps/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioS
     const infoTpl = await getTemplateInfo(oficialDaEmpresa(empresa), template);
     const nVars = infoTpl ? infoTpl.n : 0;
 
-    const [snap, situacaoPorTelefone] = await Promise.all([
-      CLIENTES_PIPELINE_COL().where('empresaId', '==', empresa.id).get(),
-      situacaoUltimoDisparoPorTelefone(empresa.id)
-    ]);
+    // Lista colada manualmente tem prioridade — se vier vazia (ou não vier),
+    // cai no automático: toda a base do Funil do Cliente (clientes_pipeline).
+    const listaManual = Array.isArray(req.body && req.body.contatos) ? req.body.contatos : [];
     let semNome = 0;
-    const contatos = [];
-    snap.forEach(doc => {
-      const c = doc.data();
-      const tel = soDigitos(c.telefone || '');
-      if (tel.length < 10) return;
-      // Nunca manda de novo pra quem já recusou um disparo anterior.
-      if ((situacaoPorTelefone[tel] || {}).situacao === 'recusou') return;
-      const nome = (c.nome || '').trim();
-      if (nVars > 0 && !nome) { semNome++; return; }
-      contatos.push({ telefone: tel, nome: nome || null, params: nVars > 0 ? [nome] : [] });
-    });
-    if (!contatos.length) {
-      return res.status(400).json({ ok: false, erro: semNome ? `Nenhum cliente da base tem nome salvo (o template "${template}" precisa de nome).` : 'Nenhum cliente na base pra disparar.' });
+    let contatos = [];
+    if (listaManual.length) {
+      const situacaoPorTelefone = await situacaoUltimoDisparoPorTelefone(empresa.id);
+      listaManual.forEach(c => {
+        const tel = soDigitos((c && (c.telefone || c.tel)) || '');
+        if (tel.length < 10) return;
+        if ((situacaoPorTelefone[tel] || {}).situacao === 'recusou') return;
+        const nome = String((c && (c.nome || (c.params && c.params[0]))) || '').trim();
+        if (nVars > 0 && !nome) { semNome++; return; }
+        contatos.push({ telefone: tel, nome: nome || null, params: nVars > 0 ? [nome] : [] });
+      });
+    } else {
+      const [snap, situacaoPorTelefone] = await Promise.all([
+        CLIENTES_PIPELINE_COL().where('empresaId', '==', empresa.id).get(),
+        situacaoUltimoDisparoPorTelefone(empresa.id)
+      ]);
+      snap.forEach(doc => {
+        const c = doc.data();
+        const tel = soDigitos(c.telefone || '');
+        if (tel.length < 10) return;
+        // Nunca manda de novo pra quem já recusou um disparo anterior.
+        if ((situacaoPorTelefone[tel] || {}).situacao === 'recusou') return;
+        const nome = (c.nome || '').trim();
+        if (nVars > 0 && !nome) { semNome++; return; }
+        contatos.push({ telefone: tel, nome: nome || null, params: nVars > 0 ? [nome] : [] });
+      });
     }
-    if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Mais de 1000 clientes na base — não dá num disparo só (limite de 1000).' });
+    if (!contatos.length) {
+      return res.status(400).json({ ok: false, erro: semNome ? `Nenhum contato tem nome salvo (o template "${template}" precisa de nome).` : 'Nenhum contato pra disparar.' });
+    }
+    if (contatos.length > 1000) return res.status(400).json({ ok: false, erro: 'Mais de 1000 contatos — não dá num disparo só (limite de 1000).' });
 
     const rodando = _disparoStatus[empresa.id];
     if (rodando && !rodando.terminado) return res.status(409).json({ ok: false, erro: 'Já existe um disparo em andamento. Aguarde terminar.' });

@@ -1489,7 +1489,13 @@
 
     <div class="config-card" style="margin-top:16px;">
       <h2>🚀 Disparar pergunta pra base de clientes</h2>
-      <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 12px;">Dispara pra todo mundo que já passou pelo bot (mesma base do Kanban "Funil do Cliente"), usando o template configurado acima. Exclui automaticamente quem já recusou um disparo anterior.</p>
+      <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 12px;">Por padrão, dispara pra todo mundo que já passou pelo bot (mesma base do Kanban "Funil do Cliente"). Se preferir escolher exatamente quem recebe, cole uma lista própria abaixo — nesse caso ela tem prioridade sobre a base automática. Nos dois casos, exclui automaticamente quem já recusou um disparo anterior.</p>
+
+      <label style="margin-top:4px;">Lista de contatos <span style="font-weight:400;color:var(--text-dim);">(opcional — vazio usa a base automática)</span></label>
+      <div class="hint" style="font-size:0.74rem;color:var(--text-dim);margin:2px 0 6px;">Um contato por linha: <b>telefone</b> na 1ª coluna, <b>nome</b> na 2ª (o template usa o nome, se precisar). Ex:<br><code>11999998888, João</code></div>
+      <textarea id="npsListaInput" rows="6" placeholder="11999998888, João&#10;11988887777, Maria" style="font-family:monospace;font-size:0.85rem;"></textarea>
+      <div id="npsListaResumo" style="font-size:0.78rem;color:var(--text-dim);margin-top:4px;">—</div>
+
       <div class="config-row-save">
         <button class="config-save-btn" id="npsDispararBtn">Disparar NPS</button>
         <span class="config-status-msg" id="npsDispararStatus"></span>
@@ -3754,13 +3760,33 @@ document.getElementById('npsTesteBtn').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 
+function npsParseLista() {
+  const raw = (document.getElementById('npsListaInput') || {}).value || '';
+  const contatos = [];
+  for (const l of raw.split(/\n/)) {
+    const cols = l.split(/[,\t;]+/).map(c => c.trim()).filter(x => x !== '');
+    if (!cols.length) continue;
+    const tel = cols[0].replace(/\D/g, '');
+    if (tel.length < 10) continue;
+    contatos.push({ telefone: tel, nome: cols[1] || '' });
+  }
+  return contatos;
+}
+document.getElementById('npsListaInput').addEventListener('input', () => {
+  const el = document.getElementById('npsListaResumo');
+  const c = npsParseLista();
+  el.textContent = c.length ? `✅ ${c.length} contato(s) válido(s) — essa lista vai ter prioridade sobre a base automática.` : '—';
+});
+
 document.getElementById('npsDispararBtn').addEventListener('click', async () => {
   const btn = document.getElementById('npsDispararBtn');
   const statusEl = document.getElementById('npsDispararStatus');
-  if (!confirm('Disparar a pergunta do NPS pra toda a base de clientes agora?')) return;
+  const contatos = npsParseLista();
+  const alvo = contatos.length ? `${contatos.length} contato(s) da lista colada` : 'toda a base de clientes';
+  if (!confirm(`Disparar a pergunta do NPS pra ${alvo} agora?`)) return;
   btn.disabled = true; statusEl.textContent = 'Disparando...'; statusEl.className = 'config-status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-nps/disparar`, { method: 'POST', body: JSON.stringify({}) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nps/disparar`, { method: 'POST', body: JSON.stringify({ contatos }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       statusEl.textContent = `✅ Disparando pra ${data.total} cliente(s)!`; statusEl.className = 'config-status-msg ok';
