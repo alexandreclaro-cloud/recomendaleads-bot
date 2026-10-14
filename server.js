@@ -99,6 +99,16 @@ const PLANOS = {
     metodos: ['card'],
     descricao: 'R$ 397/mês no cartão, renovação automática'
   },
+  // Oculto DE PROPÓSITO (exclusivo pra 1 cliente específico) — não aparece em
+  // /planos nem na aba Assinatura do painel (ver filtros abaixo). Só existe
+  // pra quem abrir o link direto /assinar?plano=mensal297.
+  mensal297: {
+    nome: 'Mensal Promocional', tipo: 'assinatura', meses: 1,
+    valorCentavos: 29700, intervalo: 'month', intervaloQtd: 1,
+    metodos: ['card'],
+    descricao: 'R$ 297/mês no cartão, renovação automática',
+    oculto: true
+  },
   semestral: {
     nome: 'Semestral', tipo: 'unico', meses: 6,
     valorCentavos: 208200, // 6 x 347,00
@@ -5827,7 +5837,9 @@ app.post('/meu-contrato/aceitar', exigirLoginEmpresa, exigirGestor, async (req, 
 app.get('/minha-assinatura', exigirLoginEmpresa, async (req, res) => {
   try {
     const st = billingStatus(req.empresaLogin);
-    const planos = Object.entries(PLANOS).map(([id, p]) => ({
+    // Planos ocultos (exclusivos pra 1 cliente) nunca aparecem aqui — essa aba
+    // é genérica pra qualquer cliente logado, não é o lugar certo pra isso.
+    const planos = Object.entries(PLANOS).filter(([, p]) => !p.oculto).map(([id, p]) => ({
       id, nome: p.nome, tipo: p.tipo, meses: p.meses,
       valorCentavos: p.valorCentavos, descricao: p.descricao
     }));
@@ -5899,7 +5911,15 @@ app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (
 
 // Lista pública de planos (para a página /assinar).
 app.get('/planos', (req, res) => {
-  const planos = Object.entries(PLANOS).map(([id, p]) => ({
+  // Plano oculto (exclusivo) só aparece se o link pedir ELE especificamente
+  // (?plano=mensal297) — nesse caso mostra só esse, sozinho, sem misturar com
+  // os planos públicos. Sem esse parâmetro, planos ocultos nunca aparecem.
+  const planoPedido = String(req.query.plano || '').toLowerCase();
+  const pedidoOculto = planoPedido && PLANOS[planoPedido] && PLANOS[planoPedido].oculto;
+  const entradas = pedidoOculto
+    ? [[planoPedido, PLANOS[planoPedido]]]
+    : Object.entries(PLANOS).filter(([, p]) => !p.oculto);
+  const planos = entradas.map(([id, p]) => ({
     id, nome: p.nome, tipo: p.tipo, meses: p.meses, valorCentavos: p.valorCentavos, descricao: p.descricao
   }));
   res.json({ ok: true, planos });

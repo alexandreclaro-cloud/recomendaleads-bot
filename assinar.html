@@ -55,7 +55,7 @@ function moeda(c) { return (c/100).toLocaleString('pt-BR', { style:'currency', c
 
 async function carregar() {
   try {
-    const resp = await fetch(`${API_BASE}/planos`);
+    const resp = await fetch(`${API_BASE}/planos?plano=${encodeURIComponent(planoUrl)}`);
     const data = await resp.json();
     let planos = (data && data.planos) || [];
     const cont = document.getElementById('planos');
