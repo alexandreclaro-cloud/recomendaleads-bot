@@ -103,7 +103,7 @@ const PLANOS = {
   // /planos nem na aba Assinatura do painel (ver filtros abaixo). Só existe
   // pra quem abrir o link direto /assinar?plano=mensal297.
   mensal297: {
-    nome: 'Mensal Promocional', tipo: 'assinatura', meses: 1,
+    nome: 'Mensal Promo', tipo: 'assinatura', meses: 1,
     valorCentavos: 29700, intervalo: 'month', intervaloQtd: 1,
     metodos: ['card'],
     descricao: 'R$ 297/mês no cartão, renovação automática',
@@ -169,7 +169,10 @@ async function criarCheckoutAsaas({ plano, planoId, empresaId, externalReference
   const body = {
     billingTypes,
     chargeTypes: [plano.tipo === 'assinatura' ? 'RECURRENT' : 'DETACHED'],
-    items: [{ name: `RecomendaLeads — ${plano.nome}`, description: plano.descricao, quantity: 1, value: plano.valorCentavos / 100 }],
+    // A Asaas recusa o checkout inteiro se o nome do item passar de 30
+    // caracteres ("RecomendaLeads — " já usa 17) — corta na mão pra nunca
+    // quebrar de novo, não importa o tamanho do nome do plano.
+    items: [{ name: `RecomendaLeads — ${plano.nome}`.slice(0, 30), description: plano.descricao, quantity: 1, value: plano.valorCentavos / 100 }],
     minutesToExpire: 120,
     externalReference,
     callback: { successUrl, cancelUrl, expiredUrl: cancelUrl, autoRedirect: true }
