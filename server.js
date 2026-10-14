@@ -11092,29 +11092,6 @@ function iniciarMonitorEntregaOficial() {
   setInterval(monitorarEntregaOficial, 15 * 60 * 1000).unref?.(); // depois, de 15 em 15 min
 }
 
-// TEMP DEBUG — inspeciona os últimos signups pendentes e o status real do
-// pagamento deles na Asaas. Remover depois do uso.
-app.get('/debug-signups-pendentes', async (req, res) => {
-  try {
-    const snap = await SIGNUPS_PENDENTES_COL().get();
-    const todos = [];
-    snap.forEach(d => todos.push({ ref: d.id, ...d.data() }));
-    todos.sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
-    const recentes = todos.slice(0, 5);
-    const resultado = [];
-    for (const s of recentes) {
-      let pagamento = null, erro = null;
-      try { pagamento = await buscarPagamentoAsaasPorRef(s.ref); } catch (e) { erro = e.response ? JSON.stringify(e.response.data) : e.message; }
-      resultado.push({
-        ref: s.ref, plano: s.plano, vendedor: s.vendedor, criadoEm: s.criadoEm, checkoutId: s.checkoutId || null,
-        pagamento: pagamento ? { id: pagamento.id, status: pagamento.status, subscription: pagamento.subscription || null, customer: pagamento.customer, billingType: pagamento.billingType, value: pagamento.value } : null,
-        erro
-      });
-    }
-    res.json({ ok: true, resultado });
-  } catch (err) { res.status(500).json({ ok: false, erro: err.message }); }
-});
-
 // ============================================================
 // INICIALIZAÇÃO DO SERVIDOR
 // ============================================================
