@@ -368,7 +368,7 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
 
   // ---------- Início ----------
   $('dia-lanc').value = hoje(); $('dia-lanc').dataset.ultimo = hoje(); $('dia-lanc').max = hoje();
-  if (getSenha()) api('/entrar', {}).then(() => { liberado = true; mostrar(vista); }).catch(() => {});
+  if (ADMIN) api('/entrar', {}).then(() => { liberado = true; mostrar(vista); }).catch(() => {});
   if (ADMIN) {
     document.title = 'Administração · ' + CFG.titulo + ' iFinc';
     mostrar(['lancar', 'closers', 'tela'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'lancar');

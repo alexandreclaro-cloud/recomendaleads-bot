@@ -70,7 +70,7 @@ function montarPainel(app, db, rateLimit, cfg) {
     return !!senha && String((req.body && req.body.senha) || req.headers['x-ranking-senha'] || '') === senha;
   };
   const exigirSenha = (req, res) => {
-    if (!senhaPainel()) { res.status(503).json({ erro: 'Senha de lançamento não configurada no servidor.' }); return false; }
+    if (!senhaPainel()) return true; // sem senha configurada no Render, o /admin fica liberado
     if (!senhaOk(req)) { res.status(401).json({ erro: 'Senha incorreta.' }); return false; }
     return true;
   };
