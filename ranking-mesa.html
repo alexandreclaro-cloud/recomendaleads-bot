@@ -83,6 +83,28 @@ select, input { font: inherit; color: var(--fg); background: var(--input); borde
 .novo { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
 .novo input { flex: 1 1 14rem; min-width: 0; }
 @media (max-width: 640px) { .placar td, .placar th { padding-inline: 8px; } }
+/* Tela da TV: os 10 closers cabem no monitor sem rolagem (fonte ajustada pelo script) */
+body.tv .wrap { padding-block: 10px; gap: 10px; max-width: none; }
+body.tv .topo { padding: 8px 18px; gap: 14px; }
+body.tv .logo { padding: 6px 10px; }
+body.tv .logo img { height: clamp(26px, 6vh, 52px); }
+body.tv .topo h1 { font-size: clamp(1.1rem, 4vh, 2.4rem); }
+body.tv .topo .sub { font-size: clamp(.75rem, 1.9vh, 1.05rem); margin-top: 2px; }
+body.tv .painel { padding: 8px 14px; }
+body.tv .barra { margin-bottom: 2px; gap: 6px 12px; }
+body.tv .leg { font-size: clamp(.6rem, 1.6vh, .9rem); padding: 3px 10px; }
+body.tv label.campo { font-size: clamp(.7rem, 1.6vh, .9rem); }
+body.tv select { padding: 3px 8px; }
+body.tv .scroll { overflow: hidden; }
+body.tv .placar { font-size: var(--fs, 24px); border-spacing: 0 .28em; }
+body.tv .placar th { font-size: max(10px, calc(var(--fs, 24px) * .48)); padding: 0 .7em; }
+body.tv .placar td { padding: .42em .7em; }
+body.tv .placar td:first-child { border-radius: .55em 0 0 .55em; } body.tv .placar td:last-child { border-radius: 0 .55em .55em 0; }
+body.tv .placar td.nome { min-width: 0; }
+body.tv .placar td.pos { width: auto; }
+body.tv .placar tr.t1 td { font-size: 1.08em; padding-block: .5em; }
+body.tv .placar tfoot td { padding-block: .5em; }
+body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 0 .25em; }
 </style>
 </head>
 <body>
@@ -229,6 +251,15 @@ select, input { font: inherit; color: var(--fg); background: var(--input); borde
   $('mes-tela').value = mesTela;
   $('mes-tela').addEventListener('change', (e) => { mesTela = e.target.value; carregarRanking(); });
 
+  // Na TV, encolhe a fonte do placar até tudo caber na altura e na largura do monitor
+  const ajustar = () => {
+    if (ADMIN) return;
+    const raiz = document.documentElement, caixa = document.querySelector('#tela .scroll');
+    let fs = Math.min(innerHeight * 0.045, innerWidth * 0.024);
+    const cabe = () => raiz.scrollHeight <= innerHeight + 1 && caixa.scrollWidth <= caixa.clientWidth + 1;
+    raiz.style.setProperty('--fs', fs + 'px');
+    for (let i = 0; i < 80 && !cabe() && fs > 9; i++) { fs *= 0.96; raiz.style.setProperty('--fs', fs + 'px'); }
+  };
   const carregarRanking = async () => {
     try {
       const { linhas, dias } = await api('/ranking?mes=' + mesTela);
@@ -247,6 +278,7 @@ select, input { font: inherit; color: var(--fg); background: var(--input); borde
       const tr = document.createElement('tr');
       tr.append(td('', 'l'), td('TOTAL', 'l nome'), td(fmtV(s('valor_contratos'))), td(int.format(s('contratos'))), td(int.format(s('pastas_fechadas'))), td(fmtV(s('valor_fechadas'))), td(int.format(s('pastas_abertas'))), td(fmtV(s('valor_abertas'))));
       total.replaceChildren(tr);
+      ajustar();
     } catch (e) { $('subtitulo').textContent = 'Sem conexão com o servidor. Tentando de novo…'; }
   };
   setInterval(() => { if (!document.hidden) carregarRanking(); }, 30000);
@@ -333,6 +365,8 @@ select, input { font: inherit; color: var(--fg); background: var(--input); borde
     mostrar(['lancar', 'closers', 'tela'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'lancar');
   } else {
     document.querySelector('.abas').hidden = true;
+    document.body.classList.add('tv');
+    let t; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(ajustar, 150); });
     mostrar('tela');
   }
   carregarRanking();
