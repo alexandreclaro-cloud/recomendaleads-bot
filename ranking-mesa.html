@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ranking Mesa iFinc</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@600;700&family=Nunito:wght@500;700;800;900&display=swap">
+<style>
+:root {
+  --roxo: #44277B; --agua: #1CA8A8;
+  --bg: #F4F2F8; --panel: #FFFFFF; --fg: #1E1530; --muted: #6A6180; --line: #E2DDEC; --input: #FFFFFF;
+  --ouro: #F2B91C; --prata: #C3C8D0; --bronze: #CD7F32; --meio: #1CA8A8; --baixo: #D32F2F;
+  --ok: #138A5A; --erro: #C62828;
+  --f-display: "Comfortaa", "Nunito", system-ui, sans-serif;
+  --f-body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --r: 14px; color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #120C1E; --panel: #1C1430; --fg: #F1EDF8; --muted: #A79DBD; --line: #33284A; --input: #241A3B;
+  --ok: #4CD08F; --erro: #FF7A7A; color-scheme: dark } }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 16px; }
+[hidden] { display: none !important; }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 32px; display: grid; gap: 18px; max-width: 1600px; margin-inline: auto; }
+.topo { background: var(--roxo); color: #fff; border-radius: var(--r); padding: 14px 22px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.logo { background: #fff; border-radius: 12px; padding: 8px 14px; display: flex; }
+.logo img { height: clamp(36px, 4.5vw, 56px); width: auto; display: block; }
+.topo-txt { flex: 1 1 16rem; min-width: 0; }
+.topo h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.5rem, 3vw, 2.5rem); margin: 0; line-height: 1.15; text-wrap: balance; }
+.topo .sub { margin-top: 4px; font-size: clamp(.9rem, 1.2vw, 1.1rem); color: #D8CCF0; }
+.abas { display: flex; gap: 6px; flex-wrap: wrap; }
+.aba { font: inherit; font-weight: 800; font-size: .9rem; border: 2px solid rgba(255,255,255,.35); background: transparent; color: #fff; padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+.aba[aria-selected="true"] { background: #fff; color: var(--roxo); border-color: #fff; }
+.aba:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--agua); outline-offset: 2px; }
+.painel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 20px; min-width: 0; }
+.barra { display: flex; gap: 10px 16px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.legenda { display: flex; flex-wrap: wrap; gap: 8px; }
+.leg { border-radius: 999px; padding: 6px 14px; font-weight: 900; font-size: clamp(.75rem, 1vw, .95rem); text-transform: uppercase; letter-spacing: .04em; }
+.leg.t1 { background: var(--ouro); color: #2A1A00; } .leg.t2 { background: var(--prata); color: #16161F; } .leg.t3 { background: var(--bronze); color: #2A1406; }
+.leg.meio { background: var(--meio); color: #fff; } .leg.baixo { background: var(--baixo); color: #fff; }
+label.campo { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; color: var(--muted); font-size: .9rem; }
+select, input { font: inherit; color: var(--fg); background: var(--input); border: 2px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.scroll { overflow-x: auto; }
+.placar { width: 100%; border-collapse: separate; border-spacing: 0 8px; font-variant-numeric: tabular-nums; font-size: clamp(1.05rem, 1.8vw, 1.7rem); }
+.placar th { text-align: right; font-size: clamp(.72rem, 1vw, .95rem); font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 4px 14px; white-space: nowrap; }
+.placar td { text-align: right; padding: 16px 14px; white-space: nowrap; font-weight: 800; background: var(--c-bg); color: var(--c-fg); }
+.placar td:first-child { border-radius: 14px 0 0 14px; } .placar td:last-child { border-radius: 0 14px 14px 0; }
+.placar .l { text-align: left; }
+.placar td.nome { font-weight: 900; white-space: normal; min-width: 10rem; text-transform: uppercase; letter-spacing: .02em; }
+.placar td.pos { width: 4rem; }
+.badge { display: inline-grid; place-items: center; min-width: 2.8rem; height: 2.8rem; padding: 0 6px; border-radius: 999px; border: 3px solid currentColor; font-weight: 900; }
+.placar tbody tr { --c-bg: var(--panel); --c-fg: var(--fg); }
+.placar tr.t1 { --c-bg: var(--ouro); --c-fg: #2A1A00; } .placar tr.t2 { --c-bg: var(--prata); --c-fg: #16161F; } .placar tr.t3 { --c-bg: var(--bronze); --c-fg: #2A1406; }
+.placar tr.meio { --c-bg: var(--meio); --c-fg: #fff; } .placar tr.baixo { --c-bg: var(--baixo); --c-fg: #fff; }
+.placar tr.t1 td { font-size: 1.12em; padding-block: 22px; }
+.placar tfoot td { --c-bg: var(--roxo); --c-fg: #fff; font-weight: 900; padding-block: 18px; }
+.vazio { padding: 28px 8px; text-align: center !important; color: var(--muted); font-size: 1.05rem; background: transparent !important; }
+.lanc { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.lanc th { text-align: left; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 900; padding: 8px 6px; border-bottom: 2px solid var(--roxo); white-space: nowrap; }
+.lanc td { padding: 6px; border-bottom: 1px solid var(--line); }
+.lanc td.nome { font-weight: 800; min-width: 9rem; }
+.lanc input { width: 100%; min-width: 6rem; text-align: right; }
+.lanc input.qtd { min-width: 4.5rem; }
+.lanc input.invalido { border-color: var(--erro); }
+.acoes { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+.btn { font: inherit; font-weight: 900; border: 0; border-radius: 999px; padding: 11px 22px; cursor: pointer; background: var(--roxo); color: #fff; }
+.btn.sec { background: transparent; color: var(--fg); border: 2px solid var(--line); }
+.btn[disabled] { cursor: not-allowed; opacity: .6; }
+.msg { font-weight: 800; } .msg.ok { color: var(--ok); } .msg.erro { color: var(--erro); }
+.dias { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; font-size: .9rem; color: var(--muted); font-weight: 700; }
+.dia { font: inherit; font-weight: 800; border: 2px solid var(--agua); color: var(--fg); background: transparent; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.dia.atual { background: var(--agua); color: #fff; }
+.dica { color: var(--muted); font-size: .9rem; margin: 0 0 10px; }
+.senha { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.senha input { flex: 0 1 14rem; min-width: 0; }
+.lista { display: grid; gap: 8px; }
+.linha-closer { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.linha-closer input[type=text] { flex: 1 1 14rem; min-width: 0; }
+.chk { display: inline-flex; gap: 6px; align-items: center; font-weight: 700; color: var(--muted); }
+.novo { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.novo input { flex: 1 1 14rem; min-width: 0; }
+@media (max-width: 640px) { .placar td, .placar th { padding-inline: 8px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topo">
+    <div class="logo"><img alt="iFinc Crédito Inteligente e Seguros" src="/assets/ifinc-logo.png"></div>
+    <div class="topo-txt">
+      <h1 id="titulo">Ranking de Closers</h1>
+      <div class="sub" id="subtitulo">Carregando…</div>
+    </div>
+    <nav class="abas" aria-label="Seções">
+      <button class="aba" data-vista="tela" aria-selected="true">Ranking</button>
+      <button class="aba" data-vista="lancar" aria-selected="false">Lançar dia</button>
+      <button class="aba" data-vista="closers" aria-selected="false">Closers</button>
+    </nav>
+  </header>
+
+  <section class="painel" id="tela">
+    <div class="barra">
+      <div class="legenda">
+        <span class="leg t1">1º Ouro</span><span class="leg t2">2º Prata</span><span class="leg t3">3º Bronze</span>
+        <span class="leg meio">4º e 5º</span><span class="leg baixo">Abaixo da meta mínima</span>
+      </div>
+      <label class="campo" for="mes-tela">Mês <select id="mes-tela"></select></label>
+    </div>
+    <div class="scroll">
+      <table class="placar">
+        <thead><tr>
+          <th class="l">#</th><th class="l">Closer</th>
+          <th>Valor contratos assinados</th><th>Contratos assinados</th>
+          <th>Pastas fechadas</th><th>Valor pastas fechadas</th>
+          <th>Pastas abertas</th><th>Valor pastas abertas</th>
+        </tr></thead>
+        <tbody id="placar-corpo"><tr><td colspan="8" class="vazio">Carregando o ranking…</td></tr></tbody>
+        <tfoot id="placar-total"></tfoot>
+      </table>
+    </div>
+  </section>
+
+  <section class="painel" id="acesso" hidden>
+    <p class="dica">Digite a senha da mesa para lançar números ou editar closers.</p>
+    <form class="senha" id="form-senha">
+      <input type="password" id="senha" placeholder="Senha" aria-label="Senha" autocomplete="current-password">
+      <button class="btn" type="submit">Entrar</button>
+      <span class="msg" id="msg-senha" role="status"></span>
+    </form>
+  </section>
+
+  <section class="painel" id="lancar" hidden>
+    <div class="barra">
+      <label class="campo" for="dia-lanc">Dia <input type="date" id="dia-lanc"></label>
+      <span class="dica" style="margin:0">Lance o que cada closer fez <b>neste dia</b>. O ranking soma todos os dias do mês.</span>
+    </div>
+    <div class="scroll">
+      <table class="lanc">
+        <thead><tr>
+          <th>Closer</th><th>Pastas abertas</th><th>Valor pastas abertas</th>
+          <th>Pastas fechadas</th><th>Valor pastas fechadas</th>
+          <th>Contratos assinados</th><th>Valor contratos</th>
+        </tr></thead>
+        <tbody id="lanc-corpo"></tbody>
+      </table>
+    </div>
+    <div class="acoes">
+      <button class="btn" id="salvar">Salvar dia</button>
+      <button class="btn sec" id="descartar">Desfazer alterações</button>
+      <span class="msg" id="msg-lanc" role="status"></span>
+    </div>
+    <div class="dias" id="dias-lancados"></div>
+  </section>
+
+  <section class="painel" id="closers" hidden>
+    <p class="dica">Closers inativos saem do ranking e da tela de lançamento; os lançamentos antigos ficam guardados.</p>
+    <div class="lista" id="lista-closers"></div>
+    <form class="novo" id="form-novo">
+      <input type="text" id="novo-nome" placeholder="Nome do novo closer" aria-label="Nome do novo closer" autocomplete="off">
+      <button class="btn" type="submit">Adicionar closer</button>
+    </form>
+    <div class="msg" id="msg-closers" role="status"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const API = '/api/rankingmesa';
+  const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  const int = new Intl.NumberFormat('pt-BR');
+  const CAMPOS = [
+    { k: 'pastas_abertas', tipo: 'qtd' }, { k: 'valor_abertas', tipo: 'r$' },
+    { k: 'pastas_fechadas', tipo: 'qtd' }, { k: 'valor_fechadas', tipo: 'r$' },
+    { k: 'contratos', tipo: 'qtd' }, { k: 'valor_contratos', tipo: 'r$' },
+  ];
+  const hoje = () => new Date().toLocaleDateString('sv-SE');
+  const mesLabel = (m) => { const [y, mm] = m.split('-').map(Number); const s = new Date(y, mm - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }); return s.charAt(0).toUpperCase() + s.slice(1); };
+  const ddmm = (d) => d.slice(8, 10) + '/' + d.slice(5, 7);
+  const lerReais = (s) => {
+    const t = String(s ?? '').toLowerCase().replace(/r\$/g, '').replace(/\s+/g, ' ').trim();
+    if (!t) return null;
+    const m = t.match(/^([\d.,]+)\s*(k|mil|mi|m|milh\w*)?$/);
+    if (!m) return NaN;
+    if (m[2]) { const n = Number(m[1].replace(/\./g, '').replace(',', '.')); return n * (/^(k|mil)$/.test(m[2]) ? 1e3 : 1e6); }
+    const dec = m[1].match(/^(.*),(\d{1,2})$/);
+    return dec ? Number(dec[1].replace(/[.,]/g, '') + '.' + dec[2]) : Number(m[1].replace(/[.,]/g, ''));
+  };
+  const lerQtd = (s) => { const t = String(s ?? '').trim(); if (!t) return null; return /^\d+$/.test(t) ? Number(t) : NaN; };
+  const td = (t, cls) => { const c = document.createElement('td'); c.textContent = t; if (cls) c.className = cls; return c; };
+  const fmtV = (v) => brl.format(Math.round(v * 100) / 100);
+  const getSenha = () => { try { return sessionStorage.getItem('rm-senha') || ''; } catch (e) { return window.__rmSenha || ''; } };
+  const setSenha = (v) => { try { sessionStorage.setItem('rm-senha', v); } catch (e) { window.__rmSenha = v; } };
+  const api = async (url, body) => {
+    const r = await fetch(API + url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ senha: getSenha(), ...body }) } : { cache: 'no-store' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(j.erro || 'Erro ' + r.status); e.status = r.status; throw e; }
+    return j;
+  };
+
+  let vista = 'tela', mesTela = hoje().slice(0, 7), liberado = false;
+
+  // ---------- Abas ----------
+  const mostrar = (v) => {
+    vista = ['tela', 'lancar', 'closers'].includes(v) ? v : 'tela';
+    document.querySelectorAll('.aba').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.vista === vista)));
+    const precisa = vista !== 'tela' && !liberado;
+    $('tela').hidden = vista !== 'tela'; $('acesso').hidden = !precisa;
+    $('lancar').hidden = vista !== 'lancar' || precisa; $('closers').hidden = vista !== 'closers' || precisa;
+    if (!precisa && vista === 'lancar') carregarDia();
+    if (!precisa && vista === 'closers') carregarClosers();
+    if (precisa) $('senha').focus();
+  };
+  document.querySelectorAll('.aba').forEach((b) => b.addEventListener('click', () => { mostrar(b.dataset.vista); try { history.replaceState(null, '', '#' + b.dataset.vista); } catch (e) {} }));
+
+  $('form-senha').addEventListener('submit', async (e) => {
+    e.preventDefault(); setSenha($('senha').value);
+    try { await api('/entrar', {}); liberado = true; $('msg-senha').textContent = ''; $('senha').value = ''; mostrar(vista); }
+    catch (err) { $('msg-senha').className = 'msg erro'; $('msg-senha').textContent = err.message; }
+  });
+
+  // ---------- Ranking ----------
+  const ultimos12 = () => { const out = []; const d = new Date(); for (let i = 0; i < 12; i++) out.push(new Date(d.getFullYear(), d.getMonth() - i, 1).toLocaleDateString('sv-SE').slice(0, 7)); return out; };
+  $('mes-tela').replaceChildren(...ultimos12().map((m) => new Option(mesLabel(m), m)));
+  $('mes-tela').value = mesTela;
+  $('mes-tela').addEventListener('change', (e) => { mesTela = e.target.value; carregarRanking(); });
+
+  const carregarRanking = async () => {
+    try {
+      const { linhas, dias } = await api('/ranking?mes=' + mesTela);
+      $('titulo').textContent = 'Ranking de Closers · ' + mesLabel(mesTela);
+      $('subtitulo').textContent = dias.length ? 'Acumulado do mês · último dia lançado: ' + ddmm(dias.at(-1)) + ' · ' + dias.length + (dias.length === 1 ? ' dia lançado' : ' dias lançados') : 'Acumulado do mês · nenhum dia lançado ainda';
+      const corpo = $('placar-corpo'), total = $('placar-total');
+      if (!linhas.length) { const tr = document.createElement('tr'); const c = td('Cadastre os closers na aba Closers para montar o ranking.', 'vazio'); c.colSpan = 8; tr.appendChild(c); corpo.replaceChildren(tr); total.replaceChildren(); return; }
+      corpo.replaceChildren(...linhas.map((r, i) => {
+        const pos = i + 1; const tr = document.createElement('tr');
+        tr.className = pos === 1 ? 't1' : pos === 2 ? 't2' : pos === 3 ? 't3' : pos <= 5 ? 'meio' : 'baixo';
+        const p = document.createElement('td'); p.className = 'l pos'; const b = document.createElement('span'); b.className = 'badge'; b.textContent = pos === 1 ? '🏆 1' : pos; p.appendChild(b);
+        tr.append(p, td(r.closer, 'l nome'), td(fmtV(r.valor_contratos)), td(int.format(r.contratos)), td(int.format(r.pastas_fechadas)), td(fmtV(r.valor_fechadas)), td(int.format(r.pastas_abertas)), td(fmtV(r.valor_abertas)));
+        return tr;
+      }));
+      const s = (k) => linhas.reduce((a, r) => a + r[k], 0);
+      const tr = document.createElement('tr');
+      tr.append(td('', 'l'), td('TOTAL', 'l nome'), td(fmtV(s('valor_contratos'))), td(int.format(s('contratos'))), td(int.format(s('pastas_fechadas'))), td(fmtV(s('valor_fechadas'))), td(int.format(s('pastas_abertas'))), td(fmtV(s('valor_abertas'))));
+      total.replaceChildren(tr);
+    } catch (e) { $('subtitulo').textContent = 'Sem conexão com o servidor. Tentando de novo…'; }
+  };
+  setInterval(() => { if (!document.hidden) carregarRanking(); }, 30000);
+
+  // ---------- Lançamento ----------
+  let sujo = false, closersDia = [];
+  const validar = (inp) => { const v = inp.classList.contains('qtd') ? lerQtd(inp.value) : lerReais(inp.value); inp.classList.toggle('invalido', Number.isNaN(v)); return v; };
+  const carregarDia = async () => {
+    const dia = $('dia-lanc').value || hoje();
+    try {
+      const { closers, valores, diasMes } = await api('/dia?dia=' + dia);
+      closersDia = closers; sujo = false;
+      const corpo = $('lanc-corpo');
+      if (!closers.length) { const tr = document.createElement('tr'); const c = td('Cadastre os closers na aba Closers primeiro.', 'vazio'); c.colSpan = 7; tr.appendChild(c); corpo.replaceChildren(tr); }
+      else corpo.replaceChildren(...closers.map((c) => {
+        const l = valores[c.id]; const tr = document.createElement('tr'); tr.dataset.closer = c.id;
+        tr.appendChild(td(c.nome, 'nome'));
+        for (const f of CAMPOS) {
+          const cell = document.createElement('td'); const inp = document.createElement('input');
+          inp.type = 'text'; inp.inputMode = f.tipo === 'qtd' ? 'numeric' : 'decimal'; inp.className = f.tipo === 'qtd' ? 'qtd' : 'reais';
+          inp.id = 'in-' + c.id + '-' + f.k; inp.dataset.campo = f.k; inp.autocomplete = 'off';
+          inp.setAttribute('aria-label', c.nome + ' ' + f.k.replace('_', ' '));
+          inp.placeholder = f.tipo === 'qtd' ? '0' : 'R$ 0,00';
+          const v = l ? l[f.k] : null;
+          inp.value = v == null ? '' : f.tipo === 'qtd' ? String(v) : brl.format(v);
+          inp.addEventListener('input', () => { sujo = true; $('msg-lanc').textContent = ''; validar(inp); });
+          inp.addEventListener('blur', () => { if (inp.classList.contains('reais')) { const n = lerReais(inp.value); if (n != null && !Number.isNaN(n)) inp.value = brl.format(n); } });
+          cell.appendChild(inp); tr.appendChild(cell);
+        }
+        return tr;
+      }));
+      const box = $('dias-lancados'); box.replaceChildren();
+      const lab = document.createElement('span'); lab.textContent = diasMes.length ? 'Dias lançados em ' + mesLabel(dia.slice(0, 7)) + ':' : 'Nenhum dia lançado em ' + mesLabel(dia.slice(0, 7)) + '.'; box.appendChild(lab);
+      for (const d of diasMes) { const b = document.createElement('button'); b.type = 'button'; b.className = 'dia' + (d === dia ? ' atual' : ''); b.textContent = ddmm(d); b.addEventListener('click', () => trocarDia(d)); box.appendChild(b); }
+    } catch (e) { $('msg-lanc').className = 'msg erro'; $('msg-lanc').textContent = e.message; }
+  };
+  const trocarDia = (d) => {
+    if (sujo) { $('msg-lanc').className = 'msg erro'; $('msg-lanc').textContent = 'Salve ou desfaça as alterações antes de trocar de dia.'; $('dia-lanc').value = $('dia-lanc').dataset.ultimo; return; }
+    $('dia-lanc').value = d; $('dia-lanc').dataset.ultimo = d; carregarDia();
+  };
+  $('dia-lanc').addEventListener('change', (e) => { if (e.target.value && e.target.validity.valid) trocarDia(e.target.value); });
+  $('descartar').addEventListener('click', () => { sujo = false; $('msg-lanc').textContent = ''; carregarDia(); });
+  $('salvar').addEventListener('click', async () => {
+    const msg = $('msg-lanc'); const dia = $('dia-lanc').value || hoje();
+    let erro = false; const linhas = [];
+    for (const tr of $('lanc-corpo').querySelectorAll('tr[data-closer]')) {
+      const l = { closerId: tr.dataset.closer };
+      for (const inp of tr.querySelectorAll('input')) { const v = validar(inp); if (Number.isNaN(v)) erro = true; l[inp.dataset.campo] = v == null || Number.isNaN(v) ? null : v; }
+      linhas.push(l);
+    }
+    if (erro) { msg.className = 'msg erro'; msg.textContent = 'Há campos em vermelho: use só números (ex.: 3 ou 1.060.000,00).'; return; }
+    $('salvar').disabled = true; msg.className = 'msg'; msg.textContent = 'Salvando…';
+    try { await api('/dia', { dia, linhas }); sujo = false; msg.className = 'msg ok'; msg.textContent = 'Dia ' + ddmm(dia) + ' salvo. O ranking já foi atualizado.'; carregarRanking(); carregarDia(); }
+    catch (e) { msg.className = 'msg erro'; msg.textContent = e.message; if (e.status === 401) { liberado = false; mostrar(vista); } }
+    finally { $('salvar').disabled = false; }
+  });
+
+  // ---------- Closers ----------
+  const renderClosers = (lista) => {
+    const box = $('lista-closers');
+    if (!lista.length) { const p = document.createElement('p'); p.className = 'dica'; p.textContent = 'Nenhum closer cadastrado. Adicione o primeiro abaixo.'; box.replaceChildren(p); return; }
+    box.replaceChildren(...lista.map((c) => {
+      const row = document.createElement('div'); row.className = 'linha-closer';
+      const nome = document.createElement('input'); nome.type = 'text'; nome.value = c.nome; nome.id = 'nome-' + c.id; nome.setAttribute('aria-label', 'Nome de ' + c.nome);
+      nome.addEventListener('change', () => salvarCloser({ id: c.id, nome: nome.value }, 'Nome atualizado.'));
+      const lab = document.createElement('label'); lab.className = 'chk';
+      const chk = document.createElement('input'); chk.type = 'checkbox'; chk.checked = c.ativo; chk.id = 'ativo-' + c.id;
+      chk.addEventListener('change', () => salvarCloser({ id: c.id, ativo: chk.checked }, chk.checked ? c.nome + ' ativado.' : c.nome + ' desativado.'));
+      lab.append(chk, document.createTextNode('Ativo')); row.append(nome, lab); return row;
+    }));
+  };
+  const carregarClosers = async () => { try { renderClosers((await api('/closers/listar', {})).closers); } catch (e) { $('msg-closers').className = 'msg erro'; $('msg-closers').textContent = e.message; } };
+  const salvarCloser = async (body, ok) => {
+    try { const r = await api('/closers', body); renderClosers(r.closers); $('msg-closers').className = 'msg ok'; $('msg-closers').textContent = ok; carregarRanking(); }
+    catch (e) { $('msg-closers').className = 'msg erro'; $('msg-closers').textContent = e.message; carregarClosers(); }
+  };
+  $('form-novo').addEventListener('submit', (e) => { e.preventDefault(); const v = $('novo-nome').value.trim(); if (!v) return; $('novo-nome').value = ''; salvarCloser({ nome: v }, v + ' adicionado.'); });
+
+  // ---------- Início ----------
+  $('dia-lanc').value = hoje(); $('dia-lanc').dataset.ultimo = hoje(); $('dia-lanc').max = hoje();
+  if (getSenha()) api('/entrar', {}).then(() => { liberado = true; mostrar(vista); }).catch(() => {});
+  mostrar(location.hash.slice(1) || 'tela');
+  carregarRanking();
+})();
+</script>
+</body>
+</html>
