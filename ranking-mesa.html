@@ -97,10 +97,10 @@ body.tv label.campo { font-size: clamp(.7rem, 1.6vh, .9rem); }
 body.tv select { padding: 3px 8px; }
 body.tv .scroll { overflow: hidden; }
 body.tv .placar { font-size: var(--fs, 24px); border-spacing: 0 .28em; }
-body.tv .placar th { font-size: max(10px, calc(var(--fs, 24px) * .48)); padding: 0 .7em; }
+body.tv .placar th { font-size: max(10px, calc(var(--fs, 24px) * .48)); padding: 0 .7em; white-space: normal; line-height: 1.15; vertical-align: bottom; }
 body.tv .placar td { padding: .42em .7em; }
 body.tv .placar td:first-child { border-radius: .55em 0 0 .55em; } body.tv .placar td:last-child { border-radius: 0 .55em .55em 0; }
-body.tv .placar td.nome { min-width: 0; }
+body.tv .placar td.nome { min-width: 0; white-space: nowrap; }
 body.tv .placar td.pos { width: auto; }
 body.tv .placar tr.t1 td { font-size: 1.08em; padding-block: .5em; }
 body.tv .placar tfoot td { padding-block: .5em; }
@@ -212,7 +212,9 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
   };
   const lerQtd = (s) => { const t = String(s ?? '').trim(); if (!t) return null; return /^\d+$/.test(t) ? Number(t) : NaN; };
   const td = (t, cls) => { const c = document.createElement('td'); c.textContent = t; if (cls) c.className = cls; return c; };
-  const fmtV = (v) => brl.format(Math.round(v * 100) / 100);
+  const brl0 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  // Na TV os valores aparecem sem centavos para caber em telas menores
+  const fmtV = (v) => (document.body.classList.contains('tv') ? brl0.format(Math.round(v)) : brl.format(Math.round(v * 100) / 100));
   const getSenha = () => { try { return sessionStorage.getItem('rm-senha') || ''; } catch (e) { return window.__rmSenha || ''; } };
   const setSenha = (v) => { try { sessionStorage.setItem('rm-senha', v); } catch (e) { window.__rmSenha = v; } };
   const api = async (url, body) => {
