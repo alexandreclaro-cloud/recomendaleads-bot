@@ -187,10 +187,15 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
   </section>
 </div>
 
+<script>window.RANKING = __RANKING_CONFIG__;</script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const API = '/api/rankingmesa';
+  const CFG = window.RANKING || { api: '/api/rankingmesa', titulo: 'Ranking de Closers', termo: 'Closer', termoPlural: 'Closers' };
+  const API = CFG.api;
+  document.title = CFG.titulo + ' iFinc';
+  document.querySelectorAll('th.l + th.l, .lanc th:first-child').forEach((th) => { if (th.textContent === 'Closer') th.textContent = CFG.termo; });
+  document.querySelector('.aba[data-vista="closers"]').textContent = CFG.termoPlural;
   const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const int = new Intl.NumberFormat('pt-BR');
   const CAMPOS = [
@@ -265,10 +270,10 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
   const carregarRanking = async () => {
     try {
       const { linhas, dias } = await api('/ranking?mes=' + mesTela);
-      $('titulo').textContent = 'Ranking de Closers · ' + mesLabel(mesTela);
+      $('titulo').textContent = CFG.titulo + ' · ' + mesLabel(mesTela);
       $('subtitulo').textContent = dias.length ? 'Acumulado do mês · último dia lançado: ' + ddmm(dias.at(-1)) + ' · ' + dias.length + (dias.length === 1 ? ' dia lançado' : ' dias lançados') : 'Acumulado do mês · nenhum dia lançado ainda';
       const corpo = $('placar-corpo'), total = $('placar-total');
-      if (!linhas.length) { const tr = document.createElement('tr'); const c = td('Cadastre os closers na aba Closers para montar o ranking.', 'vazio'); c.colSpan = 8; tr.appendChild(c); corpo.replaceChildren(tr); total.replaceChildren(); return; }
+      if (!linhas.length) { const tr = document.createElement('tr'); const c = td('Cadastre os ' + CFG.termoPlural.toLowerCase() + ' na aba ' + CFG.termoPlural + ' para montar o ranking.', 'vazio'); c.colSpan = 8; tr.appendChild(c); corpo.replaceChildren(tr); total.replaceChildren(); return; }
       corpo.replaceChildren(...linhas.map((r, i) => {
         const pos = i + 1; const tr = document.createElement('tr');
         tr.className = pos === 1 ? 't1' : pos === 2 ? 't2' : pos === 3 ? 't3' : pos <= 5 ? 'meio' : 'baixo';
@@ -280,6 +285,8 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
       const tr = document.createElement('tr');
       tr.append(td('', 'l'), td('TOTAL', 'l nome'), td(fmtV(s('valor_contratos'))), td(int.format(s('contratos'))), td(int.format(s('pastas_fechadas'))), td(fmtV(s('valor_fechadas'))), td(int.format(s('pastas_abertas'))), td(fmtV(s('valor_abertas'))));
       total.replaceChildren(tr);
+      document.querySelector('.leg.meio').hidden = linhas.length < 4;
+      document.querySelector('.leg.baixo').hidden = linhas.length < 6;
       ajustar();
     } catch (e) { $('subtitulo').textContent = 'Sem conexão com o servidor. Tentando de novo…'; }
   };
@@ -294,7 +301,7 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
       const { closers, valores, diasMes } = await api('/dia?dia=' + dia);
       closersDia = closers; sujo = false;
       const corpo = $('lanc-corpo');
-      if (!closers.length) { const tr = document.createElement('tr'); const c = td('Cadastre os closers na aba Closers primeiro.', 'vazio'); c.colSpan = 7; tr.appendChild(c); corpo.replaceChildren(tr); }
+      if (!closers.length) { const tr = document.createElement('tr'); const c = td('Cadastre os ' + CFG.termoPlural.toLowerCase() + ' na aba ' + CFG.termoPlural + ' primeiro.', 'vazio'); c.colSpan = 7; tr.appendChild(c); corpo.replaceChildren(tr); }
       else corpo.replaceChildren(...closers.map((c) => {
         const l = valores[c.id]; const tr = document.createElement('tr'); tr.dataset.closer = c.id;
         tr.appendChild(td(c.nome, 'nome'));
@@ -363,7 +370,7 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
   $('dia-lanc').value = hoje(); $('dia-lanc').dataset.ultimo = hoje(); $('dia-lanc').max = hoje();
   if (getSenha()) api('/entrar', {}).then(() => { liberado = true; mostrar(vista); }).catch(() => {});
   if (ADMIN) {
-    document.title = 'Administração · Ranking Mesa iFinc';
+    document.title = 'Administração · ' + CFG.titulo + ' iFinc';
     mostrar(['lancar', 'closers', 'tela'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'lancar');
   } else {
     document.querySelector('.abas').hidden = true;

@@ -1,11 +1,11 @@
 // Ranking Mesa iFinc — placar mensal dos closers (rankingmesa.recomendaleads.com.br)
 // Dados no Firestore: rankingmesa_closers (cadastro) e rankingmesa_lancamentos (um doc por dia+closer).
-// Leitura do ranking é aberta (tela da TV); lançar e cadastrar exigem a senha RANKINGMESA_SENHA.
+// Mesmo motor para a Head (rankinghead.recomendaleads.com.br): coleções rankinghead_*.
+// Leitura do ranking é aberta (tela da TV); lançar e cadastrar exigem a senha do painel.
+const fs = require('fs');
 const path = require('path');
 
 const CAMPOS = ['pastas_abertas', 'valor_abertas', 'pastas_fechadas', 'valor_fechadas', 'contratos', 'valor_contratos'];
-const COL_CLOSERS = 'rankingmesa_closers';
-const COL_LANC = 'rankingmesa_lancamentos';
 
 const slug = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'closer';
@@ -14,7 +14,7 @@ const ehMes = (s) => /^\d{4}-\d{2}$/.test(String(s || ''));
 const num = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : 0; };
 
 // Carga inicial: closers da mesa e os números da planilha de 22/10/2026.
-const SEMENTE = [
+const SEMENTE_MESA = [
   ['Vinicius', 5, 1060000, 3, 470000, 0, 0],
   ['Jaqueline Ferreira da Silva', 6, 4390000, 0, 0, 0, 0],
   ['Lucas Rodrigues', 9, 1760000, 1, 350000, 0, 0],
@@ -27,25 +27,50 @@ const SEMENTE = [
   ['Jonathan Araujo', 5, 1130000, 5, 1980000, 0, 0],
 ];
 
-module.exports = function montarRankingMesa(app, db, rateLimit) {
-  const HOST = 'rankingmesa.recomendaleads.com.br';
-  const pagina = path.join(__dirname, 'ranking-mesa.html');
-  const limiteSenha = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, prefix: 'rankingmesa' });
+// Carga inicial da Head: último envio de cada vendedor na planilha de 22/10/2026.
+const SEMENTE_HEAD = [
+  ['Rafael', 14, 40141600, 15, 19960000, 1, 500000],
+  ['Bryan', 22, 46500000, 3, 820000, 2, 3400000],
+  ['Lucca Andrade', 17, 23575000, 9, 11450000, 1, 1135000],
+];
+
+const PAINEIS = [
+  { slug: 'rankingmesa', host: 'rankingmesa.recomendaleads.com.br', titulo: 'Ranking de Closers', termo: 'Closer', termoPlural: 'Closers', senhaEnv: ['RANKINGMESA_SENHA'], semente: SEMENTE_MESA },
+  { slug: 'rankinghead', host: 'rankinghead.recomendaleads.com.br', titulo: 'Ranking Head', termo: 'Vendedor', termoPlural: 'Vendedores', senhaEnv: ['RANKINGHEAD_SENHA', 'RANKINGMESA_SENHA'], semente: SEMENTE_HEAD },
+];
+
+module.exports = function montarRankings(app, db, rateLimit) {
+  for (const cfg of PAINEIS) montarPainel(app, db, rateLimit, cfg);
+};
+
+function montarPainel(app, db, rateLimit, cfg) {
+  const COL_CLOSERS = cfg.slug + '_closers';
+  const COL_LANC = cfg.slug + '_lancamentos';
+  const SEMENTE = cfg.semente;
+  const senhaPainel = () => cfg.senhaEnv.map((k) => process.env[k]).find(Boolean);
+
+  const HOST = cfg.host;
+  const limiteSenha = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, prefix: cfg.slug });
+  const config = JSON.stringify({ api: '/api/' + cfg.slug, titulo: cfg.titulo, termo: cfg.termo, termoPlural: cfg.termoPlural }).replace(/</g, '\\u003c');
+  const enviar = (res) => {
+    const html = fs.readFileSync(path.join(__dirname, 'ranking-mesa.html'), 'utf8').replace('__RANKING_CONFIG__', config);
+    res.type('html').set('Cache-Control', 'no-cache').send(html);
+  };
 
   // Página: no subdomínio próprio e também em /rankingmesa
-  app.get('/', (req, res, next) => (req.hostname === HOST ? res.sendFile(pagina) : next()));
-  app.get('/rankingmesa', (req, res) => res.sendFile(pagina));
+  app.get('/', (req, res, next) => (req.hostname === HOST ? enviar(res) : next()));
+  app.get('/' + cfg.slug, (req, res) => enviar(res));
   // Área administrativa (lançar dia e cadastrar closers) em endereço separado da tela pública
-  app.get('/admin', (req, res, next) => (req.hostname === HOST ? res.sendFile(pagina) : next()));
-  app.get('/rankingmesa/admin', (req, res) => res.sendFile(pagina));
+  app.get('/admin', (req, res, next) => (req.hostname === HOST ? enviar(res) : next()));
+  app.get('/' + cfg.slug + '/admin', (req, res) => enviar(res));
 
   const semDb = (res) => res.status(503).json({ erro: 'Banco de dados indisponível.' });
   const senhaOk = (req) => {
-    const senha = process.env.RANKINGMESA_SENHA;
+    const senha = senhaPainel();
     return !!senha && String((req.body && req.body.senha) || req.headers['x-ranking-senha'] || '') === senha;
   };
   const exigirSenha = (req, res) => {
-    if (!process.env.RANKINGMESA_SENHA) { res.status(503).json({ erro: 'Senha de lançamento não configurada no servidor.' }); return false; }
+    if (!senhaPainel()) { res.status(503).json({ erro: 'Senha de lançamento não configurada no servidor.' }); return false; }
     if (!senhaOk(req)) { res.status(401).json({ erro: 'Senha incorreta.' }); return false; }
     return true;
   };
@@ -79,7 +104,7 @@ module.exports = function montarRankingMesa(app, db, rateLimit) {
   }
 
   // Ranking acumulado do mês
-  app.get('/api/rankingmesa/ranking', async (req, res) => {
+  app.get('/api/' + cfg.slug + '/ranking', async (req, res) => {
     if (!db) return semDb(res);
     const mes = ehMes(req.query.mes) ? req.query.mes : new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }).slice(0, 7);
     try {
@@ -92,14 +117,14 @@ module.exports = function montarRankingMesa(app, db, rateLimit) {
           || b.pastas_abertas - a.pastas_abertas || b.valor_abertas - a.valor_abertas || a.closer.localeCompare(b.closer, 'pt-BR'));
       const dias = [...new Set(lanc.map((l) => l.dia))].sort();
       res.set('Cache-Control', 'no-store').json({ mes, linhas, dias });
-    } catch (e) { console.error('[rankingmesa] ranking', e.message); res.status(500).json({ erro: 'Não foi possível montar o ranking.' }); }
+    } catch (e) { console.error('[' + cfg.slug + '] ranking', e.message); res.status(500).json({ erro: 'Não foi possível montar o ranking.' }); }
   });
 
   // Confere a senha (para liberar as abas de lançamento)
-  app.post('/api/rankingmesa/entrar', limiteSenha, (req, res) => { if (exigirSenha(req, res)) res.json({ ok: true }); });
+  app.post('/api/' + cfg.slug + '/entrar', limiteSenha, (req, res) => { if (exigirSenha(req, res)) res.json({ ok: true }); });
 
   // Números de um dia
-  app.get('/api/rankingmesa/dia', async (req, res) => {
+  app.get('/api/' + cfg.slug + '/dia', async (req, res) => {
     if (!db) return semDb(res);
     if (!ehDia(req.query.dia)) return res.status(400).json({ erro: 'Data inválida.' });
     try {
@@ -109,11 +134,11 @@ module.exports = function montarRankingMesa(app, db, rateLimit) {
       const valores = {};
       lanc.filter((l) => l.dia === dia).forEach((l) => { valores[l.closerId] = Object.fromEntries(CAMPOS.map((k) => [k, l[k]])); });
       res.set('Cache-Control', 'no-store').json({ dia, closers: closers.filter((c) => c.ativo), valores, diasMes: [...new Set(lanc.map((l) => l.dia))].sort() });
-    } catch (e) { console.error('[rankingmesa] dia', e.message); res.status(500).json({ erro: 'Não foi possível ler o dia.' }); }
+    } catch (e) { console.error('[' + cfg.slug + '] dia', e.message); res.status(500).json({ erro: 'Não foi possível ler o dia.' }); }
   });
 
   // Salva um dia: { senha, dia, linhas: [{closerId, pastas_abertas, ...}] } — linha sem valores apaga o lançamento
-  app.post('/api/rankingmesa/dia', limiteSenha, async (req, res) => {
+  app.post('/api/' + cfg.slug + '/dia', limiteSenha, async (req, res) => {
     if (!db) return semDb(res);
     if (!exigirSenha(req, res)) return;
     const { dia, linhas } = req.body || {};
@@ -133,17 +158,17 @@ module.exports = function montarRankingMesa(app, db, rateLimit) {
       }
       await batch.commit();
       res.json({ ok: true });
-    } catch (e) { console.error('[rankingmesa] salvar', e.message); res.status(500).json({ erro: 'Não foi possível salvar.' }); }
+    } catch (e) { console.error('[' + cfg.slug + '] salvar', e.message); res.status(500).json({ erro: 'Não foi possível salvar.' }); }
   });
 
   // Closers: listar (com senha), adicionar, renomear, ativar/desativar
-  app.post('/api/rankingmesa/closers/listar', limiteSenha, async (req, res) => {
+  app.post('/api/' + cfg.slug + '/closers/listar', limiteSenha, async (req, res) => {
     if (!db) return semDb(res);
     if (!exigirSenha(req, res)) return;
     try { await garantirSemente(); res.json({ closers: await listarClosers() }); }
     catch (e) { res.status(500).json({ erro: 'Não foi possível listar.' }); }
   });
-  app.post('/api/rankingmesa/closers', limiteSenha, async (req, res) => {
+  app.post('/api/' + cfg.slug + '/closers', limiteSenha, async (req, res) => {
     if (!db) return semDb(res);
     if (!exigirSenha(req, res)) return;
     const { id, nome, ativo } = req.body || {};
@@ -161,6 +186,6 @@ module.exports = function montarRankingMesa(app, db, rateLimit) {
         await db.collection(COL_CLOSERS).doc(novoId).set({ nome: n, ativo: true });
       }
       res.json({ ok: true, closers: await listarClosers() });
-    } catch (e) { console.error('[rankingmesa] closers', e.message); res.status(500).json({ erro: 'Não foi possível salvar.' }); }
+    } catch (e) { console.error('[' + cfg.slug + '] closers', e.message); res.status(500).json({ erro: 'Não foi possível salvar.' }); }
   });
-};
+}
