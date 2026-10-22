@@ -88,7 +88,8 @@ module.exports = function montarRankingMesa(app, db, rateLimit) {
       const mapa = new Map(closers.filter((c) => c.ativo).map((c) => [c.id, { closer: c.nome, ...Object.fromEntries(CAMPOS.map((k) => [k, 0])) }]));
       for (const l of lanc) { const r = mapa.get(l.closerId); if (r) CAMPOS.forEach((k) => { r[k] += Number(l[k]) || 0; }); }
       const linhas = [...mapa.values()].map((r) => { CAMPOS.forEach((k) => { r[k] = Math.round(r[k] * 100) / 100; }); return r; })
-        .sort((a, b) => b.valor_contratos - a.valor_contratos || b.pastas_fechadas - a.pastas_fechadas || b.valor_fechadas - a.valor_fechadas || a.closer.localeCompare(b.closer, 'pt-BR'));
+        .sort((a, b) => b.valor_contratos - a.valor_contratos || b.pastas_fechadas - a.pastas_fechadas || b.valor_fechadas - a.valor_fechadas
+          || b.pastas_abertas - a.pastas_abertas || b.valor_abertas - a.valor_abertas || a.closer.localeCompare(b.closer, 'pt-BR'));
       const dias = [...new Set(lanc.map((l) => l.dia))].sort();
       res.set('Cache-Control', 'no-store').json({ mes, linhas, dias });
     } catch (e) { console.error('[rankingmesa] ranking', e.message); res.status(500).json({ erro: 'Não foi possível montar o ranking.' }); }
