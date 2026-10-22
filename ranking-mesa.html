@@ -94,9 +94,9 @@ select, input { font: inherit; color: var(--fg); background: var(--input); borde
       <div class="sub" id="subtitulo">Carregando…</div>
     </div>
     <nav class="abas" aria-label="Seções">
-      <button class="aba" data-vista="tela" aria-selected="true">Ranking</button>
       <button class="aba" data-vista="lancar" aria-selected="false">Lançar dia</button>
       <button class="aba" data-vista="closers" aria-selected="false">Closers</button>
+      <button class="aba" data-vista="tela" aria-selected="true">Ver ranking</button>
     </nav>
   </header>
 
@@ -200,11 +200,13 @@ select, input { font: inherit; color: var(--fg); background: var(--input); borde
     return j;
   };
 
+  // Tela pública (TV) só mostra o ranking; lançamento e cadastro ficam em /admin
+  const ADMIN = /\/admin\/?$/.test(location.pathname);
   let vista = 'tela', mesTela = hoje().slice(0, 7), liberado = false;
 
   // ---------- Abas ----------
   const mostrar = (v) => {
-    vista = ['tela', 'lancar', 'closers'].includes(v) ? v : 'tela';
+    vista = ADMIN && ['tela', 'lancar', 'closers'].includes(v) ? v : (ADMIN ? 'lancar' : 'tela');
     document.querySelectorAll('.aba').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.vista === vista)));
     const precisa = vista !== 'tela' && !liberado;
     $('tela').hidden = vista !== 'tela'; $('acesso').hidden = !precisa;
@@ -326,7 +328,13 @@ select, input { font: inherit; color: var(--fg); background: var(--input); borde
   // ---------- Início ----------
   $('dia-lanc').value = hoje(); $('dia-lanc').dataset.ultimo = hoje(); $('dia-lanc').max = hoje();
   if (getSenha()) api('/entrar', {}).then(() => { liberado = true; mostrar(vista); }).catch(() => {});
-  mostrar(location.hash.slice(1) || 'tela');
+  if (ADMIN) {
+    document.title = 'Administração · Ranking Mesa iFinc';
+    mostrar(['lancar', 'closers', 'tela'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'lancar');
+  } else {
+    document.querySelector('.abas').hidden = true;
+    mostrar('tela');
+  }
   carregarRanking();
 })();
 </script>

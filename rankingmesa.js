@@ -35,6 +35,9 @@ module.exports = function montarRankingMesa(app, db, rateLimit) {
   // Página: no subdomínio próprio e também em /rankingmesa
   app.get('/', (req, res, next) => (req.hostname === HOST ? res.sendFile(pagina) : next()));
   app.get('/rankingmesa', (req, res) => res.sendFile(pagina));
+  // Área administrativa (lançar dia e cadastrar closers) em endereço separado da tela pública
+  app.get('/admin', (req, res, next) => (req.hostname === HOST ? res.sendFile(pagina) : next()));
+  app.get('/rankingmesa/admin', (req, res) => res.sendFile(pagina));
 
   const semDb = (res) => res.status(503).json({ erro: 'Banco de dados indisponível.' });
   const senhaOk = (req) => {
