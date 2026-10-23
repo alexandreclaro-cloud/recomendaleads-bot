@@ -240,6 +240,9 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
     const precisa = vista !== 'tela' && !liberado;
     $('tela').hidden = vista !== 'tela'; $('acesso').hidden = !precisa;
     $('lancar').hidden = vista !== 'lancar' || precisa; $('closers').hidden = vista !== 'closers' || precisa;
+    // O ranking usa sempre o modo TV (cabe inteiro na tela), também dentro do /admin
+    const tv = vista === 'tela';
+    if (document.body.classList.contains('tv') !== tv) { document.body.classList.toggle('tv', tv); if (tv) carregarRanking(); }
     if (!precisa && vista === 'lancar') carregarDia();
     if (!precisa && vista === 'closers') carregarClosers();
     if (precisa) $('senha').focus();
@@ -260,7 +263,7 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
 
   // Na TV, encolhe a fonte do placar até tudo caber na altura e na largura do monitor
   const ajustar = () => {
-    if (ADMIN) return;
+    if (!document.body.classList.contains('tv')) return;
     const raiz = document.documentElement, caixa = document.querySelector('#tela .scroll');
     let fs = Math.min(innerHeight * 0.045, innerWidth * 0.024);
     const cabe = () => raiz.scrollHeight <= innerHeight + 1 && caixa.scrollWidth <= caixa.clientWidth + 1;
@@ -374,10 +377,9 @@ body.tv .badge { min-width: 1.9em; height: 1.9em; border-width: .12em; padding: 
     mostrar(['lancar', 'closers', 'tela'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'lancar');
   } else {
     document.querySelector('.abas').hidden = true;
-    document.body.classList.add('tv');
-    let t; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(ajustar, 150); });
     mostrar('tela');
   }
+  let t; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(ajustar, 150); });
   carregarRanking();
 })();
 </script>
