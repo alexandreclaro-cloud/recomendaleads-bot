@@ -5645,6 +5645,9 @@ app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendom
 // hora do orçamento com o cliente (celular/notebook, sem login).
 app.get('/calculadora', (req, res) => res.sendFile(path.join(__dirname, 'calculadora.html')));
 
+// Ranking Mesa iFinc — placar dos closers (rankingmesa.recomendaleads.com.br e /rankingmesa)
+require('./rankingmesa')(app, db, rateLimit);
+
 app.get('/', (req, res) => {
   if (req.hostname === 'dentista.recomendaleads.com.br') return res.sendFile(path.join(__dirname, 'recomendometro-dentista.html'));
   res.sendFile(path.join(__dirname, 'landing-nova.html'));
