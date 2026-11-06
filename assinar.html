@@ -5,33 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Assine o RecomendaLeads</title>
 <link rel="icon" type="image/png" href="/assets/logo-symbol.png">
-<link rel="stylesheet" href="/theme.css">
 <style>
-  body { background: var(--bg, #0f1115); color: var(--text, #f3f4f6); font-family: 'Inter', -apple-system, system-ui, sans-serif; margin: 0; min-height: 100vh; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  :root {
+    --brand:#D4AF37; --brand-deep:#B8912A; --brand-bright:#ECCB72;
+    --brand-soft:rgba(212,175,55,.12); --brand-soft2:rgba(212,175,55,.2);
+    --bg:#09090B; --surface:#17171C; --surface-2:#1D1D23;
+    --text:#F3F1EA; --text-dim:#AFA99D; --line:rgba(255,255,255,.09); --line-strong:rgba(255,255,255,.16);
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, system-ui, sans-serif; margin: 0; min-height: 100vh; -webkit-font-smoothing:antialiased; }
   .wrap { max-width: 980px; margin: 0 auto; padding: 48px 20px 80px; }
   .top { text-align: center; margin-bottom: 36px; }
-  .top h1 { font-size: 2rem; margin: 0 0 8px; }
-  .top p { color: var(--text-dim, #9aa3af); margin: 0; font-size: 1.02rem; }
+  .top .lockup { display: inline-flex; align-items: center; gap: 12px; margin: 0 auto 22px; }
+  .top .lsym-chip { height: 52px; width: 52px; border-radius: 13px; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  .top .lsym { height: 36px; width: auto; display: block; }
+  .top .lw { height: 38px; width: auto; display: block; }
+  .top h1 { font-size: 2rem; margin: 0 0 8px; font-weight: 800; letter-spacing: -.02em; }
+  .top p { color: var(--text-dim); margin: 0; font-size: 1.02rem; }
   .planos { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
-  .plano { width: 290px; max-width: 100%; box-sizing: border-box; background: var(--surface-2, #1a1d24); border: 1px solid var(--border, #2a2f3a); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
-  .plano.destaque { border-color: var(--gold, #c9a227); box-shadow: 0 0 0 1px var(--gold, #c9a227); }
-  .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--gold, #c9a227); color: #1a1d24; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
+  .plano { width: 290px; max-width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
+  .plano.destaque { border-color: var(--brand-soft2); background: linear-gradient(160deg,var(--brand-soft),transparent 60%), var(--surface); box-shadow: 0 0 0 1px var(--brand-soft2); }
+  .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--brand); color: #171206; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
   .plano h2 { font-size: 1.25rem; margin: 0 0 6px; }
   .plano .preco { font-size: 2rem; font-weight: 800; margin: 6px 0; }
-  .plano .preco small { font-size: 0.95rem; font-weight: 500; color: var(--text-dim, #9aa3af); }
-  .plano .desc { color: var(--text-dim, #9aa3af); font-size: 0.86rem; margin: 4px 0 20px; flex: 1; }
-  .plano button { width: 100%; padding: 13px; border: none; border-radius: 10px; background: var(--gold, #c9a227); color: #1a1d24; font-weight: 700; font-size: 0.98rem; cursor: pointer; }
-  .plano button:hover { filter: brightness(1.06); }
-  .plano button:disabled { opacity: .6; cursor: default; }
+  .plano .preco small { font-size: 0.95rem; font-weight: 500; color: var(--text-dim); }
+  .plano .desc { color: var(--text-dim); font-size: 0.86rem; margin: 4px 0 20px; flex: 1; }
+  .plano button { width: 100%; padding: 13px; border: none; border-radius: 999px; background: var(--brand); color: #171206; font-weight: 700; font-size: 0.98rem; cursor: pointer; transition: background .12s,transform .12s; }
+  .plano button:hover { background: var(--brand-bright); transform: translateY(-1px); }
+  .plano button:disabled { opacity: .6; cursor: default; transform: none; }
   .aviso { text-align: center; margin: 18px 0; padding: 12px; border-radius: 10px; background: rgba(217,138,43,.15); color: #e0a45a; font-size: 0.9rem; }
-  .rodape { text-align: center; margin-top: 30px; font-size: 0.8rem; color: var(--text-dim, #9aa3af); }
-  .rodape a { color: var(--gold, #c9a227); }
+  .rodape { text-align: center; margin-top: 30px; font-size: 0.8rem; color: var(--text-dim); }
+  .rodape a { color: var(--brand-bright); }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="top">
-      <img src="/assets/logo.png" alt="RecomendaLeads" style="height:70px;width:auto;margin:0 auto 16px;display:block">
+      <div class="lockup"><span class="lsym-chip"><img class="lsym" src="/assets/logo-symbol.png" alt=""></span><img class="lw" src="/assets/logo-wordmark.png" alt="RecomendaLeads"></div>
       <h1>Assine o RecomendaLeads</h1>
       <p>Escolha seu plano e comece a vender por recomendação hoje mesmo.</p>
     </div>

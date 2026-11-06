@@ -69,6 +69,7 @@
       <button class="nav-item" data-section="whatsapp" data-gestor><i data-lucide="smartphone"></i><span class="txt">WhatsApp</span></button>
       <button class="nav-item" data-section="ofertas" data-gestor><i data-lucide="layers"></i><span class="txt">Ofertas</span></button>
       <button class="nav-item" data-section="disparo" data-gestor style="display:none"><i data-lucide="send"></i><span class="txt">Disparo em massa</span></button>
+      <button class="nav-item" data-section="custos" data-gestor style="display:none"><i data-lucide="receipt"></i><span class="txt">Custos de mensagens</span></button>
       <button class="nav-item" data-section="script" data-gestor><i data-lucide="scroll-text"></i><span class="txt">Script de vendas</span></button>
       <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
       <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
@@ -758,6 +759,41 @@
         </div>
       </section>
 
+      <section class="view fade-in" id="view-custos">
+        <div class="card">
+          <div class="block-title"><i data-lucide="receipt"></i> Gasto com mensagens oficiais</div>
+          <div id="custosSemCobrancaBox" style="display:none;">
+            <p class="sub">✅ Sua conta usa a <b>sua própria conta da Meta</b> — você paga o WhatsApp direto pra Meta, sem cobrança por mensagem aqui.</p>
+          </div>
+          <div id="custosComCobrancaBox" style="display:none;">
+            <p class="sub">Cada mensagem de marketing ou utilitária enviada fora da janela de 24h desconta do seu saldo. Respostas dentro da janela de 24h são sempre grátis.</p>
+            <div style="background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+              <div>
+                <div style="font-size:0.82rem;color:var(--text-dim);">Gasto este mês</div>
+                <div id="custosMesValor" style="font-size:1.8rem;font-weight:800;">—</div>
+                <div id="custosMesQtd" style="font-size:0.8rem;color:var(--text-dim);margin-top:2px;">—</div>
+              </div>
+              <div style="display:flex;gap:22px;flex-wrap:wrap;">
+                <div>
+                  <div style="font-size:0.78rem;color:var(--text-dim);">Marketing</div>
+                  <div id="custosMesMkt" style="font-size:1.1rem;font-weight:700;">—</div>
+                </div>
+                <div>
+                  <div style="font-size:0.78rem;color:var(--text-dim);">Utilitária</div>
+                  <div id="custosMesUtil" style="font-size:1.1rem;font-weight:700;">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;" id="custosHistoricoCard">
+          <div class="block-title"><i data-lucide="calendar-days"></i> Histórico por mês</div>
+          <p class="sub">Os últimos meses, com o total gasto e a separação entre marketing e utilitária.</p>
+          <div id="custosHistLista">Carregando...</div>
+        </div>
+      </section>
+
       <!-- Modal de relatório de uma campanha de disparo em massa -->
       <div id="disparoRelatorioOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;padding:16px;">
         <div style="background:var(--card,#fff);border-radius:14px;max-width:1180px;width:100%;max-height:90vh;overflow:auto;padding:22px;">
@@ -987,7 +1023,7 @@ const MEU_OFERTA_ID = EMPRESA_SALVA.ofertaId || null;
 const MEU_OFERTA_NOME = EMPRESA_SALVA.ofertaNome || null;
 let EH_MATRIZ = false;
 let OFERTAS_HABILITADO = false;
-const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'ofertas', 'disparo', 'script', 'equipe', 'assinatura'];
+const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'ofertas', 'disparo', 'custos', 'script', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
@@ -1021,6 +1057,7 @@ const TITULOS = {
   whatsapp: ['WhatsApp', 'Conecte o número que o Agente I.A. vai usar.'],
   ofertas: ['Ofertas', 'Mais de um lançamento rodando no mesmo número — cada um com mensagens, prêmios e Kanban próprios.'],
   disparo: ['Disparo em massa', 'Mande um template pra uma lista — cada envio desconta do seu saldo.'],
+  custos: ['Custos de mensagens', 'Quanto você gastou com a Meta em mensagens oficiais, mês a mês.'],
   script: ['Script de vendas', 'Roteiro por fase da negociação — aparece pro atendente em Conversas.'],
   equipe: ['Equipe', 'Gerencie quem tem acesso ao painel desta empresa.'],
   assinatura: ['Assinatura', 'Gerencie seu plano e pagamentos.'],
@@ -1050,6 +1087,7 @@ function trocarSecao(secao) {
   if (secao === 'info' && typeof carregarInfo === 'function') carregarInfo();
   if (secao === 'modo' && typeof carregarModo === 'function') carregarModo();
   if (secao === 'disparo' && typeof carregarDisparo === 'function') carregarDisparo();
+  if (secao === 'custos' && typeof carregarCustos === 'function') carregarCustos();
   if (secao === 'script' && typeof carregarScript === 'function') carregarScript();
   if (secao === 'ofertas' && typeof carregarOfertas === 'function') carregarOfertas();
   if (secao === 'assinatura' && typeof carregarAssinatura === 'function') carregarAssinatura();
@@ -1270,6 +1308,44 @@ async function carregarDisparo() {
         <span style="font-weight:700;white-space:nowrap;color:${t.tipo==='credito'?'#166534':'#b45309'};">${t.tipo==='credito'?'+':'−'}${fmtReaisCliente(t.valorCentavos)}</span>
       </div>`).join('') : '<span class="sub">Sem lançamentos ainda.</span>';
   } catch (e) { const sv = document.getElementById('saldoValor'); if (sv) sv.textContent = '—'; }
+}
+
+// ===================== CUSTOS DE MENSAGENS (POR MÊS) =====================
+function nomeMesCliente(mesIso) {
+  // mesIso = 'YYYY-MM'
+  const [ano, mes] = String(mesIso || '').split('-').map(Number);
+  if (!ano || !mes) return mesIso || '—';
+  const d = new Date(ano, mes - 1, 1);
+  const txt = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+async function carregarCustos() {
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-custos`);
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) throw new Error();
+    document.getElementById('custosComCobrancaBox').style.display = d.prepagoAtivo ? 'block' : 'none';
+    document.getElementById('custosSemCobrancaBox').style.display = d.prepagoAtivo ? 'none' : 'block';
+    document.getElementById('custosHistoricoCard').style.display = d.prepagoAtivo ? 'block' : 'none';
+    if (!d.prepagoAtivo) return;
+    const meses = d.meses || [];
+    const mesAtual = new Date().toISOString().slice(0, 7);
+    const doMes = meses.find(m => m.mes === mesAtual) || { totalCentavos: 0, totalQtd: 0, marketing: { valorCentavos: 0, qtd: 0 }, utility: { valorCentavos: 0, qtd: 0 } };
+    document.getElementById('custosMesValor').textContent = fmtReaisCliente(doMes.totalCentavos);
+    document.getElementById('custosMesQtd').textContent = `${doMes.totalQtd} mensage${doMes.totalQtd === 1 ? 'm' : 'ns'} cobrada${doMes.totalQtd === 1 ? '' : 's'}`;
+    document.getElementById('custosMesMkt').textContent = `${fmtReaisCliente(doMes.marketing.valorCentavos)} (${doMes.marketing.qtd})`;
+    document.getElementById('custosMesUtil').textContent = `${fmtReaisCliente(doMes.utility.valorCentavos)} (${doMes.utility.qtd})`;
+    const lista = document.getElementById('custosHistLista');
+    lista.innerHTML = meses.length ? meses.map(m => `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--border);padding:10px 0;flex-wrap:wrap;">
+        <span style="font-weight:600;">${nomeMesCliente(m.mes)}</span>
+        <span style="font-size:0.82rem;color:var(--text-dim);">Marketing: ${fmtReaisCliente(m.marketing.valorCentavos)} (${m.marketing.qtd}) · Utilitária: ${fmtReaisCliente(m.utility.valorCentavos)} (${m.utility.qtd})</span>
+        <span style="font-weight:700;">${fmtReaisCliente(m.totalCentavos)}</span>
+      </div>`).join('') : '<span class="sub">Nenhuma mensagem cobrada ainda.</span>';
+  } catch (e) {
+    const lista = document.getElementById('custosHistLista');
+    if (lista) lista.innerHTML = '<span class="sub">Não foi possível carregar os custos.</span>';
+  }
 }
 
 // ===================== HISTÓRICO + RELATÓRIO DE CAMPANHAS =====================
@@ -1866,7 +1942,7 @@ async function carregarConfiguracao() {
     // aceita essas edições vindas de um usuário de loja nos endpoints que ainda
     // não são por-oferta.
     if (MEU_OFERTA_ID) {
-      ['empresa', 'whatsapp', 'disparo', 'modo', 'assinatura'].forEach(sec => {
+      ['empresa', 'whatsapp', 'disparo', 'custos', 'modo', 'assinatura'].forEach(sec => {
         const nav = document.querySelector(`#nav .nav-item[data-section="${sec}"]`);
         if (nav) nav.style.display = 'none';
       });
@@ -1875,6 +1951,8 @@ async function carregarConfiguracao() {
     if (!MEU_OFERTA_ID && configuracaoAtual && configuracaoAtual.whatsappTipo === 'oficial') {
       const navD = document.querySelector('#nav .nav-item[data-section="disparo"]');
       if (navD) navD.style.display = '';
+      const navC = document.querySelector('#nav .nav-item[data-section="custos"]');
+      if (navC) navC.style.display = '';
     }
     // Monitor de entrega (Oficial) — checagem em background a cada 15min avisa
     // aqui se a maioria das mensagens está falhando agora (cobrança travada,

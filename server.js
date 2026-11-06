@@ -9137,6 +9137,52 @@ app.get('/minha-saldo', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Gasto com mensagens oficiais da PRÓPRIA empresa logada, agrupado por mês e
+// por categoria (marketing/utility) — pro cliente ver quanto gastou de
+// disparos sem precisar ler o extrato cru lançamento por lançamento.
+app.get('/minha-custos', exigirLoginEmpresa, async (req, res) => {
+  try {
+    const doc = await EMPRESAS_COL().doc(req.empresaLogin.id).get();
+    const d = doc.exists ? doc.data() : {};
+    const porMes = {};
+    try {
+      const snap = await TRANSACOES_COL()
+        .where('empresaId', '==', req.empresaLogin.id)
+        .where('tipo', '==', 'debito')
+        .get();
+      snap.docs.forEach(x => {
+        const t = x.data();
+        const mes = String(t.em || '').slice(0, 7); // 'YYYY-MM'
+        if (!mes) return;
+        if (!porMes[mes]) porMes[mes] = { marketing: { valorCentavos: 0, qtd: 0 }, utility: { valorCentavos: 0, qtd: 0 } };
+        const cat = t.categoria === 'utility' ? 'utility' : 'marketing';
+        porMes[mes][cat].valorCentavos += t.valorCentavos || 0;
+        porMes[mes][cat].qtd += 1;
+      });
+    } catch (e) { console.warn('[PREPAGO] custos cliente:', e.message); }
+    const meses = Object.keys(porMes).sort().reverse().slice(0, 12).map(mes => {
+      const m = porMes[mes];
+      return {
+        mes,
+        totalCentavos: m.marketing.valorCentavos + m.utility.valorCentavos,
+        totalQtd: m.marketing.qtd + m.utility.qtd,
+        marketing: m.marketing,
+        utility: m.utility
+      };
+    });
+    res.json({
+      ok: true,
+      prepagoAtivo: !!d.prepagoAtivo,
+      saldoCentavos: d.saldoCentavos || 0,
+      precoMktCentavos: d.precoMktCentavos != null ? d.precoMktCentavos : PRECO_MKT_PADRAO,
+      precoUtilCentavos: d.precoUtilCentavos != null ? d.precoUtilCentavos : PRECO_UTIL_PADRAO,
+      meses
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // ============================================================
 // DISPARO EM MASSA (campanha) — manda um template pra uma LISTA (modo oficial)
 // ============================================================
