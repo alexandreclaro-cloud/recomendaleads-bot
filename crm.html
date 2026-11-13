@@ -887,6 +887,10 @@
           </label>
           <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">Liga isso se o anúncio/link não deixar claro o que a pessoa deve escrever — <b>qualquer</b> mensagem de um contato novo (mesmo "oi") já inicia a conversa, sem precisar bater com a frase acima. Cuidado: também aciona pra mensagem sem relação nenhuma.</p>
 
+          <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">📱 QR Code de ativação</p>
+          <p style="font-size:0.74rem;color:var(--text-dim);margin-top:2px;">Gera um QR Code com o link do seu WhatsApp e a frase-gatilho já preenchida — o cliente só aponta a câmera e já manda a mensagem certa. Baixe ou imprima pra deixar na mesa, vitrine, cardápio ou cartaz.</p>
+          <div id="gatilhoPresenteLinkBox" style="margin-top:8px;"><p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Salve a frase acima pra gerar o QR Code.</p></div>
+
           <p style="font-weight:600;color:var(--gold-deep);margin:16px 0 0;">1) Boas-vindas (1ª mensagem enviada ao cliente)</p>
           <label>Mensagem de agradecimento</label>
           <textarea id="empresaMsgInput" rows="2"></textarea>
@@ -2857,6 +2861,7 @@ async function carregarConfiguracao() {
     document.getElementById('empresaNomeInput').value = configuracaoAtual.nome || '';
     document.getElementById('gatilhoPresenteInput').value = configuracaoAtual.gatilhoPresente || 'quero meu presente';
     document.getElementById('gatilhoLivreInput').checked = !!configuracaoAtual.gatilhoLivre;
+    renderLinkGatilhoPresente();
     document.getElementById('botDesligadoInput').checked = !!configuracaoAtual.botDesligado;
     document.getElementById('empresaMsgInput').value = configuracaoAtual.mensagemAgradecimento || '';
     document.getElementById('empresaVendedoresInput').value = (configuracaoAtual.vendedores || []).join('\n');
@@ -3181,7 +3186,7 @@ document.getElementById('salvarClienteConversaBtn').addEventListener('click', as
         basicTextoPronto, basicTextoProntoConfirma, basicAindaNao })
     });
     const data = await resp.json();
-    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; renderLinkGatilhoPresente(); }
     else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
   } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
   finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000); }
@@ -3910,6 +3915,79 @@ async function renderLinkNaoCliente() {
   const btnCopiar = document.getElementById('ncCopiarLinkBtn');
   if (btnCopiar) btnCopiar.addEventListener('click', () => {
     navigator.clipboard.writeText(link).then(() => { const t = btnCopiar.textContent; btnCopiar.textContent = 'Copiado!'; setTimeout(() => btnCopiar.textContent = t, 1500); });
+  });
+}
+
+// QR Code de ativação do presente (gatilhoPresente) — mesma ideia do Funil Não
+// Cliente acima: wa.me com a frase já preenchida, só que pro gatilho PRINCIPAL
+// da oferta. Pensado pra ser baixado/impresso e colado na mesa/vitrine/cardápio.
+async function renderLinkGatilhoPresente() {
+  const box = document.getElementById('gatilhoPresenteLinkBox');
+  if (!box) return;
+  const gatilhoRaw = (configuracaoAtual.gatilhoPresente || '').trim();
+  if (!gatilhoRaw) {
+    box.innerHTML = '<p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Salve a frase acima pra gerar o QR Code.</p>';
+    return;
+  }
+  box.innerHTML = '<p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Carregando número conectado...</p>';
+  let num = '';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-whatsapp/numero`);
+    const data = await resp.json();
+    num = String((data && data.numero) || '').replace(/\D/g, '');
+  } catch (e) {}
+  if (!num) {
+    box.innerHTML = '<p class="sub" style="font-size:0.82rem;color:var(--text-dim);">Conecte o WhatsApp (aba WhatsApp) pra gerar o QR Code.</p>';
+    return;
+  }
+  const num55 = num.startsWith('55') ? num : '55' + num;
+  const primeiraFrase = gatilhoRaw.split(/[\n,;]+/)[0].trim();
+  const link = `https://wa.me/${num55}?text=${encodeURIComponent(primeiraFrase)}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(link)}`;
+  box.innerHTML = `
+    <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+      <img src="${qrUrl}" alt="QR Code de ativação" style="width:180px;height:180px;border:1px solid var(--border,#eee);border-radius:10px;background:#fff;padding:8px;">
+      <div style="flex:1; min-width:220px;">
+        <label style="margin-top:0;">Link</label>
+        <input type="text" readonly value="${link}" style="width:100%;" onclick="this.select()">
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <button type="button" class="config-save-btn" id="gatilhoCopiarLinkBtn">Copiar link</button>
+          <button type="button" class="config-save-btn" id="gatilhoBaixarQrBtn">⬇️ Baixar QR Code</button>
+          <button type="button" class="config-save-btn" id="gatilhoImprimirQrBtn">🖨️ Imprimir</button>
+        </div>
+      </div>
+    </div>`;
+  const btnCopiarG = document.getElementById('gatilhoCopiarLinkBtn');
+  if (btnCopiarG) btnCopiarG.addEventListener('click', () => {
+    navigator.clipboard.writeText(link).then(() => { const t = btnCopiarG.textContent; btnCopiarG.textContent = 'Copiado!'; setTimeout(() => btnCopiarG.textContent = t, 1500); });
+  });
+  const btnBaixar = document.getElementById('gatilhoBaixarQrBtn');
+  if (btnBaixar) btnBaixar.addEventListener('click', async () => {
+    try {
+      const r = await fetch(qrUrl);
+      const blob = await r.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl; a.download = 'qrcode-ativacao-presente.png';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+    } catch (e) { window.open(qrUrl, '_blank'); }
+  });
+  const btnImprimir = document.getElementById('gatilhoImprimirQrBtn');
+  if (btnImprimir) btnImprimir.addEventListener('click', () => {
+    const nomeEmpresa = (configuracaoAtual && configuracaoAtual.nome) || 'Nossa empresa';
+    const w = window.open('', '_blank', 'width=480,height=640');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>QR Code</title>
+      <style>body{font-family:Arial,sans-serif;text-align:center;padding:40px 20px;}h1{font-size:1.3rem;margin-bottom:6px;}p{color:#555;margin-top:0;}img{width:320px;height:320px;margin:24px 0;}</style>
+      </head><body>
+      <h1>${esc(nomeEmpresa)}</h1>
+      <p>Aponte a câmera do seu celular pra esse QR Code e ganhe seu presente!</p>
+      <img src="${qrUrl}" alt="QR Code">
+      <p style="font-size:0.85rem;">ou mande "<b>${esc(primeiraFrase)}</b>" no WhatsApp</p>
+      </body></html>`);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 400);
   });
 }
 
