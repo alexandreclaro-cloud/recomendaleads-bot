@@ -768,7 +768,7 @@
           </div>
           <div id="custosComCobrancaBox" style="display:none;">
             <p class="sub" id="custosComCobrancaSub">Cada mensagem de marketing ou utilitária enviada fora da janela de 24h desconta do seu saldo. Respostas dentro da janela de 24h são sempre grátis.</p>
-            <div id="custosEstimativaAviso" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:0.85rem;margin-bottom:12px;">💡 Isso é uma <b>estimativa</b>, calculada com o preço oficial da Meta informado pelo suporte — você paga a Meta direto, não a gente. Se a Meta reajustar, peça pra atualizar o preço.</div>
+            <div id="custosEstimativaAviso" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:0.85rem;margin-bottom:12px;">💡 Isso é uma <b>estimativa</b>, calculada só com os <b>disparos feitos pelo RecomendaLeads</b> (preço oficial da Meta × quantidade enviada por categoria) — você paga a Meta direto, não a gente. Se você mandar mensagens por fora daqui (WhatsApp Business direto, outro sistema), elas <b>não entram</b> nessa conta e o total pode ficar diferente da sua fatura da Meta. Se a Meta reajustar o preço, peça pra atualizar aqui.</div>
             <div style="background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
               <div>
                 <div style="font-size:0.82rem;color:var(--text-dim);">Gasto este mês</div>
@@ -1349,8 +1349,9 @@ async function carregarCustos() {
     const doMes = meses.find(m => m.mes === mesAtual) || vazio;
     const auth = doMes.authentication || { valorCentavos: 0, qtd: 0 };
     const palavra = d.prepagoAtivo ? 'cobrada' : 'enviada';
+    const sufixo = d.prepagoAtivo ? '' : ' pelo RecomendaLeads';
     document.getElementById('custosMesValor').textContent = fmtReaisCliente(doMes.totalCentavos);
-    document.getElementById('custosMesQtd').textContent = `${doMes.totalQtd} mensage${doMes.totalQtd === 1 ? 'm' : 'ns'} ${palavra}${doMes.totalQtd === 1 ? '' : 's'}`;
+    document.getElementById('custosMesQtd').textContent = `${doMes.totalQtd} mensage${doMes.totalQtd === 1 ? 'm' : 'ns'} ${palavra}${doMes.totalQtd === 1 ? '' : 's'}${sufixo}`;
     document.getElementById('custosMesMkt').textContent = `${fmtReaisCliente(doMes.marketing.valorCentavos)} (${doMes.marketing.qtd})`;
     document.getElementById('custosMesUtil').textContent = `${fmtReaisCliente(doMes.utility.valorCentavos)} (${doMes.utility.qtd})`;
     document.getElementById('custosMesAuth').textContent = `${fmtReaisCliente(auth.valorCentavos)} (${auth.qtd})`;
