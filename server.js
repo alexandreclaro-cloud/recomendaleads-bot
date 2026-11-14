@@ -9175,9 +9175,12 @@ app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
     if (b.precoMktCentavos !== undefined && b.precoMktCentavos !== '') upd.precoMktCentavos = Math.max(0, parseInt(b.precoMktCentavos, 10) || 0);
     if (b.precoUtilCentavos !== undefined && b.precoUtilCentavos !== '') upd.precoUtilCentavos = Math.max(0, parseInt(b.precoUtilCentavos, 10) || 0);
     // Preço OFICIAL da Meta (conta própria) — só pra ESTIMATIVA mostrada ao cliente.
-    if (b.precoMetaMktCentavos !== undefined && b.precoMetaMktCentavos !== '') upd.precoMetaMktCentavos = Math.max(0, parseInt(b.precoMetaMktCentavos, 10) || 0);
-    if (b.precoMetaUtilCentavos !== undefined && b.precoMetaUtilCentavos !== '') upd.precoMetaUtilCentavos = Math.max(0, parseInt(b.precoMetaUtilCentavos, 10) || 0);
-    if (b.precoMetaAuthCentavos !== undefined && b.precoMetaAuthCentavos !== '') upd.precoMetaAuthCentavos = Math.max(0, parseInt(b.precoMetaAuthCentavos, 10) || 0);
+    // parseFloat (não parseInt) — a Meta cobra com até 4 casas decimais de real
+    // (ex.: R$0,3217), que em "centavos" vira fração (32.17). Arredondar pra
+    // inteiro aqui perderia essa precisão na estimativa.
+    if (b.precoMetaMktCentavos !== undefined && b.precoMetaMktCentavos !== '') upd.precoMetaMktCentavos = Math.max(0, parseFloat(b.precoMetaMktCentavos) || 0);
+    if (b.precoMetaUtilCentavos !== undefined && b.precoMetaUtilCentavos !== '') upd.precoMetaUtilCentavos = Math.max(0, parseFloat(b.precoMetaUtilCentavos) || 0);
+    if (b.precoMetaAuthCentavos !== undefined && b.precoMetaAuthCentavos !== '') upd.precoMetaAuthCentavos = Math.max(0, parseFloat(b.precoMetaAuthCentavos) || 0);
     if (b.nome !== undefined && String(b.nome).trim()) {
       upd.nome = String(b.nome).trim();
       // mantém o nome de exibição usado nas mensagens em sincronia

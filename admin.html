@@ -832,11 +832,11 @@ function abrirEdicao(id) {
         <details style="margin-bottom:10px;"><summary style="cursor:pointer;font-size:0.82rem;color:var(--text-dim);">Ver extrato (últimos lançamentos)</summary><div id="prepagoExtrato" style="font-size:0.8rem;margin-top:8px;">Carregando...</div></details>
 
         <div class="sec">📊 Preço oficial da Meta (estimativa — conta própria)</div>
-        <div class="muted" style="font-size:0.76rem;margin:-4px 0 8px;">Só usado quando "Cobrar pré-pago" acima está <b>desligado</b> (cliente com Meta própria). Mostra pro cliente, na aba Custos, uma <b>estimativa</b> do que ele paga direto à Meta por mensagem. A Meta reajusta até 4x/ano — atualize aqui quando mudar.</div>
+        <div class="muted" style="font-size:0.76rem;margin:-4px 0 8px;">Só usado quando "Cobrar pré-pago" acima está <b>desligado</b> (cliente com Meta própria). Mostra pro cliente, na aba Custos, uma <b>estimativa</b> do que ele paga direto à Meta por mensagem. A Meta reajusta até 4x/ano — atualize aqui quando mudar. Rate card oficial confirmado em 14/11/2026 (Brasil/BRL, faixa de volume base): Marketing R$0,3217 · Utilitária/Autenticação R$0,0350.</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-          <div class="campo"><label>Marketing (R$/msg)</label><input class="input" id="e_precoMetaMkt" type="text" placeholder="0,35"></div>
-          <div class="campo"><label>Utilitária (R$/msg)</label><input class="input" id="e_precoMetaUtil" type="text" placeholder="0,08"></div>
-          <div class="campo"><label>Autenticação (R$/msg)</label><input class="input" id="e_precoMetaAuth" type="text" placeholder="0,09"></div>
+          <div class="campo"><label>Marketing (R$/msg)</label><input class="input" id="e_precoMetaMkt" type="text" placeholder="0,3217"></div>
+          <div class="campo"><label>Utilitária (R$/msg)</label><input class="input" id="e_precoMetaUtil" type="text" placeholder="0,0350"></div>
+          <div class="campo"><label>Autenticação (R$/msg)</label><input class="input" id="e_precoMetaAuth" type="text" placeholder="0,0350"></div>
         </div>
 
         <div class="modal-actions">
@@ -869,6 +869,13 @@ function reaisParaCentavos(str) {
   const n = parseFloat(String(str || '').replace(/\s|R\$/g, '').replace(/\./g, '').replace(',', '.'));
   return isNaN(n) ? 0 : Math.round(n * 100);
 }
+// Preço oficial da Meta por mensagem tem até 4 casas decimais de real (ex.:
+// R$0,3217) — reaisParaCentavos() acima arredonda pra centavo inteiro e perderia
+// a precisão. Guarda em centavos com 2 casas decimais (32.17 = R$0,3217).
+function reaisParaCentavosPreciso(str) {
+  const n = parseFloat(String(str || '').replace(/\s|R\$/g, '').replace(/\./g, '').replace(',', '.'));
+  return isNaN(n) ? 0 : Math.round(n * 10000) / 100;
+}
 
 async function carregarPrepago(id) {
   const saldoEl = document.getElementById('prepagoSaldo');
@@ -884,9 +891,9 @@ async function carregarPrepago(id) {
     const cb = document.getElementById('e_prepagoAtivo'); if (cb) cb.checked = !!d.prepagoAtivo;
     const pm = document.getElementById('e_precoMkt'); if (pm) pm.value = ((d.precoMktCentavos || 0) / 100).toFixed(2).replace('.', ',');
     const pu = document.getElementById('e_precoUtil'); if (pu) pu.value = ((d.precoUtilCentavos || 0) / 100).toFixed(2).replace('.', ',');
-    const pmm = document.getElementById('e_precoMetaMkt'); if (pmm) pmm.value = d.precoMetaMktCentavos ? (d.precoMetaMktCentavos / 100).toFixed(2).replace('.', ',') : '';
-    const pmu = document.getElementById('e_precoMetaUtil'); if (pmu) pmu.value = d.precoMetaUtilCentavos ? (d.precoMetaUtilCentavos / 100).toFixed(2).replace('.', ',') : '';
-    const pma = document.getElementById('e_precoMetaAuth'); if (pma) pma.value = d.precoMetaAuthCentavos ? (d.precoMetaAuthCentavos / 100).toFixed(2).replace('.', ',') : '';
+    const pmm = document.getElementById('e_precoMetaMkt'); if (pmm) pmm.value = d.precoMetaMktCentavos ? (d.precoMetaMktCentavos / 100).toFixed(4).replace('.', ',') : '';
+    const pmu = document.getElementById('e_precoMetaUtil'); if (pmu) pmu.value = d.precoMetaUtilCentavos ? (d.precoMetaUtilCentavos / 100).toFixed(4).replace('.', ',') : '';
+    const pma = document.getElementById('e_precoMetaAuth'); if (pma) pma.value = d.precoMetaAuthCentavos ? (d.precoMetaAuthCentavos / 100).toFixed(4).replace('.', ',') : '';
     if (extratoEl) {
       const ex = d.extrato || [];
       extratoEl.innerHTML = ex.length ? `<table style="width:100%;border-collapse:collapse;">
@@ -967,9 +974,9 @@ async function salvar(id) {
   // Preços só entram se o campo tiver valor (evita zerar o preço por engano).
   if (v('e_precoMkt')) body.precoMktCentavos = reaisParaCentavos(v('e_precoMkt'));
   if (v('e_precoUtil')) body.precoUtilCentavos = reaisParaCentavos(v('e_precoUtil'));
-  if (v('e_precoMetaMkt')) body.precoMetaMktCentavos = reaisParaCentavos(v('e_precoMetaMkt'));
-  if (v('e_precoMetaUtil')) body.precoMetaUtilCentavos = reaisParaCentavos(v('e_precoMetaUtil'));
-  if (v('e_precoMetaAuth')) body.precoMetaAuthCentavos = reaisParaCentavos(v('e_precoMetaAuth'));
+  if (v('e_precoMetaMkt')) body.precoMetaMktCentavos = reaisParaCentavosPreciso(v('e_precoMetaMkt'));
+  if (v('e_precoMetaUtil')) body.precoMetaUtilCentavos = reaisParaCentavosPreciso(v('e_precoMetaUtil'));
+  if (v('e_precoMetaAuth')) body.precoMetaAuthCentavos = reaisParaCentavosPreciso(v('e_precoMetaAuth'));
   try {
     const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await resp.json();
