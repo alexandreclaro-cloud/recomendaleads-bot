@@ -9362,7 +9362,16 @@ app.get('/minha-custos', exigirLoginEmpresa, async (req, res) => {
   try {
     const doc = await EMPRESAS_COL().doc(req.empresaLogin.id).get();
     const d = doc.exists ? doc.data() : {};
-    const empresaComId = { id: req.empresaLogin.id, ...d };
+    // oficialTemplateRecomendado e modoRecomendacao podem estar salvos dentro de
+    // `configuracao` (CRM antigo) OU no topo do doc (painel novo) — sem este
+    // merge, reconstruirHistoricoDisparos nunca achava o template (ficava
+    // undefined) e a parte de recomendações individuais nunca contava nada.
+    const cfgBruta = d.configuracao || {};
+    const empresaComId = {
+      id: req.empresaLogin.id, ...d,
+      oficialTemplateRecomendado: cfgBruta.oficialTemplateRecomendado || d.oficialTemplateRecomendado || null,
+      modoRecomendacao: cfgBruta.modoRecomendacao || d.modoRecomendacao || null
+    };
     const tipoAlvo = d.prepagoAtivo ? 'debito' : 'estimativa';
     const porMes = {};
     try {
