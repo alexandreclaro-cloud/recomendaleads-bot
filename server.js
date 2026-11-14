@@ -3263,26 +3263,58 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
     await finalizarFaixaFull(telefone, sessao, faixa, empresa, contatosDestaFaixa);
     return;
   }
-  await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
-  await sendText(telefone, `🎁 Aqui está o seu presente:`);
 
-  // Ordem congruente: presente (imagem) → mensagem de orientação → link
-  if (faixa.arquivo) {
-    await enviarVoucher(telefone, faixa.arquivo, faixa.premio, faixa.premio);
-    // A mídia (imagem/PDF) demora pra ser processada e entregue pelo WhatsApp — sem
-    // esse respiro o texto de orientação ("clique no link abaixo") CHEGA ANTES da
-    // imagem. Espera um pouco pra garantir que a imagem apareça primeiro.
-    await new Promise(r => setTimeout(r, 2500));
+  // Presente NÃO-CUMULATIVO: quem chegou como RECOMENDADO (ganhou desconto de
+  // indicação) e virou cliente nessa mesma visita não ganha TAMBÉM o presente de
+  // cliente (por recomendar) agora — fica guardado pra próxima visita (quando
+  // completar outra faixa de novo). Só checa uma vez por telefone (descontoIndicadoTratado):
+  // depois da 1ª vez resolvido (entregue na hora ou adiado e já liberado), vira
+  // cliente normal pra sempre, sem checar de novo a cada faixa.
+  let presenteAdiado = false;
+  if (!sessao.descontoIndicadoTratado) {
+    sessao.descontoIndicadoTratado = true;
+    try {
+      const leadsSnap = await LEADS_COL()
+        .where('telefoneRecomendado', '==', telefone)
+        .where('empresaId', '==', empresaIdAtual())
+        .where('bonusPago', '==', true)
+        .limit(1).get();
+      presenteAdiado = !leadsSnap.empty;
+    } catch (e) { console.error('[PRESENTE-ADIADO] erro ao checar desconto de indicação:', e.message); }
+  }
+
+  if (presenteAdiado && !sessao.premioClienteAdiado) {
+    // Guarda ESSE presente pra entregar só na próxima faixa completada (não
+    // acumula com o desconto de indicação que ela já usou agora).
+    sessao.premioClienteAdiado = faixa;
+    await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
+    await sendText(telefone, `🎁 Como você já usou o desconto de quem foi indicado nessa visita, esse presente não acumula — mas fica *guardado* e eu libero na sua *próxima* recomendação, combinado? 😊`);
   } else {
-    await sendText(telefone, faixa.premio);
-  }
+    // Entrega normal — OU libera agora o presente que tinha ficado guardado
+    // (sessao.premioClienteAdiado) de uma faixa anterior, se houver.
+    const faixaAEntregar = sessao.premioClienteAdiado || faixa;
+    sessao.premioClienteAdiado = null;
+    await sendText(telefone, `🎉 Perfeito! Você completou ${contatosDestaFaixa.length} recomendações.`);
+    await sendText(telefone, `🎁 Aqui está o seu presente:`);
 
-  if (faixa.texto) {
-    await sendText(telefone, faixa.texto);
-  }
+    // Ordem congruente: presente (imagem) → mensagem de orientação → link
+    if (faixaAEntregar.arquivo) {
+      await enviarVoucher(telefone, faixaAEntregar.arquivo, faixaAEntregar.premio, faixaAEntregar.premio);
+      // A mídia (imagem/PDF) demora pra ser processada e entregue pelo WhatsApp — sem
+      // esse respiro o texto de orientação ("clique no link abaixo") CHEGA ANTES da
+      // imagem. Espera um pouco pra garantir que a imagem apareça primeiro.
+      await new Promise(r => setTimeout(r, 2500));
+    } else {
+      await sendText(telefone, faixaAEntregar.premio);
+    }
 
-  if (faixa.link) {
-    await sendText(telefone, faixa.link);
+    if (faixaAEntregar.texto) {
+      await sendText(telefone, faixaAEntregar.texto);
+    }
+
+    if (faixaAEntregar.link) {
+      await sendText(telefone, faixaAEntregar.link);
+    }
   }
 
   // Pipeline do cliente: só avança pra "recebeu o prêmio" AQUI, depois que o
@@ -8385,6 +8417,14 @@ app.patch('/minha-leads/:id', exigirLoginEmpresa, async (req, res) => {
         const etapas = (empresa.etapasKanban && empresa.etapasKanban.length) ? empresa.etapasKanban : EMPRESA_PADRAO.etapasKanban;
         const alvo = etapas.find(e => e.id === dados.etapa);
         const ehComprou = !!alvo && (/comprou|comprar|vendeu|venda|fechou/i.test(alvo.nome || '') || /comprou|comprar|vendeu|venda|fechou/i.test(alvo.id || ''));
+        if (ehComprou && lead.telefoneRecomendado) {
+          // Esse contato pode ter sido pausado (pausarNumero) quando foi transferido
+          // pro atendimento humano pra agendar/fechar a compra — e essa pausa NUNCA
+          // se desfazia sozinha, travando o robô pra essa pessoa pra sempre (ex.:
+          // quando ela volta meses depois querendo virar recomendadora). Virou
+          // cliente de verdade agora, então libera o robô de novo pra ela.
+          try { await despausarNumero(lead.telefoneRecomendado); } catch (e) { console.error('[VENDA] erro ao despausar recomendado:', e.message); }
+        }
         if (ehComprou) {
           // Reivindica o envio de forma ATÔMICA (transação): se a PATCH chegar
           // duas vezes quase juntas, só uma marca o flag e envia — sem duplicar.
