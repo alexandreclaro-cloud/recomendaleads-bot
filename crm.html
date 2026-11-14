@@ -1006,6 +1006,19 @@
       <!-- Sub-aba: Prêmio Cliente -->
       <div class="subtab-panel" id="subtabPremioCliente">
         <div id="faixasContainerCliente"></div>
+
+        <div class="config-card">
+          <h2>⏰ Regras de dia/horário (opcional)</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">
+            Isso é só uma opção a mais — por padrão nada muda. Se quiser, troque o presente imediato de quem recomenda automaticamente por dia da semana e/ou horário (ex.: um presente no almoço, outro na janta). Sem nenhuma regra cadastrada, ou fora de todas as faixas configuradas, continua valendo o presente normal configurado acima.
+          </p>
+          <div id="regrasHorarioClienteContainer"></div>
+          <button type="button" class="config-save-btn" id="addRegraHorarioClienteBtn" style="background:transparent;border:1px dashed var(--gold,#c9a227);color:var(--gold-deep,#92400e);margin-top:8px;">+ Adicionar regra de horário</button>
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarRegrasHorarioClienteBtn">Salvar regras de horário</button>
+            <span class="config-status-msg" id="statusRegrasHorarioCliente"></span>
+          </div>
+        </div>
       </div>
 
       <!-- Sub-aba: Conversa do Recomendado (textos do recomendado) -->
@@ -1189,6 +1202,19 @@
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarPresenteRecomendadoBtn">Salvar presente do recomendado</button>
             <span class="config-status-msg" id="statusPresenteRecomendado"></span>
+          </div>
+        </div>
+
+        <div class="config-card">
+          <h2>⏰ Regras de dia/horário (opcional)</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">
+            Isso é só uma opção a mais — por padrão nada muda. Se quiser, troque o presente do recomendado automaticamente por dia da semana e/ou horário (ex.: um presente no almoço, outro na janta). Sem nenhuma regra cadastrada, ou fora de todas as faixas configuradas, continua valendo o presente normal configurado acima.
+          </p>
+          <div id="regrasHorarioRecomendadoContainer"></div>
+          <button type="button" class="config-save-btn" id="addRegraHorarioRecomendadoBtn" style="background:transparent;border:1px dashed var(--gold,#c9a227);color:var(--gold-deep,#92400e);margin-top:8px;">+ Adicionar regra de horário</button>
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarRegrasHorarioRecomendadoBtn">Salvar regras de horário</button>
+            <span class="config-status-msg" id="statusRegrasHorarioRecomendado"></span>
           </div>
         </div>
       </div>
@@ -2872,6 +2898,7 @@ async function carregarConfiguracao() {
     document.getElementById('linkRecomendadoInput').value = configuracaoAtual.linkRecomendado || '';
     document.getElementById('textoRecomendadoInput').value = configuracaoAtual.textoRecomendado || '';
     document.getElementById('entregaDiretaInput').checked = configuracaoAtual.presentePrecisaAgendamento === false;
+    renderRegrasHorario(configuracaoAtual.regrasHorarioRecomendado || [], 'regrasHorarioRecomendadoContainer');
     document.getElementById('mensagemFechamentoEntregaInput').value = configuracaoAtual.mensagemFechamentoEntrega || '';
     document.getElementById('mensagemVendaInput').value = configuracaoAtual.mensagemVenda || '';
     document.getElementById('premioVendaInput').value = configuracaoAtual.premioVenda || '';
@@ -2952,6 +2979,7 @@ async function carregarConfiguracao() {
     carregarTemplatesMeta();
     renderFaixas(configuracaoAtual.faixasBonus || [], ['faixasContainerCliente']);
     renderFaixas(configuracaoAtual.faixasBonusNaoCliente || [], ['faixasContainerNaoCliente']);
+    renderRegrasHorario(configuracaoAtual.regrasHorarioCliente || [], 'regrasHorarioClienteContainer');
     carregarFollowupCliente();
     // Funil Não Cliente — gatilho/ativo/boas-vindas. Campos nascem `disabled`
     // (ver HTML) e só liberam aqui: como carregarConfiguracao() é assíncrono
@@ -3990,6 +4018,103 @@ async function renderLinkGatilhoPresente() {
     setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 400);
   });
 }
+
+// ============================================================
+// REGRAS DE DIA/HORÁRIO — presente que muda sozinho por dia/hora (ex.: chopp
+// no almoço, outro na janta). SEMPRE opcional: lista vazia = nada muda, segue
+// o presente normal já configurado. Mesmo editor serve pra "Presente Cliente"
+// (regrasHorarioCliente) e "Presente Recomendado" (regrasHorarioRecomendado).
+// ============================================================
+const DIAS_SEMANA_REGRA = [['seg','Seg'],['ter','Ter'],['qua','Qua'],['qui','Qui'],['sex','Sex'],['sab','Sáb'],['dom','Dom']];
+
+function renderRegrasHorario(regras, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  (regras || []).forEach((regra, index) => {
+    const card = document.createElement('div');
+    card.className = 'config-card';
+    card.style.background = 'var(--bg,#f8fafc)';
+    const diasChips = DIAS_SEMANA_REGRA.map(([v, label]) =>
+      `<label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-weight:400;cursor:pointer;">
+         <input type="checkbox" data-field="dia" value="${v}" ${(regra.dias || []).includes(v) ? 'checked' : ''} style="width:15px;height:15px;"> ${label}
+       </label>`).join('');
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <label style="margin:0;font-weight:600;">Dias da semana (deixe tudo desmarcado pra valer todo dia)</label>
+        <button type="button" class="regra-horario-remover" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:0.85rem;">🗑️ Remover regra</button>
+      </div>
+      <div style="margin:6px 0 10px;">${diasChips}</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div><label style="margin-top:0;">Das (deixe vazio pra valer o dia todo)</label><input type="time" data-field="horaInicio" value="${regra.horaInicio || ''}" style="width:130px;"></div>
+        <div><label style="margin-top:0;">Até</label><input type="time" data-field="horaFim" value="${regra.horaFim || ''}" style="width:130px;"></div>
+      </div>
+      <label>Prêmio (texto curto)</label>
+      <input type="text" data-field="premio" value="${(regra.premio || '').replace(/"/g, '&quot;')}" placeholder="Ex: 1 chopp grátis">
+      <label>Arquivo (imagem/PDF) — opcional, deixe vazio pra manter o arquivo padrão</label>
+      <div class="upload-row">
+        <input type="text" data-field="arquivo" value="${(regra.arquivo || '').replace(/"/g, '&quot;')}" placeholder="Cole um link ou use o botão ao lado →">
+        <label class="upload-btn" for="regraHorarioArquivoFile_${containerId}_${index}">📎 Escolher arquivo</label>
+        <input type="file" id="regraHorarioArquivoFile_${containerId}_${index}" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+        <span class="upload-status" id="uploadStatusRegraHorario_${containerId}_${index}"></span>
+      </div>
+      <label>Link — opcional</label>
+      <input type="text" data-field="link" value="${(regra.link || '').replace(/"/g, '&quot;')}" placeholder="https://...">
+      <label>Texto de orientação — opcional</label>
+      <textarea data-field="texto" rows="2">${regra.texto || ''}</textarea>
+    `;
+    container.appendChild(card);
+    card.querySelector('.regra-horario-remover').addEventListener('click', () => card.remove());
+    const inputFile = card.querySelector(`#regraHorarioArquivoFile_${containerId}_${index}`);
+    const inputArquivo = card.querySelector('[data-field="arquivo"]');
+    const statusArquivo = card.querySelector(`#uploadStatusRegraHorario_${containerId}_${index}`);
+    mostrarPreviewArquivo(inputArquivo, regra.arquivo);
+    if (inputFile) inputFile.addEventListener('change', function () { uploadArquivo(this, inputArquivo, statusArquivo); });
+  });
+}
+
+// Lê o estado atual (direto do DOM) de todas as regras de um container — não
+// depende de guardar um array em JS à parte, evita dessincronia com a tela.
+function coletarRegrasHorario(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return [];
+  return Array.from(container.children).map(card => ({
+    dias: Array.from(card.querySelectorAll('[data-field="dia"]:checked')).map(c => c.value),
+    horaInicio: card.querySelector('[data-field="horaInicio"]').value || null,
+    horaFim: card.querySelector('[data-field="horaFim"]').value || null,
+    premio: card.querySelector('[data-field="premio"]').value.trim() || null,
+    arquivo: card.querySelector('[data-field="arquivo"]').value.trim() || null,
+    link: card.querySelector('[data-field="link"]').value.trim() || null,
+    texto: card.querySelector('[data-field="texto"]').value.trim() || null
+  }));
+}
+
+function ligarEditorRegrasHorario(addBtnId, containerId, salvarBtnId, statusId, campo) {
+  const addBtn = document.getElementById(addBtnId);
+  if (addBtn) addBtn.addEventListener('click', () => {
+    const atuais = coletarRegrasHorario(containerId);
+    atuais.push({ dias: [], horaInicio: '', horaFim: '', premio: '', arquivo: '', link: '', texto: '' });
+    renderRegrasHorario(atuais, containerId);
+  });
+  const salvarBtn = document.getElementById(salvarBtnId);
+  if (salvarBtn) salvarBtn.addEventListener('click', async () => {
+    const statusEl = document.getElementById(statusId);
+    const regras = coletarRegrasHorario(containerId);
+    salvarBtn.disabled = true;
+    if (statusEl) { statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg'; }
+    try {
+      const resp = await fetchAutenticado(`${API_BASE}/minha-config`, { method: 'POST', body: JSON.stringify({ [campo]: regras }) });
+      const data = await resp.json();
+      if (resp.ok && data.ok) {
+        if (statusEl) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; }
+        configuracaoAtual = data.empresa;
+      } else if (statusEl) { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
+    } catch (e) { if (statusEl) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; } }
+    finally { salvarBtn.disabled = false; setTimeout(() => { if (statusEl) { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; } }, 4000); }
+  });
+}
+ligarEditorRegrasHorario('addRegraHorarioClienteBtn', 'regrasHorarioClienteContainer', 'salvarRegrasHorarioClienteBtn', 'statusRegrasHorarioCliente', 'regrasHorarioCliente');
+ligarEditorRegrasHorario('addRegraHorarioRecomendadoBtn', 'regrasHorarioRecomendadoContainer', 'salvarRegrasHorarioRecomendadoBtn', 'statusRegrasHorarioRecomendado', 'regrasHorarioRecomendado');
 
 document.getElementById('salvarCadenciaBtn').addEventListener('click', async () => {
   const btn = document.getElementById('salvarCadenciaBtn');

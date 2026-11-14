@@ -934,6 +934,13 @@ const EMPRESA_PADRAO = {
     { quantidade: 15, premio: 'Vale-presente de R$ 50', arquivo: null, link: null, texto: null },
     { quantidade: 20, premio: 'Status de Embaixador + kit especial', arquivo: null, link: null, texto: null }
   ],
+  // Regras de dia/horário pro presente IMEDIATO de quem recomenda (faixasBonus)
+  // — ex.: chopp grátis no almoço, outro presente na janta. Cada item:
+  // { dias:['seg','ter',...] (vazio = todo dia), horaInicio:'HH:MM', horaFim:'HH:MM',
+  //   premio, arquivo, link, texto }. Primeira regra que bater com o momento atual
+  // (fuso de Brasília) vence; sem nenhuma batendo, usa o presente padrão normal.
+  // Ver regraHorarioAtiva() / faixasAtivas().
+  regrasHorarioCliente: [],
   premioRecomendado: 'Desconto de 10% na primeira compra, cortesia de quem te recomendou',
   arquivoRecomendado: null,
   // Controle de voucher (uso único): quando ligado, cada presente entregue
@@ -943,6 +950,10 @@ const EMPRESA_PADRAO = {
   voucherValidadeDias: 30,
   linkRecomendado: null,
   textoRecomendado: null,
+  // Regras de dia/horário pro presente do RECOMENDADO (amigo indicado) — mesma
+  // ideia e mesmo formato de regrasHorarioCliente, mas pro presente dele. Ver
+  // presenteRecomendadoEfetivo().
+  regrasHorarioRecomendado: [],
   // Presente precisa de agendamento? true = serviço/visita (fluxo de menu + agendar).
   // false = entrega direta (físico/ebook): entrega e só manda a mensagem de fechamento.
   presentePrecisaAgendamento: true,
@@ -2348,6 +2359,64 @@ function mensagemNaoEntendiPorEtapa(etapa, empresa) {
 // LÓGICA PRINCIPAL DO ROTEIRO DE NEUROVENDAS
 // ============================================================
 
+// Dia da semana (seg..dom) e hora atual (HH:MM) no fuso de Brasília — usado
+// pelas regras de horário do presente (chopp no almoço, outro na janta etc.).
+// Sem lib externa: Intl já resolve o fuso certo mesmo rodando num servidor UTC.
+function agoraBrasilia() {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false
+  });
+  const partes = {};
+  fmt.formatToParts(new Date()).forEach(p => { partes[p.type] = p.value; });
+  const diaMap = { Mon: 'seg', Tue: 'ter', Wed: 'qua', Thu: 'qui', Fri: 'sex', Sat: 'sab', Sun: 'dom' };
+  const hora = partes.hour === '24' ? '00' : partes.hour; // meia-noite às vezes vem "24:00"
+  return { dia: diaMap[partes.weekday] || 'seg', hora: `${hora}:${partes.minute}` };
+}
+
+// true se `hora` (HH:MM) está dentro de [inicio, fim] — sem faixa definida
+// (campos vazios) vale o dia todo. Suporta faixa que cruza a meia-noite
+// (ex.: 22:00–02:00, caso comum de "janta").
+function horaDentroFaixa(hora, inicio, fim) {
+  if (!inicio || !fim) return true;
+  if (inicio <= fim) return hora >= inicio && hora <= fim;
+  return hora >= inicio || hora <= fim;
+}
+
+// Acha a 1ª regra de horário/dia que bate com o momento atual — ordem da
+// lista = prioridade (a primeira que bater vence). null se nenhuma bater ou
+// se a empresa não configurou nenhuma (comportamento igual a hoje).
+function regraHorarioAtiva(regras) {
+  if (!Array.isArray(regras) || !regras.length) return null;
+  const { dia, hora } = agoraBrasilia();
+  return regras.find(r => {
+    if (!r) return false;
+    const dias = Array.isArray(r.dias) && r.dias.length ? r.dias : null;
+    if (dias && !dias.includes(dia)) return false;
+    return horaDentroFaixa(hora, r.horaInicio, r.horaFim);
+  }) || null;
+}
+
+// Presente do RECOMENDADO (amigo indicado) considerando as regras de dia/
+// horário — se nenhuma bater agora, cai no presente padrão já configurado
+// (premioRecomendado/arquivoRecomendado/...), exatamente como antes de existir
+// essa função. Campo vazio na regra (null/undefined) herda do padrão.
+function presenteRecomendadoEfetivo(empresa) {
+  const padrao = {
+    premio: (empresa && empresa.premioRecomendado) || null,
+    arquivo: (empresa && empresa.arquivoRecomendado) || null,
+    link: (empresa && empresa.linkRecomendado) || null,
+    texto: (empresa && empresa.textoRecomendado) || null
+  };
+  const regra = regraHorarioAtiva(empresa && empresa.regrasHorarioRecomendado);
+  if (!regra) return padrao;
+  return {
+    premio: regra.premio || padrao.premio,
+    arquivo: regra.arquivo != null ? regra.arquivo : padrao.arquivo,
+    link: regra.link != null ? regra.link : padrao.link,
+    texto: regra.texto != null ? regra.texto : padrao.texto
+  };
+}
+
 // Faixas de prêmio ATIVAS. O dono pode DESLIGAR as faixas extras (2ª em diante)
 // pra dar só o 1º prêmio. A 1ª está SEMPRE ativa; as demais valem se ativa !== false.
 // `sessao.origemFunil === 'naoCliente'` usa o presente PRÓPRIO do Funil Não
@@ -2357,7 +2426,19 @@ function faixasAtivas(empresa, sessao) {
   const usarNaoCliente = sessao && sessao.origemFunil === 'naoCliente'
     && Array.isArray(empresa && empresa.faixasBonusNaoCliente) && empresa.faixasBonusNaoCliente.length > 0;
   const todas = (usarNaoCliente ? empresa.faixasBonusNaoCliente : (empresa && empresa.faixasBonus)) || [];
-  return todas.filter((f, i) => i === 0 || (f && f.ativa !== false));
+  const ativas = todas.filter((f, i) => i === 0 || (f && f.ativa !== false));
+  // Regras de horário/dia só valem pro presente imediato de quem recomenda
+  // (faixasBonus) — o Funil Não Cliente segue com o presente fixo dele.
+  if (usarNaoCliente) return ativas;
+  const regra = regraHorarioAtiva(empresa && empresa.regrasHorarioCliente);
+  if (!regra) return ativas;
+  return ativas.map(f => ({
+    ...f,
+    premio: regra.premio || f.premio,
+    arquivo: regra.arquivo != null ? regra.arquivo : f.arquivo,
+    link: regra.link != null ? regra.link : f.link,
+    texto: regra.texto != null ? regra.texto : f.texto
+  }));
 }
 
 async function iniciarConversa(telefone, origem) {
@@ -2829,6 +2910,16 @@ function precoDaCategoria(empresa, categoria) {
   return (empresa && empresa.precoMktCentavos != null) ? empresa.precoMktCentavos : PRECO_MKT_PADRAO;
 }
 
+// Preço OFICIAL da Meta (o que a Meta cobra do cliente direto, não a gente) por
+// categoria — usado só pra ESTIMATIVA de gasto de quem tem conta própria (sem
+// prepagoAtivo). Não tem valor padrão: a Meta reajusta isso até 4x/ano e varia
+// por categoria, então sem o admin informar o preço atual fica 0 (sem estimar).
+function precoMetaOficialDaCategoria(empresa, categoria) {
+  if (categoria === 'authentication') return (empresa && empresa.precoMetaAuthCentavos) || 0;
+  if (categoria === 'utility') return (empresa && empresa.precoMetaUtilCentavos) || 0;
+  return (empresa && empresa.precoMetaMktCentavos) || 0; // marketing (e qualquer outra)
+}
+
 // Debita o custo de UM envio oficial, de forma atômica. Retorna:
 //   { permitido, valorCentavos, saldoDepois, semSaldo?, semCobranca?, gratis? }
 // - categoria 'servico' (texto livre na janela 24h) = grátis, sempre permitido.
@@ -2842,7 +2933,7 @@ async function cobrarEnvioOficial(empresaId, categoria) {
     const resultado = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       const d = snap.exists ? snap.data() : {};
-      if (!d.prepagoAtivo) return { permitido: true, valorCentavos: 0, semCobranca: true };
+      if (!d.prepagoAtivo) return { permitido: true, valorCentavos: 0, semCobranca: true, estimativaCentavos: precoMetaOficialDaCategoria(d, categoria) };
       const preco = precoDaCategoria(d, categoria);
       const saldo = d.saldoCentavos || 0;
       if (saldo < preco) return { permitido: false, valorCentavos: preco, saldoDepois: saldo, semSaldo: true };
@@ -2858,6 +2949,17 @@ async function cobrarEnvioOficial(empresaId, categoria) {
           em: new Date().toISOString()
         });
       } catch (e) { console.warn('[PREPAGO] falha ao logar débito:', e.message); }
+    } else if (resultado.semCobranca) {
+      // Conta própria da Meta: não desconta nada nosso, mas registra a
+      // mensagem/categoria pra virar ESTIMATIVA de gasto na aba "Custos" do
+      // cliente (preço oficial da Meta, informado pelo admin — ver precoMetaOficialDaCategoria).
+      try {
+        await TRANSACOES_COL().add({
+          empresaId, tipo: 'estimativa', valorCentavos: resultado.estimativaCentavos || 0,
+          categoria, motivo: `Mensagem oficial (${categoria}) — estimativa Meta (conta própria)`,
+          em: new Date().toISOString()
+        });
+      } catch (e) { console.warn('[CUSTOS] falha ao logar estimativa:', e.message); }
     }
     return resultado;
   } catch (e) {
@@ -3613,22 +3715,26 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
   // Move o card para "Recebeu o Prêmio" assim que a pessoa aceita o presente.
   await marcarLeadRecebeuPremio(telefone, empresa);
 
+  // Presente efetivo AGORA — pode vir de uma regra de dia/horário (ex.: chopp
+  // no almoço, outro presente na janta) ou, sem nenhuma batendo, do padrão.
+  const presenteRec = presenteRecomendadoEfetivo(empresa);
+
   // Mensagem-ponte: enviada logo após a pessoa responder, antes do presente.
-  const ponte = substituirVariaveis(empresa.mensagemAntesPresente ?? EMPRESA_PADRAO.mensagemAntesPresente, { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' });
+  const ponte = substituirVariaveis(empresa.mensagemAntesPresente ?? EMPRESA_PADRAO.mensagemAntesPresente, { ...variaveisRec(sessao, empresa), premio: presenteRec.premio || 'seu presente' });
   if (ponte && ponte.trim()) await sendText(telefone, ponte);
 
-  if (empresa.arquivoRecomendado) {
-    await enviarVoucher(telefone, empresa.arquivoRecomendado, empresa.premioRecomendado || '', empresa.premioRecomendado || 'presente');
+  if (presenteRec.arquivo) {
+    await enviarVoucher(telefone, presenteRec.arquivo, presenteRec.premio || '', presenteRec.premio || 'presente');
     // Respiro pra a imagem chegar ANTES do link/texto (mídia demora a ser entregue).
     await new Promise(r => setTimeout(r, 2500));
   }
 
-  if (empresa.linkRecomendado) {
-    await sendText(telefone, empresa.linkRecomendado);
+  if (presenteRec.link) {
+    await sendText(telefone, presenteRec.link);
   }
 
-  if (empresa.textoRecomendado && empresa.textoRecomendado.trim()) {
-    const orientacao = substituirVariaveis(empresa.textoRecomendado, { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' });
+  if (presenteRec.texto && presenteRec.texto.trim()) {
+    const orientacao = substituirVariaveis(presenteRec.texto, { ...variaveisRec(sessao, empresa), premio: presenteRec.premio || 'seu presente' });
     await sendText(telefone, orientacao);
   }
 
@@ -3651,7 +3757,7 @@ async function enviarPremioRecomendado(telefone, sessao, empresa) {
   // o presente, só manda uma mensagem de fechamento e encerra (sem menu 1/2/3).
   if (empresa.presentePrecisaAgendamento === false) {
     const fecho = empresa.mensagemFechamentoEntrega ?? EMPRESA_PADRAO.mensagemFechamentoEntrega;
-    if (fecho && fecho.trim()) await sendText(telefone, substituirVariaveis(fecho, { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' }));
+    if (fecho && fecho.trim()) await sendText(telefone, substituirVariaveis(fecho, { ...variaveisRec(sessao, empresa), premio: presenteRec.premio || 'seu presente' }));
     await saveSessaoRecomendado(telefone, { etapa: 'finalizado', ultimaMensagemEm: new Date().toISOString() });
     return;
   }
@@ -3756,7 +3862,8 @@ function variaveisRec(sessao, empresa) {
     empresa: (empresa && empresa.nome) || '',
     // Prêmio do recomendado: disponível em TODA mensagem pós-presente (menu,
     // "vou usar depois", dúvidas, lembrete...), pra que {premio} sempre puxe.
-    premio: (empresa && empresa.premioRecomendado) || 'seu presente',
+    // Já considera regra de dia/horário (presenteRecomendadoEfetivo).
+    premio: presenteRecomendadoEfetivo(empresa).premio || 'seu presente',
     // Prazo (em dias) do lembrete de "vou usar depois" — mesmo valor usado
     // de verdade pra agendar (ver agendarLembreteRecomendadoDepois), pra
     // nunca prometer um prazo na mensagem e cumprir outro.
@@ -4009,7 +4116,8 @@ async function enviarMenuDuvidasRec(telefone) {
 
 async function responderDuvidaRec(telefone, opcao, empresa) {
   const sessao = await getSessaoRecomendado(telefone);
-  const vars = { ...variaveisRec(sessao, empresa), premio: empresa.premioRecomendado || 'seu presente' };
+  // {premio} já vem certo de variaveisRec (considera regra de dia/horário).
+  const vars = variaveisRec(sessao, empresa);
   let resposta;
   if (opcao === 1) resposta = substituirVariaveis(empresa.faqComoFunciona || EMPRESA_PADRAO.faqComoFunciona, vars);
   else if (opcao === 2) resposta = substituirVariaveis(empresa.faqValidade || EMPRESA_PADRAO.faqValidade, vars);
@@ -4038,7 +4146,7 @@ async function interpretarRespostaRecomendado(texto, empresa, contextoEtapa) {
 
   const informacoesDisponiveis = [
     `Nome da empresa: ${empresa.nome}`,
-    `Prêmio oferecido ao recomendado: ${empresa.premioRecomendado}`,
+    `Prêmio oferecido ao recomendado: ${presenteRecomendadoEfetivo(empresa).premio}`,
     `Chamada para ação (CTA): ${empresa.ctaRecomendado}`
   ].join('\n');
 
@@ -9049,6 +9157,10 @@ app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
     if (b.ofertasHabilitado !== undefined) upd.ofertasHabilitado = !!b.ofertasHabilitado;
     if (b.precoMktCentavos !== undefined && b.precoMktCentavos !== '') upd.precoMktCentavos = Math.max(0, parseInt(b.precoMktCentavos, 10) || 0);
     if (b.precoUtilCentavos !== undefined && b.precoUtilCentavos !== '') upd.precoUtilCentavos = Math.max(0, parseInt(b.precoUtilCentavos, 10) || 0);
+    // Preço OFICIAL da Meta (conta própria) — só pra ESTIMATIVA mostrada ao cliente.
+    if (b.precoMetaMktCentavos !== undefined && b.precoMetaMktCentavos !== '') upd.precoMetaMktCentavos = Math.max(0, parseInt(b.precoMetaMktCentavos, 10) || 0);
+    if (b.precoMetaUtilCentavos !== undefined && b.precoMetaUtilCentavos !== '') upd.precoMetaUtilCentavos = Math.max(0, parseInt(b.precoMetaUtilCentavos, 10) || 0);
+    if (b.precoMetaAuthCentavos !== undefined && b.precoMetaAuthCentavos !== '') upd.precoMetaAuthCentavos = Math.max(0, parseInt(b.precoMetaAuthCentavos, 10) || 0);
     if (b.nome !== undefined && String(b.nome).trim()) {
       upd.nome = String(b.nome).trim();
       // mantém o nome de exibição usado nas mensagens em sincronia
@@ -9087,6 +9199,9 @@ app.get('/admin/empresas/:id/prepago', exigirAdmin, async (req, res) => {
       saldoCentavos: d.saldoCentavos || 0,
       precoMktCentavos: d.precoMktCentavos != null ? d.precoMktCentavos : PRECO_MKT_PADRAO,
       precoUtilCentavos: d.precoUtilCentavos != null ? d.precoUtilCentavos : PRECO_UTIL_PADRAO,
+      precoMetaMktCentavos: d.precoMetaMktCentavos || 0,
+      precoMetaUtilCentavos: d.precoMetaUtilCentavos || 0,
+      precoMetaAuthCentavos: d.precoMetaAuthCentavos || 0,
       extrato
     });
   } catch (err) {
@@ -9138,36 +9253,41 @@ app.get('/minha-saldo', exigirLoginEmpresa, async (req, res) => {
 });
 
 // Gasto com mensagens oficiais da PRÓPRIA empresa logada, agrupado por mês e
-// por categoria (marketing/utility) — pro cliente ver quanto gastou de
-// disparos sem precisar ler o extrato cru lançamento por lançamento.
+// por categoria (marketing/utility/authentication) — pro cliente ver quanto
+// gastou de disparos sem precisar ler o extrato cru lançamento por lançamento.
+// Empresa pré-pago: soma os débitos reais (o que ela paga a nós). Empresa com
+// Meta própria: soma as ESTIMATIVAS (o que ela paga direto à Meta, calculado
+// com o preço oficial que o admin informou — ver precoMetaOficialDaCategoria).
 app.get('/minha-custos', exigirLoginEmpresa, async (req, res) => {
   try {
     const doc = await EMPRESAS_COL().doc(req.empresaLogin.id).get();
     const d = doc.exists ? doc.data() : {};
+    const tipoAlvo = d.prepagoAtivo ? 'debito' : 'estimativa';
     const porMes = {};
     try {
       const snap = await TRANSACOES_COL()
         .where('empresaId', '==', req.empresaLogin.id)
-        .where('tipo', '==', 'debito')
+        .where('tipo', '==', tipoAlvo)
         .get();
       snap.docs.forEach(x => {
         const t = x.data();
         const mes = String(t.em || '').slice(0, 7); // 'YYYY-MM'
         if (!mes) return;
-        if (!porMes[mes]) porMes[mes] = { marketing: { valorCentavos: 0, qtd: 0 }, utility: { valorCentavos: 0, qtd: 0 } };
-        const cat = t.categoria === 'utility' ? 'utility' : 'marketing';
+        if (!porMes[mes]) porMes[mes] = { marketing: { valorCentavos: 0, qtd: 0 }, utility: { valorCentavos: 0, qtd: 0 }, authentication: { valorCentavos: 0, qtd: 0 } };
+        const cat = ['utility', 'authentication'].includes(t.categoria) ? t.categoria : 'marketing';
         porMes[mes][cat].valorCentavos += t.valorCentavos || 0;
         porMes[mes][cat].qtd += 1;
       });
-    } catch (e) { console.warn('[PREPAGO] custos cliente:', e.message); }
+    } catch (e) { console.warn('[CUSTOS] custos cliente:', e.message); }
     const meses = Object.keys(porMes).sort().reverse().slice(0, 12).map(mes => {
       const m = porMes[mes];
       return {
         mes,
-        totalCentavos: m.marketing.valorCentavos + m.utility.valorCentavos,
-        totalQtd: m.marketing.qtd + m.utility.qtd,
+        totalCentavos: m.marketing.valorCentavos + m.utility.valorCentavos + m.authentication.valorCentavos,
+        totalQtd: m.marketing.qtd + m.utility.qtd + m.authentication.qtd,
         marketing: m.marketing,
-        utility: m.utility
+        utility: m.utility,
+        authentication: m.authentication
       };
     });
     res.json({
@@ -9176,6 +9296,9 @@ app.get('/minha-custos', exigirLoginEmpresa, async (req, res) => {
       saldoCentavos: d.saldoCentavos || 0,
       precoMktCentavos: d.precoMktCentavos != null ? d.precoMktCentavos : PRECO_MKT_PADRAO,
       precoUtilCentavos: d.precoUtilCentavos != null ? d.precoUtilCentavos : PRECO_UTIL_PADRAO,
+      precoMetaMktCentavos: d.precoMetaMktCentavos || 0,
+      precoMetaUtilCentavos: d.precoMetaUtilCentavos || 0,
+      precoMetaAuthCentavos: d.precoMetaAuthCentavos || 0,
       meses
     });
   } catch (err) {

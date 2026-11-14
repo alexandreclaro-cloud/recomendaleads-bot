@@ -764,9 +764,11 @@
           <div class="block-title"><i data-lucide="receipt"></i> Gasto com mensagens oficiais</div>
           <div id="custosSemCobrancaBox" style="display:none;">
             <p class="sub">✅ Sua conta usa a <b>sua própria conta da Meta</b> — você paga o WhatsApp direto pra Meta, sem cobrança por mensagem aqui.</p>
+            <div style="background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:0.85rem;">💡 Pra ver aqui uma <b>estimativa</b> do que você paga direto à Meta, peça pro suporte RecomendaLeads configurar o preço oficial de cada categoria.</div>
           </div>
           <div id="custosComCobrancaBox" style="display:none;">
-            <p class="sub">Cada mensagem de marketing ou utilitária enviada fora da janela de 24h desconta do seu saldo. Respostas dentro da janela de 24h são sempre grátis.</p>
+            <p class="sub" id="custosComCobrancaSub">Cada mensagem de marketing ou utilitária enviada fora da janela de 24h desconta do seu saldo. Respostas dentro da janela de 24h são sempre grátis.</p>
+            <div id="custosEstimativaAviso" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 12px;font-size:0.85rem;margin-bottom:12px;">💡 Isso é uma <b>estimativa</b>, calculada com o preço oficial da Meta informado pelo suporte — você paga a Meta direto, não a gente. Se a Meta reajustar, peça pra atualizar o preço.</div>
             <div style="background:var(--brand-soft,#eff4ff);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
               <div>
                 <div style="font-size:0.82rem;color:var(--text-dim);">Gasto este mês</div>
@@ -782,6 +784,10 @@
                   <div style="font-size:0.78rem;color:var(--text-dim);">Utilitária</div>
                   <div id="custosMesUtil" style="font-size:1.1rem;font-weight:700;">—</div>
                 </div>
+                <div>
+                  <div style="font-size:0.78rem;color:var(--text-dim);">Autenticação</div>
+                  <div id="custosMesAuth" style="font-size:1.1rem;font-weight:700;">—</div>
+                </div>
               </div>
             </div>
           </div>
@@ -789,7 +795,7 @@
 
         <div class="card" style="margin-top:16px;" id="custosHistoricoCard">
           <div class="block-title"><i data-lucide="calendar-days"></i> Histórico por mês</div>
-          <p class="sub">Os últimos meses, com o total gasto e a separação entre marketing e utilitária.</p>
+          <p class="sub">Os últimos meses, com o total gasto e a separação entre marketing, utilitária e autenticação.</p>
           <div id="custosHistLista">Carregando...</div>
         </div>
       </section>
@@ -1324,24 +1330,40 @@ async function carregarCustos() {
     const resp = await fetchAutenticado(`${API_BASE}/minha-custos`);
     const d = await resp.json();
     if (!resp.ok || !d.ok) throw new Error();
-    document.getElementById('custosComCobrancaBox').style.display = d.prepagoAtivo ? 'block' : 'none';
-    document.getElementById('custosSemCobrancaBox').style.display = d.prepagoAtivo ? 'none' : 'block';
-    document.getElementById('custosHistoricoCard').style.display = d.prepagoAtivo ? 'block' : 'none';
-    if (!d.prepagoAtivo) return;
+    // Pré-pago sempre mostra (débito real). Conta própria só mostra números
+    // quando o admin já configurou pelo menos 1 preço oficial da Meta —
+    // sem preço, não tem o que calcular, fica só o aviso estático.
+    const temPrecoMeta = (d.precoMetaMktCentavos || 0) > 0 || (d.precoMetaUtilCentavos || 0) > 0 || (d.precoMetaAuthCentavos || 0) > 0;
+    const mostraNumeros = d.prepagoAtivo || temPrecoMeta;
+    document.getElementById('custosComCobrancaBox').style.display = mostraNumeros ? 'block' : 'none';
+    document.getElementById('custosSemCobrancaBox').style.display = mostraNumeros ? 'none' : 'block';
+    document.getElementById('custosHistoricoCard').style.display = mostraNumeros ? 'block' : 'none';
+    document.getElementById('custosEstimativaAviso').style.display = (!d.prepagoAtivo && mostraNumeros) ? 'block' : 'none';
+    document.getElementById('custosComCobrancaSub').textContent = d.prepagoAtivo
+      ? 'Cada mensagem de marketing ou utilitária enviada fora da janela de 24h desconta do seu saldo. Respostas dentro da janela de 24h são sempre grátis.'
+      : 'Estimativa de quanto você paga direto à Meta, com base no preço oficial informado e na quantidade de mensagens enviadas por categoria.';
+    if (!mostraNumeros) return;
     const meses = d.meses || [];
     const mesAtual = new Date().toISOString().slice(0, 7);
-    const doMes = meses.find(m => m.mes === mesAtual) || { totalCentavos: 0, totalQtd: 0, marketing: { valorCentavos: 0, qtd: 0 }, utility: { valorCentavos: 0, qtd: 0 } };
+    const vazio = { totalCentavos: 0, totalQtd: 0, marketing: { valorCentavos: 0, qtd: 0 }, utility: { valorCentavos: 0, qtd: 0 }, authentication: { valorCentavos: 0, qtd: 0 } };
+    const doMes = meses.find(m => m.mes === mesAtual) || vazio;
+    const auth = doMes.authentication || { valorCentavos: 0, qtd: 0 };
+    const palavra = d.prepagoAtivo ? 'cobrada' : 'enviada';
     document.getElementById('custosMesValor').textContent = fmtReaisCliente(doMes.totalCentavos);
-    document.getElementById('custosMesQtd').textContent = `${doMes.totalQtd} mensage${doMes.totalQtd === 1 ? 'm' : 'ns'} cobrada${doMes.totalQtd === 1 ? '' : 's'}`;
+    document.getElementById('custosMesQtd').textContent = `${doMes.totalQtd} mensage${doMes.totalQtd === 1 ? 'm' : 'ns'} ${palavra}${doMes.totalQtd === 1 ? '' : 's'}`;
     document.getElementById('custosMesMkt').textContent = `${fmtReaisCliente(doMes.marketing.valorCentavos)} (${doMes.marketing.qtd})`;
     document.getElementById('custosMesUtil').textContent = `${fmtReaisCliente(doMes.utility.valorCentavos)} (${doMes.utility.qtd})`;
+    document.getElementById('custosMesAuth').textContent = `${fmtReaisCliente(auth.valorCentavos)} (${auth.qtd})`;
     const lista = document.getElementById('custosHistLista');
-    lista.innerHTML = meses.length ? meses.map(m => `
+    lista.innerHTML = meses.length ? meses.map(m => {
+      const a = m.authentication || { valorCentavos: 0, qtd: 0 };
+      return `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--border);padding:10px 0;flex-wrap:wrap;">
         <span style="font-weight:600;">${nomeMesCliente(m.mes)}</span>
-        <span style="font-size:0.82rem;color:var(--text-dim);">Marketing: ${fmtReaisCliente(m.marketing.valorCentavos)} (${m.marketing.qtd}) · Utilitária: ${fmtReaisCliente(m.utility.valorCentavos)} (${m.utility.qtd})</span>
+        <span style="font-size:0.82rem;color:var(--text-dim);">Marketing: ${fmtReaisCliente(m.marketing.valorCentavos)} (${m.marketing.qtd}) · Utilitária: ${fmtReaisCliente(m.utility.valorCentavos)} (${m.utility.qtd}) · Autenticação: ${fmtReaisCliente(a.valorCentavos)} (${a.qtd})</span>
         <span style="font-weight:700;">${fmtReaisCliente(m.totalCentavos)}</span>
-      </div>`).join('') : '<span class="sub">Nenhuma mensagem cobrada ainda.</span>';
+      </div>`;
+    }).join('') : `<span class="sub">Nenhuma mensagem ${palavra} ainda.</span>`;
   } catch (e) {
     const lista = document.getElementById('custosHistLista');
     if (lista) lista.innerHTML = '<span class="sub">Não foi possível carregar os custos.</span>';
