@@ -9278,38 +9278,69 @@ app.get('/minha-saldo', exigirLoginEmpresa, async (req, res) => {
 });
 
 // Reconstrói uma estimativa de investimento em API Oficial pra PERÍODO
-// ANTERIOR ao início do rastreio automático (ver cobrarEnvioOficial) — usa os
-// disparos em massa já concluídos (DISPAROS_COL, que guarda contatos/enviados
-// desde sempre) como base, já que são a imensa maioria do volume de envio.
+// ANTERIOR ao início do rastreio automático (ver cobrarEnvioOficial), juntando
+// as DUAS fontes de envio que existiam antes disso:
+// 1) Disparos em massa já concluídos (DISPAROS_COL, guarda contatos/enviados
+//    desde sempre) — campanha pra lista.
+// 2) Recomendações individuais (LEADS_COL) — cada lead criado no modo
+//    'basic' (ver modoRecAtual) correspondeu a 1 tentativa de sendTemplate
+//    direto pro amigo recomendado (template `oficialTemplateRecomendado`),
+//    FORA de qualquer disparo em massa. Isso importa porque o disparo em
+//    massa nem sempre acontece num mês — a recomendação individual é o
+//    volume que corre o tempo todo.
 // Resolve a categoria de cada template usado (cacheada por getTemplateInfo) e
-// multiplica pelo preço oficial atual — não é exato (não cobre envio avulso
-// fora de campanha, nem o preço histórico exato se a Meta tiver reajustado
-// nesse meio tempo), mas dá uma estimativa de boa-fé a partir do que
-// realmente foi disparado.
+// multiplica pelo preço oficial atual — não é exato (não cobre reenvio por
+// falha, nem o preço histórico exato se a Meta tiver reajustado nesse meio
+// tempo), mas dá uma estimativa de boa-fé a partir do que realmente foi
+// disparado.
 async function reconstruirHistoricoDisparos(empresa) {
   const porMes = {};
+  const soma = (mes, cat, qtd, valorCentavos) => {
+    if (!porMes[mes]) porMes[mes] = { marketing: { valorCentavos: 0, qtd: 0 }, utility: { valorCentavos: 0, qtd: 0 }, authentication: { valorCentavos: 0, qtd: 0 } };
+    porMes[mes][cat].qtd += qtd;
+    porMes[mes][cat].valorCentavos += valorCentavos;
+  };
+  const oficial = oficialDaEmpresa(empresa);
+  const categoriaPorTemplate = {};
+  const categoriaDoTemplate = async (nomeTemplate) => {
+    if (categoriaPorTemplate[nomeTemplate] === undefined) {
+      try {
+        const info = await getTemplateInfo(oficial, nomeTemplate);
+        categoriaPorTemplate[nomeTemplate] = (info && info.categoria) || 'marketing';
+      } catch (e) { categoriaPorTemplate[nomeTemplate] = 'marketing'; }
+    }
+    const c = categoriaPorTemplate[nomeTemplate];
+    return ['utility', 'authentication'].includes(c) ? c : 'marketing';
+  };
+  // 1) Disparos em massa.
   try {
     const snap = await DISPAROS_COL().where('empresaId', '==', empresa.id).get();
-    const oficial = oficialDaEmpresa(empresa);
-    const categoriaPorTemplate = {};
     for (const docSnap of snap.docs) {
       const t = docSnap.data();
       const enviados = t.enviados != null ? t.enviados : (t.status === 'concluido' ? 0 : null);
       if (!enviados || !t.template || !t.criadoEm) continue; // ainda rodando ou sem envio confirmado
       const mes = String(t.criadoEm).slice(0, 7);
       if (!mes) continue;
-      if (categoriaPorTemplate[t.template] === undefined) {
-        try {
-          const info = await getTemplateInfo(oficial, t.template);
-          categoriaPorTemplate[t.template] = (info && info.categoria) || 'marketing';
-        } catch (e) { categoriaPorTemplate[t.template] = 'marketing'; }
-      }
-      const cat = ['utility', 'authentication'].includes(categoriaPorTemplate[t.template]) ? categoriaPorTemplate[t.template] : 'marketing';
-      if (!porMes[mes]) porMes[mes] = { marketing: { valorCentavos: 0, qtd: 0 }, utility: { valorCentavos: 0, qtd: 0 }, authentication: { valorCentavos: 0, qtd: 0 } };
-      porMes[mes][cat].qtd += enviados;
-      porMes[mes][cat].valorCentavos += enviados * precoMetaOficialDaCategoria(empresa, cat);
+      const cat = await categoriaDoTemplate(t.template);
+      soma(mes, cat, enviados, enviados * precoMetaOficialDaCategoria(empresa, cat));
     }
   } catch (e) { console.warn('[CUSTOS] reconstrução de disparos:', e.message); }
+  // 2) Recomendações individuais — só faz sentido pra quem roda o modo 'basic'
+  // (API Oficial manda template direto pro amigo; o modo 'full' não dispara
+  // nada pro amigo, só espera ele chamar primeiro — grátis, sem o que contar).
+  if (empresa.oficialTemplateRecomendado && modoRecAtual(empresa) === 'basic') {
+    try {
+      const snap = await LEADS_COL().where('empresaId', '==', empresa.id).get();
+      const cat = await categoriaDoTemplate(empresa.oficialTemplateRecomendado);
+      const preco = precoMetaOficialDaCategoria(empresa, cat);
+      snap.docs.forEach(docSnap => {
+        const t = docSnap.data();
+        const mes = String(t.criadoEm || '').slice(0, 7);
+        if (!mes) return;
+        soma(mes, cat, 1, preco);
+      });
+    } catch (e) { console.warn('[CUSTOS] reconstrução de recomendados:', e.message); }
+  }
   return Object.keys(porMes).sort().reverse().map(mes => {
     const m = porMes[mes];
     return {
