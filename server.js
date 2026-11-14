@@ -2912,12 +2912,17 @@ function precoDaCategoria(empresa, categoria) {
 
 // Preço OFICIAL da Meta (o que a Meta cobra do cliente direto, não a gente) por
 // categoria — usado só pra ESTIMATIVA de gasto de quem tem conta própria (sem
-// prepagoAtivo). Não tem valor padrão: a Meta reajusta isso até 4x/ano e varia
-// por categoria, então sem o admin informar o preço atual fica 0 (sem estimar).
+// prepagoAtivo). Rate card oficial Brasil/BRL confirmado em 14/11/2026 (página
+// oficial da Meta + batido com fatura real de cliente) — vale como PADRÃO pra
+// todo cliente de conta própria; o admin pode sobrescrever por empresa se a
+// Meta reajustar (até 4x/ano) ou se o cliente tiver um nível de volume diferente.
+const PRECO_META_MKT_PADRAO = 32.17;  // R$0,3217 por mensagem de Marketing
+const PRECO_META_UTIL_PADRAO = 3.5;   // R$0,0350 por mensagem de Utility
+const PRECO_META_AUTH_PADRAO = 3.5;   // R$0,0350 por mensagem de Authentication
 function precoMetaOficialDaCategoria(empresa, categoria) {
-  if (categoria === 'authentication') return (empresa && empresa.precoMetaAuthCentavos) || 0;
-  if (categoria === 'utility') return (empresa && empresa.precoMetaUtilCentavos) || 0;
-  return (empresa && empresa.precoMetaMktCentavos) || 0; // marketing (e qualquer outra)
+  if (categoria === 'authentication') return (empresa && empresa.precoMetaAuthCentavos != null) ? empresa.precoMetaAuthCentavos : PRECO_META_AUTH_PADRAO;
+  if (categoria === 'utility') return (empresa && empresa.precoMetaUtilCentavos != null) ? empresa.precoMetaUtilCentavos : PRECO_META_UTIL_PADRAO;
+  return (empresa && empresa.precoMetaMktCentavos != null) ? empresa.precoMetaMktCentavos : PRECO_META_MKT_PADRAO; // marketing (e qualquer outra)
 }
 
 // Debita o custo de UM envio oficial, de forma atômica. Retorna:
@@ -9219,9 +9224,9 @@ app.get('/admin/empresas/:id/prepago', exigirAdmin, async (req, res) => {
       saldoCentavos: d.saldoCentavos || 0,
       precoMktCentavos: d.precoMktCentavos != null ? d.precoMktCentavos : PRECO_MKT_PADRAO,
       precoUtilCentavos: d.precoUtilCentavos != null ? d.precoUtilCentavos : PRECO_UTIL_PADRAO,
-      precoMetaMktCentavos: d.precoMetaMktCentavos || 0,
-      precoMetaUtilCentavos: d.precoMetaUtilCentavos || 0,
-      precoMetaAuthCentavos: d.precoMetaAuthCentavos || 0,
+      precoMetaMktCentavos: d.precoMetaMktCentavos != null ? d.precoMetaMktCentavos : PRECO_META_MKT_PADRAO,
+      precoMetaUtilCentavos: d.precoMetaUtilCentavos != null ? d.precoMetaUtilCentavos : PRECO_META_UTIL_PADRAO,
+      precoMetaAuthCentavos: d.precoMetaAuthCentavos != null ? d.precoMetaAuthCentavos : PRECO_META_AUTH_PADRAO,
       extrato
     });
   } catch (err) {
@@ -9316,9 +9321,9 @@ app.get('/minha-custos', exigirLoginEmpresa, async (req, res) => {
       saldoCentavos: d.saldoCentavos || 0,
       precoMktCentavos: d.precoMktCentavos != null ? d.precoMktCentavos : PRECO_MKT_PADRAO,
       precoUtilCentavos: d.precoUtilCentavos != null ? d.precoUtilCentavos : PRECO_UTIL_PADRAO,
-      precoMetaMktCentavos: d.precoMetaMktCentavos || 0,
-      precoMetaUtilCentavos: d.precoMetaUtilCentavos || 0,
-      precoMetaAuthCentavos: d.precoMetaAuthCentavos || 0,
+      precoMetaMktCentavos: d.precoMetaMktCentavos != null ? d.precoMetaMktCentavos : PRECO_META_MKT_PADRAO,
+      precoMetaUtilCentavos: d.precoMetaUtilCentavos != null ? d.precoMetaUtilCentavos : PRECO_META_UTIL_PADRAO,
+      precoMetaAuthCentavos: d.precoMetaAuthCentavos != null ? d.precoMetaAuthCentavos : PRECO_META_AUTH_PADRAO,
       meses
     });
   } catch (err) {
