@@ -9277,6 +9277,50 @@ app.get('/minha-saldo', exigirLoginEmpresa, async (req, res) => {
   }
 });
 
+// Reconstrói uma estimativa de investimento em API Oficial pra PERÍODO
+// ANTERIOR ao início do rastreio automático (ver cobrarEnvioOficial) — usa os
+// disparos em massa já concluídos (DISPAROS_COL, que guarda contatos/enviados
+// desde sempre) como base, já que são a imensa maioria do volume de envio.
+// Resolve a categoria de cada template usado (cacheada por getTemplateInfo) e
+// multiplica pelo preço oficial atual — não é exato (não cobre envio avulso
+// fora de campanha, nem o preço histórico exato se a Meta tiver reajustado
+// nesse meio tempo), mas dá uma estimativa de boa-fé a partir do que
+// realmente foi disparado.
+async function reconstruirHistoricoDisparos(empresa) {
+  const porMes = {};
+  try {
+    const snap = await DISPAROS_COL().where('empresaId', '==', empresa.id).get();
+    const oficial = oficialDaEmpresa(empresa);
+    const categoriaPorTemplate = {};
+    for (const docSnap of snap.docs) {
+      const t = docSnap.data();
+      const enviados = t.enviados != null ? t.enviados : (t.status === 'concluido' ? 0 : null);
+      if (!enviados || !t.template || !t.criadoEm) continue; // ainda rodando ou sem envio confirmado
+      const mes = String(t.criadoEm).slice(0, 7);
+      if (!mes) continue;
+      if (categoriaPorTemplate[t.template] === undefined) {
+        try {
+          const info = await getTemplateInfo(oficial, t.template);
+          categoriaPorTemplate[t.template] = (info && info.categoria) || 'marketing';
+        } catch (e) { categoriaPorTemplate[t.template] = 'marketing'; }
+      }
+      const cat = ['utility', 'authentication'].includes(categoriaPorTemplate[t.template]) ? categoriaPorTemplate[t.template] : 'marketing';
+      if (!porMes[mes]) porMes[mes] = { marketing: { valorCentavos: 0, qtd: 0 }, utility: { valorCentavos: 0, qtd: 0 }, authentication: { valorCentavos: 0, qtd: 0 } };
+      porMes[mes][cat].qtd += enviados;
+      porMes[mes][cat].valorCentavos += enviados * precoMetaOficialDaCategoria(empresa, cat);
+    }
+  } catch (e) { console.warn('[CUSTOS] reconstrução de disparos:', e.message); }
+  return Object.keys(porMes).sort().reverse().map(mes => {
+    const m = porMes[mes];
+    return {
+      mes,
+      totalCentavos: m.marketing.valorCentavos + m.utility.valorCentavos + m.authentication.valorCentavos,
+      totalQtd: m.marketing.qtd + m.utility.qtd + m.authentication.qtd,
+      marketing: m.marketing, utility: m.utility, authentication: m.authentication
+    };
+  });
+}
+
 // Gasto com mensagens oficiais da PRÓPRIA empresa logada, agrupado por mês e
 // por categoria (marketing/utility/authentication) — pro cliente ver quanto
 // gastou de disparos sem precisar ler o extrato cru lançamento por lançamento.
@@ -9287,6 +9331,7 @@ app.get('/minha-custos', exigirLoginEmpresa, async (req, res) => {
   try {
     const doc = await EMPRESAS_COL().doc(req.empresaLogin.id).get();
     const d = doc.exists ? doc.data() : {};
+    const empresaComId = { id: req.empresaLogin.id, ...d };
     const tipoAlvo = d.prepagoAtivo ? 'debito' : 'estimativa';
     const porMes = {};
     try {
@@ -9315,10 +9360,15 @@ app.get('/minha-custos', exigirLoginEmpresa, async (req, res) => {
         authentication: m.authentication
       };
     });
+    // Meses que já têm dado "ao vivo" (rastreio automático) não entram na
+    // reconstrução histórica — ela é só pra PREENCHER o que veio antes disso.
+    const mesesComDadoVivo = new Set(meses.map(m => m.mes));
+    const historicoDisparos = d.prepagoAtivo ? [] : (await reconstruirHistoricoDisparos(empresaComId)).filter(m => !mesesComDadoVivo.has(m.mes));
     res.json({
       ok: true,
       prepagoAtivo: !!d.prepagoAtivo,
       saldoCentavos: d.saldoCentavos || 0,
+      historicoDisparos,
       precoMktCentavos: d.precoMktCentavos != null ? d.precoMktCentavos : PRECO_MKT_PADRAO,
       precoUtilCentavos: d.precoUtilCentavos != null ? d.precoUtilCentavos : PRECO_UTIL_PADRAO,
       precoMetaMktCentavos: d.precoMetaMktCentavos != null ? d.precoMetaMktCentavos : PRECO_META_MKT_PADRAO,
