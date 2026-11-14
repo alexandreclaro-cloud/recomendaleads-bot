@@ -9071,6 +9071,23 @@ app.post('/admin/empresas/:id/trial', exigirAdmin, async (req, res) => {
   }
 });
 
+// Remove a assinatura automática (Asaas/trial) da empresa — ela volta a ser
+// "grandfathered" (sem o campo `assinatura`), igual clientes antigos geridos
+// manualmente (plano/valor/status em "Plano & Financeiro", cobrança fora do
+// sistema). Usado quando um cliente legado acabou ganhando um `assinatura`
+// por engano (ex.: trial concedido pra teste) e ficou bloqueado sem dever nada.
+app.post('/admin/empresas/:id/assinatura/remover', exigirAdmin, async (req, res) => {
+  try {
+    const ref = EMPRESAS_COL().doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    await ref.update({ assinatura: admin.firestore.FieldValue.delete() });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Reseta a senha do cliente para uma provisória (padrão 123mudar) e reativa a
 // troca obrigatória no próximo acesso.
 app.post('/admin/empresas/:id/resetar-senha', exigirAdmin, async (req, res) => {

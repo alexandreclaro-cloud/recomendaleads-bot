@@ -790,6 +790,8 @@ function abrirEdicao(id) {
             <button class="btn btn-secondary btn-mini" id="trialCustomBtn">Conceder</button>
             <span class="status-msg" id="trialMsg"></span>
           </div>
+          ${e.assinatura ? `<div style="margin-top:8px;"><button class="btn btn-secondary btn-mini" id="removerAssinaturaBtn">🔓 Remover assinatura automática (cliente de cobrança manual)</button></div>
+          <div class="muted" style="font-size:0.76rem;margin-top:4px;">Tira o campo de assinatura automática/trial — a empresa volta a ser gerida manualmente por "Plano & Financeiro" acima, sem bloqueio automático (igual clientes antigos). Use se um cliente de cobrança manual ficou bloqueado por engano.</div>` : ''}
         </div>
 
         <div class="sec">WhatsApp</div>
@@ -854,6 +856,8 @@ function abrirEdicao(id) {
   document.getElementById('reenviarBtn').addEventListener('click', () => reenviarBoasVindas(id));
   document.querySelectorAll('[data-trial]').forEach(b => b.addEventListener('click', () => concederTrial(id, parseInt(b.dataset.trial, 10))));
   document.getElementById('trialCustomBtn').addEventListener('click', () => concederTrial(id, parseInt(document.getElementById('e_trialCustom').value, 10)));
+  const removerAssinaturaBtn = document.getElementById('removerAssinaturaBtn');
+  if (removerAssinaturaBtn) removerAssinaturaBtn.addEventListener('click', () => removerAssinatura(id));
   document.getElementById('recargaBtn').addEventListener('click', () => lancarRecarga(id));
   carregarPrepago(id);
   aplicarMascaras();
@@ -924,6 +928,18 @@ async function concederTrial(id, dias) {
     const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}/trial`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dias }) });
     const data = await resp.json();
     if (resp.ok && data.ok) { msg.textContent = `✅ ${dias} dias liberados (até ${fmtData(data.acessoAte)})`; msg.className = 'status-msg ok'; carregar(); }
+    else { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
+}
+
+async function removerAssinatura(id) {
+  const msg = document.getElementById('trialMsg');
+  if (!confirm('Remover a assinatura automática desta empresa? Ela volta a ser gerida manualmente (sem bloqueio automático), igual os clientes antigos.')) return;
+  msg.textContent = 'Removendo...'; msg.className = 'status-msg';
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}/assinatura/remover`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { msg.textContent = '✅ Assinatura automática removida'; msg.className = 'status-msg ok'; await carregar(); abrirEdicao(id); }
     else { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
   } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
 }
