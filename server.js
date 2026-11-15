@@ -9011,7 +9011,7 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
       comissaoPct: COMISSAO_PCT,
       tipoComissao: 'percentual',
       comissaoValorFixoCentavos: null,
-      walletIdAsaas: null,
+      walletIdAsaas: b.walletIdAsaas ? String(b.walletIdAsaas).trim() : null,
       vendedorPrincipalId,
       banco: {
         banco: banco.banco || null, agencia: banco.agencia || null, conta: banco.conta || null,
