@@ -974,6 +974,13 @@ const EMPRESA_PADRAO = {
   marketingArquivo: null,
   marketingLink: null,
   marketingTexto: null,
+  // Relatório diário pro GESTOR (WhatsApp) — resumo do funil de recomendados
+  // (não respondeu/interagiu/resgatou/agendou/comprou), de hoje + acumulado do
+  // mês. Roda sozinho no horário configurado, nos dias marcados.
+  relatorioDiarioAtivo: false,
+  relatorioDiarioTelefone: null,
+  relatorioDiarioHora: '21:00',
+  relatorioDiarioDias: ['seg', 'ter', 'qua', 'qui', 'sex', 'sab'],
   // Follow-up automático de disparo em massa: reenvia sozinho, N dias depois,
   // pra quem recebeu mas o WhatsApp nunca confirmou leitura (✓✓ azul) daquele
   // disparo — sem precisar voltar e clicar em nada.
@@ -1288,7 +1295,8 @@ const CAMPOS_OPERACAO_EMPRESA = new Set([
   'infoTelefone', 'infoEmail', 'infoOutras',
   'recomendadoGapMinMin', 'recomendadoGapMaxMin', 'humanizarDigitacao', 'humanizarMaxSeg',
   'intervaloProximaFaixaMin', 'avisarConfirmDelayMin', 'menuAposReacaoMin',
-  'modoRecomendacao', 'nichos', 'numeroConectado', 'numeroDemo', 'mensagemEscolhaOferta'
+  'modoRecomendacao', 'nichos', 'numeroConectado', 'numeroDemo', 'mensagemEscolhaOferta',
+  'relatorioDiarioAtivo', 'relatorioDiarioTelefone', 'relatorioDiarioHora', 'relatorioDiarioDias'
   // 'nome' SAIU daqui de propósito — cada oferta (lançamento) roda com nome
   // próprio (usa a variável {empresa} nas mensagens), não é um dado da empresa
   // como um todo. Bug real: editar o nome numa oferta mudava em todas, porque
@@ -2371,6 +2379,25 @@ function agoraBrasilia() {
   const diaMap = { Mon: 'seg', Tue: 'ter', Wed: 'qua', Thu: 'qui', Fri: 'sex', Sat: 'sab', Sun: 'dom' };
   const hora = partes.hour === '24' ? '00' : partes.hour; // meia-noite às vezes vem "24:00"
   return { dia: diaMap[partes.weekday] || 'seg', hora: `${hora}:${partes.minute}` };
+}
+
+// Data (YYYY-MM-DD) e mês (YYYY-MM) no fuso de Brasília — offsetDias desloca o
+// dia (ex.: -1 = ontem). Usado pro relatório diário saber "hoje" e "o mês atual",
+// e pra decidir se um timestamp ISO qualquer caiu num dia/mês específico.
+function diaBrasiliaISO(offsetDias = 0) {
+  const d = new Date(Date.now() + offsetDias * 86400000);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+function pertenceAoDiaBrasilia(isoString, diaAlvo) {
+  if (!isoString) return false;
+  try { return diaBrasiliaISOde(isoString) === diaAlvo; } catch (e) { return false; }
+}
+function diaBrasiliaISOde(isoString) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(isoString));
+}
+function pertenceAoMesBrasilia(isoString, mesAlvo) {
+  if (!isoString) return false;
+  try { return diaBrasiliaISOde(isoString).slice(0, 7) === mesAlvo; } catch (e) { return false; }
 }
 
 // true se `hora` (HH:MM) está dentro de [inicio, fim] — sem faixa definida
@@ -5577,37 +5604,57 @@ async function gravarAssinatura(empresaId, dados) {
   await EMPRESAS_COL().doc(empresaId).set({ assinatura: dados }, { merge: true });
 }
 
-// Registra a comissão (20%) do vendedor que fechou a empresa, a cada pagamento.
+// Calcula a comissão de UM vendedor sobre um pagamento — percentual (padrão,
+// legado) ou valor fixo (acordo tipo "representante": R$X fixos por venda,
+// independente do preço cobrado do cliente).
+function calcularComissaoCentavos(vd, valorPagoCentavos) {
+  if (vd && vd.tipoComissao === 'fixo') return Math.max(0, Math.round(Number(vd.comissaoValorFixoCentavos) || 0));
+  const pct = (vd && vd.comissaoPct != null && Number(vd.comissaoPct) >= 0) ? Number(vd.comissaoPct) : COMISSAO_PCT;
+  return Math.round((Number(valorPagoCentavos) || 0) * pct / 100);
+}
+
+// Registra a comissão do vendedor que fechou a empresa, a cada pagamento —
+// e, se esse vendedor tiver um "vendedorPrincipalId" (representante de quem
+// ele é secundário/recrutado), registra TAMBÉM a comissão do principal sobre
+// o MESMO pagamento, numa linha separada. Sobe a cadeia até não achar mais
+// principal (limite de 5 níveis, só por segurança contra ciclo acidental).
 // empresa.vendedorComissao guarda o ID do vendedor (ou um nome livre, legado).
 async function registrarComissao(empresa, valorCentavos, origem) {
   try {
-    const ref = empresa && empresa.vendedorComissao;
-    if (!ref) return;
+    const refInicial = empresa && empresa.vendedorComissao;
+    if (!refInicial) return;
     const v = Number(valorCentavos) || 0;
     if (v <= 0) return;
-    // Resolve nome e % de comissão do vendedor a partir do ID (se for conta cadastrada).
-    let vendedorId = null, vendedorNome = String(ref), pct = COMISSAO_PCT;
-    try {
-      const vd = await VENDEDORES_COL().doc(String(ref)).get();
-      if (vd.exists) {
-        vendedorId = vd.id;
-        vendedorNome = vd.data().nome || String(ref);
-        if (vd.data().comissaoPct != null && Number(vd.data().comissaoPct) >= 0) pct = Number(vd.data().comissaoPct);
-      }
-    } catch (e) {}
-    await COMISSOES_COL().add({
-      empresaId: empresa.id,
-      empresaNome: empresa.nome || '',
-      vendedorId,
-      vendedor: vendedorNome,
-      valorPagoCentavos: v,
-      percentual: pct,
-      comissaoCentavos: Math.round(v * pct / 100),
-      origem: origem || '',
-      pago: false,
-      data: new Date().toISOString()
-    });
-    console.log(`[COMISSAO] ${vendedorNome} (${pct}%): R$${(v * pct / 100 / 100).toFixed(2)} (empresa ${empresa.id})`);
+
+    let vendedorIdAtual = String(refInicial);
+    const nomeLivre = String(refInicial); // fallback: comissão legado por nome livre (não é conta cadastrada)
+    const vistos = new Set();
+    let nivel = 0;
+    while (vendedorIdAtual && nivel < 5 && !vistos.has(vendedorIdAtual)) {
+      vistos.add(vendedorIdAtual);
+      let vd = null;
+      try {
+        const doc = await VENDEDORES_COL().doc(vendedorIdAtual).get();
+        if (doc.exists) vd = { id: doc.id, ...doc.data() };
+      } catch (e) {}
+      const vendedorNome = vd ? (vd.nome || vendedorIdAtual) : nomeLivre;
+      const comissaoCentavos = calcularComissaoCentavos(vd, v);
+      await COMISSOES_COL().add({
+        empresaId: empresa.id,
+        empresaNome: empresa.nome || '',
+        vendedorId: vd ? vd.id : null,
+        vendedor: vendedorNome,
+        valorPagoCentavos: v,
+        percentual: (vd && vd.tipoComissao === 'fixo') ? null : (vd && vd.comissaoPct != null ? vd.comissaoPct : COMISSAO_PCT),
+        comissaoCentavos,
+        origem: origem || '',
+        pago: false,
+        data: new Date().toISOString()
+      });
+      console.log(`[COMISSAO] ${vendedorNome}: R$${(comissaoCentavos / 100).toFixed(2)} (empresa ${empresa.id}${nivel > 0 ? ', nível ' + nivel : ''})`);
+      vendedorIdAtual = (vd && vd.vendedorPrincipalId) ? String(vd.vendedorPrincipalId) : null;
+      nivel++;
+    }
   } catch (e) { console.error('[COMISSAO] erro:', e.message); }
 }
 function dataMaisMeses(meses) {
@@ -8832,9 +8879,21 @@ app.post('/admin/vendedor-login', limiteLogin, async (req, res) => {
 app.get('/admin/vendedores', exigirAdmin, async (req, res) => {
   try {
     const snap = await VENDEDORES_COL().get();
+    const porId = {};
+    snap.docs.forEach(d => { porId[d.id] = d.data(); });
     const vendedores = snap.docs.map(d => {
       const x = d.data();
-      return { id: d.id, nome: x.nome || '', email: x.email || '', cnpj: x.cnpj || '', endereco: x.endereco || '', whatsapp: x.whatsapp || '', banco: x.banco || {}, comissaoPct: (x.comissaoPct != null ? x.comissaoPct : COMISSAO_PCT), ativo: x.ativo !== false, autocadastro: !!x.autocadastro, contratoAceito: !!(x.contrato && x.contrato.aceito), criadoEm: x.criadoEm || null };
+      const principal = x.vendedorPrincipalId ? porId[x.vendedorPrincipalId] : null;
+      return {
+        id: d.id, nome: x.nome || '', email: x.email || '', cnpj: x.cnpj || '', endereco: x.endereco || '', whatsapp: x.whatsapp || '', banco: x.banco || {},
+        comissaoPct: (x.comissaoPct != null ? x.comissaoPct : COMISSAO_PCT),
+        tipoComissao: x.tipoComissao === 'fixo' ? 'fixo' : 'percentual',
+        comissaoValorFixoCentavos: x.comissaoValorFixoCentavos != null ? x.comissaoValorFixoCentavos : null,
+        walletIdAsaas: x.walletIdAsaas || null,
+        vendedorPrincipalId: x.vendedorPrincipalId || null,
+        vendedorPrincipalNome: principal ? (principal.nome || '') : null,
+        ativo: x.ativo !== false, autocadastro: !!x.autocadastro, contratoAceito: !!(x.contrato && x.contrato.aceito), criadoEm: x.criadoEm || null
+      };
     }).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
     res.json({ ok: true, vendedores });
   } catch (err) {
@@ -8854,10 +8913,22 @@ app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
     const banco = b.banco && typeof b.banco === 'object' ? b.banco : {};
     const senhaHash = await bcrypt.hash(senha, 10);
     const pct = (b.comissaoPct != null && Number(b.comissaoPct) >= 0) ? Number(b.comissaoPct) : COMISSAO_PCT;
+    // Vínculo opcional com o representante principal (modelo de 2 níveis: a
+    // comissão dele é registrada automaticamente junto, ver registrarComissao).
+    let vendedorPrincipalId = null;
+    if (b.vendedorPrincipalId) {
+      const pDoc = await VENDEDORES_COL().doc(String(b.vendedorPrincipalId)).get();
+      if (!pDoc.exists) return res.status(400).json({ ok: false, erro: 'Representante principal não encontrado' });
+      vendedorPrincipalId = pDoc.id;
+    }
     const ref = await VENDEDORES_COL().add({
       nome, email, senhaHash, ativo: true,
       cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
       comissaoPct: pct,
+      tipoComissao: b.tipoComissao === 'fixo' ? 'fixo' : 'percentual',
+      comissaoValorFixoCentavos: b.comissaoValorFixoCentavos != null ? Math.max(0, Math.round(Number(b.comissaoValorFixoCentavos) || 0)) : null,
+      walletIdAsaas: b.walletIdAsaas ? String(b.walletIdAsaas).trim() : null,
+      vendedorPrincipalId,
       banco: {
         banco: banco.banco || null, agencia: banco.agencia || null, conta: banco.conta || null,
         tipo: banco.tipo || null, pix: banco.pix || null, titular: banco.titular || null
@@ -8881,6 +8952,18 @@ app.patch('/admin/vendedores/:id', exigirAdmin, async (req, res) => {
     if (b.email !== undefined && String(b.email).trim()) upd.email = String(b.email).trim().toLowerCase();
     if (b.banco && typeof b.banco === 'object') upd.banco = { ...(doc.data().banco || {}), ...b.banco };
     if (b.comissaoPct !== undefined && Number(b.comissaoPct) >= 0) upd.comissaoPct = Number(b.comissaoPct);
+    if (b.tipoComissao !== undefined) upd.tipoComissao = b.tipoComissao === 'fixo' ? 'fixo' : 'percentual';
+    if (b.comissaoValorFixoCentavos !== undefined) upd.comissaoValorFixoCentavos = (b.comissaoValorFixoCentavos === null || b.comissaoValorFixoCentavos === '') ? null : Math.max(0, Math.round(Number(b.comissaoValorFixoCentavos) || 0));
+    if (b.walletIdAsaas !== undefined) upd.walletIdAsaas = b.walletIdAsaas ? String(b.walletIdAsaas).trim() : null;
+    if (b.vendedorPrincipalId !== undefined) {
+      if (!b.vendedorPrincipalId) upd.vendedorPrincipalId = null;
+      else {
+        if (String(b.vendedorPrincipalId) === req.params.id) return res.status(400).json({ ok: false, erro: 'Um vendedor não pode ser principal dele mesmo' });
+        const pDoc = await VENDEDORES_COL().doc(String(b.vendedorPrincipalId)).get();
+        if (!pDoc.exists) return res.status(400).json({ ok: false, erro: 'Representante principal não encontrado' });
+        upd.vendedorPrincipalId = pDoc.id;
+      }
+    }
     if (b.ativo !== undefined) upd.ativo = !!b.ativo;
     if (b.novaSenha) upd.senhaHash = await bcrypt.hash(String(b.novaSenha), 10);
     if (!Object.keys(upd).length) return res.json({ ok: true });
@@ -8911,10 +8994,25 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
     const banco = b.banco && typeof b.banco === 'object' ? b.banco : {};
     const senhaHash = await bcrypt.hash(senha, 10);
     const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim();
+    // Link de convite de um representante (?principal=ID) — vincula esse novo
+    // vendedor como SECUNDÁRIO dele, automaticamente. A comissão (R$ ou %) de
+    // cada um fica a critério do admin editar depois; esse vínculo só diz
+    // "quando este secundário vender, registra a comissão do principal também".
+    let vendedorPrincipalId = null;
+    if (b.principal) {
+      try {
+        const pDoc = await VENDEDORES_COL().doc(String(b.principal)).get();
+        if (pDoc.exists) vendedorPrincipalId = pDoc.id;
+      } catch (e) {}
+    }
     await VENDEDORES_COL().add({
       nome, email, senhaHash, ativo: true, autocadastro: true,
       cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
       comissaoPct: COMISSAO_PCT,
+      tipoComissao: 'percentual',
+      comissaoValorFixoCentavos: null,
+      walletIdAsaas: null,
+      vendedorPrincipalId,
       banco: {
         banco: banco.banco || null, agencia: banco.agencia || null, conta: banco.conta || null,
         tipo: banco.tipo || null, pix: banco.pix || null, titular: banco.titular || null
@@ -11305,6 +11403,121 @@ async function processarAgendaMarketing() {
   }
 }
 
+// ============================================================
+// RELATÓRIO DIÁRIO PRO GESTOR — funil de recomendados (WhatsApp)
+// ============================================================
+// Calcula o funil dos AMIGOS RECOMENDADOS (LEADS_COL) cujo `criadoEm` passa no
+// filtro `pertenceAoPeriodo` — cumulativo (cada etapa já inclui quem passou
+// da anterior): convites enviados → não responderam/interagiram → resgataram
+// o presente (clicou "quero meu presente") → agendaram → compraram.
+// "Interagiu" é medido pelo HISTÓRICO DE CONVERSA (mandou qualquer mensagem),
+// não pela etapa do Kanban — porque "respondeu e recusou" (nao_tem_interesse)
+// também é interação, só não avança o funil.
+async function calcularFunilRecomendados(empresaId, pertenceAoPeriodo) {
+  const vazio = { recomendadores: 0, convites: 0, naoResponderam: 0, interagiram: 0, resgataram: 0, agendaram: 0, compraram: 0, vendas: 0 };
+  try {
+    const leadsSnap = await LEADS_COL().where('empresaId', '==', empresaId).get();
+    const leadsDoPeriodo = [];
+    leadsSnap.forEach(doc => { const d = doc.data(); if (pertenceAoPeriodo(d.criadoEm)) leadsDoPeriodo.push(d); });
+    if (!leadsDoPeriodo.length) return vazio;
+
+    const interagentes = new Set();
+    try {
+      const msgSnap = await MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'in').get();
+      msgSnap.forEach(doc => { const t = soDigitosTel(doc.data().telefone); if (t) interagentes.add(t); });
+    } catch (e) { console.error('[RELATORIO-DIARIO] erro ao checar interações:', e.message); }
+
+    const recomendadores = new Set();
+    let naoResponderam = 0, interagiram = 0, resgataram = 0, agendaram = 0, compraram = 0, vendas = 0;
+    leadsDoPeriodo.forEach(d => {
+      if (d.telefoneRecomendador) recomendadores.add(d.telefoneRecomendador);
+      const tel = soDigitosTel(d.telefoneRecomendado || '');
+      const interagiu = (tel && interagentes.has(tel)) || d.etapa === 'nao_tem_interesse';
+      if (interagiu) interagiram++; else naoResponderam++;
+      if (['recebeu_premio', 'agendou', 'comprou'].includes(d.etapa)) resgataram++;
+      if (['agendou', 'comprou'].includes(d.etapa)) agendaram++;
+      if (d.etapa === 'comprou') { compraram++; vendas += Number(d.valorCompra) || 0; }
+    });
+    return { recomendadores: recomendadores.size, convites: leadsDoPeriodo.length, naoResponderam, interagiram, resgataram, agendaram, compraram, vendas };
+  } catch (e) {
+    console.error('[RELATORIO-DIARIO] erro ao calcular funil:', e.message);
+    return vazio;
+  }
+}
+
+function fmtDinheiroRelatorio(v) { return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+function montarTextoRelatorioDiario(empresaNome, diaLabel, hoje, mes) {
+  return `📊 *Relatório do dia — ${empresaNome}*\n📅 ${diaLabel}\n\n`
+    + `*Hoje:*\n`
+    + `👥 Clientes que recomendaram: ${hoje.recomendadores}\n`
+    + `✉️ Amigos recomendados (convites enviados): ${hoje.convites}\n`
+    + `🙈 Não responderam: ${hoje.naoResponderam}\n`
+    + `💬 Interagiram: ${hoje.interagiram}\n`
+    + `🎁 Resgataram o presente: ${hoje.resgataram}\n`
+    + `📅 Agendaram visita: ${hoje.agendaram}\n`
+    + `🛍️ Compraram: ${hoje.compraram}\n\n`
+    + `*Acumulado do mês:*\n`
+    + `👥 Clientes que recomendaram: ${mes.recomendadores}\n`
+    + `✉️ Amigos recomendados: ${mes.convites}\n`
+    + `🎁 Resgataram o presente: ${mes.resgataram}\n`
+    + `📅 Agendaram: ${mes.agendaram}\n`
+    + `🛍️ Compraram: ${mes.compraram} — ${fmtDinheiroRelatorio(mes.vendas)} em vendas\n\n`
+    + `Bom trabalho! 💪`;
+}
+
+const DIAS_SEMANA_RELATORIO = { dom: 'Domingo', seg: 'Segunda-feira', ter: 'Terça-feira', qua: 'Quarta-feira', qui: 'Quinta-feira', sex: 'Sexta-feira', sab: 'Sábado' };
+
+// Roda em loop curto (ver iniciarRelatorioDiarioGestor) — pra cada empresa com
+// o recurso ligado, manda 1x por dia, no horário configurado, nos dias
+// marcados. Idempotente via campo `relatorioDiarioUltimoEnvio` (transação).
+async function processarRelatorioDiarioGestor() {
+  if (!db) return;
+  try {
+    const { dia, hora } = agoraBrasilia();
+    const hojeISO = diaBrasiliaISO(0);
+    const mesAtual = hojeISO.slice(0, 7);
+    const empresas = await EMPRESAS_COL().get();
+    for (const empDoc of empresas.docs) {
+      const raw = empDoc.data();
+      const cfg = { ...EMPRESA_PADRAO, ...(raw.configuracao || {}) };
+      if (!cfg.relatorioDiarioAtivo || !cfg.relatorioDiarioTelefone) continue;
+      const dias = Array.isArray(cfg.relatorioDiarioDias) && cfg.relatorioDiarioDias.length ? cfg.relatorioDiarioDias : EMPRESA_PADRAO.relatorioDiarioDias;
+      if (!dias.includes(dia)) continue;
+      const horaAlvo = cfg.relatorioDiarioHora || EMPRESA_PADRAO.relatorioDiarioHora;
+      if (hora < horaAlvo) continue; // ainda não chegou a hora hoje
+      if (raw.relatorioDiarioUltimoEnvio === hojeISO) continue; // já mandou hoje
+
+      const empresaId = empDoc.id;
+      const ref = EMPRESAS_COL().doc(empresaId);
+      const reivindicou = await db.runTransaction(async (t) => {
+        const s = await t.get(ref);
+        if ((s.data() || {}).relatorioDiarioUltimoEnvio === hojeISO) return false;
+        t.set(ref, { relatorioDiarioUltimoEnvio: hojeISO }, { merge: true });
+        return true;
+      });
+      if (!reivindicou) continue;
+
+      const empresaFull = await getEmpresaById(empresaId);
+      if (!empresaFull) continue;
+      const [resumoHoje, resumoMes] = await Promise.all([
+        calcularFunilRecomendados(empresaId, iso => pertenceAoDiaBrasilia(iso, hojeISO)),
+        calcularFunilRecomendados(empresaId, iso => pertenceAoMesBrasilia(iso, mesAtual))
+      ]);
+      const texto = montarTextoRelatorioDiario(empresaFull.nome, DIAS_SEMANA_RELATORIO[dia] || dia, resumoHoje, resumoMes);
+      const contexto = { empresa: empresaFull, empresaId, oficial: oficialDaEmpresa(empresaFull), zapi: zapiDaEmpresa(empresaFull) };
+      await tenantContext.run(contexto, async () => {
+        try { await enviarSemLog(cfg.relatorioDiarioTelefone, texto); }
+        catch (e) { console.error(`[RELATORIO-DIARIO] falha ao enviar pra ${empresaId}:`, e.message); }
+      });
+    }
+  } catch (e) { console.error('[RELATORIO-DIARIO] erro geral:', e.message); }
+}
+function iniciarRelatorioDiarioGestor() {
+  setInterval(processarRelatorioDiarioGestor, 15 * 60 * 1000).unref?.();
+  processarRelatorioDiarioGestor();
+}
+
 function iniciarExecutorAgendamentos() {
   const INTERVALO_EXECUTOR_MS = 1 * 60 * 1000;
   executarAgendamentosPendentes();
@@ -11438,4 +11651,6 @@ app.listen(PORT, () => {
   setInterval(processarAgendaMarketing, 60 * 60 * 1000).unref?.();
   processarAgendaMarketing();
   console.log('Executor de agendamentos iniciado (checagem a cada 1 min)');
+  iniciarRelatorioDiarioGestor();
+  console.log('Relatório diário pro gestor iniciado (checagem a cada 15 min)');
 });

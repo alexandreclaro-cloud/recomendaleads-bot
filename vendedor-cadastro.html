@@ -117,7 +117,10 @@ document.getElementById('enviar').addEventListener('click', async () => {
     nome, email, senha,
     cnpj: v('cnpj'), whatsapp: v('whatsapp'), endereco: v('endereco'),
     banco: { banco: v('b_banco'), pix: v('b_pix'), agencia: v('b_ag'), conta: v('b_conta'), tipo: v('b_tipo'), titular: v('b_titular') },
-    aceiteContrato: true
+    aceiteContrato: true,
+    // Link de convite de um representante (?principal=ID na URL) — vincula
+    // esse cadastro como secundário dele automaticamente, sem precisar editar depois.
+    principal: new URLSearchParams(location.search).get('principal') || undefined
   };
   const btn = document.getElementById('enviar'); btn.disabled = true; st.textContent = 'Enviando...';
   try {

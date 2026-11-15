@@ -1049,15 +1049,20 @@ async function carregarVendedores() {
     vendedoresCache = data.vendedores || [];
     if (!vendedoresCache.length) { cont.innerHTML = '<span class="muted">Nenhum vendedor cadastrado ainda.</span>'; return; }
     cont.innerHTML = `<table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
-      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Nome</th><th>E-mail (login)</th><th>Comissão</th><th>Status</th><th></th></tr></thead>
+      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Nome</th><th>E-mail (login)</th><th>Comissão</th><th>Status</th><th></th><th></th></tr></thead>
       <tbody>${vendedoresCache.map(v => `<tr style="border-top:1px solid var(--line,#eee);">
-        <td style="padding:8px 4px;font-weight:600;">${esc(v.nome)}${v.autocadastro ? ' <span style="font-size:0.7rem;background:#EFF6FF;color:#2563EB;padding:1px 6px;border-radius:6px;">autocadastro</span>' : ''}</td>
+        <td style="padding:8px 4px;font-weight:600;">${esc(v.nome)}${v.autocadastro ? ' <span style="font-size:0.7rem;background:#EFF6FF;color:#2563EB;padding:1px 6px;border-radius:6px;">autocadastro</span>' : ''}${v.vendedorPrincipalNome ? ` <span style="font-size:0.7rem;background:#FFFBEB;color:#92400E;padding:1px 6px;border-radius:6px;">secundário de ${esc(v.vendedorPrincipalNome)}</span>` : ''}</td>
         <td class="muted">${esc(v.email)}</td>
-        <td style="font-weight:700;">${v.comissaoPct != null ? v.comissaoPct : 20}%</td>
+        <td style="font-weight:700;">${v.tipoComissao === 'fixo' ? fmtReais(v.comissaoValorFixoCentavos || 0) : (v.comissaoPct != null ? v.comissaoPct : 20) + '%'}</td>
         <td>${v.ativo ? '<span style="color:#1d9e75;font-weight:600;">Ativo</span>' : '<span style="color:#c0392b;">Inativo</span>'}</td>
         <td><button class="btn btn-secondary btn-mini" data-edv="${esc(v.id)}">Editar</button></td>
+        <td><button class="btn btn-secondary btn-mini" data-linkv="${esc(v.id)}" title="Link de convite — quem se cadastrar por ele vira secundário deste vendedor">🔗 Link p/ secundário</button></td>
       </tr>`).join('')}</tbody></table>`;
     cont.querySelectorAll('[data-edv]').forEach(b => b.addEventListener('click', () => abrirModalVendedor(b.dataset.edv)));
+    cont.querySelectorAll('[data-linkv]').forEach(b => b.addEventListener('click', () => {
+      const link = `${API_BASE}/vendedor/cadastro?principal=${encodeURIComponent(b.dataset.linkv)}`;
+      navigator.clipboard.writeText(link).then(() => { const t = b.textContent; b.textContent = 'Copiado!'; setTimeout(() => b.textContent = t, 1500); });
+    }));
   } catch (e) { cont.innerHTML = '<span class="muted">Não foi possível carregar os vendedores.</span>'; }
 }
 
@@ -1085,11 +1090,29 @@ function abrirModalVendedor(id) {
           ${campo('v_whats', 'WhatsApp', v.whatsapp, '(11) 90000-0000')}
         </div>
         ${campo('v_end', 'Endereço completo', v.endereco, 'Rua, nº, cidade/UF, CEP')}
+        <div class="campo">
+          <label>Tipo de comissão</label>
+          <select class="input" id="v_tipoComissao">
+            <option value="percentual" ${v.tipoComissao !== 'fixo' ? 'selected' : ''}>Percentual (%) — padrão</option>
+            <option value="fixo" ${v.tipoComissao === 'fixo' ? 'selected' : ''}>Valor fixo (R$) — ex: representante</option>
+          </select>
+        </div>
         <div class="grid2">
           ${campo('v_comissao', 'Comissão (%)', (v.comissaoPct != null ? v.comissaoPct : 20), 'Ex: 20', 'number')}
-          <div></div>
+          ${campo('v_comissaoFixa', 'Comissão fixa (R$)', v.comissaoValorFixoCentavos != null ? (v.comissaoValorFixoCentavos / 100).toFixed(2).replace('.', ',') : '', 'Ex: 197,00')}
         </div>
-        <div class="muted" style="font-size:0.74rem;margin-top:-6px;">Padrão 20%. Você pode definir um valor diferente por vendedor (ex: metas individuais).</div>
+        <div class="muted" style="font-size:0.74rem;margin-top:-6px;">Percentual padrão 20%. "Valor fixo" é pra acordo tipo representante — mesmo valor em R$ não importa o preço cobrado do cliente.</div>
+        <div class="grid2" style="margin-top:10px;">
+          <div class="campo">
+            <label>Representante principal (opcional)</label>
+            <select class="input" id="v_principal">
+              <option value="">Nenhum (vendedor de 1º nível)</option>
+              ${vendedoresCache.filter(x => x.id !== id).map(x => `<option value="${esc(x.id)}" ${v.vendedorPrincipalId === x.id ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}
+            </select>
+          </div>
+          ${campo('v_walletId', 'Wallet ID Asaas (p/ split futuro)', v.walletIdAsaas, 'ex: 11111111-1111-...')}
+        </div>
+        <div class="muted" style="font-size:0.74rem;margin-top:-6px;">Se tiver um principal, a comissão dele é registrada automaticamente junto, toda vez que ESTE vendedor fechar uma venda.</div>
         <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:14px 0 6px;">Dados bancários (para receber comissão)</div>
         <div class="grid2">
           ${campo('v_banco', 'Banco', b.banco, 'Ex: Nubank, Itaú')}
@@ -1119,9 +1142,15 @@ function abrirModalVendedor(id) {
 async function salvarVendedor(id) {
   const v = (cid) => { const el = document.getElementById(cid); return el ? el.value.trim() : ''; };
   const msg = document.getElementById('vMsg'); msg.textContent = '';
+  const tipoComissao = document.getElementById('v_tipoComissao').value;
+  const comissaoFixaStr = v('v_comissaoFixa');
   const body = {
     nome: v('v_nome'), email: v('v_email'), cnpj: v('v_cnpj'), whatsapp: v('v_whats'), endereco: v('v_end'),
     comissaoPct: (v('v_comissao') === '' ? 20 : parseFloat(v('v_comissao'))),
+    tipoComissao,
+    comissaoValorFixoCentavos: comissaoFixaStr ? reaisParaCentavos(comissaoFixaStr) : null,
+    walletIdAsaas: v('v_walletId') || null,
+    vendedorPrincipalId: document.getElementById('v_principal').value || null,
     banco: { banco: v('v_banco'), pix: v('v_pix'), agencia: v('v_ag'), conta: v('v_conta'), tipo: v('v_tipoconta'), titular: v('v_titular') }
   };
   const senha = v('v_senha');
