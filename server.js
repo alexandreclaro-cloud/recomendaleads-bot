@@ -5613,18 +5613,42 @@ function calcularComissaoCentavos(vd, valorPagoCentavos) {
   return Math.round((Number(valorPagoCentavos) || 0) * pct / 100);
 }
 
+// Dias sem uma venda NOVA (não renovação) que desligam o representante do
+// programa de comissão — contrato de representação comercial, cláusula 8.
+const DIAS_INATIVIDADE_DESLIGAMENTO = 90;
+// Ciclo final após o desligamento: ainda recebe comissão de clientes JÁ
+// atribuídos a ele durante esses dias — depois disso, para de vez (cláusula 8.4-8.6).
+const DIAS_CICLO_FINAL_DESLIGAMENTO = 30;
+
+// Um vendedor desligado (90 dias sem venda nova + 30 dias de ciclo final já
+// vencidos) não recebe mais NENHUMA comissão nova — mas o que ele já ganhou
+// antes continua dele (não mexe em registros já criados).
+function vendedorAindaRecebeComissao(vd) {
+  if (!vd) return true; // nome livre legado (não é conta cadastrada) — sempre credita, comportamento de sempre
+  if (vd.ativo === false) return false;
+  if (vd.desligadoEm) {
+    const fimCicloFinal = new Date(vd.desligadoEm).getTime() + DIAS_CICLO_FINAL_DESLIGAMENTO * 86400000;
+    if (Date.now() > fimCicloFinal) return false;
+  }
+  return true;
+}
+
 // Registra a comissão do vendedor que fechou a empresa, a cada pagamento —
 // e, se esse vendedor tiver um "vendedorPrincipalId" (representante de quem
 // ele é secundário/recrutado), registra TAMBÉM a comissão do principal sobre
 // o MESMO pagamento, numa linha separada. Sobe a cadeia até não achar mais
 // principal (limite de 5 níveis, só por segurança contra ciclo acidental).
 // empresa.vendedorComissao guarda o ID do vendedor (ou um nome livre, legado).
+// `origem === 'venda-avista'` é tratada como "venda nova" pro relógio de
+// inatividade de 90 dias (cláusula 8) — renovação mensal ('mensalidade') não
+// conta como venda nova, só mantém a comissão de quem ainda está ativo.
 async function registrarComissao(empresa, valorCentavos, origem) {
   try {
     const refInicial = empresa && empresa.vendedorComissao;
     if (!refInicial) return;
     const v = Number(valorCentavos) || 0;
     if (v <= 0) return;
+    const ehVendaNova = origem === 'venda-avista';
 
     let vendedorIdAtual = String(refInicial);
     const nomeLivre = String(refInicial); // fallback: comissão legado por nome livre (não é conta cadastrada)
@@ -5637,25 +5661,92 @@ async function registrarComissao(empresa, valorCentavos, origem) {
         const doc = await VENDEDORES_COL().doc(vendedorIdAtual).get();
         if (doc.exists) vd = { id: doc.id, ...doc.data() };
       } catch (e) {}
-      const vendedorNome = vd ? (vd.nome || vendedorIdAtual) : nomeLivre;
-      const comissaoCentavos = calcularComissaoCentavos(vd, v);
-      await COMISSOES_COL().add({
-        empresaId: empresa.id,
-        empresaNome: empresa.nome || '',
-        vendedorId: vd ? vd.id : null,
-        vendedor: vendedorNome,
-        valorPagoCentavos: v,
-        percentual: (vd && vd.tipoComissao === 'fixo') ? null : (vd && vd.comissaoPct != null ? vd.comissaoPct : COMISSAO_PCT),
-        comissaoCentavos,
-        origem: origem || '',
-        pago: false,
-        data: new Date().toISOString()
-      });
-      console.log(`[COMISSAO] ${vendedorNome}: R$${(comissaoCentavos / 100).toFixed(2)} (empresa ${empresa.id}${nivel > 0 ? ', nível ' + nivel : ''})`);
+
+      // Venda nova reseta o relógio de inatividade (e reativa quem tinha
+      // acabado de ser marcado como desligado, mas voltou a vender a tempo).
+      if (ehVendaNova && vd) {
+        try { await VENDEDORES_COL().doc(vd.id).set({ ultimaVendaEm: new Date().toISOString(), desligadoEm: null }, { merge: true }); } catch (e) {}
+      }
+
+      if (vendedorAindaRecebeComissao(vd)) {
+        const vendedorNome = vd ? (vd.nome || vendedorIdAtual) : nomeLivre;
+        const comissaoCentavos = calcularComissaoCentavos(vd, v);
+        await COMISSOES_COL().add({
+          empresaId: empresa.id,
+          empresaNome: empresa.nome || '',
+          vendedorId: vd ? vd.id : null,
+          vendedor: vendedorNome,
+          valorPagoCentavos: v,
+          percentual: (vd && vd.tipoComissao === 'fixo') ? null : (vd && vd.comissaoPct != null ? vd.comissaoPct : COMISSAO_PCT),
+          comissaoCentavos,
+          origem: origem || '',
+          pago: false,
+          data: new Date().toISOString()
+        });
+        console.log(`[COMISSAO] ${vendedorNome}: R$${(comissaoCentavos / 100).toFixed(2)} (empresa ${empresa.id}${nivel > 0 ? ', nível ' + nivel : ''})`);
+      } else {
+        console.log(`[COMISSAO] ${vd.nome || vendedorIdAtual} desligado por inatividade — comissão NÃO registrada (empresa ${empresa.id})`);
+      }
       vendedorIdAtual = (vd && vd.vendedorPrincipalId) ? String(vd.vendedorPrincipalId) : null;
       nivel++;
     }
   } catch (e) { console.error('[COMISSAO] erro:', e.message); }
+}
+
+// Registra a comissão de ADESÃO/IMPLANTAÇÃO — diferente da comissão
+// recorrente: vai 100% pra quem o admin indicar (metade do valor da adesão),
+// SEM subir pro representante principal (ele não tem acesso a essa parte,
+// mesmo que o vendedor seja secundário dele — Anexo I do contrato).
+async function registrarComissaoAdesao({ vendedorId, valorAdesaoCentavos, clienteNome }) {
+  const doc = await VENDEDORES_COL().doc(String(vendedorId)).get();
+  if (!doc.exists) throw new Error('Vendedor não encontrado');
+  const vd = { id: doc.id, ...doc.data() };
+  if (!vendedorAindaRecebeComissao(vd)) throw new Error('Este vendedor está desligado por inatividade e não pode mais receber comissão');
+  const valor = Math.max(0, Math.round(Number(valorAdesaoCentavos) || 0));
+  const comissaoCentavos = Math.round(valor * 0.5);
+  await COMISSOES_COL().add({
+    empresaId: null,
+    empresaNome: clienteNome || '',
+    vendedorId: vd.id,
+    vendedor: vd.nome || '',
+    valorPagoCentavos: valor,
+    percentual: 50,
+    comissaoCentavos,
+    origem: 'adesao',
+    pago: false,
+    data: new Date().toISOString()
+  });
+  // Conta como venda nova pro relógio de inatividade desse vendedor (só dele —
+  // não sobe pro principal, igual o dinheiro).
+  await VENDEDORES_COL().doc(vd.id).set({ ultimaVendaEm: new Date().toISOString(), desligadoEm: null }, { merge: true });
+  return comissaoCentavos;
+}
+
+// Roda periodicamente: marca `desligadoEm` em quem passou 90 dias sem venda
+// nova, e desativa de vez (ativo:false) quem já passou o ciclo final de 30
+// dias depois disso — cláusula 8 do contrato de representação comercial.
+async function processarDesligamentoPorInatividade() {
+  if (!db) return;
+  try {
+    const snap = await VENDEDORES_COL().where('ativo', '==', true).get();
+    const agora = Date.now();
+    for (const doc of snap.docs) {
+      const vd = doc.data();
+      const refData = vd.ultimaVendaEm || vd.criadoEm;
+      if (!refData) continue;
+      const diasSemVenda = (agora - new Date(refData).getTime()) / 86400000;
+      if (!vd.desligadoEm && diasSemVenda >= DIAS_INATIVIDADE_DESLIGAMENTO) {
+        await doc.ref.set({ desligadoEm: new Date().toISOString() }, { merge: true });
+        console.log(`[DESLIGAMENTO] vendedor ${vd.nome || doc.id} marcado por inatividade (${Math.floor(diasSemVenda)} dias sem venda nova)`);
+      } else if (vd.desligadoEm) {
+        const fimCicloFinal = new Date(vd.desligadoEm).getTime() + DIAS_CICLO_FINAL_DESLIGAMENTO * 86400000;
+        if (agora > fimCicloFinal) {
+          await doc.ref.set({ ativo: false }, { merge: true });
+          console.log(`[DESLIGAMENTO] vendedor ${vd.nome || doc.id} desativado — ciclo final de 30 dias encerrado`);
+        }
+      }
+    }
+  } catch (e) { console.error('[DESLIGAMENTO] erro:', e.message); }
 }
 function dataMaisMeses(meses) {
   const d = new Date();
@@ -8940,6 +9031,8 @@ app.get('/admin/vendedores', exigirAdmin, async (req, res) => {
         walletIdAsaas: x.walletIdAsaas || null,
         vendedorPrincipalId: x.vendedorPrincipalId || null,
         vendedorPrincipalNome: principal ? (principal.nome || '') : null,
+        ultimaVendaEm: x.ultimaVendaEm || null,
+        desligadoEm: x.desligadoEm || null,
         ativo: x.ativo !== false, autocadastro: !!x.autocadastro, contratoAceito: !!(x.contrato && x.contrato.aceito), criadoEm: x.criadoEm || null
       };
     }).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
@@ -9012,13 +9105,35 @@ app.patch('/admin/vendedores/:id', exigirAdmin, async (req, res) => {
         upd.vendedorPrincipalId = pDoc.id;
       }
     }
-    if (b.ativo !== undefined) upd.ativo = !!b.ativo;
+    if (b.ativo !== undefined) {
+      upd.ativo = !!b.ativo;
+      // Reativar manualmente (admin) limpa o desligamento por inatividade e
+      // reinicia o relógio dos 90 dias a partir de agora.
+      if (upd.ativo) { upd.desligadoEm = null; upd.ultimaVendaEm = new Date().toISOString(); }
+    }
     if (b.novaSenha) upd.senhaHash = await bcrypt.hash(String(b.novaSenha), 10);
     if (!Object.keys(upd).length) return res.json({ ok: true });
     await ref.set(upd, { merge: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Registra a comissão de ADESÃO/IMPLANTAÇÃO de um cliente vendido por esse
+// vendedor — metade do valor da adesão, SEM subir pro representante
+// principal (Anexo I do contrato: ele não tem acesso a essa parte).
+app.post('/admin/vendedores/:id/comissao-adesao', exigirAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const valorAdesaoCentavos = Math.round((Number(b.valorAdesao) || 0) * 100);
+    if (valorAdesaoCentavos <= 0) return res.status(400).json({ ok: false, erro: 'Informe o valor da adesão' });
+    const comissaoCentavos = await registrarComissaoAdesao({
+      vendedorId: req.params.id, valorAdesaoCentavos, clienteNome: String(b.clienteNome || '').trim() || null
+    });
+    res.json({ ok: true, comissaoCentavos });
+  } catch (err) {
+    res.status(400).json({ ok: false, erro: err.message });
   }
 });
 
@@ -11701,4 +11816,9 @@ app.listen(PORT, () => {
   console.log('Executor de agendamentos iniciado (checagem a cada 1 min)');
   iniciarRelatorioDiarioGestor();
   console.log('Relatório diário pro gestor iniciado (checagem a cada 15 min)');
+  // Desligamento por inatividade (cláusula 8 do contrato de representação):
+  // checa 1x por dia quem passou 90 dias sem venda nova.
+  setInterval(processarDesligamentoPorInatividade, 24 * 60 * 60 * 1000).unref?.();
+  processarDesligamentoPorInatividade();
+  console.log('Desligamento por inatividade iniciado (checagem diária)');
 });
