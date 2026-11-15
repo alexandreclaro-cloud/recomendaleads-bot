@@ -1083,12 +1083,12 @@ async function carregarVendedores() {
     cont.innerHTML = `<table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
       <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Nome</th><th>E-mail (login)</th><th>Comissão</th><th>Status</th><th></th><th></th><th></th></tr></thead>
       <tbody>${vendedoresCache.map(v => `<tr style="border-top:1px solid var(--line,#eee);">
-        <td style="padding:8px 4px;font-weight:600;">${esc(v.nome)}${v.autocadastro ? ' <span style="font-size:0.7rem;background:#EFF6FF;color:#2563EB;padding:1px 6px;border-radius:6px;">autocadastro</span>' : ''}${v.vendedorPrincipalNome ? ` <span style="font-size:0.7rem;background:#FFFBEB;color:#92400E;padding:1px 6px;border-radius:6px;">secundário de ${esc(v.vendedorPrincipalNome)}</span>` : ''}</td>
+        <td style="padding:8px 4px;font-weight:600;">${esc(v.nome)}${v.autocadastro ? ' <span style="font-size:0.7rem;background:#EFF6FF;color:#2563EB;padding:1px 6px;border-radius:6px;">autocadastro</span>' : ''}${v.vendedorPrincipalNome ? ` <span style="font-size:0.7rem;background:#FFFBEB;color:#92400E;padding:1px 6px;border-radius:6px;">afiliado de ${esc(v.vendedorPrincipalNome)}</span>` : ''}</td>
         <td class="muted">${esc(v.email)}</td>
         <td style="font-weight:700;">${v.tipoComissao === 'fixo' ? fmtReais(v.comissaoValorFixoCentavos || 0) : (v.comissaoPct != null ? v.comissaoPct : 20) + '%'}</td>
         <td>${statusVendedorHtml(v)}</td>
         <td><button class="btn btn-secondary btn-mini" data-edv="${esc(v.id)}">Editar</button></td>
-        <td><button class="btn btn-secondary btn-mini" data-linkv="${esc(v.id)}" title="Link de convite — quem se cadastrar por ele vira secundário deste vendedor">🔗 Link p/ secundário</button></td>
+        <td><button class="btn btn-secondary btn-mini" data-linkv="${esc(v.id)}" title="Link de convite — quem se cadastrar por ele vira afiliado deste representante">🔗 Link p/ afiliado</button></td>
         <td><button class="btn btn-secondary btn-mini" data-adesao="${esc(v.id)}" title="Registra a comissão de adesão (50% do valor, não sobe pro principal)">➕ Adesão</button></td>
       </tr>`).join('')}</tbody></table>`;
     cont.querySelectorAll('[data-edv]').forEach(b => b.addEventListener('click', () => abrirModalVendedor(b.dataset.edv)));
@@ -1138,9 +1138,9 @@ function abrirModalVendedor(id) {
         <div class="muted" style="font-size:0.74rem;margin-top:-6px;">Percentual padrão 20%. "Valor fixo" é pra acordo tipo representante — mesmo valor em R$ não importa o preço cobrado do cliente.</div>
         <div class="grid2" style="margin-top:10px;">
           <div class="campo">
-            <label>Representante principal (opcional)</label>
+            <label>Representante vinculado (opcional — se este cadastro for um Afiliado)</label>
             <select class="input" id="v_principal">
-              <option value="">Nenhum (vendedor de 1º nível)</option>
+              <option value="">Nenhum (é um Representante, não um Afiliado)</option>
               ${vendedoresCache.filter(x => x.id !== id).map(x => `<option value="${esc(x.id)}" ${v.vendedorPrincipalId === x.id ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}
             </select>
           </div>
