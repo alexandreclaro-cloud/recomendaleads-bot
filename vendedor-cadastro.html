@@ -62,12 +62,7 @@
     <label>Endereço completo</label>
     <input type="text" id="endereco" placeholder="Rua, nº, bairro, cidade/UF, CEP">
 
-    <div class="sec">Conta Asaas (recebimento da comissão)</div>
-    <label>Wallet ID da sua conta Asaas</label>
-    <input type="text" id="walletId" placeholder="ex: 11111111-1111-1111-1111-111111111111">
-    <div class="hint">Crie uma conta grátis em <a href="https://www.asaas.com" target="_blank" rel="noopener">asaas.com</a> (leva poucos minutos) e copie o Wallet ID em Configurações → Integrações → Chave de API, ou peça pra quem te enviou esse link. É pra lá que sua comissão vai.</div>
-
-    <div class="sec">Dados bancários (alternativo, caso o pagamento não seja via Asaas)</div>
+    <div class="sec">Dados bancários (para receber sua comissão)</div>
     <div class="grid2">
       <div><label>Banco</label><input type="text" id="b_banco" placeholder="Ex: Nubank, Itaú"></div>
       <div><label>Chave Pix</label><input type="text" id="b_pix" placeholder="CPF, e-mail, telefone..."></div>
@@ -103,6 +98,13 @@
     <h2>Cadastro concluído!</h2>
     <p>Seus dados foram enviados. Agora é só entrar no painel com seu e-mail e senha.</p>
     <a href="/admin">Acessar o painel</a>
+
+    <div style="text-align:left;margin-top:28px;padding-top:20px;border-top:1px solid var(--line);">
+      <div class="sec" style="margin:0 0 8px;">Opcional — receber mais rápido</div>
+      <p class="hint" style="font-size:.86rem;">Se quiser, crie uma conta grátis no Asaas pra receber sua comissão direto por lá, sem depender do Pix manual. Não é obrigatório — se preferir, já anotamos seus dados bancários acima e você recebe por Pix normalmente.</p>
+      <a href="https://www.asaas.com" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;background:#fff;color:var(--brand);border:1.5px solid var(--brand);font-weight:700;padding:10px 18px;border-radius:10px;text-decoration:none;">Criar minha conta Asaas (grátis)</a>
+      <p class="hint" style="font-size:.86rem;margin-top:10px;">Depois de criar, copie o <b>Wallet ID</b> (em Configurações → Integrações) e manda pra gente por WhatsApp — a gente configura o recebimento automático pra você.</p>
+    </div>
   </div>
 </div>
 
@@ -121,7 +123,6 @@ document.getElementById('enviar').addEventListener('click', async () => {
   const payload = {
     nome, email, senha,
     cnpj: v('cnpj'), whatsapp: v('whatsapp'), endereco: v('endereco'),
-    walletIdAsaas: v('walletId'),
     banco: { banco: v('b_banco'), pix: v('b_pix'), agencia: v('b_ag'), conta: v('b_conta'), tipo: v('b_tipo'), titular: v('b_titular') },
     aceiteContrato: true,
     // Link de convite de um representante (?principal=ID na URL) — vincula
