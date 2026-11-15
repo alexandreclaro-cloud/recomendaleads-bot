@@ -5607,8 +5607,16 @@ async function gravarAssinatura(empresaId, dados) {
 // Calcula a comissão de UM vendedor sobre um pagamento — percentual (padrão,
 // legado) ou valor fixo (acordo tipo "representante": R$X fixos por venda,
 // independente do preço cobrado do cliente).
-function calcularComissaoCentavos(vd, valorPagoCentavos) {
-  if (vd && vd.tipoComissao === 'fixo') return Math.max(0, Math.round(Number(vd.comissaoValorFixoCentavos) || 0));
+// `comoUpline` = true quando esse vendedor está sendo creditado como
+// REPRESENTANTE de quem vendeu de verdade (um Afiliado dele), não como quem
+// fechou a venda — usa um valor fixo DIFERENTE (comissaoOverrideFixoCentavos),
+// porque a mesma pessoa ganha um valor vendendo sozinha (R$197, ex.) e outro,
+// menor, só por ser representante de quem vendeu (R$97, ex.).
+function calcularComissaoCentavos(vd, valorPagoCentavos, comoUpline) {
+  if (vd && vd.tipoComissao === 'fixo') {
+    const campo = comoUpline ? vd.comissaoOverrideFixoCentavos : vd.comissaoValorFixoCentavos;
+    return Math.max(0, Math.round(Number(campo) || 0));
+  }
   const pct = (vd && vd.comissaoPct != null && Number(vd.comissaoPct) >= 0) ? Number(vd.comissaoPct) : COMISSAO_PCT;
   return Math.round((Number(valorPagoCentavos) || 0) * pct / 100);
 }
@@ -5670,7 +5678,7 @@ async function registrarComissao(empresa, valorCentavos, origem) {
 
       if (vendedorAindaRecebeComissao(vd)) {
         const vendedorNome = vd ? (vd.nome || vendedorIdAtual) : nomeLivre;
-        const comissaoCentavos = calcularComissaoCentavos(vd, v);
+        const comissaoCentavos = calcularComissaoCentavos(vd, v, nivel > 0);
         await COMISSOES_COL().add({
           empresaId: empresa.id,
           empresaNome: empresa.nome || '',
@@ -5679,6 +5687,7 @@ async function registrarComissao(empresa, valorCentavos, origem) {
           valorPagoCentavos: v,
           percentual: (vd && vd.tipoComissao === 'fixo') ? null : (vd && vd.comissaoPct != null ? vd.comissaoPct : COMISSAO_PCT),
           comissaoCentavos,
+          comoUpline: nivel > 0,
           origem: origem || '',
           pago: false,
           data: new Date().toISOString()
@@ -9031,6 +9040,7 @@ app.get('/admin/vendedores', exigirAdmin, async (req, res) => {
         comissaoPct: (x.comissaoPct != null ? x.comissaoPct : COMISSAO_PCT),
         tipoComissao: x.tipoComissao === 'fixo' ? 'fixo' : 'percentual',
         comissaoValorFixoCentavos: x.comissaoValorFixoCentavos != null ? x.comissaoValorFixoCentavos : null,
+        comissaoOverrideFixoCentavos: x.comissaoOverrideFixoCentavos != null ? x.comissaoOverrideFixoCentavos : null,
         walletIdAsaas: x.walletIdAsaas || null,
         vendedorPrincipalId: x.vendedorPrincipalId || null,
         vendedorPrincipalNome: principal ? (principal.nome || '') : null,
@@ -9071,6 +9081,7 @@ app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
       comissaoPct: pct,
       tipoComissao: b.tipoComissao === 'fixo' ? 'fixo' : 'percentual',
       comissaoValorFixoCentavos: b.comissaoValorFixoCentavos != null ? Math.max(0, Math.round(Number(b.comissaoValorFixoCentavos) || 0)) : null,
+      comissaoOverrideFixoCentavos: b.comissaoOverrideFixoCentavos != null ? Math.max(0, Math.round(Number(b.comissaoOverrideFixoCentavos) || 0)) : null,
       walletIdAsaas: b.walletIdAsaas ? String(b.walletIdAsaas).trim() : null,
       vendedorPrincipalId,
       banco: {
@@ -9098,6 +9109,7 @@ app.patch('/admin/vendedores/:id', exigirAdmin, async (req, res) => {
     if (b.comissaoPct !== undefined && Number(b.comissaoPct) >= 0) upd.comissaoPct = Number(b.comissaoPct);
     if (b.tipoComissao !== undefined) upd.tipoComissao = b.tipoComissao === 'fixo' ? 'fixo' : 'percentual';
     if (b.comissaoValorFixoCentavos !== undefined) upd.comissaoValorFixoCentavos = (b.comissaoValorFixoCentavos === null || b.comissaoValorFixoCentavos === '') ? null : Math.max(0, Math.round(Number(b.comissaoValorFixoCentavos) || 0));
+    if (b.comissaoOverrideFixoCentavos !== undefined) upd.comissaoOverrideFixoCentavos = (b.comissaoOverrideFixoCentavos === null || b.comissaoOverrideFixoCentavos === '') ? null : Math.max(0, Math.round(Number(b.comissaoOverrideFixoCentavos) || 0));
     if (b.walletIdAsaas !== undefined) upd.walletIdAsaas = b.walletIdAsaas ? String(b.walletIdAsaas).trim() : null;
     if (b.vendedorPrincipalId !== undefined) {
       if (!b.vendedorPrincipalId) upd.vendedorPrincipalId = null;
@@ -9177,6 +9189,7 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
       comissaoPct: COMISSAO_PCT,
       tipoComissao: 'percentual',
       comissaoValorFixoCentavos: null,
+      comissaoOverrideFixoCentavos: null,
       walletIdAsaas: b.walletIdAsaas ? String(b.walletIdAsaas).trim() : null,
       vendedorPrincipalId,
       banco: {
