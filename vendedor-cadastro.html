@@ -54,7 +54,7 @@
     <label>Nome completo</label>
     <input type="text" id="nome" placeholder="Seu nome completo">
     <div class="grid2">
-      <div><label>CPF / CNPJ</label><input type="text" id="cnpj" placeholder="000.000.000-00"></div>
+      <div><label>CNPJ</label><input type="text" id="cnpj" placeholder="00.000.000/0000-00"></div>
       <div><label>WhatsApp</label><input type="tel" id="whatsapp" placeholder="(11) 90000-0000"></div>
     </div>
     <label>E-mail (será seu login)</label>
@@ -116,6 +116,8 @@ document.getElementById('enviar').addEventListener('click', async () => {
   if (!nome) { return fail('Informe o seu nome.'); }
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { return fail('Informe um e-mail válido.'); }
   if (senha.length < 4) { return fail('Crie uma senha com ao menos 4 caracteres.'); }
+  const cnpjDigitos = v('cnpj').replace(/\D/g, '');
+  if (cnpjDigitos && cnpjDigitos.length !== 14) { return fail('Informe um CNPJ válido (14 dígitos) — CPF não é aceito neste cadastro.'); }
   if (!document.getElementById('aceite').checked) { return fail('É preciso ler e aceitar o contrato.'); }
 
   const payload = {

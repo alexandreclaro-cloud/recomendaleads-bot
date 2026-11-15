@@ -8984,8 +8984,6 @@ app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
       criadoEm: new Date().toISOString()
     });
     res.json({ ok: true, vendedor: { id: ref.id, nome, email } });
-    enviarBoasVindasVendedor({ nome, email, vendedorId: ref.id, req })
-      .catch(e => console.error('[EMAIL] boas-vindas vendedor falhou:', e.message));
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -9055,7 +9053,7 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
         if (pDoc.exists) vendedorPrincipalId = pDoc.id;
       } catch (e) {}
     }
-    const vref = await VENDEDORES_COL().add({
+    await VENDEDORES_COL().add({
       nome, email, senhaHash, ativo: true, autocadastro: true,
       cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
       comissaoPct: COMISSAO_PCT,
@@ -9071,8 +9069,6 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
       criadoEm: new Date().toISOString()
     });
     res.json({ ok: true });
-    enviarBoasVindasVendedor({ nome, email, vendedorId: vref.id, req })
-      .catch(e => console.error('[EMAIL] boas-vindas vendedor falhou:', e.message));
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
