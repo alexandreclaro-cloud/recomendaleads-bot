@@ -72,6 +72,11 @@
       <div><label>Titular da conta</label><input type="text" id="b_titular" placeholder="Nome do titular"></div>
     </div>
 
+    <div class="sec">Conta Asaas (opcional)</div>
+    <label>Wallet ID da sua conta Asaas (opcional)</label>
+    <input type="text" id="walletId" placeholder="ex: 11111111-1111-1111-1111-111111111111">
+    <div class="hint">Só preencha se já tiver uma conta no <a href="https://www.asaas.com" target="_blank" rel="noopener">asaas.com</a> — fica em Configurações → Integrações. Não tem? Sem problema, deixe em branco e você recebe por Pix normalmente.</div>
+
     <div class="sec">Acesso</div>
     <label>Crie uma senha</label>
     <input type="password" id="senha" placeholder="Senha para acessar o painel">
@@ -98,13 +103,6 @@
     <h2>Cadastro concluído!</h2>
     <p>Seus dados foram enviados. Agora é só entrar no painel com seu e-mail e senha.</p>
     <a href="/admin">Acessar o painel</a>
-
-    <div style="text-align:left;margin-top:28px;padding-top:20px;border-top:1px solid var(--line);">
-      <div class="sec" style="margin:0 0 8px;">Opcional — receber mais rápido</div>
-      <p class="hint" style="font-size:.86rem;">Se quiser, crie uma conta grátis no Asaas pra receber sua comissão direto por lá, sem depender do Pix manual. Não é obrigatório — se preferir, já anotamos seus dados bancários acima e você recebe por Pix normalmente.</p>
-      <a href="https://www.asaas.com" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;background:#fff;color:var(--brand);border:1.5px solid var(--brand);font-weight:700;padding:10px 18px;border-radius:10px;text-decoration:none;">Criar minha conta Asaas (grátis)</a>
-      <p class="hint" style="font-size:.86rem;margin-top:10px;">Depois de criar, copie o <b>Wallet ID</b> (em Configurações → Integrações) e manda pra gente por WhatsApp — a gente configura o recebimento automático pra você.</p>
-    </div>
   </div>
 </div>
 
@@ -124,6 +122,7 @@ document.getElementById('enviar').addEventListener('click', async () => {
     nome, email, senha,
     cnpj: v('cnpj'), whatsapp: v('whatsapp'), endereco: v('endereco'),
     banco: { banco: v('b_banco'), pix: v('b_pix'), agencia: v('b_ag'), conta: v('b_conta'), tipo: v('b_tipo'), titular: v('b_titular') },
+    walletIdAsaas: v('walletId'),
     aceiteContrato: true,
     // Link de convite de um representante (?principal=ID na URL) — vincula
     // esse cadastro como secundário dele automaticamente, sem precisar editar depois.
