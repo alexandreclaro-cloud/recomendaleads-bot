@@ -6087,6 +6087,9 @@ app.post('/minha-senha', exigirLoginEmpresa, async (req, res) => {
 // Versão vigente do contrato. Ao publicar uma nova versão, troque aqui para
 // re-exigir o aceite de todas as empresas.
 const CONTRATO_VERSAO = '1.0-2026-06-26';
+// Versão do contrato de REPRESENTAÇÃO COMERCIAL (vendedor-cadastro.html) —
+// troque aqui se o texto mudar, pra saber qual versão cada um aceitou.
+const VENDEDOR_CONTRATO_VERSAO = '1.0-2026-11-15';
 
 // Status do aceite da empresa logada.
 app.get('/meu-contrato', exigirLoginEmpresa, async (req, res) => {
@@ -9180,7 +9183,7 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
         banco: banco.banco || null, agencia: banco.agencia || null, conta: banco.conta || null,
         tipo: banco.tipo || null, pix: banco.pix || null, titular: banco.titular || null
       },
-      contrato: { aceito: true, em: new Date().toISOString(), ip },
+      contrato: { aceito: true, versao: VENDEDOR_CONTRATO_VERSAO, em: new Date().toISOString(), ip, nome, cnpj: b.cnpj || null, pix: banco.pix || null },
       criadoEm: new Date().toISOString()
     });
     res.json({ ok: true });
