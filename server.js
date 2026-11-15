@@ -7389,6 +7389,54 @@ function emailBoasVindasHtml({ nomeEmpresa, emailLogin, senha, linkLogin }) {
   </body></html>`;
 }
 
+// E-mail de boas-vindas pro VENDEDOR recém-cadastrado (self-cadastro ou criado
+// pelo admin) — já vem com o link próprio dele pra convidar um vendedor
+// secundário (comissão dele soma automática, ver registrarComissao). Assim
+// ele não precisa pedir esse link pro admin toda vez.
+function emailBoasVindasVendedorHtml({ nome, linkLogin, linkConvite }) {
+  const AZUL = '#1E5BE0', VERDE = '#16A34A';
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f6fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);">
+        <tr><td style="background:${AZUL};padding:28px 32px;">
+          <span style="color:#fff;font-size:22px;font-weight:800;letter-spacing:.3px;">RecomendaLeads</span>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <h1 style="margin:0 0 12px;font-size:22px;color:#111827;">Bem-vindo(a), ${nome}! 🎉</h1>
+          <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#374151;">
+            Seu cadastro de vendedor na <strong>RecomendaLeads</strong> está pronto. Use seu e-mail e a senha que você criou pra entrar no painel.
+          </p>
+          <div style="text-align:center;margin:0 0 24px;">
+            <a href="${linkLogin}" style="display:inline-block;background:${VERDE};color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 30px;border-radius:10px;">Acessar meu painel →</a>
+          </div>
+          <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;margin:0 0 10px;">
+            <p style="margin:0 0 8px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Seu link pra convidar outro vendedor</p>
+            <p style="margin:0 0 10px;font-size:14px;line-height:1.5;color:#374151;">Quem se cadastrar por esse link já entra vinculado a você — a comissão dele soma com a sua automaticamente, em toda venda que ele fechar.</p>
+            <p style="margin:0;font-size:14px;word-break:break-all;"><a href="${linkConvite}" style="color:${AZUL};">${linkConvite}</a></p>
+          </div>
+          <p style="margin:0;font-size:14px;line-height:1.6;color:#6b7280;">
+            Qualquer dúvida, é só responder este e-mail.<br>— Equipe RecomendaLeads
+          </p>
+        </td></tr>
+        <tr><td style="background:#f8fafc;padding:16px 32px;text-align:center;font-size:12px;color:#9ca3af;">
+          RecomendaLeads · A terceira onda das vendas
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+  </body></html>`;
+}
+
+async function enviarBoasVindasVendedor({ nome, email, vendedorId, req }) {
+  const base = (req && urlBase(req)) || process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
+  const linkLogin = `${base}/admin`;
+  const linkConvite = `${base}/vendedor/cadastro?principal=${encodeURIComponent(vendedorId)}`;
+  const html = emailBoasVindasVendedorHtml({ nome, linkLogin, linkConvite });
+  const texto = `Bem-vindo(a), ${nome}!\n\nSeu cadastro de vendedor na RecomendaLeads está pronto.\n\nAcesse: ${linkLogin}\n\nSeu link pra convidar outro vendedor (a comissão dele soma com a sua automaticamente): ${linkConvite}\n\n— Equipe RecomendaLeads`;
+  return enviarEmail({ para: email, assunto: '🎉 Bem-vindo(a) à RecomendaLeads — seu link de vendedor', html, texto });
+}
+
 async function enviarBoasVindasCliente({ nomeEmpresa, emailLogin, senha, req }) {
   const base = (req && urlBase(req)) || process.env.APP_BASE_URL || 'https://www.recomendaleads.com.br';
   const linkLogin = `${base}/login`;
@@ -8936,6 +8984,8 @@ app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
       criadoEm: new Date().toISOString()
     });
     res.json({ ok: true, vendedor: { id: ref.id, nome, email } });
+    enviarBoasVindasVendedor({ nome, email, vendedorId: ref.id, req })
+      .catch(e => console.error('[EMAIL] boas-vindas vendedor falhou:', e.message));
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -9005,7 +9055,7 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
         if (pDoc.exists) vendedorPrincipalId = pDoc.id;
       } catch (e) {}
     }
-    await VENDEDORES_COL().add({
+    const vref = await VENDEDORES_COL().add({
       nome, email, senhaHash, ativo: true, autocadastro: true,
       cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
       comissaoPct: COMISSAO_PCT,
@@ -9021,6 +9071,8 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
       criadoEm: new Date().toISOString()
     });
     res.json({ ok: true });
+    enviarBoasVindasVendedor({ nome, email, vendedorId: vref.id, req })
+      .catch(e => console.error('[EMAIL] boas-vindas vendedor falhou:', e.message));
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
