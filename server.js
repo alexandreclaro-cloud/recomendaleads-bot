@@ -8953,6 +8953,46 @@ app.get('/admin/vendedor/meu-perfil', exigirAcessoAdmin, async (req, res) => {
   }
 });
 
+// Clientes vinculados a este vendedor — e, se ele for Representante, também
+// os clientes dos Afiliados vinculados a ele (controle de vendas da equipe
+// dele). Nunca mostra clientes de fora desse escopo.
+app.get('/admin/vendedor/meus-clientes', exigirAcessoAdmin, async (req, res) => {
+  try {
+    if (req.acesso.ehDono) return res.status(400).json({ ok: false, erro: 'Esta rota é só para login de vendedor' });
+    const meuId = req.acesso.vendedorId;
+    const afiliadosSnap = await VENDEDORES_COL().where('vendedorPrincipalId', '==', meuId).get();
+    const nomePorAfiliadoId = {};
+    afiliadosSnap.forEach(d => { nomePorAfiliadoId[d.id] = d.data().nome || ''; });
+    const escopo = [meuId, ...Object.keys(nomePorAfiliadoId)];
+    const temAfiliados = escopo.length > 1;
+
+    const empresas = [];
+    // Firestore 'in' aceita até 10 valores por consulta — quebra em blocos
+    // se o Representante tiver mais de 9 Afiliados vinculados.
+    for (let i = 0; i < escopo.length; i += 10) {
+      const bloco = escopo.slice(i, i + 10);
+      const snap = await EMPRESAS_COL().where('vendedorComissao', 'in', bloco).get();
+      snap.forEach(d => {
+        const data = d.data();
+        empresas.push({
+          id: d.id,
+          nome: data.nome || null,
+          email: data.email || null,
+          criadoEm: data.criadoEm || null,
+          pendenteAprovacao: !!data.pendenteAprovacao,
+          plano: data.plano || null,
+          statusPagamento: data.statusPagamento || null,
+          vendedorNome: data.vendedorComissao === meuId ? 'Você' : (nomePorAfiliadoId[data.vendedorComissao] || '—')
+        });
+      });
+    }
+    empresas.sort((a, b) => new Date(b.criadoEm || 0) - new Date(a.criadoEm || 0));
+    res.json({ ok: true, empresas, temAfiliados });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Troca a chave (invalida o link antigo) — use se o link vazar.
 app.post('/admin/cadastro-cliente-link/rotacionar', exigirAdmin, async (req, res) => {
   try {

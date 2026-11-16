@@ -137,6 +137,19 @@
       </div>
     </div>
 
+    <div class="card vendedor-only" style="display:none; padding:0;overflow:auto; margin-bottom:18px;">
+      <div style="padding:16px 18px 0;">
+        <h2 style="font-size:1rem; margin:0 0 4px;">👥 Meus clientes e adimplência</h2>
+        <p class="muted" style="font-size:0.85rem; margin:0 0 12px;" id="meusClientesDesc">Clientes vinculados a você.</p>
+      </div>
+      <table>
+        <thead><tr style="text-align:left;color:var(--text-dim);">
+          <th style="padding:10px 12px;">Cliente</th><th>E-mail</th><th id="colVendedor" style="display:none;">Vendedor</th><th>Plano</th><th>Pagamento</th><th>Cadastro</th>
+        </tr></thead>
+        <tbody id="tabelaMeusClientes"><tr><td colspan="6" class="muted" style="padding:18px;">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+
     <div class="card dono-only" style="margin-bottom:18px; padding:16px 18px;">
       <h2 style="font-size:1rem; margin:0 0 4px;">🔑 Meu acesso (login fácil)</h2>
       <p class="muted" style="font-size:0.82rem; margin:0 0 12px;">Crie um e-mail e senha pra entrar sem digitar a chave longa. <span id="acessoAtual"></span></p>
@@ -455,6 +468,7 @@ function mostrarApp() {
     document.querySelector('.user-box .meta small').textContent = 'Vendedor';
     document.getElementById('conviteTexto').textContent = 'Um link só, pra sempre. Mande pra qualquer cliente: ele preenche os dados da empresa e assina o contrato. O cadastro já fica vinculado à sua comissão e entra pendente — o dono valida antes de liberar o acesso.';
     carregarMeuPerfilVendedor();
+    carregarMeusClientes();
   }
   icons();
   carregarComissoes();
@@ -505,6 +519,36 @@ async function mostrarDemoCliente() {
   btn.disabled = false;
 }
 document.getElementById('demoClienteBtn').addEventListener('click', mostrarDemoCliente);
+
+// Clientes do vendedor (e dos Afiliados vinculados a ele, se tiver) com
+// status de adimplência — o Representante enxerga as vendas dos Afiliados
+// dele aqui, mesmo sem ter acesso ao resto do painel do dono.
+async function carregarMeusClientes() {
+  const tb = document.getElementById('tabelaMeusClientes');
+  if (!tb) return;
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/vendedor/meus-clientes`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) { tb.innerHTML = '<tr><td colspan="6" class="muted" style="padding:18px;">Não foi possível carregar.</td></tr>'; return; }
+    const lista = data.empresas || [];
+    const colVend = document.getElementById('colVendedor');
+    if (colVend) colVend.style.display = data.temAfiliados ? '' : 'none';
+    document.getElementById('meusClientesDesc').textContent = data.temAfiliados
+      ? 'Seus clientes e os clientes dos Afiliados vinculados a você.'
+      : 'Clientes vinculados a você.';
+    const totalCols = data.temAfiliados ? 6 : 5;
+    if (!lista.length) { tb.innerHTML = `<tr><td colspan="${totalCols}" class="muted" style="padding:18px;">Nenhum cliente ainda.</td></tr>`; return; }
+    tb.innerHTML = lista.map(e => `
+      <tr>
+        <td style="padding:10px 12px;"><b>${esc(e.nome) || '—'}</b>${e.pendenteAprovacao ? '<div style="margin-top:3px"><span class="pill off">⏳ Aguardando validação</span></div>' : ''}</td>
+        <td>${esc(e.email) || '—'}</td>
+        ${data.temAfiliados ? `<td>${esc(e.vendedorNome)}</td>` : ''}
+        <td>${esc(e.plano) || '—'}</td>
+        <td>${pagamentoPill(e.statusPagamento)}</td>
+        <td>${fmtData(e.criadoEm)}</td>
+      </tr>`).join('');
+  } catch (e) { tb.innerHTML = '<tr><td colspan="6" class="muted" style="padding:18px;">Erro de conexão.</td></tr>'; }
+}
 
 async function carregarMeuAcesso() {
   try {
