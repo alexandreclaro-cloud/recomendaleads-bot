@@ -9137,6 +9137,40 @@ app.patch('/admin/vendedores/:id', exigirAdmin, async (req, res) => {
   }
 });
 
+// Exclui um cadastro de vendedor — somente o dono (exigirAdmin já barra
+// vendedor logado, só passa quem tem ehDono). Se já tiver comissão registrada
+// ou algum Afiliado vinculado a ele, exige confirmação digitando o nome exato
+// (mesma trava usada em DELETE /admin/empresas), pra não apagar histórico
+// financeiro ou deixar afiliado órfão por engano.
+app.delete('/admin/vendedores/:id', exigirAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const ref = VENDEDORES_COL().doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ ok: false, erro: 'Vendedor não encontrado' });
+    const nome = (snap.data() || {}).nome || '';
+
+    const temComissao = !(await COMISSOES_COL().where('vendedorId', '==', id).limit(1).get()).empty;
+    const afiliadosVinculados = await VENDEDORES_COL().where('vendedorPrincipalId', '==', id).limit(1).get();
+    const temAfiliado = !afiliadosVinculados.empty;
+    if (temComissao || temAfiliado) {
+      const confirmar = String((req.query && req.query.confirmar) || '');
+      if (confirmar.trim() !== nome.trim()) {
+        return res.status(428).json({
+          ok: false, precisaConfirmar: true, nome,
+          erro: temAfiliado
+            ? 'Este vendedor tem Afiliado(s) vinculados a ele. Para excluir, confirme digitando o nome exato.'
+            : 'Este vendedor já tem comissão registrada. Para excluir, confirme digitando o nome exato.'
+        });
+      }
+    }
+    await ref.delete();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Registra a comissão de ADESÃO/IMPLANTAÇÃO de um cliente vendido por esse
 // vendedor — metade do valor da adesão, SEM subir pro representante
 // principal (Anexo I do contrato: ele não tem acesso a essa parte).
