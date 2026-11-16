@@ -2246,7 +2246,7 @@ function renderBoard() {
     // A coluna "Comprou" é ÚNICA pro sistema todo — clientes (recomendador) que
     // "graduaram" pra cá (etapa === 'comprou' no funil deles) entram junto com
     // os recomendados, pra não ter uma segunda coluna "Comprou" duplicada.
-    const clientesComprou = ehColunaComprou(etapa) ? (clientesPipeline || []).filter(c => c.etapa === 'comprou') : [];
+    const clientesComprou = ehColunaComprou(etapa) ? clientesNoPeriodo((clientesPipeline || []).filter(c => c.etapa === 'comprou')) : [];
     const termoBusca = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
     const clientesComprouFiltrados = termoBusca
       ? clientesComprou.filter(c => (c.nome || '').toLowerCase().includes(termoBusca) || (c.telefone || '').includes(termoBusca))
@@ -2396,12 +2396,23 @@ document.getElementById('boardScrollRight').addEventListener('click', () => {
   document.getElementById('board').scrollBy({ left: 320, behavior: 'smooth' });
 });
 
+// Período dos cards do CLIENTE: vale a data que aparece no card (última conversa,
+// senão a última atualização), pra o card sumir/aparecer conforme o botão escolhido.
+function dataDoCardCliente(c) {
+  const d = String(c.telefone || '').replace(/\D/g, '');
+  return (d && ultimaComMap[d]) || c.atualizadoEm || c.criadoEm || null;
+}
+function clientesNoPeriodo(lista) {
+  const dentro = new Set(filtrarPorPeriodo(lista.map((c, i) => ({ i, criadoEm: dataDoCardCliente(c) })), periodoSelLeads).map(x => x.i));
+  return lista.filter((_, i) => dentro.has(i));
+}
+
 // Renderiza os cards do CLIENTE (recomendador) nas colunas fixas do funil.
 function renderClientesPipeline() {
   const termo = (document.getElementById('buscaLead').value || '').toLowerCase().trim();
   // Quem já "graduou" pra Comprou (etapa === 'comprou') sai daqui — vive na
   // coluna "Comprou" única do funil do Recomendado (ver renderBoard).
-  let lista = (clientesPipeline || []).filter(c => c.etapa !== 'comprou');
+  let lista = clientesNoPeriodo((clientesPipeline || []).filter(c => c.etapa !== 'comprou'));
   if (termo) lista = lista.filter(c => (c.nome || '').toLowerCase().includes(termo) || (c.telefone || '').includes(termo));
   CLI_ETAPAS.forEach(etapa => {
     const col = document.querySelector(`[data-coletapa="${etapa.id}"]`);
