@@ -1334,25 +1334,25 @@ function atualizarCamposComissaoVendedor(fromUserChange) {
   const help = document.getElementById('helpComissaoFixa');
   if (afiliado) {
     lblFixa.textContent = 'Comissão por venda — ele é Afiliado (R$)';
-    fixa.placeholder = 'Valor do contrato: tudo acima de R$ 297,00 — 100,00 no preço cheio de R$ 397,00';
+    fixa.placeholder = 'Valor do contrato: R$ 100,00 fixo, sempre (preço mínimo autorizado: R$ 347,00)';
     overrideWrap.style.display = 'none';
     // Afiliado nunca recebe repasse de upline (quem recebe é o Representante
     // acima dele) — se a pessoa acabou de virar Afiliado na tela, zera um
     // valor de override que tenha ficado de um cadastro anterior como Representante.
     if (fromUserChange) document.getElementById('v_comissaoOverride').value = '';
     help.innerHTML = 'A empresa sempre fica com os primeiros <b>R$ 200,00</b> de cada pagamento.<br>'
-      + '• O Representante acima dele fica com a faixa de R$ 200,00 até R$ 297,00 — <b>R$ 97,00</b>, automático.<br>'
-      + '• Ele (Afiliado) recebe tudo que passar de R$ 297,00 — qualquer valor acima disso, hoje equivalente a <b>R$ 100,00</b> no preço cheio de R$ 397,00.<br>'
+      + '• Ele (Afiliado) sempre recebe <b>R$ 100,00</b> fixos por venda — valor que não muda mesmo com desconto (ex.: rede de lojas). Preço mínimo autorizado: R$ 347,00.<br>'
+      + '• O Representante acima dele fica automaticamente com o que sobrar (preço − 200 − 100) — no preço cheio de R$ 397,00, isso dá <b>R$ 97,00</b>; no piso de R$ 347,00, dá R$ 47,00.<br>'
       + 'Ele não vê e não tem campo de "comissão como Representante" — o repasse acontece sozinho, sem ele saber.';
   } else {
     lblFixa.textContent = 'Comissão quando ELE vende sozinho (R$)';
     fixa.placeholder = 'Valor do contrato: tudo acima de R$ 200,00 da empresa — 197,00 no preço cheio de R$ 397,00';
     overrideWrap.style.display = '';
     const over = document.getElementById('v_comissaoOverride');
-    over.placeholder = 'Valor do contrato: 97,00 (faixa de R$ 200,00 a R$ 297,00) — só se ele tiver Afiliados vinculados a ele';
+    over.placeholder = 'Valor do contrato: o que sobrar (preço − 200 − 100 do Afiliado) — 97,00 no preço cheio; só se ele tiver Afiliados vinculados a ele';
     help.innerHTML = 'A empresa sempre fica com os primeiros <b>R$ 200,00</b> de cada pagamento.<br>'
-      + '• Vendendo sozinho: ele fica com qualquer valor acima de R$ 200,00 — qualquer valor acima disso, hoje equivalente a <b>R$ 197,00</b> no preço cheio de R$ 397,00.<br>'
-      + '• Se tiver Afiliado(s) vinculados a ele ("Representante vinculado" = ele): ganha a faixa de R$ 200,00 a R$ 297,00 — <b>R$ 97,00</b>, automático a cada venda do Afiliado (que fica com o que passar de R$ 297,00).';
+      + '• Vendendo sozinho: ele fica com tudo que passar de R$ 200,00 — no preço cheio de R$ 397,00 isso dá <b>R$ 197,00</b>. Preço mínimo autorizado: R$ 297,00 (comissão mínima: R$ 97,00).<br>'
+      + '• Se tiver Afiliado(s) vinculados a ele ("Representante vinculado" = ele): o Afiliado sempre recebe R$ 100,00 fixos, e ele fica automaticamente com o que sobrar — <b>R$ 97,00</b> no preço cheio. Preço mínimo autorizado nesse caso: R$ 347,00.';
   }
 }
 
