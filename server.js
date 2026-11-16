@@ -9238,10 +9238,15 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
       razaoSocial: String(b.nomeEmpresa || '').trim() || null,
       cnpj: b.cnpj || null, whatsapp: b.whatsapp || null,
       endereco: b.endereco || null, numero: b.numero || null, complemento: b.complemento || null, cep: b.cep || null,
+      // Este autocadastro é sempre do contrato de Representação Comercial, que
+      // promete valores FIXOS (197/100/97), nunca percentual — então já nasce
+      // configurado certo, em vez de cair no "20%" genérico até alguém lembrar
+      // de editar manualmente (isso já causou confusão: vendedor achando que
+      // ia receber 20% de comissão, quando na verdade é valor fixo do contrato).
       comissaoPct: COMISSAO_PCT,
-      tipoComissao: 'percentual',
-      comissaoValorFixoCentavos: null,
-      comissaoOverrideFixoCentavos: null,
+      tipoComissao: 'fixo',
+      comissaoValorFixoCentavos: vendedorPrincipalId ? 10000 : 19700,
+      comissaoOverrideFixoCentavos: vendedorPrincipalId ? null : 9700,
       walletIdAsaas: b.walletIdAsaas ? String(b.walletIdAsaas).trim() : null,
       vendedorPrincipalId,
       banco: {
