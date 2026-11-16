@@ -750,6 +750,7 @@
         <button class="subtab-btn" data-subtab="venda">Presente Cliente com venda</button>
         <button class="subtab-btn" data-subtab="cadencia">Follow-up — Sem resposta</button>
         <button class="subtab-btn" data-subtab="marketing">📅 Agenda de Marketing</button>
+        <button class="subtab-btn" data-subtab="relatorioDiario">📬 Relatório diário</button>
         <button class="subtab-btn" data-subtab="etapas">Etapas do Pipeline</button>
       </div>
 
@@ -1366,6 +1367,41 @@
           <span class="config-status-msg" id="statusTesteMarketing"></span>
         </div>
       </div>
+
+      <!-- Sub-aba: Relatório diário pro gestor (funil de recomendados) -->
+      <div class="subtab-panel" id="subtabRelatorioDiario">
+        <div class="config-card">
+          <h2>📬 Relatório diário pro gestor</h2>
+          <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">
+            Toda noite, manda pro WhatsApp do gestor um resumo do funil de recomendados: quantos amigos foram chamados, quantos não responderam, interagiram, resgataram o presente, agendaram e compraram — de hoje e acumulado do mês. Fora da janela de 24h precisa de um template aprovado (reaproveita o campo "Template de aviso interno" da aba API Oficial).
+          </p>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="relatorioDiarioAtivoInput" style="width:auto;"> Ativar o relatório diário
+          </label>
+          <label>WhatsApp do gestor (com DDD)</label>
+          <input type="text" id="relatorioDiarioTelInput" placeholder="Ex: 11999998888">
+          <label>Horário do envio</label>
+          <input type="time" id="relatorioDiarioHoraInput" style="max-width:140px;">
+          <label>Dias da semana</label>
+          <div id="relatorioDiarioDiasBox" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:4px;">
+            <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="seg" style="width:auto;">Seg</label>
+            <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="ter" style="width:auto;">Ter</label>
+            <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="qua" style="width:auto;">Qua</label>
+            <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="qui" style="width:auto;">Qui</label>
+            <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="sex" style="width:auto;">Sex</label>
+            <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="sab" style="width:auto;">Sáb</label>
+            <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="dom" style="width:auto;">Dom</label>
+          </div>
+          <div class="config-row-save">
+            <button class="config-save-btn" id="salvarRelatorioDiarioBtn">Salvar relatório diário</button>
+            <span class="config-status-msg" id="statusRelatorioDiario"></span>
+          </div>
+          <hr style="border:none; border-top:1px solid var(--border); margin:16px 0;">
+          <label>Testar agora (manda o relatório de hoje pro número salvo acima)</label>
+          <button class="config-save-btn" id="testarRelatorioDiarioBtn" style="background:transparent; border:1px solid var(--gold); color:var(--gold-deep);">📲 Enviar teste agora</button>
+          <span class="config-status-msg" id="statusTesteRelatorioDiario"></span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1662,6 +1698,7 @@ const MAPA_SUBTABS = {
   faixas: 'subtabFaixas',
   venda: 'subtabVenda',
   marketing: 'subtabMarketing',
+  relatorioDiario: 'subtabRelatorioDiario',
   cadencia: 'subtabCadencia',
   etapas: 'subtabEtapas'
 };

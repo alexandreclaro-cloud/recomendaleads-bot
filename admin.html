@@ -1119,11 +1119,16 @@ function abrirModalVendedor(id) {
         <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:6px 0;">Dados pessoais</div>
         <div class="grid2">
           ${campo('v_nome', 'Nome completo', v.nome, 'Nome do vendedor')}
+          ${campo('v_cpf', 'CPF', v.cpf, '000.000.000-00')}
           ${campo('v_email', 'E-mail (login)', v.email, 'email@exemplo.com', 'email')}
-          ${campo('v_cnpj', 'CNPJ', v.cnpj, '00.000.000/0000-00')}
           ${campo('v_whats', 'WhatsApp', v.whatsapp, '(11) 90000-0000')}
         </div>
         ${campo('v_end', 'Endereço completo', v.endereco, 'Rua, nº, cidade/UF, CEP')}
+        <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:14px 0 6px;">Dados da empresa</div>
+        <div class="grid2">
+          ${campo('v_nomeEmpresa', 'Nome da empresa (Razão Social)', v.razaoSocial, 'Razão social')}
+          ${campo('v_cnpj', 'CNPJ', v.cnpj, '00.000.000/0000-00')}
+        </div>
         <div class="campo">
           <label>Tipo de comissão</label>
           <select class="input" id="v_tipoComissao">
@@ -1184,7 +1189,7 @@ async function salvarVendedor(id) {
   const comissaoFixaStr = v('v_comissaoFixa');
   const comissaoOverrideStr = v('v_comissaoOverride');
   const body = {
-    nome: v('v_nome'), email: v('v_email'), cnpj: v('v_cnpj'), whatsapp: v('v_whats'), endereco: v('v_end'),
+    nome: v('v_nome'), email: v('v_email'), cpf: v('v_cpf'), razaoSocial: v('v_nomeEmpresa'), cnpj: v('v_cnpj'), whatsapp: v('v_whats'), endereco: v('v_end'),
     comissaoPct: (v('v_comissao') === '' ? 20 : parseFloat(v('v_comissao'))),
     tipoComissao,
     comissaoValorFixoCentavos: comissaoFixaStr ? reaisParaCentavos(comissaoFixaStr) : null,

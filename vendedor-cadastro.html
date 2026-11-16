@@ -50,17 +50,35 @@
   </div>
 
   <div class="card" id="card">
-    <div class="sec">Seus dados</div>
+    <div class="sec">Seus dados (pessoa física)</div>
     <label>Nome completo</label>
     <input type="text" id="nome" placeholder="Seu nome completo">
     <div class="grid2">
-      <div><label>CNPJ</label><input type="text" id="cnpj" placeholder="00.000.000/0000-00"></div>
-      <div><label>WhatsApp</label><input type="tel" id="whatsapp" placeholder="(11) 90000-0000"></div>
+      <div><label>CPF</label><input type="text" id="cpf" placeholder="000.000.000-00"></div>
+      <div>
+        <label>WhatsApp</label>
+        <div style="display:flex;gap:8px;">
+          <input type="tel" id="ddd" placeholder="11" maxlength="2" inputmode="numeric" style="max-width:62px;text-align:center;flex-shrink:0;">
+          <input type="tel" id="celular" placeholder="90000-0000" maxlength="10" inputmode="numeric" style="flex:1;">
+        </div>
+      </div>
     </div>
     <label>E-mail (será seu login)</label>
     <input type="email" id="email" placeholder="seu@email.com">
-    <label>Endereço completo</label>
-    <input type="text" id="endereco" placeholder="Rua, nº, bairro, cidade/UF, CEP">
+    <label>CEP</label>
+    <input type="text" id="cep" placeholder="00000-000" style="max-width:180px;">
+    <label>Endereço (rua/logradouro)</label>
+    <input type="text" id="endereco" placeholder="Rua, avenida...">
+    <div class="grid2">
+      <div><label>Número</label><input type="text" id="numero" placeholder="123"></div>
+      <div><label>Complemento (apto, bloco...)</label><input type="text" id="complemento" placeholder="Opcional"></div>
+    </div>
+
+    <div class="sec">Dados da empresa</div>
+    <label>Nome da empresa (Razão Social)</label>
+    <input type="text" id="nomeEmpresa" placeholder="Razão social da sua empresa">
+    <label>CNPJ</label>
+    <input type="text" id="cnpj" placeholder="00.000.000/0000-00">
 
     <div class="sec">Dados bancários (para receber sua comissão)</div>
     <div class="grid2">
@@ -87,7 +105,9 @@
         <p><b>CONTRATO DE REPRESENTAÇÃO COMERCIAL AUTÔNOMA — PLATAFORMA RECOMENDALEADS</b></p>
         <p>CONTRATANTE: TECH MENTOR SYSTEM LTDA., CNPJ 69.170.888/0001-07, com sede na Rua Almirante Lobo, nº 883, Sala 2, Ipiranga, CEP 04212-001, São Paulo/SP, e-mail atendimento@recomendaleads.com.br, responsável pela plataforma RecomendaLeads.</p>
         <p><b>REPRESENTANTE COMERCIAL</b> (dados preenchidos automaticamente conforme você completa o formulário acima):<br>
-        Nome/Razão social: <b id="ctrNome">—</b><br>
+        Nome completo do representante legal: <b id="ctrNome">—</b><br>
+        CPF: <b id="ctrCpf">—</b><br>
+        Empresa (Razão Social): <b id="ctrEmpresa">—</b><br>
         CNPJ: <b id="ctrCnpj">—</b><br>
         Chave Pix para recebimento de comissões: <b id="ctrPix">—</b></p>
         <p>As partes resolvem celebrar o presente Contrato de Representação Comercial Autônoma, regido pela Lei nº 4.886/1965, pelo Código Civil e pelas cláusulas e condições seguintes.</p>
@@ -213,16 +233,31 @@
 const API_BASE = window.location.origin;
 const v = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
 
+// DDD (2 dígitos) e número de celular (8 ou 9 dígitos) em caixas separadas —
+// só aceita dígitos e trava no tamanho certo, sem deixar faltar nem sobrar.
+(function () {
+  const ddd = document.getElementById('ddd');
+  const cel = document.getElementById('celular');
+  if (!ddd || !cel) return;
+  ddd.addEventListener('input', () => { ddd.value = ddd.value.replace(/\D/g, '').slice(0, 2); });
+  cel.addEventListener('input', () => {
+    let d = cel.value.replace(/\D/g, '').slice(0, 9);
+    cel.value = d.length > 4 ? d.slice(0, d.length - 4) + '-' + d.slice(-4) : d;
+  });
+})();
+
 // Preenche o cabeçalho do contrato com os dados que a pessoa for digitando —
 // assim, quando ela abre "Ler o contrato", já vê o próprio nome/CNPJ/Pix no
 // documento que está aceitando (não um template genérico em branco).
 function atualizarContratoDinamico() {
   const set = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val || '—'; };
   set('ctrNome', v('nome'));
+  set('ctrCpf', v('cpf'));
+  set('ctrEmpresa', v('nomeEmpresa'));
   set('ctrCnpj', v('cnpj'));
   set('ctrPix', v('b_pix'));
 }
-['nome', 'cnpj', 'b_pix'].forEach(id => {
+['nome', 'cpf', 'nomeEmpresa', 'cnpj', 'b_pix'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('input', atualizarContratoDinamico);
 });
@@ -248,11 +283,18 @@ document.getElementById('enviar').addEventListener('click', async () => {
   if (senha.length < 4) { return fail('Crie uma senha com ao menos 4 caracteres.'); }
   const cnpjDigitos = v('cnpj').replace(/\D/g, '');
   if (cnpjDigitos && cnpjDigitos.length !== 14) { return fail('Informe um CNPJ válido (14 dígitos) — CPF não é aceito neste cadastro.'); }
+  const dddDigitos = v('ddd').replace(/\D/g, '');
+  const celDigitos = v('celular').replace(/\D/g, '');
+  if (dddDigitos.length !== 2) { return fail('Informe o DDD com 2 dígitos.'); }
+  if (celDigitos.length !== 8 && celDigitos.length !== 9) { return fail('Informe o número do WhatsApp com 8 ou 9 dígitos.'); }
   if (!document.getElementById('aceite').checked) { return fail('É preciso ler e aceitar o contrato.'); }
 
   const payload = {
     nome, email, senha,
-    cnpj: v('cnpj'), whatsapp: v('whatsapp'), endereco: v('endereco'),
+    cpf: v('cpf'),
+    nomeEmpresa: v('nomeEmpresa'),
+    cnpj: v('cnpj'), whatsapp: `(${dddDigitos}) ${v('celular')}`,
+    endereco: v('endereco'), numero: v('numero'), complemento: v('complemento'), cep: v('cep'),
     banco: { banco: v('b_banco'), pix: v('b_pix'), agencia: v('b_ag'), conta: v('b_conta'), tipo: v('b_tipo'), titular: v('b_titular') },
     walletIdAsaas: v('walletId'),
     aceiteContrato: true,

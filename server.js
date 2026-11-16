@@ -9037,7 +9037,7 @@ app.get('/admin/vendedores', exigirAdmin, async (req, res) => {
       const x = d.data();
       const principal = x.vendedorPrincipalId ? porId[x.vendedorPrincipalId] : null;
       return {
-        id: d.id, nome: x.nome || '', email: x.email || '', cnpj: x.cnpj || '', endereco: x.endereco || '', whatsapp: x.whatsapp || '', banco: x.banco || {},
+        id: d.id, nome: x.nome || '', email: x.email || '', cpf: x.cpf || '', razaoSocial: x.razaoSocial || '', cnpj: x.cnpj || '', endereco: x.endereco || '', whatsapp: x.whatsapp || '', banco: x.banco || {},
         comissaoPct: (x.comissaoPct != null ? x.comissaoPct : COMISSAO_PCT),
         tipoComissao: x.tipoComissao === 'fixo' ? 'fixo' : 'percentual',
         comissaoValorFixoCentavos: x.comissaoValorFixoCentavos != null ? x.comissaoValorFixoCentavos : null,
@@ -9078,6 +9078,7 @@ app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
     }
     const ref = await VENDEDORES_COL().add({
       nome, email, senhaHash, ativo: true,
+      cpf: b.cpf || null, razaoSocial: b.razaoSocial || null,
       cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
       comissaoPct: pct,
       tipoComissao: b.tipoComissao === 'fixo' ? 'fixo' : 'percentual',
@@ -9104,7 +9105,7 @@ app.patch('/admin/vendedores/:id', exigirAdmin, async (req, res) => {
     if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Vendedor não encontrado' });
     const b = req.body || {};
     const upd = {};
-    ['nome', 'cnpj', 'endereco', 'whatsapp'].forEach(k => { if (b[k] !== undefined) upd[k] = (b[k] === '' ? null : b[k]); });
+    ['nome', 'cpf', 'razaoSocial', 'cnpj', 'endereco', 'whatsapp'].forEach(k => { if (b[k] !== undefined) upd[k] = (b[k] === '' ? null : b[k]); });
     if (b.email !== undefined && String(b.email).trim()) upd.email = String(b.email).trim().toLowerCase();
     if (b.banco && typeof b.banco === 'object') upd.banco = { ...(doc.data().banco || {}), ...b.banco };
     if (b.comissaoPct !== undefined && Number(b.comissaoPct) >= 0) upd.comissaoPct = Number(b.comissaoPct);
@@ -9199,7 +9200,10 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
     }
     await VENDEDORES_COL().add({
       nome, email, senhaHash, ativo: true, autocadastro: true,
-      cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
+      cpf: String(b.cpf || '').trim() || null,
+      razaoSocial: String(b.nomeEmpresa || '').trim() || null,
+      cnpj: b.cnpj || null, whatsapp: b.whatsapp || null,
+      endereco: b.endereco || null, numero: b.numero || null, complemento: b.complemento || null, cep: b.cep || null,
       comissaoPct: COMISSAO_PCT,
       tipoComissao: 'percentual',
       comissaoValorFixoCentavos: null,
@@ -9210,7 +9214,7 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
         banco: banco.banco || null, agencia: banco.agencia || null, conta: banco.conta || null,
         tipo: banco.tipo || null, pix: banco.pix || null, titular: banco.titular || null
       },
-      contrato: { aceito: true, versao: VENDEDOR_CONTRATO_VERSAO, em: new Date().toISOString(), ip, nome, cnpj: b.cnpj || null, pix: banco.pix || null },
+      contrato: { aceito: true, versao: VENDEDOR_CONTRATO_VERSAO, em: new Date().toISOString(), ip, nome, cpf: b.cpf || null, nomeEmpresa: b.nomeEmpresa || null, cnpj: b.cnpj || null, pix: banco.pix || null },
       criadoEm: new Date().toISOString()
     });
     res.json({ ok: true });
