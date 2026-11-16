@@ -6883,11 +6883,14 @@ function exigirGestor(req, res, next) {
   next();
 }
 
-// Só a conta MATRIZ (PDN Vendas) — usada em recursos que não fazem sentido para
-// as contas de clientes, como a "Demonstração por nicho".
+// Só a conta MATRIZ (PDN Vendas) OU a conta marcada como demonstração pros
+// vendedores (demoVendedores:true, ver PATCH /admin/empresas/:id) — usada em
+// recursos que não fazem sentido pra conta de um cliente de verdade, como a
+// "Demonstração por nicho" (o vendedor precisa poder mostrar qualquer nicho
+// ao prospect, sem usar o painel real do dono).
 function exigirMatriz(req, res, next) {
-  if (!req.empresaLogin || req.empresaLogin.id !== EMPRESA_ID_PDN) {
-    return res.status(403).json({ ok: false, erro: 'Recurso disponível apenas na conta matriz.' });
+  if (!req.empresaLogin || (req.empresaLogin.id !== EMPRESA_ID_PDN && !req.empresaLogin.demoVendedores)) {
+    return res.status(403).json({ ok: false, erro: 'Recurso disponível apenas na conta matriz ou na conta demo.' });
   }
   next();
 }
@@ -6959,7 +6962,7 @@ app.get('/minha-config', exigirLoginEmpresa, exigirEscopoOferta, async (req, res
       configuracao = aplicarOferta({ ...configuracao, ofertas: configTop.ofertas }, ofertaId);
       ofertaAtiva = { id: ofertaId, nome: configTop.ofertas[ofertaId].nomeOferta || ofertaId, padrao: ofertaId === configTop.ofertaAtivaPadrao };
     }
-    res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN, ofertasHabilitado: !!req.empresaLogin.ofertasHabilitado, ofertaAtiva });
+    res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN || !!req.empresaLogin.demoVendedores, ofertasHabilitado: !!req.empresaLogin.ofertasHabilitado, ofertaAtiva });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
