@@ -123,6 +123,9 @@
         <p><b>REPRESENTANTE COMERCIAL</b> (dados preenchidos automaticamente conforme você completa o formulário acima):<br>
         Nome completo do representante legal: <b id="ctrNome">—</b><br>
         CPF: <b id="ctrCpf">—</b><br>
+        WhatsApp: <b id="ctrWhats">—</b><br>
+        E-mail: <b id="ctrEmail">—</b><br>
+        Endereço: <b id="ctrEndereco">—</b><br>
         Empresa (Razão Social): <b id="ctrEmpresa">—</b><br>
         CNPJ: <b id="ctrCnpj">—</b><br>
         Chave Pix para recebimento de comissões: <b id="ctrPix">—</b></p>
@@ -286,11 +289,16 @@ function atualizarContratoDinamico() {
   const set = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val || '—'; };
   set('ctrNome', v('nome'));
   set('ctrCpf', v('cpf'));
+  const ddd = v('ddd'), celular = v('celular');
+  set('ctrWhats', (ddd || celular) ? `(${ddd}) ${celular}` : '');
+  set('ctrEmail', v('email'));
+  const endPartes = [v('endereco'), v('numero') && `nº ${v('numero')}`, v('complemento'), v('cep') && `CEP ${v('cep')}`].filter(Boolean);
+  set('ctrEndereco', endPartes.join(', '));
   set('ctrEmpresa', v('nomeEmpresa'));
   set('ctrCnpj', v('cnpj'));
   set('ctrPix', v('b_pix'));
 }
-['nome', 'cpf', 'nomeEmpresa', 'cnpj', 'b_pix'].forEach(id => {
+['nome', 'cpf', 'ddd', 'celular', 'email', 'endereco', 'numero', 'complemento', 'cep', 'nomeEmpresa', 'cnpj', 'b_pix'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('input', atualizarContratoDinamico);
 });

@@ -9248,7 +9248,12 @@ app.post('/vendedor/cadastro', limiteLogin, async (req, res) => {
         banco: banco.banco || null, agencia: banco.agencia || null, conta: banco.conta || null,
         tipo: banco.tipo || null, pix: banco.pix || null, titular: banco.titular || null
       },
-      contrato: { aceito: true, versao: VENDEDOR_CONTRATO_VERSAO, em: new Date().toISOString(), ip, nome, cpf: b.cpf || null, nomeEmpresa: b.nomeEmpresa || null, cnpj: b.cnpj || null, pix: banco.pix || null },
+      contrato: {
+        aceito: true, versao: VENDEDOR_CONTRATO_VERSAO, em: new Date().toISOString(), ip, nome,
+        cpf: b.cpf || null, whatsapp: b.whatsapp || null,
+        endereco: b.endereco || null, numero: b.numero || null, complemento: b.complemento || null, cep: b.cep || null,
+        nomeEmpresa: b.nomeEmpresa || null, cnpj: b.cnpj || null, pix: banco.pix || null
+      },
       criadoEm: new Date().toISOString()
     });
     res.json({ ok: true });
