@@ -6850,6 +6850,14 @@ async function exigirLoginEmpresa(req, res, next) {
     }
 
     req.empresaLogin = { id: doc.id, ...doc.data() };
+    // modoDemo (ver POST /admin/demo-cliente/impersonar): sessão só de
+    // visualização pro vendedor mostrar o painel ao prospect. Bloqueia qualquer
+    // escrita aqui, num lugar só, pra cobrir todas as rotas /minha-* de uma vez
+    // (inclusive as que vierem depois) sem precisar lembrar de marcar cada uma.
+    req.empresaLogin.modoDemo = !!payload.modoDemo;
+    if (req.empresaLogin.modoDemo && req.method !== 'GET') {
+      return res.status(403).json({ ok: false, erro: 'Essa é a conta de demonstração: só dá pra visualizar, nenhuma alteração é salva.' });
+    }
     // Papel: tokens antigos (pré-multiusuário) não têm usuarioId nem papel —
     // tratamos como gestor para não deslogar ninguém. Quando há usuarioId, a
     // fonte da verdade é o doc do usuário (refletindo trocas de papel na hora).
@@ -6972,7 +6980,7 @@ app.get('/minha-config', exigirLoginEmpresa, exigirEscopoOferta, async (req, res
       configuracao = aplicarOferta({ ...configuracao, ofertas: configTop.ofertas }, ofertaId);
       ofertaAtiva = { id: ofertaId, nome: configTop.ofertas[ofertaId].nomeOferta || ofertaId, padrao: ofertaId === configTop.ofertaAtivaPadrao };
     }
-    res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN || !!req.empresaLogin.demoVendedores, ofertasHabilitado: !!req.empresaLogin.ofertasHabilitado, ofertaAtiva });
+    res.json({ ok: true, empresa: configuracao, ehMatriz: req.empresaLogin.id === EMPRESA_ID_PDN || !!req.empresaLogin.demoVendedores, ofertasHabilitado: !!req.empresaLogin.ofertasHabilitado, ofertaAtiva, modoDemo: !!req.empresaLogin.modoDemo });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -9587,7 +9595,11 @@ app.post('/admin/demo-cliente/impersonar', exigirAcessoAdmin, async (req, res) =
     if (snap.empty) return res.status(404).json({ ok: false, erro: 'Nenhuma empresa demo configurada. Peça ao dono pra marcar uma em Editar empresa → "Usar como demonstração pros vendedores".' });
     const doc = snap.docs[0];
     const d = doc.data();
-    const token = jwt.sign({ empresaLoginId: doc.id }, JWT_SECRET, { expiresIn: '1d' });
+    // modoDemo:true — o vendedor só pode VER (CRM pra mostrar pro cliente,
+    // nichos pro QR Code). exigirLoginEmpresa bloqueia qualquer escrita nessa
+    // sessão, pra ele não desconfigurar a conta demo (compartilhada entre
+    // todos os vendedores) sem querer.
+    const token = jwt.sign({ empresaLoginId: doc.id, modoDemo: true }, JWT_SECRET, { expiresIn: '1d' });
     res.json({ ok: true, token, empresa: { id: doc.id, nome: d.nome, email: d.email } });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });

@@ -1041,12 +1041,36 @@ const MEU_OFERTA_ID = EMPRESA_SALVA.ofertaId || null;
 const MEU_OFERTA_NOME = EMPRESA_SALVA.ofertaNome || null;
 let EH_MATRIZ = false;
 let OFERTAS_HABILITADO = false;
+let MODO_DEMO = false;
 const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'ofertas', 'disparo', 'custos', 'script', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
   if (EH_GESTOR) return;
   document.querySelectorAll('[data-gestor]').forEach(el => { el.style.display = 'none'; });
+}
+
+// Conta de demonstração pro vendedor mostrar ao prospect: só pode VER o CRM
+// (pra mostrar pro cliente) e os Nichos (pra mandar o QR Code) — o resto
+// (Minha empresa, WhatsApp, Equipe, Assinatura etc.) fica escondido pra ele
+// não acabar desconfigurando a conta demo, que é compartilhada entre todos os
+// vendedores. O backend também bloqueia qualquer escrita nessa sessão
+// (ver exigirLoginEmpresa), então isso aqui é só pra não deixar botão de
+// edição à mostra — a trava de verdade é no servidor.
+function aplicarGatingDemo() {
+  document.querySelectorAll('[data-gestor]').forEach(el => {
+    if (el.matches('[data-section="nichos"]')) return;
+    el.style.display = 'none';
+  });
+  const main = document.querySelector('main.main');
+  const loadMsg = document.getElementById('loadMsg');
+  if (main && loadMsg && !document.getElementById('avisoModoDemo')) {
+    const banner = document.createElement('div');
+    banner.id = 'avisoModoDemo';
+    banner.style = 'background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 14px;font-size:0.85rem;margin-bottom:16px;';
+    banner.textContent = '👀 Conta de demonstração — mostre o CRM e os Nichos pro cliente. Edições não são salvas.';
+    main.insertBefore(banner, loadMsg);
+  }
 }
 
 function icons() { try { lucide.createIcons(); } catch (e) {} }
@@ -1979,6 +2003,8 @@ async function carregarConfiguracao() {
       const nav = document.querySelector('#nav .nav-item[data-section="nichos"]');
       if (nav) nav.style.display = 'none';
     }
+    MODO_DEMO = !!data.modoDemo;
+    if (MODO_DEMO) aplicarGatingDemo();
     // Múltiplas ofertas é função extra, cobrada à parte — só aparece pra quem o
     // admin habilitou no cadastro (o backend também bloqueia os endpoints).
     OFERTAS_HABILITADO = !!data.ofertasHabilitado;
