@@ -92,8 +92,9 @@
     <div class="user-box">
       <div class="avatar">D</div>
       <div class="meta"><b>Dono</b><small>Administrador</small></div>
-      <button class="logout-btn" id="sairBtn" title="Sair"><i data-lucide="log-out"></i></button>
+      <button class="logout-btn" id="sairBtn" title="Sair e trocar de login"><i data-lucide="log-out"></i></button>
     </div>
+    <button class="btn btn-secondary" id="trocarLoginBtn" style="margin:0 14px 14px;font-size:0.78rem;" title="Sai da conta atual e volta pra tela de login, pra entrar com outro e-mail/senha">🔀 Entrar com outro login</button>
   </aside>
 
   <main class="main">
@@ -548,7 +549,13 @@ async function apagarAviso(id) {
   } catch (e) { alert('Erro de conexão'); }
 }
 
-document.getElementById('sairBtn').addEventListener('click', () => { ['recomendaleads_admin_key', 'recomendaleads_dono_token', 'recomendaleads_vend_token', 'recomendaleads_vend_nome'].forEach(k => localStorage.removeItem(k)); location.reload(); });
+// A página entra direto com o login salvo no navegador (chave/dono/vendedor) —
+// então pra testar com OUTRO login é preciso sair primeiro. "Sair" e "Entrar
+// com outro login" fazem a mesma coisa: limpam o login salvo e recarregam, o
+// que mostra a tela de login (gate) normalmente, pronta pra preencher.
+function sairETrocarLogin() { ['recomendaleads_admin_key', 'recomendaleads_dono_token', 'recomendaleads_vend_token', 'recomendaleads_vend_nome'].forEach(k => localStorage.removeItem(k)); location.reload(); }
+document.getElementById('sairBtn').addEventListener('click', sairETrocarLogin);
+document.getElementById('trocarLoginBtn').addEventListener('click', sairETrocarLogin);
 document.getElementById('atualizarBtn').addEventListener('click', carregar);
 document.getElementById('busca').addEventListener('input', () => renderTabela());
 
