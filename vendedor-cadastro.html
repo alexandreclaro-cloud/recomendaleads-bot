@@ -246,6 +246,23 @@ const v = id => { const e = document.getElementById(id); return e ? e.value.trim
   });
 })();
 
+// CNPJ: só dígitos, trava em 14 e formata sozinho (00.000.000/0000-00) —
+// não deixa faltar nem sobrar número.
+(function () {
+  const cnpj = document.getElementById('cnpj');
+  if (!cnpj) return;
+  cnpj.setAttribute('maxlength', '18');
+  cnpj.addEventListener('input', () => {
+    const d = cnpj.value.replace(/\D/g, '').slice(0, 14);
+    let out = d;
+    if (d.length > 2) out = d.slice(0, 2) + '.' + d.slice(2);
+    if (d.length > 5) out = out.slice(0, 6) + '.' + out.slice(6);
+    if (d.length > 8) out = out.slice(0, 10) + '/' + out.slice(10);
+    if (d.length > 12) out = out.slice(0, 15) + '-' + out.slice(15);
+    cnpj.value = out;
+  });
+})();
+
 // Preenche o cabeçalho do contrato com os dados que a pessoa for digitando —
 // assim, quando ela abre "Ler o contrato", já vê o próprio nome/CNPJ/Pix no
 // documento que está aceitando (não um template genérico em branco).
