@@ -83,9 +83,7 @@
     <div class="hint">Você vai usar seu e-mail e essa senha para entrar no painel e cadastrar clientes.</div>
 
     <div class="sec">Contrato</div>
-    <details>
-      <summary>Ler o contrato</summary>
-      <div class="contrato-txt" id="contratoTxt">
+    <div class="contrato-txt" id="contratoTxt" style="display:none;">
         <p><b>CONTRATO DE REPRESENTAÇÃO COMERCIAL AUTÔNOMA — PLATAFORMA RECOMENDALEADS</b></p>
         <p>CONTRATANTE: TECH MENTOR SYSTEM LTDA., CNPJ 69.170.888/0001-07, com sede na Rua Almirante Lobo, nº 883, Sala 2, Ipiranga, CEP 04212-001, São Paulo/SP, e-mail atendimento@recomendaleads.com.br, responsável pela plataforma RecomendaLeads.</p>
         <p><b>REPRESENTANTE COMERCIAL</b> (dados preenchidos automaticamente conforme você completa o formulário acima):<br>
@@ -191,10 +189,9 @@
         <p><b>6. Pagamento:</b> conforme Cláusula 6 deste contrato — via Pix, mediante nota fiscal, até o dia 10 do mês subsequente ao recebimento.</p>
         <p><b>7. Inatividade:</b> conforme Cláusula 8 deste contrato — 90 dias sem venda nova + ciclo final de 30 dias.</p>
       </div>
-    </details>
     <div class="aceite">
       <input type="checkbox" id="aceite">
-      <label for="aceite">Li e aceito o contrato e autorizo o uso dos meus dados para fins de cadastro e pagamento de comissão.</label>
+      <label for="aceite">Li e aceito o <a href="#" id="linkLerContrato">Contrato de Representação Comercial</a> e autorizo o uso dos meus dados para fins de cadastro e pagamento de comissão.</label>
     </div>
 
     <button id="enviar">Concluir meu cadastro</button>
@@ -278,16 +275,31 @@ document.getElementById('enviar').addEventListener('click', async () => {
 });
 
 let contratoAceitoHtml = '';
-document.getElementById('baixarContratoBtn').addEventListener('click', () => {
+
+// Abre o contrato numa aba separada — usado tanto pelo link "Ler contrato"
+// (antes de aceitar, com os dados sendo digitados até agora) quanto pelo
+// botão "Baixar em PDF" (depois de aceitar, com autoPrint pra já abrir o
+// diálogo de impressão/salvar como PDF).
+function abrirContratoNovaAba(html, autoPrint) {
   const janela = window.open('', '_blank');
-  if (!janela) { alert('Seu navegador bloqueou a nova janela. Permita pop-ups pra baixar o contrato.'); return; }
+  if (!janela) { alert('Seu navegador bloqueou a nova janela. Permita pop-ups pra ler o contrato.'); return; }
   janela.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8">
     <title>Contrato de Representação Comercial — RecomendaLeads</title>
     <style>body{font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:30px auto;padding:0 20px;color:#1f2937;line-height:1.6;font-size:14px}p{margin:10px 0}</style>
-    </head><body>${contratoAceitoHtml}</body></html>`);
+    </head><body>${html}</body></html>`);
   janela.document.close();
   janela.focus();
-  setTimeout(() => janela.print(), 300);
+  if (autoPrint) setTimeout(() => janela.print(), 300);
+}
+
+document.getElementById('linkLerContrato').addEventListener('click', (e) => {
+  e.preventDefault();
+  atualizarContratoDinamico();
+  abrirContratoNovaAba(document.getElementById('contratoTxt').innerHTML, false);
+});
+
+document.getElementById('baixarContratoBtn').addEventListener('click', () => {
+  abrirContratoNovaAba(contratoAceitoHtml, true);
 });
 
 function fail(msg) { const st = document.getElementById('status'); st.textContent = msg; st.className = 'status err'; }
