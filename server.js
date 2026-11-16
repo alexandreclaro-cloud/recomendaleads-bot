@@ -9164,7 +9164,7 @@ app.get('/vendedor/cadastro', (req, res) => {
   try {
     if (req.query.principal) {
       let html = fs.readFileSync(path.join(__dirname, 'vendedor-cadastro.html'), 'utf8');
-      html = html.replace(/<div id="anexoRepresentante">[\s\S]*?<\/div>\s*/, '');
+      html = html.replace(/<div[^>]*\bid="(?:anexoRepresentante|resumoRepresentante)"[^>]*>[\s\S]*?<\/div>\s*/g, '');
       res.set('Content-Type', 'text/html; charset=utf-8');
       return res.send(html);
     }
