@@ -174,15 +174,22 @@
         <p>18.1. Fica eleito o foro da Comarca de São Paulo/SP.</p>
 
         <p><b>ANEXO I – POLÍTICA DE REMUNERAÇÃO E COMISSÕES</b></p>
-        <p>Sempre que este contrato se referir a "O REPRESENTANTE" (parte signatária deste instrumento), entende-se tanto o Representante quanto o Afiliado, conforme definidos abaixo — os dois são REPRESENTANTES COMERCIAIS AUTÔNOMOS nos termos deste contrato, diferenciados apenas pelo nível de participação comercial e pela tabela de comissão aplicável.</p>
-        <p><b>1. Comissão de adesão/implantação:</b> sobre o valor de R$ 500,00 (quinhentos reais) recebido pela CONTRATANTE a título de adesão, 50% (cinquenta por cento) — R$ 250,00 — é creditado integralmente a quem efetivamente realizou a venda, seja ele o Representante ou o Afiliado. Essa comissão NÃO é compartilhada com quem estiver no nível acima: se a venda for do Afiliado, o Representante ao qual ele está vinculado não recebe nenhuma parte da comissão de adesão dessa venda.</p>
-        <p><b>2. Comissões recorrentes:</b> sobre cada pagamento recorrente de R$ 397,00 (trezentos e noventa e sete reais) recebido pela CONTRATANTE, aplica-se uma das duas situações abaixo, sempre restando R$ 200,00 (duzentos reais) à CONTRATANTE:</p>
-        <p>(a) <b>Venda por Afiliado vinculado a um Representante:</b> o Afiliado (quem fechou a venda diretamente) recebe R$ 100,00; o Representante ao qual esse Afiliado está vinculado recebe, sobre o MESMO pagamento, R$ 97,00 — automaticamente, sem necessidade de nova ação de venda por parte do Representante.</p>
-        <p>(b) <b>Venda pelo próprio Representante, sem Afiliado envolvido:</b> o Representante recebe sozinho R$ 197,00 sobre aquele pagamento, já que não há Afiliado para compartilhar a comissão.</p>
-        <p><b>3. Critérios de atribuição:</b> registro do cliente no sistema oficial; identificação do REPRESENTANTE responsável; confirmação do pagamento pelo cliente.</p>
-        <p><b>4. Taxas:</b> as taxas de cartão, Pix e operadoras são suportadas pela CONTRATANTE, sem desconto da comissão.</p>
-        <p><b>5. Pagamento:</b> conforme Cláusula 6 deste contrato — via Pix, mediante nota fiscal, até o dia 10 do mês subsequente ao recebimento.</p>
-        <p><b>6. Inatividade:</b> conforme Cláusula 8 deste contrato — 90 dias sem venda nova + ciclo final de 30 dias.</p>
+
+        <div id="anexoRepresentante">
+          <p><b>1. Comissão de adesão/implantação:</b> sobre o valor recebido pela CONTRATANTE a título de adesão (referência atual: R$ 500,00), 50% (cinquenta por cento) é creditado integralmente a você quando for o responsável direto pela venda.</p>
+          <p><b>2. Comissão por venda própria:</b> em cada pagamento recorrente de cliente vendido diretamente por você (sem Afiliado envolvido), você recebe o valor que exceder os R$ 200,00 (duzentos reais) fixos retidos pela CONTRATANTE — hoje equivalente a R$ 197,00 quando o valor cobrado do cliente for R$ 397,00 (valor de referência atual; se o preço praticado for outro, dentro da faixa comercial autorizada, sua comissão acompanha a diferença, sempre preservados os R$ 200,00 da CONTRATANTE).</p>
+          <p><b>3. Comissão como Representante de um Afiliado:</b> caso você cadastre e seja responsável por um Afiliado, você recebe, sobre cada pagamento recorrente fechado por esse Afiliado, uma comissão adicional de R$ 97,00 — automaticamente, sobre o mesmo pagamento em que o Afiliado recebe a comissão dele, sem necessidade de nova ação sua.</p>
+        </div>
+
+        <div id="anexoAfiliado" style="display:none;">
+          <p><b>1. Comissão de adesão/implantação:</b> sobre o valor recebido pela CONTRATANTE a título de adesão (referência atual: R$ 500,00), 50% (cinquenta por cento) é creditado integralmente a você quando for o responsável direto pela venda.</p>
+          <p><b>2. Comissão recorrente:</b> em cada pagamento recorrente de cliente vendido diretamente por você, você recebe R$ 100,00 (cem reais) — valor fixo, independentemente do preço cobrado do cliente dentro da faixa comercial autorizada.</p>
+        </div>
+
+        <p><b>4. Critérios de atribuição:</b> registro do cliente no sistema oficial; identificação do responsável direto pela venda; confirmação do pagamento pelo cliente.</p>
+        <p><b>5. Taxas:</b> as taxas de cartão, Pix e operadoras são suportadas pela CONTRATANTE, sem desconto da comissão.</p>
+        <p><b>6. Pagamento:</b> conforme Cláusula 6 deste contrato — via Pix, mediante nota fiscal, até o dia 10 do mês subsequente ao recebimento.</p>
+        <p><b>7. Inatividade:</b> conforme Cláusula 8 deste contrato — 90 dias sem venda nova + ciclo final de 30 dias.</p>
       </div>
     </details>
     <div class="aceite">
@@ -198,7 +205,9 @@
     <div class="big">✓</div>
     <h2>Cadastro concluído!</h2>
     <p>Seus dados foram enviados. Agora é só entrar no painel com seu e-mail e senha.</p>
+    <p class="hint">Você também pode baixar uma cópia do contrato que acabou de aceitar, em PDF, pra guardar.</p>
     <a href="/admin">Acessar o painel</a>
+    <button type="button" id="baixarContratoBtn" style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);width:auto;padding:12px 22px;margin:16px auto 0;display:block;">📄 Baixar contrato em PDF</button>
   </div>
 </div>
 
@@ -219,6 +228,19 @@ function atualizarContratoDinamico() {
   const el = document.getElementById(id);
   if (el) el.addEventListener('input', atualizarContratoDinamico);
 });
+
+// Quem se cadastra por um link de convite (?principal=ID) é um AFILIADO — só
+// pode ver a política de comissão DELE (Anexo I), nunca a do Representante
+// (que inclui o repasse que o Representante recebe sobre a venda do afiliado).
+const ehAfiliado = !!new URLSearchParams(location.search).get('principal');
+if (ehAfiliado) {
+  // O servidor já REMOVE o bloco do Representante do HTML antes de entregar a
+  // página (ver GET /vendedor/cadastro) — este trecho só cuida de exibir a
+  // versão do Afiliado; o elemento do Representante pode nem existir mais no DOM.
+  const elRepr = document.getElementById('anexoRepresentante');
+  if (elRepr) elRepr.style.display = 'none';
+  document.getElementById('anexoAfiliado').style.display = 'block';
+}
 
 document.getElementById('enviar').addEventListener('click', async () => {
   const st = document.getElementById('status'); st.textContent = ''; st.className = 'status';
@@ -245,11 +267,27 @@ document.getElementById('enviar').addEventListener('click', async () => {
     const resp = await fetch(`${API_BASE}/vendedor/cadastro`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
+      // Guarda o contrato (já com nome/CNPJ/Pix preenchidos) ANTES de esconder
+      // o formulário — é isso que o botão "Baixar em PDF" usa depois.
+      contratoAceitoHtml = document.getElementById('contratoTxt').innerHTML;
       document.getElementById('card').style.display = 'none';
       document.getElementById('okBox').style.display = 'block';
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else { fail(data.erro || 'Não foi possível concluir o cadastro.'); btn.disabled = false; }
   } catch (e) { fail('Erro de conexão. Tente novamente.'); btn.disabled = false; }
+});
+
+let contratoAceitoHtml = '';
+document.getElementById('baixarContratoBtn').addEventListener('click', () => {
+  const janela = window.open('', '_blank');
+  if (!janela) { alert('Seu navegador bloqueou a nova janela. Permita pop-ups pra baixar o contrato.'); return; }
+  janela.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8">
+    <title>Contrato de Representação Comercial — RecomendaLeads</title>
+    <style>body{font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:30px auto;padding:0 20px;color:#1f2937;line-height:1.6;font-size:14px}p{margin:10px 0}</style>
+    </head><body>${contratoAceitoHtml}</body></html>`);
+  janela.document.close();
+  janela.focus();
+  setTimeout(() => janela.print(), 300);
 });
 
 function fail(msg) { const st = document.getElementById('status'); st.textContent = msg; st.className = 'status err'; }

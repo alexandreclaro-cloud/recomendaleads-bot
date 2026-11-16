@@ -9,6 +9,7 @@ const express = require('express');
 const axios = require('axios');
 const admin = require('firebase-admin');
 const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
@@ -9154,6 +9155,19 @@ app.post('/admin/vendedores/:id/comissao-adesao', exigirAdmin, async (req, res) 
 
 // Página pública de autocadastro do vendedor (link compartilhado pelo dono).
 app.get('/vendedor/cadastro', (req, res) => {
+  // Quem vem de um link de convite (?principal=ID) é AFILIADO — remove do HTML
+  // de verdade (não só esconde com CSS) o trecho do Anexo I que fala da
+  // comissão do REPRESENTANTE (o repasse que ele recebe sobre a venda do
+  // afiliado). Esconder só com display:none deixaria isso visível em "ver
+  // código-fonte"; o afiliado não pode ter acesso a essa informação.
+  try {
+    if (req.query.principal) {
+      let html = fs.readFileSync(path.join(__dirname, 'vendedor-cadastro.html'), 'utf8');
+      html = html.replace(/<div id="anexoRepresentante">[\s\S]*?<\/div>\s*/, '');
+      res.set('Content-Type', 'text/html; charset=utf-8');
+      return res.send(html);
+    }
+  } catch (e) { console.error('[VENDEDOR-CADASTRO] erro ao filtrar contrato:', e.message); }
   res.sendFile(path.join(__dirname, 'vendedor-cadastro.html'));
 });
 
