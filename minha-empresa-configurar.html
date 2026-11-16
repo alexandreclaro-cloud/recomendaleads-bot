@@ -3961,15 +3961,42 @@ function renderNichosLinks() {
   cont.innerHTML = nichosLista.map(n => {
     const texto = `Quero testar o RecomendaLeads #${codigoNicho(n.slug)}`;
     const link = `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
-    return `<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-      <span style="min-width:150px; font-weight:600;">${emojiNicho(n.slug)} ${n.nome}</span>
-      <input class="input" readonly value="${link}" style="flex:1; min-width:220px; font-size:0.8rem;">
-      <button class="btn btn-secondary btn-copiar-link" data-link="${link}">Copiar</button>
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
+    const nomeSeg = escapeHtml(n.nome);
+    // QR Code pronto pra mostrar na hora, sem precisar mandar nada: o vendedor
+    // abre em tela cheia e vira o celular pro cliente escanear com a câmera.
+    return `<div style="display:flex; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap; padding:10px; border:1px solid var(--border,#eee); border-radius:10px;">
+      <img src="${qrUrl}" alt="QR Code ${nomeSeg}" class="nicho-qr-thumb" data-qr="${qrUrl}" data-nome="${nomeSeg}" style="width:60px;height:60px;border-radius:8px;border:1px solid var(--border,#eee);background:#fff;cursor:pointer;flex-shrink:0;">
+      <div style="flex:1; min-width:180px;">
+        <div style="font-weight:600; margin-bottom:4px;">${emojiNicho(n.slug)} ${n.nome}</div>
+        <input class="input" readonly value="${link}" style="width:100%; font-size:0.78rem;" onclick="this.select()">
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-mini btn-ver-qr" data-qr="${qrUrl}" data-nome="${nomeSeg}">📱 Mostrar QR</button>
+        <button class="btn btn-secondary btn-mini btn-copiar-link" data-link="${link}">Copiar</button>
+      </div>
     </div>`;
   }).join('');
   cont.querySelectorAll('.btn-copiar-link').forEach(b => b.addEventListener('click', () => {
     navigator.clipboard.writeText(b.dataset.link).then(() => { const t = b.textContent; b.textContent = 'Copiado!'; setTimeout(() => b.textContent = t, 1500); });
   }));
+  cont.querySelectorAll('.btn-ver-qr, .nicho-qr-thumb').forEach(el => el.addEventListener('click', () => abrirQrTelaCheia(el.dataset.qr, el.dataset.nome)));
+}
+
+// Mostra o QR Code em tela cheia — pensado pro vendedor usar no próprio
+// celular durante a visita: toca, vira a tela pro cliente escanear com a
+// câmera e já experimenta o fluxo na hora, sem precisar enviar nada.
+function abrirQrTelaCheia(qrUrl, nome) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.94);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;cursor:pointer;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;">
+      <img src="${qrUrl.replace('200x200', '500x500')}" alt="QR Code ${nome}" style="width:min(70vw,340px);height:min(70vw,340px);display:block;">
+    </div>
+    <div style="color:#fff;font-size:1.1rem;font-weight:700;text-align:center;">${nome} — peça pro cliente escanear</div>
+    <div style="color:#cbd5e1;font-size:0.85rem;">Toque em qualquer lugar pra fechar</div>`;
+  overlay.addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
 }
 
 document.getElementById('nichoNumeroInput').addEventListener('input', renderNichosLinks);
