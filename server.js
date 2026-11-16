@@ -7043,10 +7043,16 @@ app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, exigirMatriz, async (
     const config = req.empresaLogin.configuracao || {};
     const base = { ...EMPRESA_PADRAO, ...config };
     delete base.nichos; // não devolve os nichos dentro da base
-    // Número da demonstração — prioridade: (1) o que o webhook do Z-API informou
-    // (numeroConectado, confiável); (2) o manual que o dono salvou; (3) fallback.
-    // O manual serve de override quando a captura automática ainda não pegou.
-    const numeroAuto = String(config.numeroConectado || '').replace(/\D/g, '');
+    // Número da demonstração — prioridade: (1) detecção automática de verdade
+    // (getNumeroConectado: se a empresa estiver na API Oficial, pega o número
+    // REAL da Meta — nunca o numeroConectado cru, que pode ter sobrado de uma
+    // sessão Z-API antiga, de antes da migração); (2) o manual que o dono
+    // salvou; (3) fallback. O manual serve de override quando a detecção
+    // ainda não pegou.
+    const empresaFull = await getEmpresaById(req.empresaLogin.id);
+    const contextoNum = { empresa: empresaFull, empresaId: req.empresaLogin.id, zapi: zapiDaEmpresa(empresaFull), oficial: oficialDaEmpresa(empresaFull) };
+    let numeroAuto = '';
+    await tenantContext.run(contextoNum, async () => { numeroAuto = String((await getNumeroConectado(empresaFull)) || '').replace(/\D/g, ''); });
     const numeroDemo = numeroAuto || String(config.numeroDemo || config.numeroWhatsapp || '').replace(/\D/g, '');
     res.json({
       ok: true,
