@@ -266,6 +266,12 @@
           <div class="hint" id="nichoNumeroHint" style="margin-top:6px;"></div>
           <div id="nichosLinks" style="margin-top:14px;"></div>
         </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="block-title"><i data-lucide="bar-chart-3"></i> Relatório diário (exemplo)</div>
+          <p class="sub">É assim que o gestor recebe, todo dia no WhatsApp, a evolução de quantas recomendações, convites, resgates e vendas aconteceram — só pra mostrar, não envia nada de verdade.</p>
+          <div id="previewRelatorioDiario" style="margin-top:12px;"></div>
+        </div>
       </section>
 
       <section class="view fade-in" id="view-followup">
@@ -3760,7 +3766,36 @@ async function carregarNichos() {
     renderNichoTabs();
     renderNichoCampos();
     renderNichosLinks();
+    renderPreviewRelatorioDiario();
   } catch (e) {}
+}
+
+// Só uma prévia visual (dados de exemplo) de como fica a mensagem que o
+// gestor recebe todo dia no WhatsApp — pro vendedor mostrar ao prospect sem
+// precisar ligar o relatório de verdade (hoje isso só é ligado no banco).
+function renderPreviewRelatorioDiario() {
+  const cont = document.getElementById('previewRelatorioDiario');
+  if (!cont) return;
+  const info = nichoAtual ? nichoInfo(nichoAtual) : null;
+  const nomeExemplo = (info && info.nome) || 'Studio Carly';
+  const hoje = new Date();
+  const diasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+  const diaLabel = `${diasSemana[hoje.getDay()]}, ${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  cont.innerHTML = `
+    <div style="background:#e9ebc9; padding:18px; border-radius:12px; max-width:360px;">
+      <div style="background:#fff; border-radius:8px; padding:12px 14px; font-size:0.86rem; line-height:1.55; color:#111; box-shadow:0 1px 2px rgba(0,0,0,.08);">
+        📊 Relatório do dia ${diaLabel} — ${escapeHtml(nomeExemplo)}<br><br>
+        👥 Clientes que recomendaram: 4<br>
+        ✉️ Convites enviados: 9<br>
+        🚪 Não responderam: 3<br>
+        💬 Interagiram: 6<br>
+        🎁 Resgataram o presente: 4<br>
+        📅 Agendaram: 2<br>
+        🛍️ Compraram: 1<br><br>
+        📈 Mês: 38 recomendaram, 97 convites, 11 compras — R$ 2.802,50 até agora.
+        <div style="text-align:right; color:#8696a0; font-size:0.72rem; margin-top:4px;">21:00</div>
+      </div>
+    </div>`;
 }
 
 function nichoInfo(slug) { return nichosLista.find(n => n.slug === slug) || { slug, nome: slug, builtin: false }; }
@@ -3776,6 +3811,7 @@ function renderNichoTabs() {
     nichoAtual = b.dataset.nicho;
     renderNichoTabs();
     renderNichoCampos();
+    renderPreviewRelatorioDiario();
   }));
   document.getElementById('addMercadoBtn').addEventListener('click', criarMercado);
 }
@@ -3791,7 +3827,7 @@ async function criarMercado() {
       nichosData.nichos[data.slug] = { nome: data.nome };
       nichosLista = data.lista || nichosLista;
       nichoAtual = data.slug;
-      renderNichoTabs(); renderNichoCampos(); renderNichosLinks();
+      renderNichoTabs(); renderNichoCampos(); renderNichosLinks(); renderPreviewRelatorioDiario();
     } else { alert(data.erro || 'Não foi possível criar o mercado.'); }
   } catch (e) { alert('Erro de conexão.'); }
 }
