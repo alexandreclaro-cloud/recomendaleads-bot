@@ -1373,7 +1373,7 @@
         <div class="config-card">
           <h2>📬 Relatório diário pro gestor</h2>
           <p style="font-size:0.8rem; color:var(--text-dim); margin:0 0 10px;">
-            Toda noite, manda pro WhatsApp do gestor um resumo do funil de recomendados: quantos amigos foram chamados, quantos não responderam, interagiram, resgataram o presente, agendaram e compraram — de hoje e acumulado do mês. Fora da janela de 24h precisa de um template aprovado (reaproveita o campo "Template de aviso interno" da aba API Oficial).
+            Toda noite, manda pro WhatsApp do gestor um resumo do funil de recomendados: quantos amigos foram chamados, quantos não responderam, interagiram, resgataram o presente, agendaram e compraram — de hoje e acumulado do mês. Fora da janela de 24h precisa de um template aprovado na Meta (configure abaixo).
           </p>
           <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
             <input type="checkbox" id="relatorioDiarioAtivoInput" style="width:auto;"> Ativar o relatório diário
@@ -1391,6 +1391,11 @@
             <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="sex" style="width:auto;">Sex</label>
             <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="sab" style="width:auto;">Sáb</label>
             <label style="display:flex;align-items:center;gap:4px;font-weight:400;"><input type="checkbox" class="rd-dia" value="dom" style="width:auto;">Dom</label>
+          </div>
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px;margin:10px 0;">
+            <label style="margin-top:0;">🟢 Template da API Oficial (pra fora da janela de 24h)</label>
+            <input type="text" id="relatorioDiarioTemplateInput" list="templatesMetaDatalist" placeholder="Em branco usa o padrão: relatorio_diario_funil">
+            <div class="hint" style="font-size:0.76rem;color:var(--text-dim);margin-top:4px;">Template dedicado (10 variáveis: dia, empresa e os números do funil). Só preencha se o WhatsApp Business desta empresa aprovou um template com outro nome.</div>
           </div>
           <div class="config-row-save">
             <button class="config-save-btn" id="salvarRelatorioDiarioBtn">Salvar relatório diário</button>
@@ -2959,6 +2964,12 @@ async function carregarConfiguracao() {
     };
     setTpl('oficialTemplateMarketingInput', 'oficialTemplateMarketingBox', configuracaoAtual.oficialTemplateMarketing);
     setTpl('oficialTemplateVendaInput', 'oficialTemplateVendaBox', configuracaoAtual.oficialTemplateVenda);
+    document.getElementById('relatorioDiarioAtivoInput').checked = !!configuracaoAtual.relatorioDiarioAtivo;
+    document.getElementById('relatorioDiarioTelInput').value = configuracaoAtual.relatorioDiarioTelefone || '';
+    document.getElementById('relatorioDiarioHoraInput').value = configuracaoAtual.relatorioDiarioHora || '21:00';
+    const rdDiasSalvos = Array.isArray(configuracaoAtual.relatorioDiarioDias) ? configuracaoAtual.relatorioDiarioDias : ['seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+    document.querySelectorAll('.rd-dia').forEach(c => { c.checked = rdDiasSalvos.includes(c.value); });
+    document.getElementById('relatorioDiarioTemplateInput').value = configuracaoAtual.relatorioDiarioTemplateNome || '';
     document.getElementById('mensagemInicialRecomendadoInput').value = configuracaoAtual.mensagemInicialRecomendado || '';
     document.getElementById('mensagemInicialRecomendado2Input').value = configuracaoAtual.mensagemInicialRecomendado2 || '';
     document.getElementById('mensagemInicialRecomendado3Input').value = configuracaoAtual.mensagemInicialRecomendado3 || '';
@@ -3337,6 +3348,46 @@ document.getElementById('enviarTesteMarketingBtn').addEventListener('click', asy
   btn.disabled = true; statusEl.textContent = 'Enviando...';
   try {
     const resp = await fetchAutenticado(`${API_BASE}/minha-marketing/teste`, {
+      method: 'POST',
+      body: JSON.stringify({ telefone })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Teste enviado! Confira o WhatsApp.'; statusEl.className = 'config-status-msg ok'; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao enviar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 6000); }
+});
+
+document.getElementById('salvarRelatorioDiarioBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('salvarRelatorioDiarioBtn');
+  const statusEl = document.getElementById('statusRelatorioDiario');
+  const relatorioDiarioAtivo = document.getElementById('relatorioDiarioAtivoInput').checked;
+  const relatorioDiarioTelefone = document.getElementById('relatorioDiarioTelInput').value.trim();
+  const relatorioDiarioHora = document.getElementById('relatorioDiarioHoraInput').value || '21:00';
+  const relatorioDiarioDias = Array.from(document.querySelectorAll('.rd-dia:checked')).map(c => c.value);
+  const relatorioDiarioTemplateNome = document.getElementById('relatorioDiarioTemplateInput').value.trim() || null;
+  if (relatorioDiarioAtivo && !relatorioDiarioTelefone) { statusEl.textContent = '❌ Informe o WhatsApp do gestor'; statusEl.className = 'config-status-msg err'; return; }
+  btn.disabled = true; statusEl.textContent = 'Salvando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-config`, {
+      method: 'POST',
+      body: JSON.stringify({ relatorioDiarioAtivo, relatorioDiarioTelefone, relatorioDiarioHora, relatorioDiarioDias, relatorioDiarioTemplateNome })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) { statusEl.textContent = '✅ Salvo!'; statusEl.className = 'config-status-msg ok'; configuracaoAtual = data.empresa; }
+    else { statusEl.textContent = '❌ ' + (data.erro || 'Erro ao salvar'); statusEl.className = 'config-status-msg err'; }
+  } catch (err) { statusEl.textContent = '❌ Erro de conexão'; statusEl.className = 'config-status-msg err'; }
+  finally { btn.disabled = false; setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'config-status-msg'; }, 4000); }
+});
+
+document.getElementById('testarRelatorioDiarioBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('testarRelatorioDiarioBtn');
+  const statusEl = document.getElementById('statusTesteRelatorioDiario');
+  const telefone = document.getElementById('relatorioDiarioTelInput').value.trim();
+  if (!telefone) { statusEl.textContent = '❌ Informe e salve o WhatsApp do gestor antes'; statusEl.className = 'config-status-msg err'; return; }
+  btn.disabled = true; statusEl.textContent = 'Enviando...'; statusEl.className = 'config-status-msg';
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-relatorio-diario/teste`, {
       method: 'POST',
       body: JSON.stringify({ telefone })
     });

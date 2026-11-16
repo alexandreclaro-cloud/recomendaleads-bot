@@ -7422,6 +7422,40 @@ app.post('/minha-followup/teste', exigirLoginEmpresa, exigirGestor, async (req, 
   }
 });
 
+// Envio de teste do Relatório diário pro gestor — manda o relatório de
+// hoje/mês agora mesmo, pro telefone informado (ou pro já salvo), sem
+// esperar o horário configurado e sem marcar como "já enviado hoje"
+// (processarRelatorioDiarioGestor continua rodando normalmente depois).
+app.post('/minha-relatorio-diario/teste', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(req.empresaLogin.id);
+    const cfg = { ...EMPRESA_PADRAO, ...(empresa.configuracao || {}) };
+    let tel = String((req.body && req.body.telefone) || cfg.relatorioDiarioTelefone || '').replace(/\D/g, '');
+    if ((tel.length === 10 || tel.length === 11) && !tel.startsWith('55')) tel = '55' + tel;
+    if (tel.length < 12) return res.status(400).json({ ok: false, erro: 'Informe (ou salve) um telefone válido com DDD (ex.: 11999998888).' });
+    const empresaId = req.empresaLogin.id;
+    const hojeISO = diaBrasiliaISO(0);
+    const mesAtual = hojeISO.slice(0, 7);
+    const { dia } = agoraBrasilia();
+    const [, mesNum, diaNum] = hojeISO.split('-');
+    const diaLabel = `${DIAS_SEMANA_RELATORIO[dia] || dia}, ${diaNum}/${mesNum}`;
+    const [resumoHoje, resumoMes] = await Promise.all([
+      calcularFunilRecomendados(empresaId, iso => pertenceAoDiaBrasilia(iso, hojeISO)),
+      calcularFunilRecomendados(empresaId, iso => pertenceAoMesBrasilia(iso, mesAtual))
+    ]);
+    const texto = montarTextoRelatorioDiario(empresa.nome, diaLabel, resumoHoje, resumoMes);
+    const contexto = { empresa, empresaId, oficial: oficialDaEmpresa(empresa), zapi: zapiDaEmpresa(empresa) };
+    let enviado = false;
+    await tenantContext.run(contexto, async () => {
+      enviado = await enviarRelatorioDiario(tel, empresa.nome, diaLabel, resumoHoje, resumoMes, texto, cfg.relatorioDiarioTemplateNome);
+    });
+    if (!enviado) return res.json({ ok: false, erro: 'Não foi possível enviar — confira se o WhatsApp está conectado ou se o template na Meta está certo e aprovado.' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // ============================================================
 // WHATSAPP DA EMPRESA — credenciais Z-API próprias do cliente
 // ============================================================
