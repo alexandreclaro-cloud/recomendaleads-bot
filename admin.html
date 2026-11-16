@@ -50,8 +50,8 @@
 <!-- Gate de acesso (dono ou vendedor) -->
 <div id="gate" class="card">
   <img src="/assets/logo.png" alt="RecomendaLeads" style="height:64px;width:auto;margin:0 auto 14px;display:block">
-  <h1 style="font-size:1.2rem;margin:0 0 12px;">Acesso ao Painel</h1>
-  <div style="display:flex;gap:6px;margin:0 0 16px;">
+  <h1 id="gateTitulo" style="font-size:1.2rem;margin:0 0 12px;">Acesso ao Painel</h1>
+  <div id="gateTabs" style="display:flex;gap:6px;margin:0 0 16px;">
     <button class="btn btn-secondary" id="tabDono" style="flex:1;">Administrador</button>
     <button class="btn btn-secondary" id="tabVend" style="flex:1;">Vendedor</button>
   </div>
@@ -175,7 +175,7 @@
         <h2 style="font-size:1rem; margin:0;">🧑‍💼 Vendedores</h2>
         <button class="btn btn-brand btn-mini" id="novoVendedorBtn"><i data-lucide="plus"></i> Novo vendedor</button>
       </div>
-      <p class="muted" style="font-size:0.82rem; margin:8px 0 0;">Cada vendedor entra no painel com o e-mail e a senha dele, cadastra clientes (vinculados a ele) e vê só as próprias comissões.</p>
+      <p class="muted" style="font-size:0.82rem; margin:8px 0 0;">Cada vendedor entra no painel com o e-mail e a senha dele, cadastra clientes (vinculados a ele) e vê só as próprias comissões. Login dele: <b>recomendaleads.com.br/vendedor</b> (separado do seu, pra não confundir).</p>
       <div style="margin-top:12px; padding:12px 14px; background:#EFF6FF; border:1px solid #DBEAFE; border-radius:10px;">
         <div style="font-size:0.82rem; font-weight:700; color:#1E3A8A; margin-bottom:6px;">🔗 Link de autocadastro do vendedor</div>
         <div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:8px;">Envie este link para o vendedor preencher os próprios dados (inclusive bancários) e aceitar o contrato. A conta dele é criada sozinha.</div>
@@ -214,8 +214,13 @@
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
 const API_BASE = window.location.origin;
-let ADMIN_KEY = localStorage.getItem('recomendaleads_admin_key') || '';
-let DONO_TOKEN = localStorage.getItem('recomendaleads_dono_token') || '';
+// /vendedor é um endereço só do vendedor — mesma página (admin.html), mas
+// aqui a gente IGNORA qualquer sessão de dono salva (mesmo que exista no
+// navegador) pra nunca correr o risco de misturar login de dono com login
+// de vendedor. Em /admin continua tudo igual (as duas abas).
+const ROTA_VENDEDOR = location.pathname.replace(/\/+$/, '') === '/vendedor';
+let ADMIN_KEY = ROTA_VENDEDOR ? '' : (localStorage.getItem('recomendaleads_admin_key') || '');
+let DONO_TOKEN = ROTA_VENDEDOR ? '' : (localStorage.getItem('recomendaleads_dono_token') || '');
 let VEND_TOKEN = localStorage.getItem('recomendaleads_vend_token') || '';
 let VEND_NOME = localStorage.getItem('recomendaleads_vend_nome') || '';
 let empresas = [];
@@ -342,7 +347,13 @@ function trocarAba(qual) {
 }
 document.getElementById('tabDono').addEventListener('click', () => trocarAba('dono'));
 document.getElementById('tabVend').addEventListener('click', () => trocarAba('vend'));
-trocarAba('dono');
+if (ROTA_VENDEDOR) {
+  document.getElementById('gateTabs').style.display = 'none';
+  document.getElementById('gateTitulo').textContent = 'Área do Vendedor';
+  trocarAba('vend');
+} else {
+  trocarAba('dono');
+}
 
 // Alterna entre login por senha (fácil) e chave mestra (reserva)
 document.getElementById('usarChaveLink').addEventListener('click', () => {

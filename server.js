@@ -9300,6 +9300,13 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
+// Login do vendedor num endereço próprio, separado do /admin — mesmo painel
+// (admin.html), mas a página detecta a rota e mostra só a entrada de
+// vendedor, sem tab de Administrador, pra não ter risco de confundir.
+app.get('/vendedor', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
 // Aviso global — consultar (admin) e publicar para todos os clientes.
 // Relatório de comissões dos vendedores (dono vê tudo; vendedor só as dele).
 app.get('/admin/comissoes', exigirAcessoAdmin, async (req, res) => {
