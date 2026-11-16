@@ -112,13 +112,20 @@
 
     <div class="card vendedor-only" style="display:none; margin-bottom:18px; padding:18px;">
       <h2 style="font-size:1rem; margin:0 0 4px;">➕ Cadastrar novo cliente</h2>
-      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">O cliente fica vinculado a você automaticamente. Sua comissão de 20% por pagamento aparece abaixo.</p>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;" id="cadastrarClienteDesc">O cliente fica vinculado a você automaticamente. Sua comissão aparece abaixo.</p>
       <a class="btn btn-brand" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
     </div>
 
-    <div class="card dono-only" style="margin-bottom:18px; padding:18px;">
+    <div class="card vendedor-only" style="display:none; margin-bottom:18px; padding:18px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">🎬 Demonstração pro cliente</h2>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Abre o painel de uma empresa de demonstração — use pra mostrar ao prospect como o sistema funciona na prática.</p>
+      <button class="btn btn-brand" id="demoClienteBtn" type="button"><i data-lucide="play"></i> Mostrar demonstração</button>
+      <span class="status-msg" id="demoClienteMsg" style="margin-left:10px;"></span>
+    </div>
+
+    <div class="card" style="margin-bottom:18px; padding:18px;">
       <h2 style="font-size:1rem; margin:0 0 4px;">🔗 Link de autocadastro do cliente</h2>
-      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Um link só, pra sempre. Mande pra qualquer cliente: ele preenche os dados da empresa e <strong>assina o contrato</strong>. O cadastro entra como <strong>pendente</strong> e só libera quando <strong>você validar</strong> — aí você define o plano/pagamento e ele recebe o e-mail de acesso.</p>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;" id="conviteTexto">Um link só, pra sempre. Mande pra qualquer cliente: ele preenche os dados da empresa e <strong>assina o contrato</strong>. O cadastro entra como <strong>pendente</strong> e só libera quando <strong>você validar</strong> — aí você define o plano/pagamento e ele recebe o e-mail de acesso.</p>
       <div id="conviteBox" style="display:none;">
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <input id="conviteLink" readonly onclick="this.select()" style="flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:0.82rem;">
@@ -446,12 +453,58 @@ function mostrarApp() {
     document.querySelector('.user-box .avatar').textContent = (VEND_NOME || 'V').charAt(0).toUpperCase();
     document.querySelector('.user-box .meta b').textContent = VEND_NOME || 'Vendedor';
     document.querySelector('.user-box .meta small').textContent = 'Vendedor';
-    document.getElementById('comissoesTitulo').textContent = '💸 Minhas comissões (20% por pagamento)';
+    document.getElementById('conviteTexto').textContent = 'Um link só, pra sempre. Mande pra qualquer cliente: ele preenche os dados da empresa e assina o contrato. O cadastro já fica vinculado à sua comissão e entra pendente — o dono valida antes de liberar o acesso.';
+    carregarMeuPerfilVendedor();
   }
   icons();
   carregarComissoes();
-  if (!vend) { carregarVendedores(); carregarMeuAcesso(); carregarAvisosEnviados(); carregarLinkCliente(); }
+  carregarLinkCliente();
+  if (!vend) { carregarVendedores(); carregarMeuAcesso(); carregarAvisosEnviados(); }
 }
+
+// Busca os próprios dados de comissão (nunca de outro vendedor) pra mostrar o
+// valor certo no painel, em vez do "20%" fixo que não reflete o contrato de
+// Representante/Afiliado (valor fixo, não percentual).
+async function carregarMeuPerfilVendedor() {
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/vendedor/meu-perfil`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) return;
+    let desc;
+    if (data.tipoComissao === 'fixo') {
+      if (data.ehAfiliado) {
+        desc = `${fmtReais(data.comissaoValorFixoCentavos || 0)} fixo por venda (dentro da faixa comercial autorizada)`;
+      } else {
+        desc = `${fmtReais(data.comissaoValorFixoCentavos || 0)} por venda direta`;
+        if (data.comissaoOverrideFixoCentavos) desc += ` + ${fmtReais(data.comissaoOverrideFixoCentavos)} por venda de Afiliado vinculado a você`;
+      }
+    } else {
+      desc = `${data.comissaoPct}% por pagamento`;
+    }
+    document.getElementById('comissoesTitulo').textContent = `💸 Minhas comissões (${desc})`;
+    document.getElementById('cadastrarClienteDesc').textContent = `O cliente fica vinculado a você automaticamente. Sua comissão: ${desc}.`;
+  } catch (e) {}
+}
+
+// Demonstração pro vendedor mostrar ao prospect — entra numa empresa de
+// TESTE marcada pelo dono (nunca um cliente real), igual ao "entrar como"
+// que o dono já tem, só que restrito a essa conta fixa.
+async function mostrarDemoCliente() {
+  const btn = document.getElementById('demoClienteBtn');
+  const msg = document.getElementById('demoClienteMsg');
+  btn.disabled = true; msg.textContent = ''; msg.className = 'status-msg';
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/demo-cliente/impersonar`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      localStorage.setItem('recomendaleads_token', data.token);
+      localStorage.setItem('recomendaleads_empresa', JSON.stringify(data.empresa));
+      window.open('/minha-empresa/configurar', '_blank');
+    } else { msg.textContent = '❌ ' + (data.erro || 'Erro ao abrir a demonstração'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
+  btn.disabled = false;
+}
+document.getElementById('demoClienteBtn').addEventListener('click', mostrarDemoCliente);
 
 async function carregarMeuAcesso() {
   try {
@@ -803,6 +856,10 @@ function abrirEdicao(id) {
           <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;"><input type="checkbox" id="e_ofertasHabilitado" ${e.ofertasHabilitado ? 'checked' : ''}> Múltiplas ofertas/lançamentos habilitado</label>
           <div class="muted" style="font-size:0.76rem;margin-top:4px;">Libera a aba "Ofertas" no painel do cliente — mais de um lançamento rodando no mesmo número, cada um com mensagens/prêmios/Kanban próprios. Cobrar à parte por cada oferta extra (lançamento manual por enquanto).</div>
         </div>
+        <div class="campo">
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;"><input type="checkbox" id="e_demoVendedores" ${e.demoVendedores ? 'checked' : ''}> 🎬 Usar como demonstração pros vendedores</label>
+          <div class="muted" style="font-size:0.76rem;margin-top:4px;">Marque numa empresa de teste/sandbox (não um cliente real). Qualquer vendedor logado no painel dele ganha um botão "Mostrar demonstração" que abre o painel dessa empresa, pra usar na apresentação ao prospect.</div>
+        </div>
 
         <div class="sec">Período gratuito (cortesia / mentorados)</div>
         <div class="campo">
@@ -994,7 +1051,8 @@ async function salvar(id) {
     plano: v('e_plano'), valorMensal: v('e_valor'), statusPagamento: document.getElementById('e_status').value, observacoes: v('e_obs'), vendedorComissao: v('e_vendedorComissao'),
     zapiInstanceId: v('e_inst'), zapiToken: v('e_tok'), zapiClientToken: v('e_ctok'), whatsappTipo: document.getElementById('e_whatsappTipo').value,
     prepagoAtivo: document.getElementById('e_prepagoAtivo').checked,
-    ofertasHabilitado: document.getElementById('e_ofertasHabilitado').checked
+    ofertasHabilitado: document.getElementById('e_ofertasHabilitado').checked,
+    demoVendedores: document.getElementById('e_demoVendedores').checked
   };
   // Preços só entram se o campo tiver valor (evita zerar o preço por engano).
   if (v('e_precoMkt')) body.precoMktCentavos = reaisParaCentavos(v('e_precoMkt'));

@@ -263,6 +263,9 @@ const API_BASE = window.location.origin;
 // Tem prioridade sobre o localStorage — o cliente não tem (nem precisa de) chave de admin.
 const CAD_KEY = new URLSearchParams(window.location.search).get('c') || '';
 const ehConvite = !!CAD_KEY;
+// Link pessoal do vendedor (?vendedor=ID anexado no link de autocadastro do
+// cliente) — atribui a comissão a ele quando o cliente se cadastra por aqui.
+const CAD_VENDEDOR = new URLSearchParams(window.location.search).get('vendedor') || '';
 
 // Detecta quem está logado: dono (chave) ou vendedor (token).
 const STORED_KEY = ehConvite ? '' : (localStorage.getItem('recomendaleads_admin_key') || '');
@@ -421,6 +424,7 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     zapiClientToken: val('zapiClientTokenInput'),
     senha,
     migrarConfigPrincipal,
+    ...(ehConvite && CAD_VENDEDOR ? { vendedorComissao: CAD_VENDEDOR } : {}),
     // Autocadastro do cliente: aceite do contrato (o plano quem define é o dono, depois de aprovar)
     ...(ehConvite ? {
       aceiteContrato: !!(document.getElementById('aceiteContrato') || {}).checked

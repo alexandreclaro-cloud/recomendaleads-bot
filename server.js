@@ -8684,7 +8684,21 @@ app.post('/admin/empresas', exigirAcessoCriarEmpresa, async (req, res) => {
     }
 
     // Vendedor logado: cliente sempre vinculado a ele; sem trial/migração.
-    const vendedorVinc = ehVendedor ? req.acesso.vendedorId : (vendedorComissao || null);
+    // Veio pelo link fixo do cliente (ehClienteLink) com ?vendedor=ID anexado
+    // (link pessoal do vendedor, ver GET /admin/cadastro-cliente-link): valida
+    // que o vendedor existe e vincula a comissão a ele também — sem isso, todo
+    // cadastro feito por esse link nunca gerava comissão pra ninguém.
+    let vendedorVinc = null;
+    if (req.acesso.vendedorId) {
+      vendedorVinc = req.acesso.vendedorId;
+    } else if (req.acesso.ehClienteLink) {
+      if (vendedorComissao) {
+        const vdSnap = await VENDEDORES_COL().doc(String(vendedorComissao)).get();
+        if (vdSnap.exists) vendedorVinc = vdSnap.id;
+      }
+    } else {
+      vendedorVinc = vendedorComissao || null;
+    }
     const _migrarConfig = ehVendedor ? false : migrarConfigPrincipal;
     const _empresaTeste = ehVendedor ? false : empresaTeste;
 
@@ -8909,7 +8923,31 @@ app.get('/admin/cadastro-cliente-link', exigirAcessoAdmin, async (req, res) => {
   try {
     const chave = await getChaveCadastroCliente();
     const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
-    res.json({ ok: true, link: `${base}/cliente/cadastro?c=${encodeURIComponent(chave)}` });
+    // Vendedor logado: anexa o próprio id, pra quem se cadastrar por esse link
+    // já ficar vinculado à comissão dele (ver POST /admin/empresas).
+    const vend = req.acesso.vendedorId ? `&vendedor=${encodeURIComponent(req.acesso.vendedorId)}` : '';
+    res.json({ ok: true, link: `${base}/cliente/cadastro?c=${encodeURIComponent(chave)}${vend}` });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// O próprio vendedor consulta os dados dele (nunca de outro) — usado pra
+// mostrar a comissão correta no painel, sem precisar de acesso de dono.
+app.get('/admin/vendedor/meu-perfil', exigirAcessoAdmin, async (req, res) => {
+  try {
+    if (req.acesso.ehDono) return res.status(400).json({ ok: false, erro: 'Esta rota é só para login de vendedor' });
+    const doc = await VENDEDORES_COL().doc(req.acesso.vendedorId).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Vendedor não encontrado' });
+    const v = doc.data();
+    res.json({
+      ok: true, nome: v.nome || '',
+      tipoComissao: v.tipoComissao === 'fixo' ? 'fixo' : 'percentual',
+      comissaoPct: v.comissaoPct != null ? v.comissaoPct : COMISSAO_PCT,
+      comissaoValorFixoCentavos: v.comissaoValorFixoCentavos != null ? v.comissaoValorFixoCentavos : null,
+      comissaoOverrideFixoCentavos: v.comissaoOverrideFixoCentavos != null ? v.comissaoOverrideFixoCentavos : null,
+      ehAfiliado: !!v.vendedorPrincipalId
+    });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -9473,6 +9511,24 @@ app.post('/admin/empresas/:id/impersonar', exigirAdmin, async (req, res) => {
   }
 });
 
+// Versão restrita do "entrar como" — só pra vendedor mostrar uma DEMONSTRAÇÃO
+// ao prospect. Diferente da rota acima (dono, qualquer empresa por :id), esta
+// nunca recebe um id: sempre entra na(s) empresa(s) marcada(s) como
+// demoVendedores:true no painel (nunca um cliente real), e aceita dono OU
+// vendedor logado.
+app.post('/admin/demo-cliente/impersonar', exigirAcessoAdmin, async (req, res) => {
+  try {
+    const snap = await EMPRESAS_COL().where('demoVendedores', '==', true).limit(1).get();
+    if (snap.empty) return res.status(404).json({ ok: false, erro: 'Nenhuma empresa demo configurada. Peça ao dono pra marcar uma em Editar empresa → "Usar como demonstração pros vendedores".' });
+    const doc = snap.docs[0];
+    const d = doc.data();
+    const token = jwt.sign({ empresaLoginId: doc.id }, JWT_SECRET, { expiresIn: '1d' });
+    res.json({ ok: true, token, empresa: { id: doc.id, nome: d.nome, email: d.email } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Libera um período de teste (trial) para a empresa — concedido manualmente
 // pelo admin. Body: { dias } (padrão 14).
 app.post('/admin/empresas/:id/trial', exigirAdmin, async (req, res) => {
@@ -9592,6 +9648,9 @@ app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
     // Múltiplas ofertas/lançamentos: função extra, só o admin habilita por cliente
     // (cobrada à parte). Gate real fica nos endpoints /minha-ofertas* (server-side).
     if (b.ofertasHabilitado !== undefined) upd.ofertasHabilitado = !!b.ofertasHabilitado;
+    // Marca a empresa de teste/sandbox usada na demonstração pros vendedores
+    // (ver POST /admin/demo-cliente/impersonar) — nunca marque um cliente real.
+    if (b.demoVendedores !== undefined) upd.demoVendedores = !!b.demoVendedores;
     if (b.precoMktCentavos !== undefined && b.precoMktCentavos !== '') upd.precoMktCentavos = Math.max(0, parseInt(b.precoMktCentavos, 10) || 0);
     if (b.precoUtilCentavos !== undefined && b.precoUtilCentavos !== '') upd.precoUtilCentavos = Math.max(0, parseInt(b.precoUtilCentavos, 10) || 0);
     // Preço OFICIAL da Meta (conta própria) — só pra ESTIMATIVA mostrada ao cliente.
