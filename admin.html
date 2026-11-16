@@ -1129,33 +1129,41 @@ function abrirModalVendedor(id) {
           ${campo('v_nomeEmpresa', 'Nome da empresa (Razão Social)', v.razaoSocial, 'Razão social')}
           ${campo('v_cnpj', 'CNPJ', v.cnpj, '00.000.000/0000-00')}
         </div>
-        <div class="campo">
-          <label>Tipo de comissão</label>
-          <select class="input" id="v_tipoComissao">
-            <option value="percentual" ${v.tipoComissao !== 'fixo' ? 'selected' : ''}>Percentual (%) — padrão</option>
-            <option value="fixo" ${v.tipoComissao === 'fixo' ? 'selected' : ''}>Valor fixo (R$) — ex: representante</option>
-          </select>
-        </div>
         <div class="grid2">
-          ${campo('v_comissao', 'Comissão (%)', (v.comissaoPct != null ? v.comissaoPct : 20), 'Ex: 20', 'number')}
-          ${campo('v_comissaoFixa', 'Comissão quando ELE vende (R$)', v.comissaoValorFixoCentavos != null ? (v.comissaoValorFixoCentavos / 100).toFixed(2).replace('.', ',') : '', 'Afiliado: 100,00 · Representante sozinho: 197,00')}
-        </div>
-        <div class="grid2">
-          ${campo('v_comissaoOverride', 'Comissão como Representante, quando o AFILIADO dele vende (R$)', v.comissaoOverrideFixoCentavos != null ? (v.comissaoOverrideFixoCentavos / 100).toFixed(2).replace('.', ',') : '', 'Ex: 97,00 — só preencher se ele tiver afiliado')}
-          <div></div>
-        </div>
-        <div class="muted" style="font-size:0.74rem;margin-top:-6px;">Percentual padrão 20%. "Valor fixo": o 1º campo é o que ELE ganha vendendo (seja Representante sozinho ou Afiliado); o 2º só se aplica a Representantes que têm Afiliado — é o valor extra que ele ganha automaticamente quando o Afiliado dele fecha uma venda (sem precisar escolher nada na hora).</div>
-        <div class="grid2" style="margin-top:10px;">
           <div class="campo">
             <label>Representante vinculado (opcional — se este cadastro for um Afiliado)</label>
             <select class="input" id="v_principal">
-              <option value="">Nenhum (é um Representante, não um Afiliado)</option>
-              ${vendedoresCache.filter(x => x.id !== id).map(x => `<option value="${esc(x.id)}" ${v.vendedorPrincipalId === x.id ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}
+              <option value="">Nenhum (ele É o Representante, vende por conta própria)</option>
+              ${vendedoresCache.filter(x => x.id !== id).map(x => `<option value="${esc(x.id)}" ${v.vendedorPrincipalId === x.id ? 'selected' : ''}>${esc(x.nome)} (vira Afiliado dele)</option>`).join('')}
             </select>
           </div>
           ${campo('v_walletId', 'Wallet ID Asaas (p/ split futuro)', v.walletIdAsaas, 'ex: 11111111-1111-...')}
         </div>
-        <div class="muted" style="font-size:0.74rem;margin-top:-6px;">Se tiver um principal, a comissão dele é registrada automaticamente junto, toda vez que ESTE vendedor fechar uma venda.</div>
+        <div class="muted" style="font-size:0.74rem;margin-top:-6px;">Escolha primeiro o papel dele aqui em cima — os campos de comissão abaixo mudam de acordo (Representante sozinho vs. Afiliado de alguém).</div>
+        <div class="campo" style="margin-top:10px;">
+          <label>Tipo de comissão</label>
+          <select class="input" id="v_tipoComissao">
+            <option value="percentual" ${v.tipoComissao !== 'fixo' ? 'selected' : ''}>Percentual (%) — padrão</option>
+            <option value="fixo" ${v.tipoComissao === 'fixo' ? 'selected' : ''}>Valor fixo (R$) — usado p/ Representante/Afiliado</option>
+          </select>
+        </div>
+        <div class="grid2">
+          ${campo('v_comissao', 'Comissão (%)', (v.comissaoPct != null ? v.comissaoPct : 20), 'Ex: 20', 'number')}
+          <div class="campo">
+            <label id="lblComissaoFixa">Comissão quando ELE vende (R$)</label>
+            <input class="input" id="v_comissaoFixa" type="text" value="${esc(v.comissaoValorFixoCentavos != null ? (v.comissaoValorFixoCentavos / 100).toFixed(2).replace('.', ',') : '')}" placeholder="">
+          </div>
+        </div>
+        <div class="grid2" id="overrideWrap">
+          <div class="campo">
+            <label id="lblComissaoOverride">Comissão como Representante, quando o AFILIADO dele vende (R$)</label>
+            <input class="input" id="v_comissaoOverride" type="text" value="${esc(v.comissaoOverrideFixoCentavos != null ? (v.comissaoOverrideFixoCentavos / 100).toFixed(2).replace('.', ',') : '')}" placeholder="Ex: 97,00">
+          </div>
+          <div></div>
+        </div>
+        <div class="muted" style="font-size:0.74rem;margin-top:-6px;" id="helpComissaoFixa"></div>
+        <button type="button" class="btn btn-secondary" id="preencherContratoBtn" style="margin-top:8px;width:auto;">Preencher com os valores do contrato</button>
+        <div class="muted" style="font-size:0.74rem;margin-top:6px;">Se tiver um Representante vinculado, a comissão dele é registrada automaticamente junto, toda vez que ESTE vendedor (Afiliado) fechar uma venda.</div>
         <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:14px 0 6px;">Dados bancários (para receber comissão)</div>
         <div class="grid2">
           ${campo('v_banco', 'Banco', b.banco, 'Ex: Nubank, Itaú')}
@@ -1180,6 +1188,48 @@ function abrirModalVendedor(id) {
   document.getElementById('cancelarVendedorBtn').addEventListener('click', fecharModal);
   document.getElementById('ovVend').addEventListener('click', ev => { if (ev.target.id === 'ovVend') fecharModal(); });
   document.getElementById('salvarVendedorBtn').addEventListener('click', () => salvarVendedor(id));
+  document.getElementById('v_principal').addEventListener('change', () => atualizarCamposComissaoVendedor(true));
+  document.getElementById('preencherContratoBtn').addEventListener('click', preencherValoresContratoVendedor);
+  atualizarCamposComissaoVendedor();
+}
+
+// Os valores de comissão do contrato (ANEXO I) são fixos: Representante que
+// vende sozinho = 197,00; Representante como upline de um Afiliado = 97,00;
+// Afiliado = 100,00. Aqui a tela deixa claro qual campo vale pra cada papel,
+// em vez de misturar os dois casos num placeholder só.
+function ehAfiliadoNoModal() { return !!document.getElementById('v_principal').value; }
+
+function atualizarCamposComissaoVendedor(fromUserChange) {
+  const afiliado = ehAfiliadoNoModal();
+  const lblFixa = document.getElementById('lblComissaoFixa');
+  const fixa = document.getElementById('v_comissaoFixa');
+  const overrideWrap = document.getElementById('overrideWrap');
+  const help = document.getElementById('helpComissaoFixa');
+  if (afiliado) {
+    lblFixa.textContent = 'Comissão por venda — ele é Afiliado (R$)';
+    fixa.placeholder = 'Valor do contrato para Afiliado: 100,00';
+    overrideWrap.style.display = 'none';
+    // Afiliado nunca recebe repasse de upline (quem recebe é o Representante
+    // acima dele) — se a pessoa acabou de virar Afiliado na tela, zera um
+    // valor de override que tenha ficado de um cadastro anterior como Representante.
+    if (fromUserChange) document.getElementById('v_comissaoOverride').value = '';
+    help.textContent = 'Afiliado recebe um valor fixo por venda recorrente (contrato: R$ 100,00) e não tem campo de "comissão como Representante" — quem vende acima dele é quem recebe o repasse, automaticamente, sem o Afiliado saber.';
+  } else {
+    lblFixa.textContent = 'Comissão quando ELE vende sozinho (R$)';
+    fixa.placeholder = 'Valor do contrato: 197,00 (tudo que exceder os R$ 200,00 da empresa, ref. venda de R$ 397,00)';
+    overrideWrap.style.display = '';
+    const over = document.getElementById('v_comissaoOverride');
+    over.placeholder = 'Valor do contrato: 97,00 — só se ele tiver Afiliados vinculados a ele';
+    help.textContent = 'Representante independente: o 1º campo é o que ele ganha vendendo por conta própria (contrato: R$ 197,00). O 2º só vale se ele tiver Afiliado(s) cadastrados com "Representante vinculado" = ele — nesse caso ganha R$ 97,00 extra, automaticamente, a cada venda do Afiliado.';
+  }
+}
+
+function preencherValoresContratoVendedor() {
+  document.getElementById('v_tipoComissao').value = 'fixo';
+  const afiliado = ehAfiliadoNoModal();
+  document.getElementById('v_comissaoFixa').value = afiliado ? '100,00' : '197,00';
+  if (!afiliado) document.getElementById('v_comissaoOverride').value = '97,00';
+  else document.getElementById('v_comissaoOverride').value = '';
 }
 
 async function salvarVendedor(id) {
