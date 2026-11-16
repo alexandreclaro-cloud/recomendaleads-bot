@@ -373,6 +373,7 @@ async function entrarDono() {
     localStorage.removeItem('recomendaleads_admin_key');
     localStorage.removeItem('recomendaleads_vend_token');
     localStorage.removeItem('recomendaleads_vend_nome');
+    localStorage.removeItem('recomendaleads_vend_senha_provisoria');
     mostrarApp();
     const r = await adminFetch(`${API_BASE}/admin/empresas`); const d = await r.json(); render(d.empresas || []);
   } catch (e) { msg.textContent = 'Erro de conexão.'; }
@@ -391,6 +392,7 @@ async function entrar() {
   localStorage.removeItem('recomendaleads_dono_token');
   localStorage.removeItem('recomendaleads_vend_token');
   localStorage.removeItem('recomendaleads_vend_nome');
+  localStorage.removeItem('recomendaleads_vend_senha_provisoria');
   mostrarApp();
   const data = await resp.json();
   render(data.empresas || []);
@@ -407,11 +409,16 @@ async function entrarVendedor() {
     const resp = await fetch(`${API_BASE}/admin/vendedor-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, senha }) });
     const data = await resp.json();
     if (!resp.ok || !data.ok) { msg.textContent = data.erro || 'E-mail ou senha inválidos.'; return; }
-    VEND_TOKEN = data.token; VEND_NOME = data.nome || ''; ADMIN_KEY = '';
+    // BUG antigo: não limpava o token do DONO salvo, então o painel continuava
+    // usando a sessão de dono mesmo depois de logar como vendedor (adminFetch
+    // prioriza DONO_TOKEN sobre VEND_TOKEN se os dois estiverem presentes).
+    VEND_TOKEN = data.token; VEND_NOME = data.nome || ''; ADMIN_KEY = ''; DONO_TOKEN = '';
     localStorage.setItem('recomendaleads_vend_token', VEND_TOKEN);
     localStorage.setItem('recomendaleads_vend_nome', VEND_NOME);
     localStorage.removeItem('recomendaleads_admin_key');
-    mostrarApp();
+    localStorage.removeItem('recomendaleads_dono_token');
+    if (data.senhaProvisoria) { localStorage.setItem('recomendaleads_vend_senha_provisoria', '1'); abrirModalTrocarSenha(); }
+    else { localStorage.removeItem('recomendaleads_vend_senha_provisoria'); mostrarApp(); }
   } catch (e) { msg.textContent = 'Erro de conexão.'; }
 }
 
@@ -553,7 +560,7 @@ async function apagarAviso(id) {
 // então pra testar com OUTRO login é preciso sair primeiro. "Sair" e "Entrar
 // com outro login" fazem a mesma coisa: limpam o login salvo e recarregam, o
 // que mostra a tela de login (gate) normalmente, pronta pra preencher.
-function sairETrocarLogin() { ['recomendaleads_admin_key', 'recomendaleads_dono_token', 'recomendaleads_vend_token', 'recomendaleads_vend_nome'].forEach(k => localStorage.removeItem(k)); location.reload(); }
+function sairETrocarLogin() { ['recomendaleads_admin_key', 'recomendaleads_dono_token', 'recomendaleads_vend_token', 'recomendaleads_vend_nome', 'recomendaleads_vend_senha_provisoria'].forEach(k => localStorage.removeItem(k)); location.reload(); }
 document.getElementById('sairBtn').addEventListener('click', sairETrocarLogin);
 document.getElementById('trocarLoginBtn').addEventListener('click', sairETrocarLogin);
 document.getElementById('atualizarBtn').addEventListener('click', carregar);
@@ -1037,9 +1044,51 @@ if (ADMIN_KEY || DONO_TOKEN) {
   }).catch(() => {});
 } else if (VEND_TOKEN) {
   adminFetch(`${API_BASE}/admin/comissoes`).then(resp => {
-    if (resp.ok) { mostrarApp(); }
-    else { VEND_TOKEN = ''; localStorage.removeItem('recomendaleads_vend_token'); localStorage.removeItem('recomendaleads_vend_nome'); }
+    if (resp.ok) {
+      if (localStorage.getItem('recomendaleads_vend_senha_provisoria') === '1') abrirModalTrocarSenha();
+      else mostrarApp();
+    }
+    else { VEND_TOKEN = ''; localStorage.removeItem('recomendaleads_vend_token'); localStorage.removeItem('recomendaleads_vend_nome'); localStorage.removeItem('recomendaleads_vend_senha_provisoria'); }
   }).catch(() => {});
+}
+
+// Modal bloqueante — vendedor com senha provisória (recém-criado ou resetada
+// pelo dono) é obrigado a trocar antes de usar o painel. Sem botão de fechar.
+function abrirModalTrocarSenha() {
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" id="ovTrocaSenha">
+      <div class="modal-box">
+        <div class="modal-head"><h2>Troque sua senha</h2></div>
+        <p class="muted" style="margin:0 0 14px;">Por segurança, você precisa trocar a senha provisória antes de continuar.</p>
+        <div class="campo"><label>Senha atual (provisória)</label><input class="input" id="ts_atual" type="password" placeholder="A senha que você usou pra entrar"></div>
+        <div class="campo"><label>Nova senha</label><input class="input" id="ts_nova" type="password" placeholder="Mínimo 4 caracteres"></div>
+        <div class="campo"><label>Confirmar nova senha</label><input class="input" id="ts_confirma" type="password" placeholder="Repita a nova senha"></div>
+        <div class="modal-actions">
+          <button class="btn btn-brand" id="ts_salvarBtn">Trocar senha e continuar</button>
+          <span class="status-msg" id="ts_msg"></span>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('ts_salvarBtn').addEventListener('click', async () => {
+    const atual = document.getElementById('ts_atual').value;
+    const nova = document.getElementById('ts_nova').value;
+    const confirma = document.getElementById('ts_confirma').value;
+    const msg = document.getElementById('ts_msg'); msg.textContent = ''; msg.className = 'status-msg';
+    if (!atual || !nova) { msg.textContent = 'Preencha a senha atual e a nova.'; msg.className = 'status-msg err'; return; }
+    if (nova.length < 4) { msg.textContent = 'A nova senha precisa ter ao menos 4 caracteres.'; msg.className = 'status-msg err'; return; }
+    if (nova !== confirma) { msg.textContent = 'As senhas não conferem.'; msg.className = 'status-msg err'; return; }
+    try {
+      const resp = await adminFetch(`${API_BASE}/admin/vendedor/trocar-senha`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ senhaAtual: atual, novaSenha: nova })
+      });
+      const data = await resp.json();
+      if (resp.ok && data.ok) {
+        localStorage.removeItem('recomendaleads_vend_senha_provisoria');
+        document.getElementById('modalContainer').innerHTML = '';
+        mostrarApp();
+      } else { msg.textContent = '❌ ' + (data.erro || 'Erro ao trocar a senha'); msg.className = 'status-msg err'; }
+    } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
+  });
 }
 
 // ====== Gestão de vendedores (somente o dono) ======

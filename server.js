@@ -9021,7 +9021,7 @@ app.post('/admin/vendedor-login', limiteLogin, async (req, res) => {
     const ok = await bcrypt.compare(senha, v.senhaHash || '');
     if (!ok) return res.status(401).json({ ok: false, erro: 'E-mail ou senha inválidos' });
     const token = jwt.sign({ tipo: 'vendedor-admin', vendedorId: doc.id, nome: v.nome || '' }, JWT_SECRET, { expiresIn: '12h' });
-    res.json({ ok: true, token, nome: v.nome || '', vendedorId: doc.id });
+    res.json({ ok: true, token, nome: v.nome || '', vendedorId: doc.id, senhaProvisoria: !!v.senhaProvisoria });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -9077,7 +9077,9 @@ app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
       vendedorPrincipalId = pDoc.id;
     }
     const ref = await VENDEDORES_COL().add({
-      nome, email, senhaHash, ativo: true,
+      // senhaProvisoria: true — é o DONO que define a senha inicial aqui, então
+      // o vendedor é obrigado a trocar no primeiro acesso (ver /admin/vendedor-login).
+      nome, email, senhaHash, ativo: true, senhaProvisoria: true,
       cpf: b.cpf || null, razaoSocial: b.razaoSocial || null,
       cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
       comissaoPct: pct,
@@ -9128,7 +9130,10 @@ app.patch('/admin/vendedores/:id', exigirAdmin, async (req, res) => {
       // reinicia o relógio dos 90 dias a partir de agora.
       if (upd.ativo) { upd.desligadoEm = null; upd.ultimaVendaEm = new Date().toISOString(); }
     }
-    if (b.novaSenha) upd.senhaHash = await bcrypt.hash(String(b.novaSenha), 10);
+    // Toda vez que o DONO define uma nova senha pro vendedor (editar ou
+    // resetar), marca como provisória — ele é obrigado a trocar no próximo
+    // login, pra não ficar usando "123mudar" pra sempre.
+    if (b.novaSenha) { upd.senhaHash = await bcrypt.hash(String(b.novaSenha), 10); upd.senhaProvisoria = true; }
     if (!Object.keys(upd).length) return res.json({ ok: true });
     await ref.set(upd, { merge: true });
     res.json({ ok: true });
@@ -9185,6 +9190,30 @@ app.post('/admin/vendedores/:id/comissao-adesao', exigirAdmin, async (req, res) 
     res.json({ ok: true, comissaoCentavos });
   } catch (err) {
     res.status(400).json({ ok: false, erro: err.message });
+  }
+});
+
+// O próprio vendedor troca a senha dele (nunca a de outro — usa o vendedorId
+// do token, ignora qualquer id no corpo). Usado logo após o 1º login com
+// senha provisória, mas também serve pra trocar por vontade própria depois.
+app.post('/admin/vendedor/trocar-senha', exigirAcessoAdmin, async (req, res) => {
+  try {
+    if (req.acesso.ehDono) return res.status(400).json({ ok: false, erro: 'Esta rota é só para login de vendedor' });
+    const b = req.body || {};
+    const senhaAtual = String(b.senhaAtual || '');
+    const novaSenha = String(b.novaSenha || '');
+    if (!senhaAtual || !novaSenha) return res.status(400).json({ ok: false, erro: 'Informe a senha atual e a nova senha' });
+    if (novaSenha.length < 4) return res.status(400).json({ ok: false, erro: 'A nova senha precisa ter ao menos 4 caracteres' });
+    const ref = VENDEDORES_COL().doc(req.acesso.vendedorId);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Vendedor não encontrado' });
+    const ok = await bcrypt.compare(senhaAtual, doc.data().senhaHash || '');
+    if (!ok) return res.status(401).json({ ok: false, erro: 'Senha atual incorreta' });
+    const senhaHash = await bcrypt.hash(novaSenha, 10);
+    await ref.set({ senhaHash, senhaProvisoria: false }, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
   }
 });
 
