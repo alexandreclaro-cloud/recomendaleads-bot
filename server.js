@@ -67,7 +67,10 @@ function rateLimit({ windowMs, max, prefix }) {
   };
 }
 const limiteLogin = rateLimit({ windowMs: 5 * 60 * 1000, max: 10, prefix: 'login' });
-const limiteAdmin = rateLimit({ windowMs: 5 * 60 * 1000, max: 20, prefix: 'admin' });
+// Um só carregamento do painel (dono ou vendedor) já dispara várias chamadas
+// (empresas/vendedores/comissões/link/perfil/demo...) — 20 a cada 5 min
+// esgotava rápido demais com uso normal (poucos F5 seguidos já estourava).
+const limiteAdmin = rateLimit({ windowMs: 5 * 60 * 1000, max: 120, prefix: 'admin' });
 
 // ============================================================
 // CONFIGURAÇÃO — ASAAS (assinaturas)
@@ -982,6 +985,10 @@ const EMPRESA_PADRAO = {
   relatorioDiarioTelefone: null,
   relatorioDiarioHora: '21:00',
   relatorioDiarioDias: ['seg', 'ter', 'qua', 'qui', 'sex', 'sab'],
+  // Nome do template aprovado na Meta p/ mandar fora da janela de 24h, na API
+  // Oficial (cada empresa pode ter o seu, se o WABA dela não for o mesmo de
+  // quem aprovou "relatorio_diario_funil") — em branco usa esse como padrão.
+  relatorioDiarioTemplateNome: null,
   // Follow-up automático de disparo em massa: reenvia sozinho, N dias depois,
   // pra quem recebeu mas o WhatsApp nunca confirmou leitura (✓✓ azul) daquele
   // disparo — sem precisar voltar e clicar em nada.
@@ -1297,7 +1304,7 @@ const CAMPOS_OPERACAO_EMPRESA = new Set([
   'recomendadoGapMinMin', 'recomendadoGapMaxMin', 'humanizarDigitacao', 'humanizarMaxSeg',
   'intervaloProximaFaixaMin', 'avisarConfirmDelayMin', 'menuAposReacaoMin',
   'modoRecomendacao', 'nichos', 'numeroConectado', 'numeroDemo', 'mensagemEscolhaOferta',
-  'relatorioDiarioAtivo', 'relatorioDiarioTelefone', 'relatorioDiarioHora', 'relatorioDiarioDias'
+  'relatorioDiarioAtivo', 'relatorioDiarioTelefone', 'relatorioDiarioHora', 'relatorioDiarioDias', 'relatorioDiarioTemplateNome'
   // 'nome' SAIU daqui de propósito — cada oferta (lançamento) roda com nome
   // próprio (usa a variável {empresa} nas mensagens), não é um dado da empresa
   // como um todo. Bug real: editar o nome numa oferta mudava em todas, porque
@@ -9523,6 +9530,12 @@ app.get('/admin/empresas', exigirAdmin, async (req, res) => {
         whatsappTipo: data.whatsappTipo || 'zapi',
         assinatura: data.assinatura || null,
         ofertasHabilitado: !!data.ofertasHabilitado,
+        demoVendedores: !!data.demoVendedores,
+        relatorioDiarioAtivo: !!(data.configuracao && data.configuracao.relatorioDiarioAtivo),
+        relatorioDiarioTelefone: (data.configuracao && data.configuracao.relatorioDiarioTelefone) || null,
+        relatorioDiarioHora: (data.configuracao && data.configuracao.relatorioDiarioHora) || null,
+        relatorioDiarioDias: (data.configuracao && data.configuracao.relatorioDiarioDias) || null,
+        relatorioDiarioTemplateNome: (data.configuracao && data.configuracao.relatorioDiarioTemplateNome) || null,
         leads: 0
       });
     });
@@ -9703,11 +9716,20 @@ app.patch('/admin/empresas/:id', exigirAdmin, async (req, res) => {
     if (b.precoMetaMktCentavos !== undefined && b.precoMetaMktCentavos !== '') upd.precoMetaMktCentavos = Math.max(0, parseFloat(b.precoMetaMktCentavos) || 0);
     if (b.precoMetaUtilCentavos !== undefined && b.precoMetaUtilCentavos !== '') upd.precoMetaUtilCentavos = Math.max(0, parseFloat(b.precoMetaUtilCentavos) || 0);
     if (b.precoMetaAuthCentavos !== undefined && b.precoMetaAuthCentavos !== '') upd.precoMetaAuthCentavos = Math.max(0, parseFloat(b.precoMetaAuthCentavos) || 0);
+    // Campos do Relatório diário pro gestor vivem dentro de `configuracao`
+    // (CAMPOS_OPERACAO_EMPRESA) — junta tudo num só patch pra não sobrescrever
+    // o resto da configuração nem pisar no patch do nome (abaixo).
+    const configPatch = {};
     if (b.nome !== undefined && String(b.nome).trim()) {
       upd.nome = String(b.nome).trim();
-      // mantém o nome de exibição usado nas mensagens em sincronia
-      upd.configuracao = { ...(atual.configuracao || {}), nome: upd.nome };
+      configPatch.nome = upd.nome; // mantém o nome de exibição das mensagens em sincronia
     }
+    if (b.relatorioDiarioAtivo !== undefined) configPatch.relatorioDiarioAtivo = !!b.relatorioDiarioAtivo;
+    if (b.relatorioDiarioTelefone !== undefined) configPatch.relatorioDiarioTelefone = String(b.relatorioDiarioTelefone || '').trim() || null;
+    if (b.relatorioDiarioHora !== undefined) configPatch.relatorioDiarioHora = String(b.relatorioDiarioHora || '').trim() || null;
+    if (b.relatorioDiarioDias !== undefined) configPatch.relatorioDiarioDias = Array.isArray(b.relatorioDiarioDias) ? b.relatorioDiarioDias : null;
+    if (b.relatorioDiarioTemplateNome !== undefined) configPatch.relatorioDiarioTemplateNome = String(b.relatorioDiarioTemplateNome || '').trim() || null;
+    if (Object.keys(configPatch).length) upd.configuracao = { ...(atual.configuracao || {}), ...configPatch };
     if (b.email !== undefined && String(b.email).trim()) upd.email = String(b.email).trim().toLowerCase();
     if (b.cadastro && typeof b.cadastro === 'object') {
       upd.cadastro = { ...(atual.cadastro || {}), ...b.cadastro };
@@ -11871,22 +11893,26 @@ function montarVariaveisRelatorioDiarioTemplate(empresaNome, diaLabel, hoje, mes
 // pode ser enviado (a Meta exige template) — antes isso caía no template
 // GENÉRICO de aviso interno (oficialTemplateAvisoInterno), que achata tudo
 // numa variável só e perde a formatação. Agora usa o template DEDICADO
-// (relatorio_diario_funil, 10 variáveis), que preserva cada campo separado.
-async function enviarRelatorioDiario(telefone, empresaNome, diaLabel, hoje, mes, textoLivre) {
+// (10 variáveis), que preserva cada campo separado. O nome do template pode
+// ser configurado por empresa (relatorioDiarioTemplateNome, ver Editar
+// empresa → Relatório diário) — útil se o WABA dela não for o mesmo de quem
+// aprovou "relatorio_diario_funil"; em branco usa esse como padrão.
+async function enviarRelatorioDiario(telefone, empresaNome, diaLabel, hoje, mes, textoLivre, templateNome) {
+  const nomeTemplate = (templateNome && String(templateNome).trim()) || RELATORIO_DIARIO_TEMPLATE_NOME;
   if (tipoWppAtual() === 'oficial' && !(await dentroJanela24h(telefone))) {
     const cfg = oficialAtual();
     try {
-      const info = await getTemplateInfo(cfg, RELATORIO_DIARIO_TEMPLATE_NOME);
+      const info = await getTemplateInfo(cfg, nomeTemplate);
       const idioma = (info && info.idioma) || 'pt_BR';
       const parametros = montarVariaveisRelatorioDiarioTemplate(empresaNome, diaLabel, hoje, mes).map(v => ({ type: 'text', text: v }));
       const r = await axios.post(metaMessagesUrl(cfg), {
         messaging_product: 'whatsapp', to: soDigitos(telefone), type: 'template',
-        template: { name: RELATORIO_DIARIO_TEMPLATE_NOME, language: { code: idioma }, components: [{ type: 'body', parameters: parametros }] }
+        template: { name: nomeTemplate, language: { code: idioma }, components: [{ type: 'body', parameters: parametros }] }
       }, { headers: metaHeaders(cfg) });
       registrarMensagem({ empresaId: empresaIdAtual(), telefone, direcao: 'out', texto: textoLivre, messageId: idMensagemMeta(r) });
       return true;
     } catch (e) {
-      console.error(`[RELATORIO-DIARIO] falha ao enviar pelo template ${RELATORIO_DIARIO_TEMPLATE_NOME}:`, e.response?.data ? JSON.stringify(e.response.data) : e.message);
+      console.error(`[RELATORIO-DIARIO] falha ao enviar pelo template ${nomeTemplate}:`, e.response?.data ? JSON.stringify(e.response.data) : e.message);
       return false;
     }
   }
@@ -11934,7 +11960,7 @@ async function processarRelatorioDiarioGestor() {
       const texto = montarTextoRelatorioDiario(empresaFull.nome, diaLabel, resumoHoje, resumoMes);
       const contexto = { empresa: empresaFull, empresaId, oficial: oficialDaEmpresa(empresaFull), zapi: zapiDaEmpresa(empresaFull) };
       await tenantContext.run(contexto, async () => {
-        try { await enviarRelatorioDiario(cfg.relatorioDiarioTelefone, empresaFull.nome, diaLabel, resumoHoje, resumoMes, texto); }
+        try { await enviarRelatorioDiario(cfg.relatorioDiarioTelefone, empresaFull.nome, diaLabel, resumoHoje, resumoMes, texto, cfg.relatorioDiarioTemplateNome); }
         catch (e) { console.error(`[RELATORIO-DIARIO] falha ao enviar pra ${empresaId}:`, e.message); }
       });
     }

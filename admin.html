@@ -905,6 +905,27 @@ function abrirEdicao(id) {
           <div class="muted" style="font-size:0.76rem;margin-top:4px;">Marque numa empresa de teste/sandbox (não um cliente real). Qualquer vendedor logado no painel dele ganha um botão "Mostrar demonstração" que abre o painel dessa empresa, pra usar na apresentação ao prospect.</div>
         </div>
 
+        <div class="sec">📊 Relatório diário pro gestor</div>
+        <div class="campo">
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;"><input type="checkbox" id="e_relatorioAtivo" ${e.relatorioDiarioAtivo ? 'checked' : ''}> Ativo</label>
+          <div class="muted" style="font-size:0.76rem;margin-top:4px;">Manda, todo dia no horário/dias marcados, um resumo do funil de recomendados (quantos recomendaram, convites, resgates, agendamentos, vendas) pro WhatsApp do gestor.</div>
+        </div>
+        <div class="grid2">
+          ${inpL('e_relatorioTelefone', 'WhatsApp do gestor (com DDI+DDD)', e.relatorioDiarioTelefone, 'Ex: 5511999999999')}
+          ${inpL('e_relatorioHora', 'Horário de envio', e.relatorioDiarioHora, 'Ex: 21:00')}
+        </div>
+        <div class="campo">
+          <label>Dias da semana</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;">
+            ${['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'].map(d => {
+              const marcado = Array.isArray(e.relatorioDiarioDias) ? e.relatorioDiarioDias.includes(d) : ['seg', 'ter', 'qua', 'qui', 'sex', 'sab'].includes(d);
+              return `<label style="display:flex;align-items:center;gap:4px;font-size:0.85rem;text-transform:capitalize;"><input type="checkbox" class="e_relatorioDia" value="${d}" ${marcado ? 'checked' : ''}> ${d}</label>`;
+            }).join('')}
+          </div>
+        </div>
+        ${inpL('e_relatorioTemplate', 'Nome do template na Meta (só API Oficial, fora da janela de 24h)', e.relatorioDiarioTemplateNome, 'Em branco usa o padrão: relatorio_diario_funil')}
+        <div class="muted" style="font-size:0.76rem;margin-top:-6px;">Só importa se o WABA desta empresa tiver um template diferente aprovado pra isso. Senão, deixe em branco.</div>
+
         <div class="sec">Período gratuito (cortesia / mentorados)</div>
         <div class="campo">
           <label>${e.assinatura && e.assinatura.acessoAte ? `Acesso atual até <b>${fmtData(e.assinatura.acessoAte)}</b> · status: ${e.assinatura.status || '—'}` : 'Sem período/assinatura ativos'}</label>
@@ -1096,7 +1117,12 @@ async function salvar(id) {
     zapiInstanceId: v('e_inst'), zapiToken: v('e_tok'), zapiClientToken: v('e_ctok'), whatsappTipo: document.getElementById('e_whatsappTipo').value,
     prepagoAtivo: document.getElementById('e_prepagoAtivo').checked,
     ofertasHabilitado: document.getElementById('e_ofertasHabilitado').checked,
-    demoVendedores: document.getElementById('e_demoVendedores').checked
+    demoVendedores: document.getElementById('e_demoVendedores').checked,
+    relatorioDiarioAtivo: document.getElementById('e_relatorioAtivo').checked,
+    relatorioDiarioTelefone: v('e_relatorioTelefone'),
+    relatorioDiarioHora: v('e_relatorioHora'),
+    relatorioDiarioDias: Array.from(document.querySelectorAll('.e_relatorioDia:checked')).map(c => c.value),
+    relatorioDiarioTemplateNome: v('e_relatorioTemplate')
   };
   // Preços só entram se o campo tiver valor (evita zerar o preço por engano).
   if (v('e_precoMkt')) body.precoMktCentavos = reaisParaCentavos(v('e_precoMkt'));
