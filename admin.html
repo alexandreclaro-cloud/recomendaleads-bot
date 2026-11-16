@@ -1207,20 +1207,20 @@ function atualizarCamposComissaoVendedor(fromUserChange) {
   const help = document.getElementById('helpComissaoFixa');
   if (afiliado) {
     lblFixa.textContent = 'Comissão por venda — ele é Afiliado (R$)';
-    fixa.placeholder = 'Valor do contrato para Afiliado: 100,00';
+    fixa.placeholder = 'Valor do contrato: tudo acima de R$ 297,00 — 100,00 no preço cheio de R$ 397,00';
     overrideWrap.style.display = 'none';
     // Afiliado nunca recebe repasse de upline (quem recebe é o Representante
     // acima dele) — se a pessoa acabou de virar Afiliado na tela, zera um
     // valor de override que tenha ficado de um cadastro anterior como Representante.
     if (fromUserChange) document.getElementById('v_comissaoOverride').value = '';
-    help.textContent = 'Afiliado recebe um valor fixo por venda recorrente (contrato: R$ 100,00) e não tem campo de "comissão como Representante" — quem vende acima dele é quem recebe o repasse, automaticamente, sem o Afiliado saber.';
+    help.textContent = 'A empresa sempre fica com os primeiros R$ 200,00 e o Representante acima dele fica com a faixa de R$ 200,00 até R$ 297,00 (R$ 97,00). O Afiliado recebe tudo que passar de R$ 297,00 — no preço cheio de R$ 397,00 isso dá R$ 100,00. Ele não tem campo de "comissão como Representante": quem vende acima dele recebe o repasse automaticamente, sem o Afiliado saber.';
   } else {
     lblFixa.textContent = 'Comissão quando ELE vende sozinho (R$)';
-    fixa.placeholder = 'Valor do contrato: 197,00 (tudo que exceder os R$ 200,00 da empresa, ref. venda de R$ 397,00)';
+    fixa.placeholder = 'Valor do contrato: tudo acima de R$ 200,00 da empresa — 197,00 no preço cheio de R$ 397,00';
     overrideWrap.style.display = '';
     const over = document.getElementById('v_comissaoOverride');
-    over.placeholder = 'Valor do contrato: 97,00 — só se ele tiver Afiliados vinculados a ele';
-    help.textContent = 'Representante independente: o 1º campo é o que ele ganha vendendo por conta própria (contrato: R$ 197,00). O 2º só vale se ele tiver Afiliado(s) cadastrados com "Representante vinculado" = ele — nesse caso ganha R$ 97,00 extra, automaticamente, a cada venda do Afiliado.';
+    over.placeholder = 'Valor do contrato: 97,00 (faixa de R$ 200,00 a R$ 297,00) — só se ele tiver Afiliados vinculados a ele';
+    help.textContent = 'A empresa sempre fica com os primeiros R$ 200,00 de cada pagamento. Vendendo sozinho, o Representante fica com tudo acima disso até o valor cobrado (contrato: R$ 197,00 no preço cheio de R$ 397,00). Se ele tiver Afiliado(s) vinculados a ele ("Representante vinculado" = ele), ganha a faixa de R$ 200,00 a R$ 297,00 (R$ 97,00) automaticamente a cada venda do Afiliado — e o Afiliado fica com o que passar de R$ 297,00.';
   }
 }
 
