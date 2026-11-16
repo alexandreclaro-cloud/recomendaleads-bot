@@ -11844,6 +11844,52 @@ function montarTextoRelatorioDiario(empresaNome, diaLabel, hoje, mes) {
 
 const DIAS_SEMANA_RELATORIO = { dom: 'Domingo', seg: 'Segunda-feira', ter: 'Terça-feira', qua: 'Quarta-feira', qui: 'Quinta-feira', sex: 'Sexta-feira', sab: 'Sábado' };
 
+// Template aprovado na Meta (Marketing, Portuguese BR) pra mandar o relatório
+// diário fora da janela de 24h, nos clientes que já migraram pra API Oficial
+// (ex.: Studio Carly) — 10 variáveis, nesta ordem exata (ver {{1}}..{{10}}
+// no Gerenciador do WhatsApp → Modelos de mensagem → relatorio_diario_funil):
+// {{1}} dia+data, {{2}} nome da empresa, {{3}} recomendaram hoje,
+// {{4}} convites hoje, {{5}} não responderam hoje, {{6}} interagiram hoje,
+// {{7}} resgataram hoje, {{8}} agendaram hoje, {{9}} compraram hoje,
+// {{10}} resumo do mês ("X recomendaram, Y convites, Z compras — R$ W").
+const RELATORIO_DIARIO_TEMPLATE_NOME = 'relatorio_diario_funil';
+
+function montarVariaveisRelatorioDiarioTemplate(empresaNome, diaLabel, hoje, mes) {
+  const resumoMes = `${mes.recomendadores} recomendaram, ${mes.convites} convites, ${mes.compraram} compras — ${fmtDinheiroRelatorio(mes.vendas)}`;
+  return [
+    diaLabel, empresaNome,
+    String(hoje.recomendadores), String(hoje.convites), String(hoje.naoResponderam),
+    String(hoje.interagiram), String(hoje.resgataram), String(hoje.agendaram), String(hoje.compraram),
+    resumoMes
+  ];
+}
+
+// Fora da janela de 24h, numa empresa com API Oficial, o texto livre não
+// pode ser enviado (a Meta exige template) — antes isso caía no template
+// GENÉRICO de aviso interno (oficialTemplateAvisoInterno), que achata tudo
+// numa variável só e perde a formatação. Agora usa o template DEDICADO
+// (relatorio_diario_funil, 10 variáveis), que preserva cada campo separado.
+async function enviarRelatorioDiario(telefone, empresaNome, diaLabel, hoje, mes, textoLivre) {
+  if (tipoWppAtual() === 'oficial' && !(await dentroJanela24h(telefone))) {
+    const cfg = oficialAtual();
+    try {
+      const info = await getTemplateInfo(cfg, RELATORIO_DIARIO_TEMPLATE_NOME);
+      const idioma = (info && info.idioma) || 'pt_BR';
+      const parametros = montarVariaveisRelatorioDiarioTemplate(empresaNome, diaLabel, hoje, mes).map(v => ({ type: 'text', text: v }));
+      const r = await axios.post(metaMessagesUrl(cfg), {
+        messaging_product: 'whatsapp', to: soDigitos(telefone), type: 'template',
+        template: { name: RELATORIO_DIARIO_TEMPLATE_NOME, language: { code: idioma }, components: [{ type: 'body', parameters: parametros }] }
+      }, { headers: metaHeaders(cfg) });
+      registrarMensagem({ empresaId: empresaIdAtual(), telefone, direcao: 'out', texto: textoLivre, messageId: idMensagemMeta(r) });
+      return true;
+    } catch (e) {
+      console.error(`[RELATORIO-DIARIO] falha ao enviar pelo template ${RELATORIO_DIARIO_TEMPLATE_NOME}:`, e.response?.data ? JSON.stringify(e.response.data) : e.message);
+      return false;
+    }
+  }
+  return enviarSemLog(telefone, textoLivre);
+}
+
 // Roda em loop curto (ver iniciarRelatorioDiarioGestor) — pra cada empresa com
 // o recurso ligado, manda 1x por dia, no horário configurado, nos dias
 // marcados. Idempotente via campo `relatorioDiarioUltimoEnvio` (transação).
@@ -11880,10 +11926,12 @@ async function processarRelatorioDiarioGestor() {
         calcularFunilRecomendados(empresaId, iso => pertenceAoDiaBrasilia(iso, hojeISO)),
         calcularFunilRecomendados(empresaId, iso => pertenceAoMesBrasilia(iso, mesAtual))
       ]);
-      const texto = montarTextoRelatorioDiario(empresaFull.nome, DIAS_SEMANA_RELATORIO[dia] || dia, resumoHoje, resumoMes);
+      const [, mesNum, diaNum] = hojeISO.split('-');
+      const diaLabel = `${DIAS_SEMANA_RELATORIO[dia] || dia}, ${diaNum}/${mesNum}`;
+      const texto = montarTextoRelatorioDiario(empresaFull.nome, diaLabel, resumoHoje, resumoMes);
       const contexto = { empresa: empresaFull, empresaId, oficial: oficialDaEmpresa(empresaFull), zapi: zapiDaEmpresa(empresaFull) };
       await tenantContext.run(contexto, async () => {
-        try { await enviarSemLog(cfg.relatorioDiarioTelefone, texto); }
+        try { await enviarRelatorioDiario(cfg.relatorioDiarioTelefone, empresaFull.nome, diaLabel, resumoHoje, resumoMes, texto); }
         catch (e) { console.error(`[RELATORIO-DIARIO] falha ao enviar pra ${empresaId}:`, e.message); }
       });
     }
