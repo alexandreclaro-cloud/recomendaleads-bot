@@ -235,4 +235,10 @@ a:hover { color: var(--brand-dark); }
   .main { padding: 20px 14px 48px; max-width: 100%; overflow-x: hidden; }
   .page-head h1 { font-size: 1.3rem; }
   .page-head p { font-size: 0.9rem; }
+
+  /* Botões maiores e mais fáceis de tocar no celular — meta de 44px de
+     altura (padrão de acessibilidade de toque), igual um app nativo. */
+  .btn { padding: 14px 22px; font-size: 1rem; min-height: 48px; }
+  .btn-mini { padding: 11px 16px !important; font-size: 0.88rem !important; min-height: 44px; }
+  .btn .ti, .btn svg { width: 20px; height: 20px; }
 }
