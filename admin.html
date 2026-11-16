@@ -1340,14 +1340,19 @@ function atualizarCamposComissaoVendedor(fromUserChange) {
     // acima dele) — se a pessoa acabou de virar Afiliado na tela, zera um
     // valor de override que tenha ficado de um cadastro anterior como Representante.
     if (fromUserChange) document.getElementById('v_comissaoOverride').value = '';
-    help.textContent = 'A empresa sempre fica com os primeiros R$ 200,00 e o Representante acima dele fica com a faixa de R$ 200,00 até R$ 297,00 (R$ 97,00). O Afiliado recebe tudo que passar de R$ 297,00 — no preço cheio de R$ 397,00 isso dá R$ 100,00. Ele não tem campo de "comissão como Representante": quem vende acima dele recebe o repasse automaticamente, sem o Afiliado saber.';
+    help.innerHTML = 'A empresa sempre fica com os primeiros <b>R$ 200,00</b> de cada pagamento.<br>'
+      + '• O Representante acima dele fica com a faixa de R$ 200,00 até R$ 297,00 — <b>R$ 97,00</b>, automático.<br>'
+      + '• Ele (Afiliado) recebe tudo que passar de R$ 297,00 — qualquer valor acima disso, hoje equivalente a <b>R$ 100,00</b> no preço cheio de R$ 397,00.<br>'
+      + 'Ele não vê e não tem campo de "comissão como Representante" — o repasse acontece sozinho, sem ele saber.';
   } else {
     lblFixa.textContent = 'Comissão quando ELE vende sozinho (R$)';
     fixa.placeholder = 'Valor do contrato: tudo acima de R$ 200,00 da empresa — 197,00 no preço cheio de R$ 397,00';
     overrideWrap.style.display = '';
     const over = document.getElementById('v_comissaoOverride');
     over.placeholder = 'Valor do contrato: 97,00 (faixa de R$ 200,00 a R$ 297,00) — só se ele tiver Afiliados vinculados a ele';
-    help.textContent = 'A empresa sempre fica com os primeiros R$ 200,00 de cada pagamento. Vendendo sozinho, o Representante fica com tudo acima disso até o valor cobrado (contrato: R$ 197,00 no preço cheio de R$ 397,00). Se ele tiver Afiliado(s) vinculados a ele ("Representante vinculado" = ele), ganha a faixa de R$ 200,00 a R$ 297,00 (R$ 97,00) automaticamente a cada venda do Afiliado — e o Afiliado fica com o que passar de R$ 297,00.';
+    help.innerHTML = 'A empresa sempre fica com os primeiros <b>R$ 200,00</b> de cada pagamento.<br>'
+      + '• Vendendo sozinho: ele fica com qualquer valor acima de R$ 200,00 — qualquer valor acima disso, hoje equivalente a <b>R$ 197,00</b> no preço cheio de R$ 397,00.<br>'
+      + '• Se tiver Afiliado(s) vinculados a ele ("Representante vinculado" = ele): ganha a faixa de R$ 200,00 a R$ 297,00 — <b>R$ 97,00</b>, automático a cada venda do Afiliado (que fica com o que passar de R$ 297,00).';
   }
 }
 
