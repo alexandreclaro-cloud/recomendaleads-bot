@@ -1222,8 +1222,17 @@ function abrirModalVendedor(id) {
           ${campo('v_titular', 'Titular', b.titular, 'Nome do titular')}
         </div>
         <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:14px 0 6px;">Acesso</div>
-        ${campo('v_senha', novo ? 'Senha de acesso' : 'Nova senha (deixe em branco para manter)', novo ? '123mudar' : '', novo ? 'Senha de acesso' : '••••••')}
-        ${novo ? '<div class="muted" style="font-size:0.74rem;margin-top:-6px;">Senha padrão: <b>123mudar</b>. Passe ao vendedor para o primeiro acesso.</div>' : ''}
+        <div class="campo">
+          <label>${novo ? 'Senha de acesso' : 'Nova senha (deixe em branco para manter a atual)'}</label>
+          <div style="position:relative;">
+            <input class="input" id="v_senha" type="password" value="${esc(novo ? '123mudar' : '')}" placeholder="${novo ? 'Senha de acesso' : '••••••'}" style="padding-right:40px;">
+            <button type="button" id="verSenhaBtn" title="Mostrar/ocultar senha" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;font-size:1.05rem;padding:4px 8px;">👁️</button>
+          </div>
+        </div>
+        ${novo
+          ? '<div class="muted" style="font-size:0.74rem;margin-top:-6px;">Senha padrão: <b>123mudar</b>. Passe ao vendedor para o primeiro acesso.</div>'
+          : `<div class="muted" style="font-size:0.74rem;margin-top:-6px;">A senha atual fica criptografada e não pode ser exibida — só dá pra definir uma nova. Se ele esqueceu, <button type="button" id="esqueciSenhaBtn" style="background:none;border:none;color:var(--brand);text-decoration:underline;cursor:pointer;font-size:0.74rem;padding:0;">clique aqui pra gerar uma senha provisória</button>.</div>`
+        }
         ${novo ? '' : `<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.88rem;"><input type="checkbox" id="v_ativo" ${v.ativo ? 'checked' : ''}> Conta ativa</label>`}
         <div class="modal-actions">
           <button class="btn btn-brand" id="salvarVendedorBtn">Salvar</button>
@@ -1239,6 +1248,16 @@ function abrirModalVendedor(id) {
   document.getElementById('v_principal').addEventListener('change', () => atualizarCamposComissaoVendedor(true));
   document.getElementById('preencherContratoBtn').addEventListener('click', preencherValoresContratoVendedor);
   atualizarCamposComissaoVendedor();
+  document.getElementById('verSenhaBtn').addEventListener('click', () => {
+    const inp = document.getElementById('v_senha');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  });
+  const esqueciBtn = document.getElementById('esqueciSenhaBtn');
+  if (esqueciBtn) esqueciBtn.addEventListener('click', () => {
+    const inp = document.getElementById('v_senha');
+    inp.value = '123mudar';
+    inp.type = 'text';
+  });
 }
 
 // Os valores de comissão do contrato (ANEXO I) são fixos: Representante que
