@@ -1069,6 +1069,22 @@ async function registrarAdesao(id) {
     else alert('❌ ' + (data.erro || 'Erro ao registrar'));
   } catch (e) { alert('❌ Erro de conexão'); }
 }
+// Reseta a senha do vendedor pra uma provisória — usa a mesma rota PATCH que
+// já aceita "novaSenha" (igual ao campo do modal de editar), só que em 1 clique.
+async function resetarSenhaVendedor(id) {
+  const v = vendedoresCache.find(x => x.id === id);
+  if (!v) return;
+  const nova = '123mudar';
+  if (!confirm(`Resetar a senha de "${v.nome}" para "${nova}"? Avise ele pra trocar no primeiro acesso.`)) return;
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/vendedores/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ novaSenha: nova })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) alert(`✅ Senha de ${v.nome} resetada para: ${nova}\n\nE-mail de login: ${v.email}`);
+    else alert('❌ ' + (data.erro || 'Erro ao resetar senha'));
+  } catch (e) { alert('❌ Erro de conexão'); }
+}
 // Exclui o cadastro de um vendedor — só o dono tem acesso a este botão/rota
 // (o login de vendedor não chega nem perto do /admin). Se já tiver comissão
 // registrada ou Afiliado vinculado, o servidor pede confirmação com o nome exato.
@@ -1102,7 +1118,7 @@ async function carregarVendedores() {
     vendedoresCache = data.vendedores || [];
     if (!vendedoresCache.length) { cont.innerHTML = '<span class="muted">Nenhum vendedor cadastrado ainda.</span>'; return; }
     cont.innerHTML = `<table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
-      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Nome</th><th>E-mail (login)</th><th>Comissão</th><th>Status</th><th></th><th></th><th></th><th></th></tr></thead>
+      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Nome</th><th>E-mail (login)</th><th>Comissão</th><th>Status</th><th></th><th></th><th></th><th></th><th></th></tr></thead>
       <tbody>${vendedoresCache.map(v => `<tr style="border-top:1px solid var(--line,#eee);">
         <td style="padding:8px 4px;font-weight:600;">${esc(v.nome)}${v.autocadastro ? ' <span style="font-size:0.7rem;background:#EFF6FF;color:#2563EB;padding:1px 6px;border-radius:6px;">autocadastro</span>' : ''}${v.vendedorPrincipalNome ? ` <span style="font-size:0.7rem;background:#FFFBEB;color:#92400E;padding:1px 6px;border-radius:6px;">afiliado de ${esc(v.vendedorPrincipalNome)}</span>` : ''}</td>
         <td class="muted">${esc(v.email)}</td>
@@ -1111,6 +1127,7 @@ async function carregarVendedores() {
         <td><button class="btn btn-secondary btn-mini" data-edv="${esc(v.id)}">Editar</button></td>
         <td><button class="btn btn-secondary btn-mini" data-linkv="${esc(v.id)}" title="Link de convite — quem se cadastrar por ele vira afiliado deste representante">🔗 Link p/ afiliado</button></td>
         <td><button class="btn btn-secondary btn-mini" data-adesao="${esc(v.id)}" title="Registra a comissão de adesão (50% do valor, não sobe pro principal)">➕ Adesão</button></td>
+        <td><button class="btn btn-secondary btn-mini" data-resetsenha="${esc(v.id)}" title="Caso ele esqueça a senha, reseta pra uma senha provisória">🔑 Resetar senha</button></td>
         <td><button class="btn btn-secondary btn-mini" data-delv="${esc(v.id)}" style="color:#c0392b;" title="Excluir cadastro — só o dono pode fazer isso">🗑️ Excluir</button></td>
       </tr>`).join('')}</tbody></table>`;
     cont.querySelectorAll('[data-edv]').forEach(b => b.addEventListener('click', () => abrirModalVendedor(b.dataset.edv)));
@@ -1119,6 +1136,7 @@ async function carregarVendedores() {
       navigator.clipboard.writeText(link).then(() => { const t = b.textContent; b.textContent = 'Copiado!'; setTimeout(() => b.textContent = t, 1500); });
     }));
     cont.querySelectorAll('[data-adesao]').forEach(b => b.addEventListener('click', () => registrarAdesao(b.dataset.adesao)));
+    cont.querySelectorAll('[data-resetsenha]').forEach(b => b.addEventListener('click', () => resetarSenhaVendedor(b.dataset.resetsenha)));
     cont.querySelectorAll('[data-delv]').forEach(b => b.addEventListener('click', () => excluirVendedor(b.dataset.delv)));
   } catch (e) { cont.innerHTML = '<span class="muted">Não foi possível carregar os vendedores.</span>'; }
 }
