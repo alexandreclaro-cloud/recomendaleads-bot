@@ -117,6 +117,20 @@
     </div>
 
     <div class="card vendedor-only" style="display:none; margin-bottom:18px; padding:18px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">💳 Link com plano já definido</h2>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Você escolhe o plano antes, o cliente só vê esse e preenche o cadastro — sem escolher nada, sem precisar o dono aprovar plano depois.</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+        <select class="input" id="planoVendedorSelect" style="max-width:260px;"><option>Carregando planos...</option></select>
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem;"><input type="checkbox" id="planoVendedorBoleto" checked> Aceitar Pix/boleto também</label>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input id="planoVendedorLink" readonly onclick="this.select()" style="flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:0.82rem;">
+        <button class="btn btn-secondary" id="planoVendedorCopiarBtn"><i data-lucide="copy"></i> Copiar</button>
+        <a class="btn btn-secondary" id="planoVendedorWppBtn" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Enviar no WhatsApp</a>
+      </div>
+    </div>
+
+    <div class="card vendedor-only" style="display:none; margin-bottom:18px; padding:18px;">
       <h2 style="font-size:1rem; margin:0 0 4px;">🎬 Demonstração pro cliente</h2>
       <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Abre o painel de uma empresa de demonstração — use pra mostrar ao prospect como o sistema funciona na prática.</p>
       <button class="btn btn-brand" id="demoClienteBtn" type="button"><i data-lucide="play"></i> Mostrar demonstração</button>
@@ -479,11 +493,14 @@ function mostrarApp() {
 // Busca os próprios dados de comissão (nunca de outro vendedor) pra mostrar o
 // valor certo no painel, em vez do "20%" fixo que não reflete o contrato de
 // Representante/Afiliado (valor fixo, não percentual).
+let MEU_VENDEDOR_ID = '';
 async function carregarMeuPerfilVendedor() {
   try {
     const resp = await adminFetch(`${API_BASE}/admin/vendedor/meu-perfil`);
     const data = await resp.json();
     if (!resp.ok || !data.ok) return;
+    MEU_VENDEDOR_ID = data.id || '';
+    carregarPlanosAssinatura();
     let desc;
     if (data.tipoComissao === 'fixo') {
       if (data.ehAfiliado) {
@@ -499,6 +516,41 @@ async function carregarMeuPerfilVendedor() {
     document.getElementById('cadastrarClienteDesc').textContent = `O cliente fica vinculado a você automaticamente. Sua comissão: ${desc}.`;
   } catch (e) {}
 }
+
+// Link com plano já escolhido pelo vendedor — o cliente abre e só vê ESSE
+// plano (não a vitrine toda), confirma, paga, e aí preenche o cadastro da
+// empresa (/completar). Sem precisar o dono aprovar/definir plano depois.
+let PLANOS_VENDEDOR_CACHE = [];
+async function carregarPlanosAssinatura() {
+  const sel = document.getElementById('planoVendedorSelect');
+  if (!sel) return;
+  try {
+    const resp = await fetch(`${API_BASE}/planos`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error();
+    PLANOS_VENDEDOR_CACHE = data.planos || [];
+    sel.innerHTML = PLANOS_VENDEDOR_CACHE.map(p => `<option value="${p.id}">${p.nome} — ${fmtReais(p.valorCentavos)}${p.tipo === 'assinatura' ? '/mês' : ` (${p.meses}x, à vista)`}</option>`).join('');
+    montarLinkPlanoVendedor();
+  } catch (e) { sel.innerHTML = '<option>Erro ao carregar planos</option>'; }
+}
+function montarLinkPlanoVendedor() {
+  const sel = document.getElementById('planoVendedorSelect');
+  const inp = document.getElementById('planoVendedorLink');
+  const wpp = document.getElementById('planoVendedorWppBtn');
+  if (!sel || !inp || !sel.value || !MEU_VENDEDOR_ID) return;
+  const boleto = document.getElementById('planoVendedorBoleto').checked;
+  const link = `${API_BASE}/assinar?plano=${encodeURIComponent(sel.value)}&vendedor=${encodeURIComponent(MEU_VENDEDOR_ID)}${boleto ? '&boleto=1' : ''}`;
+  inp.value = link;
+  const msg = 'Oi! Segue o link pra ativar o RecomendaLeads no plano combinado:\n\n' + link;
+  wpp.href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+}
+document.getElementById('planoVendedorSelect')?.addEventListener('change', montarLinkPlanoVendedor);
+document.getElementById('planoVendedorBoleto')?.addEventListener('change', montarLinkPlanoVendedor);
+document.getElementById('planoVendedorCopiarBtn')?.addEventListener('click', () => {
+  const inp = document.getElementById('planoVendedorLink');
+  const btn = document.getElementById('planoVendedorCopiarBtn');
+  navigator.clipboard.writeText(inp.value).then(() => { const t = btn.innerHTML; btn.innerHTML = 'Copiado!'; setTimeout(() => btn.innerHTML = t, 1500); });
+});
 
 // Demonstração pro vendedor mostrar ao prospect — entra numa empresa de
 // TESTE marcada pelo dono (nunca um cliente real), igual ao "entrar como"

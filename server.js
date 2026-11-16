@@ -6220,12 +6220,15 @@ app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (
 
 // Lista pública de planos (para a página /assinar).
 app.get('/planos', (req, res) => {
-  // Plano oculto (exclusivo) só aparece se o link pedir ELE especificamente
-  // (?plano=mensal297) — nesse caso mostra só esse, sozinho, sem misturar com
-  // os planos públicos. Sem esse parâmetro, planos ocultos nunca aparecem.
+  // Plano oculto (exclusivo, ?plano=mensal297) OU link de vendedor que já
+  // escolheu o plano pro cliente (?plano=X&vendedor=Y) — nesses dois casos
+  // mostra só ESSE plano, sozinho, sem misturar com os outros: o cliente não
+  // escolhe, só confirma e paga. Link de marketing sem vendedor (ex.: bio do
+  // Instagram) continua mostrando a vitrine completa — comparar ajuda a converter.
   const planoPedido = String(req.query.plano || '').toLowerCase();
-  const pedidoOculto = planoPedido && PLANOS[planoPedido] && PLANOS[planoPedido].oculto;
-  const entradas = pedidoOculto
+  const vendedorPedido = String(req.query.vendedor || '').trim();
+  const soEsse = planoPedido && PLANOS[planoPedido] && (PLANOS[planoPedido].oculto || vendedorPedido);
+  const entradas = soEsse
     ? [[planoPedido, PLANOS[planoPedido]]]
     : Object.entries(PLANOS).filter(([, p]) => !p.oculto);
   const planos = entradas.map(([id, p]) => ({
@@ -8957,7 +8960,7 @@ app.get('/admin/vendedor/meu-perfil', exigirAcessoAdmin, async (req, res) => {
     if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Vendedor não encontrado' });
     const v = doc.data();
     res.json({
-      ok: true, nome: v.nome || '',
+      ok: true, id: doc.id, nome: v.nome || '',
       tipoComissao: v.tipoComissao === 'fixo' ? 'fixo' : 'percentual',
       comissaoPct: v.comissaoPct != null ? v.comissaoPct : COMISSAO_PCT,
       comissaoValorFixoCentavos: v.comissaoValorFixoCentavos != null ? v.comissaoValorFixoCentavos : null,
