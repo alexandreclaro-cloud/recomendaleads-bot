@@ -6146,13 +6146,17 @@ app.post('/meu-contrato/aceitar', exigirLoginEmpresa, exigirGestor, async (req, 
 app.get('/minha-assinatura', exigirLoginEmpresa, async (req, res) => {
   try {
     const st = billingStatus(req.empresaLogin);
+    // Sem o campo `assinatura` = cliente de cobrança manual (gerido direto com
+    // o Alexandre, fora do Asaas) — nesse caso não faz sentido mostrar os
+    // planos de autoatendimento, ela não deve escolher/pagar um plano sozinha.
+    const cobrancaManual = !req.empresaLogin.assinatura;
     // Planos ocultos (exclusivos pra 1 cliente) nunca aparecem aqui — essa aba
     // é genérica pra qualquer cliente logado, não é o lugar certo pra isso.
-    const planos = Object.entries(PLANOS).filter(([, p]) => !p.oculto).map(([id, p]) => ({
+    const planos = cobrancaManual ? [] : Object.entries(PLANOS).filter(([, p]) => !p.oculto).map(([id, p]) => ({
       id, nome: p.nome, tipo: p.tipo, meses: p.meses,
       valorCentavos: p.valorCentavos, descricao: p.descricao
     }));
-    res.json({ ok: true, assinatura: st, planos, pagamentoConfigurado: !!asaas });
+    res.json({ ok: true, assinatura: st, planos, cobrancaManual, pagamentoConfigurado: !!asaas });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -9670,6 +9674,78 @@ app.post('/admin/empresas/:id/assinatura/remover', exigirAdmin, async (req, res)
     if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
     await ref.update({ assinatura: admin.firestore.FieldValue.delete() });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Diagnóstico interno (admin): cruza leads x clientes_pipeline x sessões pra
+// explicar por que o Kanban "Funil do Cliente" mostra bem menos gente do que
+// o total de leads — útil quando o número de cards parece baixo demais e não
+// dá pra saber de cara se é falta de atividade real ou lacuna de backfill
+// (sessão antiga já apagada, cliente nunca passou pelo fluxo que cria o card).
+app.get('/admin/empresas/:id/analise-funil', exigirAdmin, async (req, res) => {
+  try {
+    const empresaId = req.params.id;
+    const empresaDoc = await EMPRESAS_COL().doc(empresaId).get();
+    if (!empresaDoc.exists) return res.status(404).json({ ok: false, erro: 'Empresa não encontrada' });
+    const mes = String(req.query.mes || diaBrasiliaISO(0).slice(0, 7));
+    const ehPadrao = empresaId === EMPRESA_ID_PDN;
+    const prefix = `${empresaId}__`;
+
+    const leadsSnap = await LEADS_COL().where('empresaId', '==', empresaId).get();
+    const leads = leadsSnap.docs.map(d => d.data());
+    const leadsDoMes = leads.filter(d => pertenceAoMesBrasilia(d.criadoEm, mes));
+    const recomendadoresGeral = new Set();
+    leads.forEach(d => { const t = soDigitosTel(d.telefoneRecomendador); if (t) recomendadoresGeral.add(t); });
+    const recomendadoresDoMes = new Map(); // telefone -> { nome, convites }
+    leadsDoMes.forEach(d => {
+      const t = soDigitosTel(d.telefoneRecomendador);
+      if (!t) return;
+      const atual = recomendadoresDoMes.get(t) || { nome: d.nomeRecomendador || '', convites: 0 };
+      atual.convites++;
+      if (!atual.nome && d.nomeRecomendador) atual.nome = d.nomeRecomendador;
+      recomendadoresDoMes.set(t, atual);
+    });
+
+    const cliSnap = await CLIENTES_PIPELINE_COL().where('empresaId', '==', empresaId).get();
+    const pipelineDocs = cliSnap.docs.map(d => d.data());
+    const pipelinePorTelefone = new Map();
+    const porEtapaGeral = { iniciou: 0, deu_nome: 0, recomendou: 0, recebeu_premio: 0, comprou: 0 };
+    pipelineDocs.forEach(x => {
+      const t = soDigitosTel(x.telefone);
+      if (t) pipelinePorTelefone.set(t, x);
+      if (porEtapaGeral[x.etapa] != null) porEtapaGeral[x.etapa]++;
+    });
+
+    // Quem recomendou amigo(s) ESTE MÊS mas não tem card no funil, ou tem card
+    // num estágio mais atrasado do que já deveria estar (ex.: só "iniciou"
+    // apesar de já ter recomendado) — é a lacuna real de dados, não falta de
+    // atividade. Se a sessão ainda existir, dá pra recuperar com o backfill;
+    // se não existir mais, o histórico dessa pessoa foi perdido.
+    const rank = { iniciou: 1, deu_nome: 2, recomendou: 3, recebeu_premio: 4, comprou: 5 };
+    const semCardOuDessincronizado = [];
+    for (const [tel, info] of recomendadoresDoMes) {
+      const card = pipelinePorTelefone.get(tel);
+      const estagioEsperado = 'recomendou';
+      if (!card || (rank[card.etapa] || 0) < rank[estagioEsperado]) {
+        let sessaoExiste = false;
+        try {
+          const sid = ehPadrao ? tel : `${prefix}${tel}`;
+          const s = await SESSOES_COL().doc(sid).get();
+          sessaoExiste = s.exists;
+        } catch (e) {}
+        semCardOuDessincronizado.push({ telefone: tel, nome: info.nome, convitesNoMes: info.convites, etapaAtualNoPipeline: card ? card.etapa : null, sessaoAindaExiste: sessaoExiste });
+      }
+    }
+
+    res.json({
+      ok: true,
+      mes,
+      leads: { totalGeral: leads.length, totalNoMes: leadsDoMes.length, recomendadoresDistintosGeral: recomendadoresGeral.size, recomendadoresDistintosNoMes: recomendadoresDoMes.size },
+      funilDoClientePipeline: { totalCardsGeral: pipelineDocs.length, porEtapaGeral },
+      lacuna: { recomendadoresDoMesSemCardCorreto: semCardOuDessincronizado.length, detalhe: semCardOuDessincronizado }
+    });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

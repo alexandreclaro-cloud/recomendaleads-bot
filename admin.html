@@ -993,6 +993,17 @@ function abrirEdicao(id) {
           <div class="muted" style="font-size:0.76rem;margin-top:4px;">Tira o campo de assinatura automática/trial — a empresa volta a ser gerida manualmente por "Plano & Financeiro" acima, sem bloqueio automático (igual clientes antigos). Use se um cliente de cobrança manual ficou bloqueado por engano.</div>` : ''}
         </div>
 
+        <div class="sec">🔍 Análise do funil (diagnóstico)</div>
+        <div class="campo">
+          <div class="muted" style="font-size:0.76rem;margin-bottom:6px;">Cruza os leads do mês com o Kanban "Funil do Cliente" pra explicar por que o número de cards pode ser bem menor que o total de leads.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <input class="input" id="e_analiseMes" type="month" style="width:160px;">
+            <button class="btn btn-secondary btn-mini" id="analiseFunilBtn">Analisar</button>
+            <span class="status-msg" id="analiseFunilMsg"></span>
+          </div>
+          <pre id="analiseFunilResultado" style="display:none;background:#0B1120;color:#D1D5DB;border-radius:10px;padding:12px;margin-top:10px;font-size:0.76rem;white-space:pre-wrap;max-height:360px;overflow:auto;"></pre>
+        </div>
+
         <div class="sec">WhatsApp</div>
         <div class="campo">
           <label>Modo de conexão</label>
@@ -1057,6 +1068,8 @@ function abrirEdicao(id) {
   document.getElementById('trialCustomBtn').addEventListener('click', () => concederTrial(id, parseInt(document.getElementById('e_trialCustom').value, 10)));
   const removerAssinaturaBtn = document.getElementById('removerAssinaturaBtn');
   if (removerAssinaturaBtn) removerAssinaturaBtn.addEventListener('click', () => removerAssinatura(id));
+  document.getElementById('e_analiseMes').value = new Date().toISOString().slice(0, 7);
+  document.getElementById('analiseFunilBtn').addEventListener('click', () => analisarFunil(id));
   document.getElementById('recargaBtn').addEventListener('click', () => lancarRecarga(id));
   carregarPrepago(id);
   aplicarMascaras();
@@ -1147,6 +1160,38 @@ async function removerAssinatura(id) {
     const data = await resp.json();
     if (resp.ok && data.ok) { msg.textContent = '✅ Assinatura automática removida'; msg.className = 'status-msg ok'; await carregar(); abrirEdicao(id); }
     else { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; }
+  } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
+}
+
+async function analisarFunil(id) {
+  const msg = document.getElementById('analiseFunilMsg');
+  const pre = document.getElementById('analiseFunilResultado');
+  const mes = document.getElementById('e_analiseMes').value;
+  msg.textContent = 'Analisando...'; msg.className = 'status-msg'; pre.style.display = 'none';
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/empresas/${id}/analise-funil?mes=${encodeURIComponent(mes)}`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) { msg.textContent = '❌ ' + (data.erro || 'Erro'); msg.className = 'status-msg err'; return; }
+    msg.textContent = '✅ Pronto'; msg.className = 'status-msg ok';
+    const l = data.lacuna.detalhe.map(x =>
+      `  • ${x.nome || '(sem nome)'} — ${x.telefone} — ${x.convitesNoMes} convite(s) no mês — card no pipeline: ${x.etapaAtualNoPipeline || 'NENHUM'} — sessão ainda existe: ${x.sessaoAindaExiste ? 'sim (dá pra recuperar com o backfill)' : 'não (histórico perdido)'}`
+    ).join('\n');
+    pre.textContent =
+`Mês analisado: ${data.mes}
+
+LEADS (amigos recomendados):
+  Total histórico: ${data.leads.totalGeral}
+  Total no mês: ${data.leads.totalNoMes}
+  Recomendadores distintos (histórico): ${data.leads.recomendadoresDistintosGeral}
+  Recomendadores distintos no mês: ${data.leads.recomendadoresDistintosNoMes}
+
+FUNIL DO CLIENTE (Kanban "Iniciou/Deu o nome/Recomendou"):
+  Total de cards (histórico, todas as etapas): ${data.funilDoClientePipeline.totalCardsGeral}
+  Por etapa: ${JSON.stringify(data.funilDoClientePipeline.porEtapaGeral)}
+
+LACUNA: recomendadores do mês sem card correto no funil: ${data.lacuna.recomendadoresDoMesSemCardCorreto}
+${l || '  (nenhum — todo mundo que recomendou esse mês já tem card certo)'}`;
+    pre.style.display = 'block';
   } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
 }
 

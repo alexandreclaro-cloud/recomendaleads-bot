@@ -2960,12 +2960,20 @@ async function carregarAssinatura() {
     if (!data.ok) throw new Error();
     const a = data.assinatura;
     const [rotulo, cls] = ROTULO_STATUS[a.status] || ['—', 'badge'];
+    const planosCard = planosEl ? planosEl.closest('.card') : null;
     let extra = '';
-    if (a.acessoAte && (a.status === 'ativa' || a.status === 'trial')) extra = `<p class="sub">Acesso garantido até <b>${dataBR(a.acessoAte)}</b>.</p>`;
+    if (data.cobrancaManual) extra = `<p class="sub">Seu plano é administrado diretamente com a equipe RecomendaLeads.</p>`;
+    else if (a.acessoAte && (a.status === 'ativa' || a.status === 'trial')) extra = `<p class="sub">Acesso garantido até <b>${dataBR(a.acessoAte)}</b>.</p>`;
     else if (a.status === 'atrasada') extra = `<p class="sub" style="color:var(--error)">Pagamento vencido há ${a.diasAtraso} dia(s). Você tem ${a.carenciaDias} dias de carência antes do bloqueio — renove abaixo.</p>`;
     else if (a.status === 'bloqueada') extra = `<p class="sub" style="color:var(--error)">Seu acesso está suspenso por falta de pagamento. Escolha um plano abaixo para reativar.</p>`;
     else if (a.status === 'sem_assinatura') extra = `<p class="sub">Você ainda não tem um plano ativo. Escolha um abaixo.</p>`;
     stEl.innerHTML = `<span class="badge ${cls}">${rotulo}</span>${extra}`;
+
+    if (data.cobrancaManual) {
+      if (planosCard) planosCard.style.display = 'none';
+      return;
+    }
+    if (planosCard) planosCard.style.display = '';
 
     if (!data.pagamentoConfigurado) {
       planosEl.innerHTML = '<div class="empty">Pagamento em configuração. Tente novamente em breve.</div>';
