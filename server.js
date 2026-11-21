@@ -107,7 +107,7 @@ const PLANOS = {
   // /planos nem na aba Assinatura do painel (ver filtros abaixo). Só existe
   // pra quem abrir o link direto /assinar?plano=mensal297.
   mensal297: {
-    nome: 'Mensal Promo', tipo: 'assinatura', meses: 1,
+    nome: 'Mensal', tipo: 'assinatura', meses: 1,
     valorCentavos: 29700, intervalo: 'month', intervaloQtd: 1,
     metodos: ['card'],
     descricao: 'R$ 297/mês no cartão, renovação automática',
@@ -117,7 +117,7 @@ const PLANOS = {
   // Afiliado vinculado ao Representante (ver vendedor-cadastro.html). Também
   // só existe via link direto /assinar?plano=mensal347.
   mensal347: {
-    nome: 'Mensal Promo', tipo: 'assinatura', meses: 1,
+    nome: 'Mensal', tipo: 'assinatura', meses: 1,
     valorCentavos: 34700, intervalo: 'month', intervaloQtd: 1,
     metodos: ['card'],
     descricao: 'R$ 347/mês no cartão, renovação automática',
@@ -6240,8 +6240,22 @@ app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (
 // ONBOARDING SELF-SERVICE (público): /assinar → pagar → /completar
 // ============================================================
 
+// O voucher de R$ 297 (mensal297) só pode ser negociado pelo REPRESENTANTE,
+// numa venda direta dele (sem Afiliado) — é a margem que ele tem pra fechar
+// com cliente de rede/múltiplas unidades. Pra venda com Afiliado o piso
+// autorizado é R$ 347 (mensal347): o Afiliado sempre recebe R$ 100 fixos, e a
+// R$ 297 isso nem sobra pro Representante. `vendedorPrincipalId` marca quem é
+// Afiliado (vinculado a um Representante principal).
+async function vendedorEhAfiliado(vendedorId) {
+  if (!vendedorId) return false;
+  try {
+    const doc = await VENDEDORES_COL().doc(String(vendedorId)).get();
+    return !!(doc.exists && doc.data().vendedorPrincipalId);
+  } catch (e) { return false; }
+}
+
 // Lista pública de planos (para a página /assinar).
-app.get('/planos', (req, res) => {
+app.get('/planos', async (req, res) => {
   // Plano oculto (exclusivo, ?plano=mensal297) OU link de vendedor que já
   // escolheu o plano pro cliente (?plano=X&vendedor=Y) — nesses dois casos
   // mostra só ESSE plano, sozinho, sem misturar com os outros: o cliente não
@@ -6253,6 +6267,9 @@ app.get('/planos', (req, res) => {
   // primeiro contato (preço cheio) que o dono manda direto, sem comissão de vendedor.
   const forcarUnico = req.query.unico === '1';
   const soEsse = planoPedido && PLANOS[planoPedido] && (PLANOS[planoPedido].oculto || vendedorPedido || forcarUnico);
+  if (planoPedido === 'mensal297' && vendedorPedido && await vendedorEhAfiliado(vendedorPedido)) {
+    return res.status(400).json({ ok: false, erro: 'Esse valor promocional (R$ 297,00) só pode ser negociado pelo Representante, numa venda direta sem Afiliado. Pra venda com Afiliado, o piso autorizado é R$ 347,00.' });
+  }
   const entradas = soEsse
     ? [[planoPedido, PLANOS[planoPedido]]]
     : Object.entries(PLANOS).filter(([, p]) => !p.oculto);
@@ -6332,6 +6349,9 @@ app.post('/assinar/checkout', async (req, res) => {
     const plano = PLANOS[planoId];
     if (!plano) return res.status(400).json({ ok: false, erro: 'Plano inválido' });
     const vendedor = String((req.body && req.body.vendedor) || '').trim().slice(0, 60);
+    if (planoId === 'mensal297' && vendedor && await vendedorEhAfiliado(vendedor)) {
+      return res.status(400).json({ ok: false, erro: 'Esse valor promocional (R$ 297,00) só pode ser negociado pelo Representante, numa venda direta sem Afiliado. Pra venda com Afiliado, o piso autorizado é R$ 347,00.' });
+    }
     const base = urlBase(req);
     // Boleto só entra quando o VENDEDOR manda o link com ?boleto=1 (não no automático).
     const comBoleto = !!(req.body && req.body.boleto);

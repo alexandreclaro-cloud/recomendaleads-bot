@@ -26,8 +26,6 @@
   .sobre b { color: var(--brand-bright); font-size: 0.95rem; }
   .sobre p { color: var(--text-dim); margin: 8px 0 0; font-size: 0.92rem; line-height: 1.55; }
   .planos { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
-  .plano .promo-tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: rgba(34,197,94,.18); color: #4ade80; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
-  .plano .preco .de { font-size: 1rem; font-weight: 500; color: var(--text-dim); text-decoration: line-through; margin-right: 6px; }
   .plano { width: 290px; max-width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
   .plano.destaque { border-color: var(--brand-soft2); background: linear-gradient(160deg,var(--brand-soft),transparent 60%), var(--surface); box-shadow: 0 0 0 1px var(--brand-soft2); }
   .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--brand); color: #171206; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
@@ -77,25 +75,24 @@ async function carregar() {
   try {
     const resp = await fetch(`${API_BASE}/planos?plano=${encodeURIComponent(planoUrl)}&vendedor=${encodeURIComponent(vendedorUrl)}&unico=${unicoUrl ? '1' : '0'}`);
     const data = await resp.json();
-    let planos = (data && data.planos) || [];
     const cont = document.getElementById('planos');
+    if (!resp.ok || !data.ok) {
+      cont.innerHTML = `<p style="text-align:center;color:#e57373;max-width:420px;margin:0 auto;">${data.erro || 'Não foi possível carregar os planos.'}</p>`;
+      return;
+    }
+    let planos = data.planos || [];
     cont.innerHTML = planos.map(p => {
       const destaque = p.id === 'anual' || p.id === planoUrl;
       const porMes = Math.round(p.valorCentavos / (p.meses || 1));
       const desc = p.tipo === 'assinatura'
         ? 'no cartão, renovação automática — cobra só a parcela do mês, sem fidelidade'
         : `${moeda(p.valorCentavos)} cobrados de uma vez (${p.meses} meses)`;
-      const tag = p.promocional
-        ? `<span class="promo-tag">🎟️ Condição especial</span>`
-        : (p.id === planoUrl ? '<span class="tag">Selecionado</span>' : (p.id === 'anual' ? '<span class="tag">Melhor valor</span>' : ''));
-      const precoHtml = (p.promocional && p.descontoCentavos > 0)
-        ? `<span class="de">${moeda(Math.round((porMes + p.descontoCentavos / (p.meses || 1))))}</span>${moeda(porMes)}<small>/mês</small>`
-        : `${moeda(porMes)}<small>/mês</small>`;
+      const tag = (p.id === planoUrl && !p.promocional) ? '<span class="tag">Selecionado</span>' : (p.id === 'anual' ? '<span class="tag">Melhor valor</span>' : '');
       return `
         <div class="plano ${destaque ? 'destaque' : ''}">
           ${tag}
           <h2>${p.nome}</h2>
-          <div class="preco">${precoHtml}</div>
+          <div class="preco">${moeda(porMes)}<small>/mês</small></div>
           <div class="desc">${desc}</div>
           <button data-plano="${p.id}">Assinar ${p.nome}</button>
         </div>`;
