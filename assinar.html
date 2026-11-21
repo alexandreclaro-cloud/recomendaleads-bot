@@ -6,54 +6,92 @@
 <title>Assine o RecomendaLeads</title>
 <link rel="icon" type="image/png" href="/assets/logo-symbol.png">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-  :root {
-    --brand:#D4AF37; --brand-deep:#B8912A; --brand-bright:#ECCB72;
-    --brand-soft:rgba(212,175,55,.12); --brand-soft2:rgba(212,175,55,.2);
-    --bg:#09090B; --surface:#17171C; --surface-2:#1D1D23;
-    --text:#F3F1EA; --text-dim:#AFA99D; --line:rgba(255,255,255,.09); --line-strong:rgba(255,255,255,.16);
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+  :root{
+    --brand:#D4AF37;--brand-deep:#B8912A;--brand-bright:#ECCB72;
+    --brand-soft:rgba(212,175,55,.12);--brand-soft2:rgba(212,175,55,.2);
+    --wpp:#22C55E;
+    --ink:#F3F1EA;--dim:#AFA99D;--faint:#79756B;
+    --line:rgba(255,255,255,.09);--line-strong:rgba(255,255,255,.16);
+    --page:#09090B;--surface:#17171C;--surface-2:#1D1D23;
+    --err:#e57373;
   }
-  body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, system-ui, sans-serif; margin: 0; min-height: 100vh; -webkit-font-smoothing:antialiased; }
-  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 20px 80px; }
-  .top { text-align: center; margin-bottom: 36px; }
-  .top .lockup { display: inline-flex; align-items: center; gap: 12px; margin: 0 auto 22px; }
-  .top .lsym-chip { height: 52px; width: 52px; border-radius: 13px; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-  .top .lsym { height: 36px; width: auto; display: block; }
-  .top .lw { height: 38px; width: auto; display: block; }
-  .top h1 { font-size: 2rem; margin: 0 0 8px; font-weight: 800; letter-spacing: -.02em; }
-  .top p { color: var(--text-dim); margin: 0; font-size: 1.02rem; }
-  .sobre { max-width: 640px; margin: 0 auto 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; text-align: center; }
-  .sobre b { color: var(--brand-bright); font-size: 0.95rem; }
-  .sobre p { color: var(--text-dim); margin: 8px 0 0; font-size: 0.92rem; line-height: 1.55; }
-  .planos { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
-  .plano { width: 290px; max-width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
-  .plano.destaque { border-color: var(--brand-soft2); background: linear-gradient(160deg,var(--brand-soft),transparent 60%), var(--surface); box-shadow: 0 0 0 1px var(--brand-soft2); }
-  .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--brand); color: #171206; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
-  .plano h2 { font-size: 1.25rem; margin: 0 0 6px; }
-  .plano .preco { font-size: 2rem; font-weight: 800; margin: 6px 0; }
-  .plano .preco small { font-size: 0.95rem; font-weight: 500; color: var(--text-dim); }
-  .plano .desc { color: var(--text-dim); font-size: 0.86rem; margin: 4px 0 20px; flex: 1; }
-  .plano button { width: 100%; padding: 13px; border: none; border-radius: 999px; background: var(--brand); color: #171206; font-weight: 700; font-size: 0.98rem; cursor: pointer; transition: background .12s,transform .12s; }
-  .plano button:hover { background: var(--brand-bright); transform: translateY(-1px); }
-  .plano button:disabled { opacity: .6; cursor: default; transform: none; }
-  .aviso { text-align: center; margin: 18px 0; padding: 12px; border-radius: 10px; background: rgba(217,138,43,.15); color: #e0a45a; font-size: 0.9rem; }
-  .rodape { text-align: center; margin-top: 30px; font-size: 0.8rem; color: var(--text-dim); }
-  .rodape a { color: var(--brand-bright); }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:
+      radial-gradient(900px 440px at 82% -10%, rgba(212,175,55,.14) 0%, rgba(212,175,55,0) 60%),
+      radial-gradient(700px 360px at 2% 10%, rgba(212,175,55,.06) 0%, rgba(212,175,55,0) 58%),
+      var(--page);
+    min-height:100vh;-webkit-font-smoothing:antialiased;line-height:1.55}
+  a{color:inherit}
+  .wrap{max-width:980px;margin:0 auto;padding:52px 20px 70px}
+
+  .top{text-align:center;margin-bottom:38px}
+  .lockup{display:inline-flex;align-items:center;gap:12px;margin:0 auto 26px}
+  .lsym-chip{height:50px;width:50px;border-radius:13px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+  .lsym{height:35px;width:auto;display:block}
+  .lw{height:37px;width:auto;display:block}
+  .tag{display:inline-flex;align-items:center;gap:7px;background:var(--brand-soft);color:var(--brand-bright);font-weight:700;font-size:.78rem;padding:6px 13px;border-radius:999px;margin-bottom:16px;border:1px solid var(--brand-soft2)}
+  h1{font-size:2.1rem;line-height:1.15;letter-spacing:-.02em;font-weight:800;margin:0 0 12px;color:var(--ink)}
+  h1 .hl{background:linear-gradient(120deg,var(--brand),var(--brand-bright));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{color:var(--dim);margin:0 auto;font-size:1.04rem;max-width:520px}
+  @media(max-width:600px){h1{font-size:1.65rem}}
+
+  .capabilities{margin:28px auto 0;display:inline-grid;grid-template-columns:1fr 1fr;gap:10px 26px;font-size:.86rem;color:var(--dim);text-align:left}
+  .capabilities span{display:flex;align-items:center;gap:8px}
+  .capabilities i{width:16px;height:16px;color:var(--brand-bright);flex-shrink:0}
+  @media(max-width:480px){.capabilities{grid-template-columns:1fr}}
+
+  .aviso{text-align:center;margin:0 0 22px;padding:12px;border-radius:10px;background:rgba(217,138,43,.15);color:#e0a45a;font-size:.9rem}
+
+  .planos{display:flex;flex-wrap:wrap;gap:18px;justify-content:center;margin-top:40px}
+  .plano{width:300px;max-width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:28px 24px;display:flex;flex-direction:column;transition:border-color .16s,transform .16s}
+  .plano.destaque{border-color:var(--brand-soft2);background:linear-gradient(160deg,var(--brand-soft),transparent 60%),var(--surface);box-shadow:0 0 0 1px var(--brand-soft2)}
+  .plano .ic{width:44px;height:44px;border-radius:12px;background:var(--brand-soft);display:grid;place-items:center;margin-bottom:14px}
+  .plano .ic i{width:21px;height:21px;color:var(--brand-bright)}
+  .plano .pill{align-self:flex-start;font-size:.72rem;font-weight:700;background:var(--brand);color:#171206;padding:3px 10px;border-radius:999px;margin-bottom:12px}
+  .plano h2{font-size:1.18rem;margin:0 0 4px;color:var(--ink)}
+  .plano .preco{font-size:2.1rem;font-weight:800;margin:8px 0 2px;color:var(--ink)}
+  .plano .preco small{font-size:.92rem;font-weight:500;color:var(--dim)}
+  .plano .desc{color:var(--dim);font-size:.86rem;margin:2px 0 18px}
+  .plano ul{list-style:none;margin:0 0 22px;padding:0;display:flex;flex-direction:column;gap:9px;flex:1}
+  .plano li{font-size:.86rem;color:var(--dim);display:flex;gap:9px;align-items:flex-start}
+  .plano li i{width:15px;height:15px;color:var(--wpp);flex-shrink:0;margin-top:2px}
+  .plano button{width:100%;padding:13px;border:none;border-radius:999px;background:var(--brand);color:#171206;font-weight:700;font-size:.98rem;cursor:pointer;transition:background .12s,transform .12s}
+  .plano button:hover{background:var(--brand-bright);transform:translateY(-1px)}
+  .plano button:disabled{opacity:.6;cursor:default;transform:none}
+
+  .trustbar{display:flex;flex-wrap:wrap;justify-content:center;gap:24px;color:var(--dim);font-size:.84rem;margin-top:44px}
+  .trustbar span{display:inline-flex;align-items:center;gap:7px}
+  .trustbar i{width:16px;height:16px;color:var(--brand-bright)}
+
+  .rodape{text-align:center;margin-top:28px;font-size:.8rem;color:var(--faint)}
+  .rodape a{color:var(--brand-bright)}
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="top">
       <div class="lockup"><span class="lsym-chip"><img class="lsym" src="/assets/logo-symbol.png" alt=""></span><img class="lw" src="/assets/logo-wordmark.png" alt="RecomendaLeads"></div>
-      <h1>Assine o RecomendaLeads</h1>
-      <p id="introTexto">Escolha seu plano e comece a vender por recomendação hoje mesmo.</p>
+      <span class="tag">Assinatura RecomendaLeads</span>
+      <h1>Transforme cada cliente num <span class="hl">canal de novas vendas</span></h1>
+      <p class="lead" id="introTexto">Um robô de WhatsApp que pede recomendação pros seus clientes, dá um prêmio automático pra quem indicar e te entrega as indicações prontas pra vender — sem você cobrar nem controlar nada na mão.</p>
+      <div class="capabilities">
+        <span><i data-lucide="message-circle"></i> Ativação automática no WhatsApp</span>
+        <span><i data-lucide="gift"></i> Prêmio automático pra quem indica</span>
+        <span><i data-lucide="share-2"></i> Rastreamento de cada recomendação</span>
+        <span><i data-lucide="bar-chart-3"></i> Painel com todos os resultados</span>
+      </div>
     </div>
-    <div class="sobre">
-      <b>O que é o RecomendaLeads?</b>
-      <p>Um robô de WhatsApp que, depois de cada venda ou visita, pede pro seu cliente recomendar você pros amigos — e ainda dá um prêmio automático pra quem indicar. Tudo sem você precisar ficar cobrando ou controlando nada na mão: o sistema manda a mensagem certa, na hora certa, e te avisa quando alguém chegar por indicação.</p>
+
+    <div id="avisoCancelado" class="aviso" style="display:none;">Pagamento não concluído. Você pode tentar de novo quando quiser. 😊</div>
+    <div class="planos" id="planos"><p style="text-align:center;color:var(--dim);width:100%;">Carregando...</p></div>
+
+    <div class="trustbar">
+      <span><i data-lucide="shield-check"></i> Dados protegidos (LGPD)</span>
+      <span><i data-lucide="phone-call"></i> Suporte humano</span>
+      <span><i data-lucide="badge-check"></i> Sem fidelidade</span>
     </div>
-    <div id="avisoCancelado" class="aviso" style="display:none;">Pagamento não concluído. Você pode escolher um plano e tentar de novo. 😊</div>
-    <div class="planos" id="planos"><p style="text-align:center;color:var(--text-dim,#9aa3af)">Carregando planos...</p></div>
+
     <div class="rodape">Ao assinar, você concorda com o <a href="/contrato" target="_blank">Contrato e a Política de Privacidade</a>.</div>
   </div>
 
@@ -71,13 +109,20 @@ if (params.get('cancelado')) document.getElementById('avisoCancelado').style.dis
 
 function moeda(c) { return (c/100).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
 
+const BENEFICIOS = [
+  'Mensagens automáticas de recomendação no WhatsApp',
+  'Prêmio configurável pra quem indicar',
+  'Painel de clientes e recomendações',
+  'Suporte humano via WhatsApp'
+];
+
 async function carregar() {
   try {
     const resp = await fetch(`${API_BASE}/planos?plano=${encodeURIComponent(planoUrl)}&vendedor=${encodeURIComponent(vendedorUrl)}&unico=${unicoUrl ? '1' : '0'}`);
     const data = await resp.json();
     const cont = document.getElementById('planos');
     if (!resp.ok || !data.ok) {
-      cont.innerHTML = `<p style="text-align:center;color:#e57373;max-width:420px;margin:0 auto;">${data.erro || 'Não foi possível carregar os planos.'}</p>`;
+      cont.innerHTML = `<p style="text-align:center;color:var(--err);max-width:420px;margin:0 auto;">${data.erro || 'Não foi possível carregar os planos.'}</p>`;
       return;
     }
     let planos = data.planos || [];
@@ -87,19 +132,23 @@ async function carregar() {
       const desc = p.tipo === 'assinatura'
         ? 'no cartão, renovação automática — cobra só a parcela do mês, sem fidelidade'
         : `${moeda(p.valorCentavos)} cobrados de uma vez (${p.meses} meses)`;
-      const tag = (p.id === planoUrl && !p.promocional) ? '<span class="tag">Selecionado</span>' : (p.id === 'anual' ? '<span class="tag">Melhor valor</span>' : '');
+      const pill = (p.id === planoUrl && !p.promocional) ? '<span class="pill">Selecionado</span>' : (p.id === 'anual' ? '<span class="pill">Melhor valor</span>' : '');
+      const beneficios = BENEFICIOS.map(b => `<li><i data-lucide="check-circle-2"></i> ${b}</li>`).join('');
       return `
         <div class="plano ${destaque ? 'destaque' : ''}">
-          ${tag}
+          <div class="ic"><i data-lucide="rocket"></i></div>
+          ${pill}
           <h2>${p.nome}</h2>
           <div class="preco">${moeda(porMes)}<small>/mês</small></div>
           <div class="desc">${desc}</div>
-          <button data-plano="${p.id}">Assinar ${p.nome}</button>
+          <ul>${beneficios}</ul>
+          <button data-plano="${p.id}">Assinar agora</button>
         </div>`;
     }).join('');
     cont.querySelectorAll('button[data-plano]').forEach(b => b.addEventListener('click', () => assinar(b)));
+    if (window.lucide) lucide.createIcons();
   } catch (e) {
-    document.getElementById('planos').innerHTML = '<p style="text-align:center;color:#e57373">Não foi possível carregar os planos. Tente novamente.</p>';
+    document.getElementById('planos').innerHTML = '<p style="text-align:center;color:var(--err)">Não foi possível carregar os planos. Tente novamente.</p>';
   }
 }
 
@@ -117,5 +166,7 @@ async function assinar(btn) {
 
 carregar();
 </script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>try { lucide.createIcons(); } catch(_) {}</script>
 </body>
 </html>
