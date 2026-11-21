@@ -2654,9 +2654,7 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
     // escolheu não perguntar — ex.: só tem recepcionista). Nesse caso o robô usa o
     // 1º vendedor cadastrado pra se apresentar ao recomendado. Se a frase estiver
     // preenchida, pergunta normalmente (com a lista de vendedores).
-    // FLUXO CURTO: nunca pergunta "quem te atendeu?" — usa o 1º vendedor (se houver)
-    // só pra se apresentar ao recomendado, e vai direto pros contatos.
-    if (!temVendedores || !perguntaVend || FLUXO_CURTO_GLOBAL) {
+    if (!temVendedores || !perguntaVend) {
       sessao.vendedorNome = temVendedores ? empresa.vendedores[0] : null;
       await iniciarColetaContatos(telefone, sessao, empresa);
       return;
