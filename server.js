@@ -2654,7 +2654,9 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
     // escolheu não perguntar — ex.: só tem recepcionista). Nesse caso o robô usa o
     // 1º vendedor cadastrado pra se apresentar ao recomendado. Se a frase estiver
     // preenchida, pergunta normalmente (com a lista de vendedores).
-    if (!temVendedores || !perguntaVend) {
+    // FLUXO CURTO: nunca pergunta "quem te atendeu?" — usa o 1º vendedor (se houver)
+    // só pra se apresentar ao recomendado, e vai direto pros contatos.
+    if (!temVendedores || !perguntaVend || FLUXO_CURTO_GLOBAL) {
       sessao.vendedorNome = temVendedores ? empresa.vendedores[0] : null;
       await iniciarColetaContatos(telefone, sessao, empresa);
       return;
@@ -2812,7 +2814,7 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
       // Basic com confirmação: o cliente parou aqui → pede a confirmação (menu 1/2/3)
       // pra disparar os contatos que ficaram segurados — mas com uma espera pra dar
       // tempo dele avisar as amigas antes (não vir grudado no "muito obrigado").
-      if (empresa.basicConfirmarAntesDisparo) await agendarPedirConfirmacaoBasic(telefone, sessao, empresa);
+      if (empresa.basicConfirmarAntesDisparo && !FLUXO_CURTO_GLOBAL) await agendarPedirConfirmacaoBasic(telefone, sessao, empresa);
     }
     return;
   }
@@ -2872,7 +2874,15 @@ async function _processarMensagemInterno(telefone, texto, vCard, contatosMultipl
 // ("só vamos usar a api oficial, não vai existir mais o basic vs full"). A estratégia
 // de "confirmar antes de disparar" fica no card "Avisar os amigos" (basicConfirmar...).
 // Fora do oficial (Z-API), respeita a escolha Basic/Full do painel.
+// FLUXO CURTO GLOBAL — simplifica a experiência do recomendador pra TODAS as
+// empresas (decisão do Alexandre 2026-11-21): agradecimento → nome → contatos →
+// prêmio na hora → 1 lembrete → fim. Força modo 'basic', pula "quem te atendeu?"
+// (vendedor) e DESLIGA todas as perguntas de "já avisou os amigos?" (modo Full,
+// confirmação antes do disparo e follow-up). Vira false pra reverter tudo de uma vez.
+const FLUXO_CURTO_GLOBAL = true;
+
 function modoRecAtual(empresa) {
+  if (FLUXO_CURTO_GLOBAL) return 'basic';
   if (empresa && empresa.whatsappTipo === 'oficial') return 'basic';
   const m = empresa && empresa.modoRecomendacao;
   return (m === 'full' || m === 'official') ? 'full' : 'basic';
@@ -3379,14 +3389,14 @@ async function finalizarFaixa(telefone, sessao, faixa, empresa, contatosDestaFai
   // os amigos. Só agenda se o recurso estiver ligado no painel.
   // NÃO roda junto com o Basic+confirmação: os dois pedem "avise seus amigos"
   // e encavalariam as mensagens (o Basic+confirmação já cobra isso com cadência).
-  if (empresa.followupRecomendadorAtivo && !sessao.followupRecomendadorAgendado && !empresa.basicConfirmarAntesDisparo) {
+  if (empresa.followupRecomendadorAtivo && !sessao.followupRecomendadorAgendado && !empresa.basicConfirmarAntesDisparo && !FLUXO_CURTO_GLOBAL) {
     sessao.followupRecomendadorAgendado = true;
     try { await agendarFollowupRecomendador(telefone, empresa, 0); } catch (e) { console.error('agendarFollowupRecomendador:', e.message); }
   }
 
   // Basic com CONFIRMAÇÃO: acumula os contatos e NÃO dispara agora — segura até
   // o cliente confirmar. Só começa a pedir confirmação quando não há mais faixas.
-  const gated = empresa.basicConfirmarAntesDisparo;
+  const gated = empresa.basicConfirmarAntesDisparo && !FLUXO_CURTO_GLOBAL;
   if (gated) {
     sessao.contatosPendentesDisparo = [...(sessao.contatosPendentesDisparo || []), ...contatosDestaFaixa];
   }
@@ -11676,7 +11686,8 @@ async function processarAgendamentoInterno(agendamento) {
   if (agendamento.tipo === 'followup_avisar_amigos') {
     const { telefone, indice, teste } = agendamento.dados;
     // Em teste, roda mesmo com o recurso desligado (pra você conferir a cadência).
-    if (!empresa.followupRecomendadorAtivo && !teste) return;
+    // FLUXO CURTO: nunca manda o follow-up "já avisou os amigos?" (exceto no teste do painel).
+    if ((!empresa.followupRecomendadorAtivo || FLUXO_CURTO_GLOBAL) && !teste) return;
     if (await numeroEstaPausado(telefone)) {
       console.log(`[FOLLOWUP-AVISAR] ${telefone} pausado — não enviado`);
       return;
