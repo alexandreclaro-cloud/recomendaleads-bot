@@ -522,6 +522,25 @@
             <div class="hint" style="margin-top:8px;">💡 Pra ver o <b>motivo real da entrega</b>, na Z-API configure o webhook <b>"Ao enviar" (DeliveryCallback)</b> com a <b>mesma URL</b> do webhook "Ao receber" (a que aparece em "Configuração avançada" abaixo). Aí o erro do WhatsApp aparece aqui no teste.</div>
           </div>
 
+          <!-- Teste Evolution (iFinZap) — descobrir o formato da API -->
+          <div style="margin-top:16px; background:#ECFEFF; border:1px solid #67E8F9; border-radius:12px; padding:14px;">
+            <div style="font-weight:700; margin-bottom:4px;">🧪 Testar envio Evolution (iFinZap)</div>
+            <p class="sub" style="margin:0 0 10px;">Teste de envio pela sua instância do <b>Evolution/iFinZap</b>. Mostra o que o servidor respondeu e o estado da conexão. Use um número <b>seu</b> (pra conferir se chegou).</p>
+            <label class="label" style="margin-top:4px;">URL do servidor (iFinZap)</label>
+            <input class="input" type="text" id="evoUrl" placeholder="https://... (endereço do servidor Evolution/iFinZap)">
+            <label class="label">Instância (instance)</label>
+            <input class="input" type="text" id="evoInstance" placeholder="nome da instância">
+            <label class="label">apikey</label>
+            <input class="input" type="text" id="evoApikey" placeholder="apikey da instância/servidor">
+            <label class="label">Número de teste (com DDD)</label>
+            <div class="row-save" style="align-items:center;">
+              <input class="input" type="text" id="evoNumero" placeholder="Ex: 11999998888" style="flex:1; min-width:200px;">
+              <button class="btn btn-action" id="evoTestarBtn" type="button">Testar envio</button>
+            </div>
+            <pre id="evoResultado" style="display:none; margin-top:10px; background:#0F172A; color:#E2E8F0; padding:12px; border-radius:8px; font-size:0.78rem; white-space:pre-wrap; word-break:break-word; overflow-x:auto;"></pre>
+            <div class="hint" style="margin-top:8px;">🔒 A apikey não sai daqui pro chat — vai direto do painel pro seu servidor. É só pra descobrir o formato certo e montar o canal completo.</div>
+          </div>
+
           <!-- Não provisionado ainda -->
           <div id="naoProvisionadoArea" style="margin-top:16px; display:none;">
             <p class="sub">Seu número está sendo preparado pela nossa equipe. Assim que ficar pronto, o QR Code aparece aqui para você escanear. 😊</p>
@@ -2566,6 +2585,38 @@ document.getElementById('cancelarPendentesBtn').addEventListener('click', async 
     else { msg.textContent = '❌ ' + (d.erro || 'Erro ao cancelar'); msg.className = 'status-msg err'; }
   } catch (e) { msg.textContent = '❌ Erro de conexão'; msg.className = 'status-msg err'; }
   finally { btn.disabled = false; }
+});
+
+document.getElementById('evoTestarBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('evoTestarBtn');
+  const url = (document.getElementById('evoUrl').value || '').trim();
+  const instance = (document.getElementById('evoInstance').value || '').trim();
+  const apikey = (document.getElementById('evoApikey').value || '').trim();
+  const numero = (document.getElementById('evoNumero').value || '').replace(/\D/g, '');
+  const out = document.getElementById('evoResultado');
+  out.style.display = 'block';
+  if (!/^https?:\/\//i.test(url) || !instance || !apikey) { out.textContent = 'Preencha a URL (com https://), a instância e a apikey.'; return; }
+  if (numero.length < 10) { out.textContent = 'Informe um número com DDD (ex: 11999998888).'; return; }
+  btn.disabled = true; const rotulo = btn.textContent; btn.textContent = 'Testando...';
+  out.textContent = 'Enviando pela sua instância Evolution/iFinZap...';
+  try {
+    const r = await fetchAutenticado(`${API_BASE}/minha-evolution/testar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, instance, apikey, numero }) });
+    const d = await r.json();
+    if (!d.ok) { out.textContent = '❌ ' + (d.erro || 'Falhou'); return; }
+    const x = d.resultado || {};
+    const veredito = x.aceitou
+      ? '✅ O Evolution ACEITOU o envio (formato: ' + (x.formatoUsado || '?') + '). Confira se chegou no WhatsApp do número testado.'
+      : '❌ O Evolution não aceitou. Veja o erro abaixo (pode ser URL/instância/apikey errados ou a instância desconectada).';
+    out.textContent = veredito + '\n\n' +
+      'Instância: ' + (x.instance || '?') + '\n' +
+      'Estado da conexão: ' + (typeof x.estadoConexao === 'string' ? x.estadoConexao : JSON.stringify(x.estadoConexao || {})) + '\n' +
+      'Número enviado: ' + (x.numeroEnviado || '?') + '\n' +
+      (x.formatoUsado ? 'Formato que funcionou: ' + x.formatoUsado + '\n' : '') +
+      'HTTP: ' + (x.httpStatus != null ? x.httpStatus : '?') + '\n\n' +
+      (x.resposta ? 'Resposta do Evolution:\n' + JSON.stringify(x.resposta, null, 2) : '') +
+      (x.ultimoErro ? '\n\nÚltimo erro:\n' + JSON.stringify(x.ultimoErro, null, 2) : '');
+  } catch (e) { out.textContent = 'Erro de conexão.'; }
+  finally { btn.disabled = false; btn.textContent = rotulo; }
 });
 
 document.getElementById('testeEntregaBtn').addEventListener('click', async () => {

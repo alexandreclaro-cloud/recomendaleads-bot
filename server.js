@@ -7680,6 +7680,56 @@ app.post('/minha-whatsapp', exigirLoginEmpresa, exigirGestor, async (req, res) =
 });
 
 // ============================================================
+// EVOLUTION (iFinZap) — teste de envio pra travar o formato exato da API
+// ============================================================
+// O corpo do sendText do Evolution muda entre versões. Este teste manda DE VERDADE
+// pela instância do cliente (iFinZap) e devolve a resposta crua + qual formato
+// funcionou, pra a gente construir o canal completo já certo. A apikey vem do painel.
+app.post('/minha-evolution/testar', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+  try {
+    let { url, instance, apikey, numero } = req.body || {};
+    url = String(url || '').trim().replace(/\/+$/, '');
+    instance = String(instance || '').trim();
+    apikey = String(apikey || '').trim();
+    const num = soDigitos(numero);
+    if (!/^https?:\/\//i.test(url) || !instance || !apikey) {
+      return res.status(400).json({ ok: false, erro: 'Preencha a URL (com https://), a instância e a apikey.' });
+    }
+    if (num.length < 10) return res.status(400).json({ ok: false, erro: 'Número inválido — use DDD + número (com 55).' });
+
+    const headers = { 'Content-Type': 'application/json', apikey };
+    const texto = `🧪 Teste Evolution (iFinZap) — ${new Date().toLocaleTimeString('pt-BR')}`;
+    const out = { instance, numeroEnviado: num };
+
+    // Estado da conexão da instância (não derruba o teste se falhar).
+    try {
+      const st = await axios.get(`${url}/instance/connectionState/${encodeURIComponent(instance)}`, { headers, timeout: 8000 });
+      out.estadoConexao = (st.data && st.data.instance && st.data.instance.state) || st.data;
+    } catch (e) { out.estadoConexao = { erro: e.response?.status || e.message }; }
+
+    // Tenta o formato v2 documentado e, se der erro de formato (400), o alternativo.
+    const formatos = [
+      { nome: 'textMessage.text', body: { number: num, textMessage: { text: texto } } },
+      { nome: 'text (topo)', body: { number: num, text: texto } }
+    ];
+    for (const f of formatos) {
+      try {
+        const r = await axios.post(`${url}/message/sendText/${encodeURIComponent(instance)}`, f.body, { headers, timeout: 12000 });
+        out.formatoUsado = f.nome; out.httpStatus = r.status; out.resposta = r.data; out.aceitou = true;
+        return res.json({ ok: true, resultado: out });
+      } catch (e) {
+        out.ultimoErro = { formato: f.nome, status: e.response?.status || 0, resposta: e.response?.data || e.message };
+        if (e.response?.status && e.response.status !== 400) break; // 401/403/404 não é problema de formato
+      }
+    }
+    out.aceitou = false;
+    return res.json({ ok: true, resultado: out });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ============================================================
 // WHATSAPP DA EMPRESA — API Oficial (Meta Cloud API)
 // ============================================================
 // O cliente cria o app/WABA na Meta, cola aqui o Phone Number ID + token
