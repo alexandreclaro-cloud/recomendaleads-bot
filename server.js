@@ -113,6 +113,16 @@ const PLANOS = {
     descricao: 'R$ 297/mês no cartão, renovação automática',
     oculto: true
   },
+  // Voucher promocional de R$ 50 — piso autorizado quando a venda envolve um
+  // Afiliado vinculado ao Representante (ver vendedor-cadastro.html). Também
+  // só existe via link direto /assinar?plano=mensal347.
+  mensal347: {
+    nome: 'Mensal Promo', tipo: 'assinatura', meses: 1,
+    valorCentavos: 34700, intervalo: 'month', intervaloQtd: 1,
+    metodos: ['card'],
+    descricao: 'R$ 347/mês no cartão, renovação automática',
+    oculto: true
+  },
   semestral: {
     nome: 'Semestral', tipo: 'unico', meses: 6,
     valorCentavos: 208200, // 6 x 347,00
@@ -6239,13 +6249,25 @@ app.get('/planos', (req, res) => {
   // Instagram) continua mostrando a vitrine completa — comparar ajuda a converter.
   const planoPedido = String(req.query.plano || '').toLowerCase();
   const vendedorPedido = String(req.query.vendedor || '').trim();
-  const soEsse = planoPedido && PLANOS[planoPedido] && (PLANOS[planoPedido].oculto || vendedorPedido);
+  // ?unico=1: força mostrar só esse plano mesmo sem vendedor — usado no link de
+  // primeiro contato (preço cheio) que o dono manda direto, sem comissão de vendedor.
+  const forcarUnico = req.query.unico === '1';
+  const soEsse = planoPedido && PLANOS[planoPedido] && (PLANOS[planoPedido].oculto || vendedorPedido || forcarUnico);
   const entradas = soEsse
     ? [[planoPedido, PLANOS[planoPedido]]]
     : Object.entries(PLANOS).filter(([, p]) => !p.oculto);
-  const planos = entradas.map(([id, p]) => ({
-    id, nome: p.nome, tipo: p.tipo, meses: p.meses, valorCentavos: p.valorCentavos, descricao: p.descricao
-  }));
+  // Desconto exibido quando o plano é um voucher promocional sobre o Mensal
+  // cheio (ex.: mensal347/mensal297) — calculado contra o valor atual do
+  // Mensal pra não precisar atualizar a copy se o preço cheio mudar.
+  const planos = entradas.map(([id, p]) => {
+    const descontoCentavos = (p.oculto && id !== 'mensal' && PLANOS.mensal)
+      ? Math.max(0, PLANOS.mensal.valorCentavos - p.valorCentavos)
+      : 0;
+    return {
+      id, nome: p.nome, tipo: p.tipo, meses: p.meses, valorCentavos: p.valorCentavos, descricao: p.descricao,
+      promocional: !!p.oculto, descontoCentavos
+    };
+  });
   res.json({ ok: true, planos });
 });
 

@@ -22,7 +22,12 @@
   .top .lw { height: 38px; width: auto; display: block; }
   .top h1 { font-size: 2rem; margin: 0 0 8px; font-weight: 800; letter-spacing: -.02em; }
   .top p { color: var(--text-dim); margin: 0; font-size: 1.02rem; }
+  .sobre { max-width: 640px; margin: 0 auto 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; text-align: center; }
+  .sobre b { color: var(--brand-bright); font-size: 0.95rem; }
+  .sobre p { color: var(--text-dim); margin: 8px 0 0; font-size: 0.92rem; line-height: 1.55; }
   .planos { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
+  .plano .promo-tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: rgba(34,197,94,.18); color: #4ade80; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
+  .plano .preco .de { font-size: 1rem; font-weight: 500; color: var(--text-dim); text-decoration: line-through; margin-right: 6px; }
   .plano { width: 290px; max-width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; }
   .plano.destaque { border-color: var(--brand-soft2); background: linear-gradient(160deg,var(--brand-soft),transparent 60%), var(--surface); box-shadow: 0 0 0 1px var(--brand-soft2); }
   .plano .tag { align-self: flex-start; font-size: 0.72rem; font-weight: 700; background: var(--brand); color: #171206; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
@@ -43,7 +48,11 @@
     <div class="top">
       <div class="lockup"><span class="lsym-chip"><img class="lsym" src="/assets/logo-symbol.png" alt=""></span><img class="lw" src="/assets/logo-wordmark.png" alt="RecomendaLeads"></div>
       <h1>Assine o RecomendaLeads</h1>
-      <p>Escolha seu plano e comece a vender por recomendação hoje mesmo.</p>
+      <p id="introTexto">Escolha seu plano e comece a vender por recomendação hoje mesmo.</p>
+    </div>
+    <div class="sobre">
+      <b>O que é o RecomendaLeads?</b>
+      <p>Um robô de WhatsApp que, depois de cada venda ou visita, pede pro seu cliente recomendar você pros amigos — e ainda dá um prêmio automático pra quem indicar. Tudo sem você precisar ficar cobrando ou controlando nada na mão: o sistema manda a mensagem certa, na hora certa, e te avisa quando alguém chegar por indicação.</p>
     </div>
     <div id="avisoCancelado" class="aviso" style="display:none;">Pagamento não concluído. Você pode escolher um plano e tentar de novo. 😊</div>
     <div class="planos" id="planos"><p style="text-align:center;color:var(--text-dim,#9aa3af)">Carregando planos...</p></div>
@@ -56,6 +65,7 @@ const params = new URLSearchParams(location.search);
 const planoUrl = (params.get('plano') || '').toLowerCase();
 const vendedorUrl = (params.get('vendedor') || '').trim();
 const comBoleto = params.get('boleto') === '1';
+const unicoUrl = params.get('unico') === '1';
 // Modo vendedor: link com ?vendedor=... ou ?boleto=1 → mostra TODOS os planos
 // (inclui Mensal recorrente) e libera pix/boleto. No site normal: só Semestral + Anual, cartão.
 const modoVendedor = !!vendedorUrl || comBoleto;
@@ -65,7 +75,7 @@ function moeda(c) { return (c/100).toLocaleString('pt-BR', { style:'currency', c
 
 async function carregar() {
   try {
-    const resp = await fetch(`${API_BASE}/planos?plano=${encodeURIComponent(planoUrl)}&vendedor=${encodeURIComponent(vendedorUrl)}`);
+    const resp = await fetch(`${API_BASE}/planos?plano=${encodeURIComponent(planoUrl)}&vendedor=${encodeURIComponent(vendedorUrl)}&unico=${unicoUrl ? '1' : '0'}`);
     const data = await resp.json();
     let planos = (data && data.planos) || [];
     const cont = document.getElementById('planos');
@@ -73,13 +83,19 @@ async function carregar() {
       const destaque = p.id === 'anual' || p.id === planoUrl;
       const porMes = Math.round(p.valorCentavos / (p.meses || 1));
       const desc = p.tipo === 'assinatura'
-        ? 'no cartão, renovação automática'
+        ? 'no cartão, renovação automática — cobra só a parcela do mês, sem fidelidade'
         : `${moeda(p.valorCentavos)} cobrados de uma vez (${p.meses} meses)`;
+      const tag = p.promocional
+        ? `<span class="promo-tag">🎟️ Condição especial</span>`
+        : (p.id === planoUrl ? '<span class="tag">Selecionado</span>' : (p.id === 'anual' ? '<span class="tag">Melhor valor</span>' : ''));
+      const precoHtml = (p.promocional && p.descontoCentavos > 0)
+        ? `<span class="de">${moeda(Math.round((porMes + p.descontoCentavos / (p.meses || 1))))}</span>${moeda(porMes)}<small>/mês</small>`
+        : `${moeda(porMes)}<small>/mês</small>`;
       return `
         <div class="plano ${destaque ? 'destaque' : ''}">
-          ${p.id === planoUrl ? '<span class="tag">Selecionado</span>' : (p.id === 'anual' ? '<span class="tag">Melhor valor</span>' : '')}
+          ${tag}
           <h2>${p.nome}</h2>
-          <div class="preco">${moeda(porMes)}<small>/mês</small></div>
+          <div class="preco">${precoHtml}</div>
           <div class="desc">${desc}</div>
           <button data-plano="${p.id}">Assinar ${p.nome}</button>
         </div>`;
