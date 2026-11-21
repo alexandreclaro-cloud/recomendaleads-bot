@@ -93,6 +93,11 @@ const asaas = ASAAS_API_KEY ? axios.create({
 // Dias de tolerância após o vencimento antes de bloquear o painel.
 const CARENCIA_DIAS = 7;
 
+// Adesão (instalação/configuração) — pagamento único via Pix, à vista,
+// cobrado separado da assinatura mensal. Mesmo valor de referência que já
+// existe no Anexo I (comissão de 50% pro vendedor — ver registrarComissaoAdesao).
+const ADESAO_CENTAVOS = 50000;
+
 // Planos: mesmo produto em 3 ciclos. Valores em centavos (BRL).
 // - mensal: assinatura recorrente no cartão (auto-renova)
 // - semestral/anual: pagamento único que libera N meses de acesso
@@ -206,6 +211,41 @@ async function criarCheckoutAsaas({ plano, planoId, empresaId, externalReference
     }
     throw err;
   }
+}
+
+// Acha (por CPF/CNPJ) ou cria o cliente no Asaas — usado pra emitir o Pix
+// avulso da adesão. Diferente do fluxo de assinatura (onde o Asaas Checkout
+// cria o customer sozinho), o Pix direto via /payments exige um customer já
+// existente, e a Asaas exige CPF/CNPJ pra emitir cobrança Pix.
+async function garantirAsaasCustomerPix({ nome, email, cpfCnpj, telefone }) {
+  const cpfCnpjLimpo = String(cpfCnpj || '').replace(/\D/g, '');
+  if (!nome || cpfCnpjLimpo.length < 11) throw new Error('Informe nome e CPF/CNPJ válidos.');
+  try {
+    const busca = await asaas.get('/customers', { params: { cpfCnpj: cpfCnpjLimpo } });
+    if (busca.data && Array.isArray(busca.data.data) && busca.data.data.length) return busca.data.data[0].id;
+  } catch (e) { /* segue pra criar */ }
+  const { data } = await asaas.post('/customers', {
+    name: nome,
+    email: email || undefined,
+    cpfCnpj: cpfCnpjLimpo,
+    mobilePhone: String(telefone || '').replace(/\D/g, '') || undefined
+  });
+  return data.id;
+}
+
+// Gera uma cobrança Pix avulsa (à vista) + QR Code — usado pela adesão em
+// /assinar/adesao. Devolve { paymentId, qrCodeBase64, copiaECola, expiracao }.
+async function criarPixAvulso({ customerId, valorCentavos, descricao, externalReference }) {
+  const { data: pagamento } = await asaas.post('/payments', {
+    customer: customerId,
+    billingType: 'PIX',
+    value: valorCentavos / 100,
+    dueDate: new Date().toISOString().slice(0, 10),
+    description: descricao,
+    externalReference
+  });
+  const { data: qr } = await asaas.get(`/payments/${pagamento.id}/pixQrCode`);
+  return { paymentId: pagamento.id, qrCodeBase64: qr.encodedImage, copiaECola: qr.payload, expiracao: qr.expirationDate };
 }
 
 // ============================================================
@@ -625,6 +665,10 @@ const COMISSOES_COL = () => db.collection('comissoes');
 // pagamento confirmar (webhook) ou quando o cliente volta pro /completar
 // (sem precisar decodificar nada da resposta do Asaas).
 const SIGNUPS_PENDENTES_COL = () => db.collection('signups_pendentes');
+// Pix da adesão (instalação/configuração) gerado em /assinar — coleção
+// separada da de signup de propósito: o webhook reconhece o prefixo "adesao_"
+// no externalReference e NUNCA cai no fluxo de criar empresa (garantirContaSignup).
+const ADESOES_PENDENTES_COL = () => db.collection('adesoes_pendentes');
 const COMISSAO_PCT = 20;
 // Contas de vendedor (login próprio no /admin, com acesso limitado).
 const VENDEDORES_COL = () => db.collection('vendedores');
@@ -5757,6 +5801,27 @@ async function registrarComissaoAdesao({ vendedorId, valorAdesaoCentavos, client
   return comissaoCentavos;
 }
 
+// Marca o Pix da adesão (gerado em /assinar/adesao) como pago — idempotente
+// (transação: só processa uma vez, não importa se webhook e poll chamarem
+// quase junto) — e, se tinha vendedor vinculado, registra a comissão dele
+// automaticamente, reusando a mesma regra que já existia pro registro manual.
+async function marcarAdesaoPaga(ref, dadosConhecidos) {
+  const ref_ = ADESOES_PENDENTES_COL().doc(ref);
+  const jaProcessado = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref_);
+    if (!snap.exists || snap.data().pago) return true;
+    tx.set(ref_, { pago: true, pagoEm: new Date().toISOString() }, { merge: true });
+    return false;
+  });
+  if (jaProcessado) return;
+  const d = dadosConhecidos || (await ref_.get()).data() || {};
+  if (d.vendedor) {
+    try {
+      await registrarComissaoAdesao({ vendedorId: d.vendedor, valorAdesaoCentavos: ADESAO_CENTAVOS, clienteNome: d.nome || null });
+    } catch (e) { console.error('[ADESAO] erro ao registrar comissão:', e.message); }
+  }
+}
+
 // Roda periodicamente: marca `desligadoEm` em quem passou 90 dias sem venda
 // nova, e desativa de vez (ativo:false) quem já passou o ciclo final de 30
 // dias depois disso — cláusula 8 do contrato de representação comercial.
@@ -5806,6 +5871,15 @@ app.post('/webhook-asaas', async (req, res) => {
     // "Pago" cobre os dois: PAYMENT_CONFIRMED (cartão, confirma na hora) e
     // PAYMENT_RECEIVED (pix/boleto, confirma quando o dinheiro compensa).
     if (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED') {
+      // Pix avulso da adesão (/assinar/adesao) — prefixo "adesao_" identifica
+      // sem ambiguidade, processa aqui e sai: NUNCA pode cair no fluxo de
+      // signup abaixo (senão tentaria criar uma empresa com R$ 500,00 "de
+      // plano", o que está errado).
+      if (String(payment.externalReference || '').startsWith('adesao_')) {
+        try { await marcarAdesaoPaga(payment.externalReference, null); console.log('[ASAAS] adesão paga via webhook:', payment.externalReference); }
+        catch (e) { console.error('[ASAAS] erro ao marcar adesão paga:', e.message); }
+        return res.sendStatus(200);
+      }
       // externalReference é OU um JSON {empresaId, plano} (empresa já existe,
       // checkout autenticado — ver /minha-assinatura/checkout) OU uma `ref`
       // solta (uuid, cadastro público — ver /assinar/checkout), que não é
@@ -5962,6 +6036,11 @@ app.get('/dentista', (req, res) => res.sendFile(path.join(__dirname, 'recomendom
 // Calculadora de custo de disparo (API Oficial) — página aberta, pra usar na
 // hora do orçamento com o cliente (celular/notebook, sem login).
 app.get('/calculadora', (req, res) => res.sendFile(path.join(__dirname, 'calculadora.html')));
+
+// Página de captação de PARCEIROS (vendedores) — pra disparar e trazer novos
+// representantes. CTAs levam pro /vendedor/cadastro. Imagens em /assets/parceiros/.
+app.get('/parceiro', (req, res) => res.sendFile(path.join(__dirname, 'parceiro.html')));
+app.get('/parceiros', (req, res) => res.redirect('/parceiro'));
 
 // Ranking Mesa iFinc — placar dos closers (rankingmesa.recomendaleads.com.br e /rankingmesa)
 require('./rankingmesa')(app, db, rateLimit);
@@ -6375,6 +6454,67 @@ app.post('/assinar/checkout', async (req, res) => {
     const msg = (err.response && err.response.data && JSON.stringify(err.response.data)) || err.message;
     console.error('Erro no checkout público:', msg);
     res.status(500).json({ ok: false, erro: msg });
+  }
+});
+
+// Gera o Pix da adesão (instalação/configuração, R$ 500 à vista) — pagamento
+// AVULSO e separado da assinatura mensal, pra mostrar QR Code + copia-e-cola
+// direto na página /assinar (sem redirecionar pro checkout hospedado).
+app.post('/assinar/adesao', async (req, res) => {
+  try {
+    if (!asaas) return res.status(503).json({ ok: false, erro: 'Pagamento ainda não configurado.' });
+    const b = req.body || {};
+    const nome = String(b.nome || '').trim().slice(0, 150);
+    const email = String(b.email || '').trim().slice(0, 150);
+    const cpfCnpj = String(b.cpfCnpj || '').replace(/\D/g, '');
+    const telefone = String(b.telefone || '').trim().slice(0, 30);
+    const vendedor = String(b.vendedor || '').trim().slice(0, 60);
+    const planoId = String(b.plano || '').toLowerCase();
+    if (!nome) return res.status(400).json({ ok: false, erro: 'Informe seu nome.' });
+    if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) return res.status(400).json({ ok: false, erro: 'Informe um CPF ou CNPJ válido.' });
+
+    const customerId = await garantirAsaasCustomerPix({ nome, email, cpfCnpj, telefone });
+    const ref = 'adesao_' + crypto.randomUUID();
+    const pix = await criarPixAvulso({
+      customerId, valorCentavos: ADESAO_CENTAVOS,
+      descricao: 'RecomendaLeads — Adesão (instalação e configuração)',
+      externalReference: ref
+    });
+    await ADESOES_PENDENTES_COL().doc(ref).set({
+      nome, email, cpfCnpj, telefone, vendedor: vendedor || null, plano: planoId || null,
+      paymentId: pix.paymentId, pago: false, criadoEm: new Date().toISOString()
+    });
+    res.json({ ok: true, ref, qrCodeBase64: pix.qrCodeBase64, copiaECola: pix.copiaECola, expiracao: pix.expiracao });
+  } catch (err) {
+    const msg = (err.response && err.response.data && JSON.stringify(err.response.data)) || err.message;
+    console.error('Erro ao gerar Pix da adesão:', msg);
+    res.status(500).json({ ok: false, erro: 'Não foi possível gerar o Pix agora. Confira seus dados e tente de novo.' });
+  }
+});
+
+// Consulta se o Pix da adesão já caiu — o webhook marca `pago` assim que o
+// Asaas confirma, mas esse endpoint também confere direto na Asaas (fallback
+// pra não deixar o cliente esperando se o webhook atrasar).
+app.get('/assinar/adesao/status', async (req, res) => {
+  try {
+    const ref = String(req.query.ref || '');
+    if (!ref) return res.status(400).json({ ok: false, erro: 'ref ausente' });
+    const doc = await ADESOES_PENDENTES_COL().doc(ref).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Não encontrado' });
+    const d = doc.data();
+    if (d.pago) return res.json({ ok: true, pago: true });
+    if (asaas && d.paymentId) {
+      try {
+        const { data } = await asaas.get(`/payments/${d.paymentId}`);
+        if (data.status === 'RECEIVED' || data.status === 'CONFIRMED') {
+          await marcarAdesaoPaga(ref, d);
+          return res.json({ ok: true, pago: true });
+        }
+      } catch (e) { /* ignora — webhook ainda pode confirmar */ }
+    }
+    res.json({ ok: true, pago: false });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
   }
 });
 
