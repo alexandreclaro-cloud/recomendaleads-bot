@@ -8035,7 +8035,10 @@ app.post('/minha-conversas/:telefone/enviar', exigirLoginEmpresa, async (req, re
     // nunca falou com a gente) — sem checar o retorno, o painel dizia "enviado" mesmo
     // quando não saiu nada, e o atendente só descobria quando o cliente "sumia".
     if (!resultado || !resultado.ok) {
-      return res.status(400).json({ ok: false, erro: (resultado && resultado.erro) || 'Falha ao enviar — se for a primeira mensagem pra esse número, use um template.' });
+      const dica = empresa.whatsappTipo === 'oficial'
+        ? 'Falha ao enviar — se for a primeira mensagem pra esse número (ou fizer mais de 24h que ele não fala com você), use um template.'
+        : 'Falha ao enviar — confira se o número está certo e tente de novo.';
+      return res.status(400).json({ ok: false, erro: (resultado && resultado.erro) || dica });
     }
     const atendenteId = (req.usuario && req.usuario.id) || null;
     const nomeAt = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Atendente';

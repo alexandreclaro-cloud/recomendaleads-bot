@@ -135,7 +135,7 @@
     <div id="convOfertaBadge" style="display:none;margin:0 12px 8px;padding:6px 10px;border-radius:8px;font-size:0.78rem;font-weight:700;align-items:center;gap:8px;"></div>
     <div class="conv-search" style="display:flex;gap:6px;align-items:center;">
       <input class="input" type="text" id="buscaConv" placeholder="Buscar contato ou telefone..." style="flex:1;">
-      <button type="button" id="novaConvBtn" class="btn btn-ghost" title="Nova conversa (número que nunca falou com a gente — manda um template pra iniciar)" style="padding:8px 10px;"><i data-lucide="plus"></i></button>
+      <button type="button" id="novaConvBtn" class="btn btn-ghost" title="Nova conversa (fala com um número que ainda não está na lista)" style="padding:8px 10px;"><i data-lucide="plus"></i></button>
     </div>
     <div class="conv-filtro-papel" style="display:flex;gap:6px;align-items:center;padding:0 12px 8px;flex-wrap:wrap;">
       <button type="button" class="filtro-papel-btn active" data-papel="">Todos</button>
@@ -270,21 +270,25 @@
   </div>
 </div>
 
-<!-- Nova conversa: número que nunca teve contato — só dá pra mandar template como
-     primeira mensagem (texto livre é recusado pela Meta sem a janela de 24h aberta). -->
+<!-- Nova conversa: manda a primeira mensagem como texto normal (igual digitar no
+     campo da conversa). Só no modo API Oficial e fora da janela de 24h é que a Meta
+     recusa texto livre — nesse caso o erro aparece aqui embaixo e dá pra usar o
+     botão 🟢 Modelos de mensagem (no topo da conversa) pra mandar um template. -->
 <div id="novaConvModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;padding:16px;">
   <div style="background:var(--surface);border-radius:14px;width:420px;max-width:92vw;padding:18px;">
     <b style="font-size:1rem;">➕ Nova conversa</b>
-    <p style="font-size:0.8rem;color:var(--text-dim);margin:8px 0 14px;">Pra alguém que nunca falou com a gente, só dá pra mandar <b>template</b> como primeira mensagem — texto livre a Meta recusa. No próximo passo você escolhe o template.</p>
+    <p style="font-size:0.8rem;color:var(--text-dim);margin:8px 0 14px;">Fale com um número que ainda não está na sua lista de conversas.</p>
     <label style="font-size:0.78rem;color:var(--text-dim);display:block;margin-bottom:4px;">Telefone (com DDD)</label>
     <input class="input" type="text" id="novaConvTelefone" placeholder="11999998888" style="width:100%;margin-bottom:10px;">
     <label style="font-size:0.78rem;color:var(--text-dim);display:block;margin-bottom:4px;">Nome (opcional)</label>
-    <input class="input" type="text" id="novaConvNome" placeholder="Como essa pessoa se chama" style="width:100%;">
+    <input class="input" type="text" id="novaConvNome" placeholder="Como essa pessoa se chama" style="width:100%;margin-bottom:10px;">
+    <label style="font-size:0.78rem;color:var(--text-dim);display:block;margin-bottom:4px;">Mensagem</label>
+    <textarea class="input" id="novaConvMensagem" rows="3" placeholder="Digite a primeira mensagem..." style="width:100%;resize:vertical;"></textarea>
     <div style="display:flex;gap:10px;margin-top:14px;align-items:center;">
       <button id="novaConvFechar" class="btn btn-ghost" style="padding:8px 12px;">Cancelar</button>
       <span style="flex:1;"></span>
       <span id="novaConvStatus" style="font-size:0.8rem;color:var(--text-dim);"></span>
-      <button id="novaConvContinuar" class="btn btn-action" style="padding:8px 16px;">Escolher template →</button>
+      <button id="novaConvContinuar" class="btn btn-action" style="padding:8px 16px;">Enviar</button>
     </div>
   </div>
 </div>
@@ -490,11 +494,11 @@ function abrirPelaURL() {
   });
   if (alvo) { _autoAbriu = true; abrirConversa(alvo.telefone, alvo.nome || ''); return; }
   // ?novo=1: veio de "acabei de cadastrar esse lead" (CRM) — ainda não existe
-  // conversa nenhuma com esse telefone. Abre direto (vazia) e já manda pro
-  // modal de template, sem precisar passar pelo ➕ Nova conversa de novo.
+  // conversa nenhuma com esse telefone. Abre direto (vazia) já no campo de
+  // mensagem, sem precisar passar pelo ➕ Nova conversa de novo.
   if (qs.get('novo') === '1' && telParam.length >= 10) {
     _autoAbriu = true;
-    abrirConversa(telParam, qs.get('nome') || '').then(() => abrirModalTemplates());
+    abrirConversa(telParam, qs.get('nome') || '');
   }
 }
 
@@ -1280,11 +1284,13 @@ document.getElementById('tplModalOverlay').addEventListener('keydown', (e) => {
 // ===== Nova conversa (número que nunca falou com a gente) =====
 // abrirConversa() já funciona pra número sem histórico nenhum (mensagens vem
 // vazio) — só faltava um jeito de setar `atual` pra um telefone que ainda não
-// está na lista à esquerda. Depois de abrir, já manda direto pro modal de
-// template, porque texto livre é recusado pela Meta sem a janela de 24h aberta.
+// está na lista à esquerda. Manda a mensagem como texto normal (igual digitar
+// no campo da conversa) — só falha no modo API Oficial fora da janela de 24h,
+// e aí o erro aparece no modal (use o botão 🟢 Modelos de mensagem pra template).
 function abrirModalNovaConversa() {
   document.getElementById('novaConvTelefone').value = '';
   document.getElementById('novaConvNome').value = '';
+  document.getElementById('novaConvMensagem').value = '';
   document.getElementById('novaConvStatus').textContent = '';
   document.getElementById('novaConvModalOverlay').style.display = 'flex';
   document.getElementById('novaConvTelefone').focus();
@@ -1296,11 +1302,29 @@ document.getElementById('novaConvModalOverlay').addEventListener('click', (e) =>
 document.getElementById('novaConvContinuar').addEventListener('click', async () => {
   const tel = (document.getElementById('novaConvTelefone').value || '').replace(/\D/g, '');
   const nome = (document.getElementById('novaConvNome').value || '').trim();
+  const mensagem = (document.getElementById('novaConvMensagem').value || '').trim();
   const st = document.getElementById('novaConvStatus');
   if (tel.length < 10) { st.textContent = '❌ Telefone inválido — precisa ter DDD.'; st.style.color = '#c0392b'; return; }
-  fecharModalNovaConversa();
+  if (!mensagem) { st.textContent = '❌ Escreva a mensagem.'; st.style.color = '#c0392b'; return; }
+  const btn = document.getElementById('novaConvContinuar');
+  btn.disabled = true; st.textContent = 'Enviando...'; st.style.color = 'var(--text-dim)';
   await abrirConversa(tel, nome);
-  await abrirModalTemplates();
+  try {
+    const r = await fetchAut(`${API_BASE}/minha-conversas/${tel}/enviar`, { method: 'POST', body: JSON.stringify({ mensagem }) });
+    const d = await r.json();
+    btn.disabled = false;
+    if (r.ok && d.ok) {
+      fecharModalNovaConversa();
+      await carregarMensagens(true);
+      await carregarConversas();
+    } else {
+      st.textContent = '❌ ' + (d.erro || 'Não foi possível enviar.');
+      st.style.color = '#c0392b';
+    }
+  } catch (e) {
+    btn.disabled = false;
+    st.textContent = '❌ Erro de conexão.'; st.style.color = '#c0392b';
+  }
 });
 
 document.getElementById('devolverBtn').addEventListener('click', async () => {
