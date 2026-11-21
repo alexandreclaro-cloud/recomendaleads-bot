@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cadastro de Vendedor — RecomendaLeads</title>
+<title>Cadastro de Representante — RecomendaLeads</title>
 <link rel="icon" type="image/png" href="/assets/logo-symbol.png">
 <style>
   :root{--brand:#2563EB;--brand-deep:#1D4ED8;--wpp:#22C55E;--ink:#0F172A;--dim:#475569;--faint:#64748B;--line:#E2E8F0;--bg:#F8FAFC;--ok:#16A34A;--err:#DC2626}
@@ -48,7 +48,7 @@
 <div class="wrap">
   <div class="top">
     <img src="/assets/logo.png" alt="RecomendaLeads">
-    <h1>Cadastro de Vendedor</h1>
+    <h1 id="pagH1">Cadastro de Representante</h1>
     <p class="sub">Preencha seus dados para começar. Leva 2 minutos.</p>
   </div>
 
@@ -309,6 +309,8 @@ function atualizarContratoDinamico() {
 // (que inclui o repasse que o Representante recebe sobre a venda do afiliado).
 const ehAfiliado = !!new URLSearchParams(location.search).get('principal');
 if (ehAfiliado) {
+  document.title = 'Cadastro de Afiliado — RecomendaLeads';
+  document.getElementById('pagH1').textContent = 'Cadastro de Afiliado';
   // O servidor já REMOVE o bloco do Representante do HTML antes de entregar a
   // página (ver GET /vendedor/cadastro) — este trecho só cuida de exibir a
   // versão do Afiliado; o elemento do Representante pode nem existir mais no DOM.

@@ -53,7 +53,7 @@
   <h1 id="gateTitulo" style="font-size:1.2rem;margin:0 0 12px;">Acesso ao Painel</h1>
   <div id="gateTabs" style="display:flex;gap:6px;margin:0 0 16px;">
     <button class="btn btn-secondary" id="tabDono" style="flex:1;">Administrador</button>
-    <button class="btn btn-secondary" id="tabVend" style="flex:1;">Vendedor</button>
+    <button class="btn btn-secondary" id="tabVend" style="flex:1;">Representante</button>
   </div>
   <div id="formDono">
     <div id="donoSenhaForm">
@@ -158,7 +158,7 @@
       </div>
       <table>
         <thead><tr style="text-align:left;color:var(--text-dim);">
-          <th style="padding:10px 12px;">Cliente</th><th>E-mail</th><th id="colVendedor" style="display:none;">Vendedor</th><th>Plano</th><th>Pagamento</th><th>Cadastro</th>
+          <th style="padding:10px 12px;">Cliente</th><th>E-mail</th><th id="colVendedor" style="display:none;">Representante</th><th>Plano</th><th>Pagamento</th><th>Cadastro</th>
         </tr></thead>
         <tbody id="tabelaMeusClientes"><tr><td colspan="6" class="muted" style="padding:18px;">Carregando...</td></tr></tbody>
       </table>
@@ -198,7 +198,7 @@
 
     <div class="card" style="margin-bottom:18px; padding:16px 18px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-        <h2 style="font-size:1rem; margin:0;" id="comissoesTitulo">💸 Comissões dos vendedores (20% por pagamento)</h2>
+        <h2 style="font-size:1rem; margin:0;" id="comissoesTitulo">💸 Comissões dos Representantes (20% por pagamento)</h2>
         <button class="btn btn-secondary btn-mini" id="atualizarComissoesBtn">↻ Atualizar</button>
       </div>
       <div id="comissoesResumo" style="margin-top:12px;"><span class="muted">Carregando...</span></div>
@@ -206,13 +206,13 @@
 
     <div class="card dono-only" style="margin-bottom:18px; padding:16px 18px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-        <h2 style="font-size:1rem; margin:0;">🧑‍💼 Vendedores</h2>
-        <button class="btn btn-brand btn-mini" id="novoVendedorBtn"><i data-lucide="plus"></i> Novo vendedor</button>
+        <h2 style="font-size:1rem; margin:0;">🧑‍💼 Representantes</h2>
+        <button class="btn btn-brand btn-mini" id="novoVendedorBtn"><i data-lucide="plus"></i> Novo Representante</button>
       </div>
-      <p class="muted" style="font-size:0.82rem; margin:8px 0 0;">Cada vendedor entra no painel com o e-mail e a senha dele, cadastra clientes (vinculados a ele) e vê só as próprias comissões. Login dele: <b>recomendaleads.com.br/vendedor</b> (separado do seu, pra não confundir).</p>
+      <p class="muted" style="font-size:0.82rem; margin:8px 0 0;">Cada Representante entra no painel com o e-mail e a senha dele, cadastra clientes (vinculados a ele) e vê só as próprias comissões. Login dele: <b>recomendaleads.com.br/vendedor</b> (separado do seu, pra não confundir).</p>
       <div style="margin-top:12px; padding:12px 14px; background:#EFF6FF; border:1px solid #DBEAFE; border-radius:10px;">
-        <div style="font-size:0.82rem; font-weight:700; color:#1E3A8A; margin-bottom:6px;">🔗 Link de autocadastro do vendedor</div>
-        <div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:8px;">Envie este link para o vendedor preencher os próprios dados (inclusive bancários) e aceitar o contrato. A conta dele é criada sozinha.</div>
+        <div style="font-size:0.82rem; font-weight:700; color:#1E3A8A; margin-bottom:6px;">🔗 Link de autocadastro do Representante</div>
+        <div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:8px;">Envie este link para o Representante preencher os próprios dados (inclusive bancários) e aceitar o contrato. A conta dele é criada sozinha.</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <input id="linkAutocad" readonly value="" style="flex:1; min-width:220px; font-size:0.82rem; padding:8px 10px; border:1px solid var(--line,#ccc); border-radius:8px; background:#fff;">
           <button class="btn btn-secondary btn-mini" id="copiarLinkAutocad">Copiar</button>
@@ -383,7 +383,7 @@ document.getElementById('tabDono').addEventListener('click', () => trocarAba('do
 document.getElementById('tabVend').addEventListener('click', () => trocarAba('vend'));
 if (ROTA_VENDEDOR) {
   document.getElementById('gateTabs').style.display = 'none';
-  document.getElementById('gateTitulo').textContent = 'Área do Vendedor';
+  document.getElementById('gateTitulo').textContent = 'Área do Representante';
   trocarAba('vend');
 } else {
   trocarAba('dono');
@@ -474,12 +474,12 @@ function mostrarApp() {
   document.querySelectorAll('.dono-only').forEach(el => el.style.display = vend ? 'none' : '');
   document.querySelectorAll('.vendedor-only').forEach(el => el.style.display = vend ? '' : 'none');
   if (vend) {
-    document.querySelector('.page-head h1').textContent = 'Olá, ' + (VEND_NOME || 'vendedor');
+    document.querySelector('.page-head h1').textContent = 'Olá, ' + (VEND_NOME || 'Representante');
     document.querySelector('.page-head p').textContent = 'Cadastre clientes e acompanhe suas comissões.';
-    document.querySelector('.brand span').textContent = 'Área do Vendedor';
+    document.querySelector('.brand span').textContent = 'Área do Representante';
     document.querySelector('.user-box .avatar').textContent = (VEND_NOME || 'V').charAt(0).toUpperCase();
-    document.querySelector('.user-box .meta b').textContent = VEND_NOME || 'Vendedor';
-    document.querySelector('.user-box .meta small').textContent = 'Vendedor';
+    document.querySelector('.user-box .meta b').textContent = VEND_NOME || 'Representante';
+    document.querySelector('.user-box .meta small').textContent = 'Representante';
     document.getElementById('conviteTexto').textContent = 'Um link só, pra sempre. Mande pra qualquer cliente: ele preenche os dados da empresa e assina o contrato. O cadastro já fica vinculado à sua comissão e entra pendente — o dono valida antes de liberar o acesso.';
     carregarMeuPerfilVendedor();
     carregarMeusClientes();
@@ -640,7 +640,7 @@ async function carregarComissoes() {
     if (!r.length) { cont.innerHTML = '<span class="muted">Nenhuma comissão registrada ainda.</span>'; return; }
     const vend = modoVendedor();
     cont.innerHTML = `<table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
-      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Vendedor</th><th>A receber</th><th>Já pago</th><th>Pagtos</th>${vend ? '' : '<th></th>'}</tr></thead>
+      <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Representante</th><th>A receber</th><th>Já pago</th><th>Pagtos</th>${vend ? '' : '<th></th>'}</tr></thead>
       <tbody>${r.map(x => `<tr style="border-top:1px solid var(--line,#eee);">
         <td style="padding:8px 4px;font-weight:600;">${esc(x.vendedor)}</td>
         <td style="color:#1d9e75;font-weight:700;">${comBRL(x.aReceberCentavos)}</td>
@@ -894,7 +894,7 @@ function selectVendedorComissao(atual) {
   let opts = '<option value="">— Nenhum —</option>';
   opts += vendedoresCache.map(v => `<option value="${esc(v.id)}" ${v.id === atual ? 'selected' : ''}>${esc(v.nome)}</option>`).join('');
   if (atual && !vendedoresCache.some(v => v.id === atual)) opts += `<option value="${esc(atual)}" selected>${esc(atual)} (manual)</option>`;
-  return `<div class="campo"><label>Vendedor (comissão 20%)</label><select class="input" id="e_vendedorComissao">${opts}</select></div>`;
+  return `<div class="campo"><label>Representante (comissão 20%)</label><select class="input" id="e_vendedorComissao">${opts}</select></div>`;
 }
 
 function abrirEdicao(id) {
@@ -953,8 +953,8 @@ function abrirEdicao(id) {
           <div class="muted" style="font-size:0.76rem;margin-top:4px;">Libera a aba "Ofertas" no painel do cliente — mais de um lançamento rodando no mesmo número, cada um com mensagens/prêmios/Kanban próprios. Cobrar à parte por cada oferta extra (lançamento manual por enquanto).</div>
         </div>
         <div class="campo">
-          <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;"><input type="checkbox" id="e_demoVendedores" ${e.demoVendedores ? 'checked' : ''}> 🎬 Usar como demonstração pros vendedores</label>
-          <div class="muted" style="font-size:0.76rem;margin-top:4px;">Marque numa empresa de teste/sandbox (não um cliente real). Qualquer vendedor logado no painel dele ganha um botão "Mostrar demonstração" que abre o painel dessa empresa, pra usar na apresentação ao prospect.</div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;"><input type="checkbox" id="e_demoVendedores" ${e.demoVendedores ? 'checked' : ''}> 🎬 Usar como demonstração pros Representantes</label>
+          <div class="muted" style="font-size:0.76rem;margin-top:4px;">Marque numa empresa de teste/sandbox (não um cliente real). Qualquer Representante logado no painel dele ganha um botão "Mostrar demonstração" que abre o painel dessa empresa, pra usar na apresentação ao prospect.</div>
         </div>
 
         <div class="sec">📊 Relatório diário pro gestor</div>
@@ -1394,7 +1394,7 @@ async function excluirVendedor(id) {
       resp = await adminFetch(`${API_BASE}/admin/vendedores/${id}?confirmar=${encodeURIComponent(digitado.trim())}`, { method: 'DELETE' });
       data = await resp.json();
     }
-    if (resp.ok && data.ok) { alert('✅ Vendedor excluído.'); carregarVendedores(); }
+    if (resp.ok && data.ok) { alert('✅ Representante excluído.'); carregarVendedores(); }
     else alert('❌ ' + (data.erro || 'Erro ao excluir'));
   } catch (e) { alert('❌ Erro de conexão'); }
 }
@@ -1408,7 +1408,7 @@ async function carregarVendedores() {
     const data = await resp.json();
     if (!data.ok) throw new Error();
     vendedoresCache = data.vendedores || [];
-    if (!vendedoresCache.length) { cont.innerHTML = '<span class="muted">Nenhum vendedor cadastrado ainda.</span>'; return; }
+    if (!vendedoresCache.length) { cont.innerHTML = '<span class="muted">Nenhum Representante cadastrado ainda.</span>'; return; }
     cont.innerHTML = `<table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
       <thead><tr style="text-align:left;color:var(--text-dim);"><th style="padding:6px 4px;">Nome</th><th>E-mail (login)</th><th>Comissão</th><th>Status</th><th></th><th></th><th></th><th></th><th></th></tr></thead>
       <tbody>${vendedoresCache.map(v => `<tr style="border-top:1px solid var(--line,#eee);">
@@ -1430,7 +1430,7 @@ async function carregarVendedores() {
     cont.querySelectorAll('[data-adesao]').forEach(b => b.addEventListener('click', () => registrarAdesao(b.dataset.adesao)));
     cont.querySelectorAll('[data-resetsenha]').forEach(b => b.addEventListener('click', () => resetarSenhaVendedor(b.dataset.resetsenha)));
     cont.querySelectorAll('[data-delv]').forEach(b => b.addEventListener('click', () => excluirVendedor(b.dataset.delv)));
-  } catch (e) { cont.innerHTML = '<span class="muted">Não foi possível carregar os vendedores.</span>'; }
+  } catch (e) { cont.innerHTML = '<span class="muted">Não foi possível carregar os Representantes.</span>'; }
 }
 
 document.getElementById('novoVendedorBtn').addEventListener('click', () => abrirModalVendedor(null));
@@ -1447,11 +1447,11 @@ function abrirModalVendedor(id) {
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-overlay" id="ovVend">
       <div class="modal-box">
-        <div class="modal-head"><h2>${novo ? 'Novo vendedor' : 'Editar vendedor'}</h2><button class="modal-close" id="fecharVendedorBtn">✕</button></div>
-        <p class="muted" style="margin:0 0 14px;">Dados do vendedor e conta de acesso ao painel.</p>
+        <div class="modal-head"><h2>${novo ? 'Novo Representante' : 'Editar Representante'}</h2><button class="modal-close" id="fecharVendedorBtn">✕</button></div>
+        <p class="muted" style="margin:0 0 14px;">Dados do Representante e conta de acesso ao painel.</p>
         <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:6px 0;">Dados pessoais</div>
         <div class="grid2">
-          ${campo('v_nome', 'Nome completo', v.nome, 'Nome do vendedor')}
+          ${campo('v_nome', 'Nome completo', v.nome, 'Nome do Representante')}
           ${campo('v_cpf', 'CPF', v.cpf, '000.000.000-00')}
           ${campo('v_email', 'E-mail (login)', v.email, 'email@exemplo.com', 'email')}
           ${campo('v_whats', 'WhatsApp', v.whatsapp, '(11) 90000-0000')}
@@ -1496,7 +1496,7 @@ function abrirModalVendedor(id) {
         </div>
         <div class="muted" style="font-size:0.74rem;margin-top:-6px;" id="helpComissaoFixa"></div>
         <button type="button" class="btn btn-secondary" id="preencherContratoBtn" style="margin-top:8px;width:auto;">Preencher com os valores do contrato</button>
-        <div class="muted" style="font-size:0.74rem;margin-top:6px;">Se tiver um Representante vinculado, a comissão dele é registrada automaticamente junto, toda vez que ESTE vendedor (Afiliado) fechar uma venda.</div>
+        <div class="muted" style="font-size:0.74rem;margin-top:6px;">Se tiver um Representante vinculado, a comissão dele é registrada automaticamente junto, toda vez que ESTE Afiliado fechar uma venda.</div>
         <div class="sec" style="font-size:0.78rem;font-weight:700;color:var(--text-dim);margin:14px 0 6px;">Dados bancários (para receber comissão)</div>
         <div class="grid2">
           ${campo('v_banco', 'Banco', b.banco, 'Ex: Nubank, Itaú')}
@@ -1515,7 +1515,7 @@ function abrirModalVendedor(id) {
           </div>
         </div>
         ${novo
-          ? '<div class="muted" style="font-size:0.74rem;margin-top:-6px;">Senha padrão: <b>123mudar</b>. Passe ao vendedor para o primeiro acesso.</div>'
+          ? '<div class="muted" style="font-size:0.74rem;margin-top:-6px;">Senha padrão: <b>123mudar</b>. Passe ao Representante para o primeiro acesso.</div>'
           : `<div class="muted" style="font-size:0.74rem;margin-top:-6px;">A senha atual fica criptografada e não pode ser exibida — só dá pra definir uma nova. Se ele esqueceu, <button type="button" id="esqueciSenhaBtn" style="background:none;border:none;color:var(--brand);text-decoration:underline;cursor:pointer;font-size:0.74rem;padding:0;">clique aqui pra gerar uma senha provisória</button>.</div>`
         }
         ${novo ? '' : `<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.88rem;"><input type="checkbox" id="v_ativo" ${v.ativo ? 'checked' : ''}> Conta ativa</label>`}
