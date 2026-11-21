@@ -8,64 +8,99 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
   :root{
-    --brand:#D4AF37;--brand-deep:#B8912A;--brand-bright:#ECCB72;
-    --brand-soft:rgba(212,175,55,.12);--brand-soft2:rgba(212,175,55,.2);
-    --wpp:#22C55E;
-    --ink:#F3F1EA;--dim:#AFA99D;--faint:#79756B;
-    --line:rgba(255,255,255,.09);--line-strong:rgba(255,255,255,.16);
-    --page:#09090B;--surface:#17171C;--surface-2:#1D1D23;
-    --err:#e57373;
+    --brand:#D4AF37;--brand-deep:#B8912A;--brand-text:#8A6B1E;
+    --brand-soft:rgba(212,175,55,.14);--brand-soft2:rgba(212,175,55,.3);
+    --wpp:#22C55E;--wpp-deep:#16A34A;
+    --ink:#201C12;--dim:#6B655A;--faint:#948C7C;
+    --line:rgba(32,28,18,.1);--line-strong:rgba(32,28,18,.18);
+    --bg:#FAF8F3;--surface:#FFFFFF;--surface-2:#F3EFE5;
+    --err:#C0392B;--err-soft:#FBEAE8;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:
-      radial-gradient(900px 440px at 82% -10%, rgba(212,175,55,.14) 0%, rgba(212,175,55,0) 60%),
-      radial-gradient(700px 360px at 2% 10%, rgba(212,175,55,.06) 0%, rgba(212,175,55,0) 58%),
-      var(--page);
+      radial-gradient(900px 420px at 85% -6%, rgba(212,175,55,.10) 0%, rgba(212,175,55,0) 60%),
+      var(--bg);
     min-height:100vh;-webkit-font-smoothing:antialiased;line-height:1.55}
   a{color:inherit}
-  .wrap{max-width:980px;margin:0 auto;padding:52px 20px 70px}
+  .wrap{max-width:1040px;margin:0 auto;padding:40px 18px 64px}
 
-  .top{text-align:center;margin-bottom:38px}
-  .lockup{display:inline-flex;align-items:center;gap:12px;margin:0 auto 26px}
-  .lsym-chip{height:50px;width:50px;border-radius:13px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 14px rgba(0,0,0,.35)}
-  .lsym{height:35px;width:auto;display:block}
-  .lw{height:37px;width:auto;display:block}
-  .tag{display:inline-flex;align-items:center;gap:7px;background:var(--brand-soft);color:var(--brand-bright);font-weight:700;font-size:.78rem;padding:6px 13px;border-radius:999px;margin-bottom:16px;border:1px solid var(--brand-soft2)}
-  h1{font-size:2.1rem;line-height:1.15;letter-spacing:-.02em;font-weight:800;margin:0 0 12px;color:var(--ink)}
-  h1 .hl{background:linear-gradient(120deg,var(--brand),var(--brand-bright));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .lead{color:var(--dim);margin:0 auto;font-size:1.04rem;max-width:520px}
-  @media(max-width:600px){h1{font-size:1.65rem}}
+  .top{text-align:center;margin-bottom:8px}
+  .lockup{display:inline-flex;align-items:center;gap:12px;margin:0 auto 22px}
+  .lsym-chip{height:48px;width:48px;border-radius:13px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 10px rgba(32,28,18,.12)}
+  .lsym{height:33px;width:auto;display:block}
+  .lw{height:35px;width:auto;display:block}
+  .tag{display:inline-flex;align-items:center;gap:7px;background:var(--brand-soft);color:var(--brand-text);font-weight:700;font-size:.78rem;padding:6px 13px;border-radius:999px;margin-bottom:16px;border:1px solid var(--brand-soft2)}
+  h1{font-size:2.05rem;line-height:1.16;letter-spacing:-.02em;font-weight:800;margin:0 0 12px;color:var(--ink)}
+  h1 .hl{background:linear-gradient(120deg,var(--brand-deep),var(--brand));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{color:var(--dim);margin:0 auto;font-size:1.02rem;max-width:480px}
+  @media(max-width:600px){h1{font-size:1.6rem}}
 
-  .capabilities{margin:28px auto 0;display:inline-grid;grid-template-columns:1fr 1fr;gap:10px 26px;font-size:.86rem;color:var(--dim);text-align:left}
-  .capabilities span{display:flex;align-items:center;gap:8px}
-  .capabilities i{width:16px;height:16px;color:var(--brand-bright);flex-shrink:0}
+  .hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:30px;align-items:center;margin-top:28px}
+  @media(max-width:820px){.hero-grid{grid-template-columns:1fr;gap:26px;text-align:center}}
+  .capabilities{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;font-size:.88rem;color:var(--dim);text-align:left}
   @media(max-width:480px){.capabilities{grid-template-columns:1fr}}
+  .capabilities span{display:flex;align-items:center;gap:9px}
+  .capabilities i{width:17px;height:17px;color:var(--brand-text);flex-shrink:0}
 
-  .aviso{text-align:center;margin:0 0 22px;padding:12px;border-radius:10px;background:rgba(217,138,43,.15);color:#e0a45a;font-size:.9rem}
+  /* Mockup do WhatsApp — "1 imagem" que explica o produto rapidinho */
+  .phone{justify-self:center;width:260px;max-width:100%;background:#0B141A;border-radius:28px;padding:11px;box-shadow:0 24px 50px rgba(32,28,18,.18),0 8px 20px rgba(0,0,0,.12);border:1px solid rgba(0,0,0,.06)}
+  @media(max-width:820px){.phone{margin:0 auto}}
+  .phone .screen{background:#E5DDD5;border-radius:18px;overflow:hidden}
+  .phone .bar{background:#075E54;color:#fff;padding:12px 14px;display:flex;align-items:center;gap:9px;font-weight:700;font-size:.84rem}
+  .phone .bar .av{width:26px;height:26px;border-radius:50%;background:#fff;display:grid;place-items:center;overflow:hidden}
+  .phone .bar .av img{width:100%;height:100%;object-fit:cover}
+  .chat{padding:14px 10px;display:flex;flex-direction:column;gap:8px;min-height:260px}
+  .bub{max-width:84%;padding:8px 11px;border-radius:11px;font-size:.78rem;box-shadow:0 1px 1px rgba(0,0,0,.06);color:#111}
+  .bub.in{background:#fff;align-self:flex-start;border-top-left-radius:3px}
+  .bub.out{background:#DCF8C6;align-self:flex-end;border-top-right-radius:3px}
+  .bub .t{font-size:.6rem;color:#667781;text-align:right;margin-top:3px}
 
-  .planos{display:flex;flex-wrap:wrap;gap:18px;justify-content:center;margin-top:40px}
-  .plano{width:300px;max-width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:28px 24px;display:flex;flex-direction:column;transition:border-color .16s,transform .16s}
-  .plano.destaque{border-color:var(--brand-soft2);background:linear-gradient(160deg,var(--brand-soft),transparent 60%),var(--surface);box-shadow:0 0 0 1px var(--brand-soft2)}
-  .plano .ic{width:44px;height:44px;border-radius:12px;background:var(--brand-soft);display:grid;place-items:center;margin-bottom:14px}
-  .plano .ic i{width:21px;height:21px;color:var(--brand-bright)}
-  .plano .pill{align-self:flex-start;font-size:.72rem;font-weight:700;background:var(--brand);color:#171206;padding:3px 10px;border-radius:999px;margin-bottom:12px}
-  .plano h2{font-size:1.18rem;margin:0 0 4px;color:var(--ink)}
-  .plano .preco{font-size:2.1rem;font-weight:800;margin:8px 0 2px;color:var(--ink)}
-  .plano .preco small{font-size:.92rem;font-weight:500;color:var(--dim)}
-  .plano .desc{color:var(--dim);font-size:.86rem;margin:2px 0 18px}
-  .plano ul{list-style:none;margin:0 0 22px;padding:0;display:flex;flex-direction:column;gap:9px;flex:1}
-  .plano li{font-size:.86rem;color:var(--dim);display:flex;gap:9px;align-items:flex-start}
-  .plano li i{width:15px;height:15px;color:var(--wpp);flex-shrink:0;margin-top:2px}
-  .plano button{width:100%;padding:13px;border:none;border-radius:999px;background:var(--brand);color:#171206;font-weight:700;font-size:.98rem;cursor:pointer;transition:background .12s,transform .12s}
-  .plano button:hover{background:var(--brand-bright);transform:translateY(-1px)}
-  .plano button:disabled{opacity:.6;cursor:default;transform:none}
+  .aviso{text-align:center;margin:28px 0 0;padding:12px;border-radius:10px;background:#FFF3E0;color:#B6691E;font-size:.9rem}
 
-  .trustbar{display:flex;flex-wrap:wrap;justify-content:center;gap:24px;color:var(--dim);font-size:.84rem;margin-top:44px}
+  .eyebrow{text-align:center;color:var(--brand-text);font-weight:700;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;margin:44px 0 16px}
+  .planos{display:flex;flex-wrap:wrap;gap:18px;justify-content:center;align-items:stretch}
+  .plano{width:300px;max-width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:26px 24px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(32,28,18,.03)}
+  .plano.destaque{border-color:var(--brand-soft2);background:linear-gradient(160deg,var(--brand-soft),transparent 55%),var(--surface)}
+  .plano .ic{width:42px;height:42px;border-radius:12px;background:var(--brand-soft);display:grid;place-items:center;margin-bottom:14px}
+  .plano .ic i{width:20px;height:20px;color:var(--brand-text)}
+  .plano .pill{align-self:flex-start;font-size:.72rem;font-weight:700;background:var(--brand);color:#2b2208;padding:3px 10px;border-radius:999px;margin-bottom:12px}
+  .plano h2{font-size:1.14rem;margin:0 0 4px;color:var(--ink)}
+  .plano .preco{font-size:2rem;font-weight:800;margin:8px 0 2px;color:var(--ink)}
+  .plano .preco small{font-size:.9rem;font-weight:500;color:var(--dim)}
+  .plano .desc{color:var(--dim);font-size:.85rem;margin:2px 0 16px}
+  .plano ul{list-style:none;margin:0 0 20px;padding:0;display:flex;flex-direction:column;gap:9px;flex:1}
+  .plano li{font-size:.85rem;color:var(--dim);display:flex;gap:9px;align-items:flex-start}
+  .plano li i{width:15px;height:15px;color:var(--wpp-deep);flex-shrink:0;margin-top:2px}
+  .btn{width:100%;padding:13px;border:none;border-radius:999px;background:var(--brand);color:#2b2208;font-weight:700;font-size:.97rem;cursor:pointer;transition:background .12s,transform .12s;font-family:inherit}
+  .btn:hover{background:var(--brand-deep);transform:translateY(-1px)}
+  .btn:disabled{opacity:.6;cursor:default;transform:none}
+  .btn-outline{background:transparent;border:1px solid var(--line-strong);color:var(--ink)}
+  .btn-outline:hover{background:var(--surface-2)}
+
+  /* Card da Adesão — form / QR / confirmado */
+  .ades-field{margin-bottom:11px}
+  .ades-field label{display:block;font-size:.76rem;color:var(--dim);margin-bottom:4px;font-weight:600}
+  .ades-field input{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--line-strong);border-radius:9px;background:var(--surface);color:var(--ink);font-size:.9rem;font-family:inherit}
+  .ades-field input:focus{outline:none;border-color:var(--brand)}
+  .ades-erro{color:var(--err);font-size:.8rem;margin:-4px 0 10px;display:none}
+  .ades-qr{text-align:center}
+  .ades-qr img{width:190px;height:190px;max-width:100%;border-radius:10px;border:1px solid var(--line);margin:4px auto 14px;display:block}
+  .copia-row{display:flex;gap:8px;margin-bottom:12px}
+  .copia-row input{flex:1;min-width:0;font-size:.74rem;padding:9px 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface-2);color:var(--dim);font-family:ui-monospace,monospace}
+  .copia-row button{flex-shrink:0;padding:0 14px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font-weight:600;font-size:.82rem;cursor:pointer}
+  .copia-row button:hover{background:var(--surface-2)}
+  .ades-status{text-align:center;font-size:.82rem;color:var(--dim);margin-top:6px}
+  .ades-status.ok{color:var(--wpp-deep);font-weight:700}
+  .ades-pago{text-align:center;padding:10px 0}
+  .ades-pago .chk{width:48px;height:48px;border-radius:50%;background:#E8F8EE;display:grid;place-items:center;margin:0 auto 10px}
+  .ades-pago .chk i{width:24px;height:24px;color:var(--wpp-deep)}
+
+  .trustbar{display:flex;flex-wrap:wrap;justify-content:center;gap:22px;color:var(--dim);font-size:.82rem;margin-top:40px}
   .trustbar span{display:inline-flex;align-items:center;gap:7px}
-  .trustbar i{width:16px;height:16px;color:var(--brand-bright)}
+  .trustbar i{width:16px;height:16px;color:var(--brand-text)}
 
-  .rodape{text-align:center;margin-top:28px;font-size:.8rem;color:var(--faint)}
-  .rodape a{color:var(--brand-bright)}
+  .rodape{text-align:center;margin-top:26px;font-size:.78rem;color:var(--faint)}
+  .rodape a{color:var(--brand-text)}
 </style>
 </head>
 <body>
@@ -74,17 +109,80 @@
       <div class="lockup"><span class="lsym-chip"><img class="lsym" src="/assets/logo-symbol.png" alt=""></span><img class="lw" src="/assets/logo-wordmark.png" alt="RecomendaLeads"></div>
       <span class="tag">Assinatura RecomendaLeads</span>
       <h1>Transforme cada cliente num <span class="hl">canal de novas vendas</span></h1>
-      <p class="lead" id="introTexto">Um robô de WhatsApp que pede recomendação pros seus clientes, dá um prêmio automático pra quem indicar e te entrega as indicações prontas pra vender — sem você cobrar nem controlar nada na mão.</p>
+      <p class="lead" id="introTexto">Um robô de WhatsApp que pede recomendação pros seus clientes, dá um prêmio automático pra quem indicar e te entrega as indicações prontas pra vender.</p>
+    </div>
+
+    <div class="hero-grid">
       <div class="capabilities">
         <span><i data-lucide="message-circle"></i> Ativação automática no WhatsApp</span>
         <span><i data-lucide="gift"></i> Prêmio automático pra quem indica</span>
         <span><i data-lucide="share-2"></i> Rastreamento de cada recomendação</span>
         <span><i data-lucide="bar-chart-3"></i> Painel com todos os resultados</span>
       </div>
+      <div class="phone">
+        <div class="screen">
+          <div class="bar"><span class="av"><img src="/assets/logo-symbol.png" alt=""></span> RecomendaLeads</div>
+          <div class="chat">
+            <div class="bub out">Oi João! 🎁 A Maria, sua amiga, te recomendou pra conhecer a gente. Posso te contar rapidinho?<div class="t">09:41 ✓✓</div></div>
+            <div class="bub in">Pode sim!<div class="t">09:42</div></div>
+            <div class="bub out">Show! Você ganhou um presente especial pra usar nos próximos dias 🙌<div class="t">09:42 ✓✓</div></div>
+            <div class="bub in">Que legal, obrigada! 🙏<div class="t">09:43</div></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="avisoCancelado" class="aviso" style="display:none;">Pagamento não concluído. Você pode tentar de novo quando quiser. 😊</div>
-    <div class="planos" id="planos"><p style="text-align:center;color:var(--dim);width:100%;">Carregando...</p></div>
+
+    <p class="eyebrow">Passo 1 — Adesão (pagamento único)</p>
+    <div class="planos">
+      <div class="plano" id="cardAdesao">
+        <div class="ic"><i data-lucide="wrench"></i></div>
+        <h2>Instalação e configuração</h2>
+        <div class="preco">R$ 500,00<small>/à vista</small></div>
+        <div class="desc">Pagamento único, via Pix — cobre a configuração completa da sua conta antes de começar.</div>
+
+        <div id="adesaoIdle">
+          <ul>
+            <li><i data-lucide="check-circle-2"></i> Configuração da sua conta</li>
+            <li><i data-lucide="check-circle-2"></i> Conexão do seu WhatsApp</li>
+            <li><i data-lucide="check-circle-2"></i> Ajuste do prêmio e das mensagens</li>
+          </ul>
+          <button class="btn" id="btnAbrirAdesao">Pagar adesão via Pix</button>
+        </div>
+
+        <div id="adesaoForm" style="display:none;">
+          <div class="ades-field"><label>Nome completo</label><input type="text" id="adNome" placeholder="Seu nome"></div>
+          <div class="ades-field"><label>CPF ou CNPJ</label><input type="text" id="adCpfCnpj" inputmode="numeric" placeholder="000.000.000-00"></div>
+          <div class="ades-field"><label>E-mail</label><input type="email" id="adEmail" placeholder="voce@email.com"></div>
+          <div class="ades-field"><label>WhatsApp</label><input type="text" id="adTelefone" inputmode="numeric" placeholder="(11) 90000-0000"></div>
+          <div class="ades-erro" id="adErro"></div>
+          <button class="btn" id="btnGerarPix">Gerar QR Code Pix</button>
+          <button class="btn btn-outline" id="btnCancelarAdesao" style="margin-top:8px;">Cancelar</button>
+        </div>
+
+        <div id="adesaoQr" style="display:none;">
+          <div class="ades-qr">
+            <img id="adQrImg" alt="QR Code Pix">
+            <div class="copia-row">
+              <input type="text" id="adCopiaECola" readonly>
+              <button id="btnCopiarPix">Copiar</button>
+            </div>
+            <div class="ades-status" id="adStatus">Aguardando pagamento...</div>
+          </div>
+        </div>
+
+        <div id="adesaoPago" style="display:none;">
+          <div class="ades-pago">
+            <div class="chk"><i data-lucide="check"></i></div>
+            <b>Adesão paga!</b>
+            <p style="color:var(--dim);font-size:.85rem;margin-top:4px;">Agora é só assinar o plano mensal ao lado.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="planos"><p style="text-align:center;color:var(--dim);width:100%;">Carregando...</p></div>
+    </div>
 
     <div class="trustbar">
       <span><i data-lucide="shield-check"></i> Dados protegidos (LGPD)</span>
@@ -108,6 +206,7 @@ const modoVendedor = !!vendedorUrl || comBoleto;
 if (params.get('cancelado')) document.getElementById('avisoCancelado').style.display = 'block';
 
 function moeda(c) { return (c/100).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
+function criarIcones() { if (window.lucide) lucide.createIcons(); }
 
 const BENEFICIOS = [
   'Mensagens automáticas de recomendação no WhatsApp',
@@ -116,7 +215,7 @@ const BENEFICIOS = [
   'Suporte humano via WhatsApp'
 ];
 
-async function carregar() {
+async function carregarPlanos() {
   try {
     const resp = await fetch(`${API_BASE}/planos?plano=${encodeURIComponent(planoUrl)}&vendedor=${encodeURIComponent(vendedorUrl)}&unico=${unicoUrl ? '1' : '0'}`);
     const data = await resp.json();
@@ -142,11 +241,11 @@ async function carregar() {
           <div class="preco">${moeda(porMes)}<small>/mês</small></div>
           <div class="desc">${desc}</div>
           <ul>${beneficios}</ul>
-          <button data-plano="${p.id}">Assinar agora</button>
+          <button class="btn" data-plano="${p.id}">Assinar agora</button>
         </div>`;
     }).join('');
     cont.querySelectorAll('button[data-plano]').forEach(b => b.addEventListener('click', () => assinar(b)));
-    if (window.lucide) lucide.createIcons();
+    criarIcones();
   } catch (e) {
     document.getElementById('planos').innerHTML = '<p style="text-align:center;color:var(--err)">Não foi possível carregar os planos. Tente novamente.</p>';
   }
@@ -160,11 +259,117 @@ async function assinar(btn) {
     const resp = await fetch(`${API_BASE}/assinar/checkout`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plano, vendedor: vendedorUrl, boleto: modoVendedor }) });
     const data = await resp.json();
     if (resp.ok && data.ok && data.url) { window.location.href = data.url; }
-    else { alert(data.erro || 'Não foi possível iniciar o pagamento.'); document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = false); carregar(); }
-  } catch (e) { alert('Erro de conexão.'); document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = false); carregar(); }
+    else { alert(data.erro || 'Não foi possível iniciar o pagamento.'); document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = false); carregarPlanos(); }
+  } catch (e) { alert('Erro de conexão.'); document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = false); carregarPlanos(); }
 }
 
-carregar();
+// ===== Adesão (Pix avulso, R$ 500, à vista) =====
+function maskCpfCnpj(el) {
+  const d = el.value.replace(/\D/g, '').slice(0, 14);
+  let v = d;
+  if (d.length <= 11) {
+    if (d.length > 3) v = d.slice(0,3) + '.' + d.slice(3);
+    if (d.length > 6) v = d.slice(0,3) + '.' + d.slice(3,6) + '.' + d.slice(6);
+    if (d.length > 9) v = d.slice(0,3) + '.' + d.slice(3,6) + '.' + d.slice(6,9) + '-' + d.slice(9);
+  } else {
+    v = d.slice(0,2) + '.' + d.slice(2,5) + '.' + d.slice(5,8) + '/' + d.slice(8,12) + '-' + d.slice(12);
+  }
+  el.value = v;
+}
+function maskTel(el) {
+  const d = el.value.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) el.value = d;
+  else if (d.length <= 6) el.value = '(' + d.slice(0,2) + ') ' + d.slice(2);
+  else if (d.length <= 10) el.value = '(' + d.slice(0,2) + ') ' + d.slice(2,6) + '-' + d.slice(6);
+  else el.value = '(' + d.slice(0,2) + ') ' + d.slice(2,7) + '-' + d.slice(7);
+}
+document.getElementById('adCpfCnpj').addEventListener('input', function(){ maskCpfCnpj(this); });
+document.getElementById('adTelefone').addEventListener('input', function(){ maskTel(this); });
+
+let adesaoPollTimer = null;
+function mostrarEstadoAdesao(estado) {
+  ['adesaoIdle','adesaoForm','adesaoQr','adesaoPago'].forEach(id => { document.getElementById(id).style.display = (id === estado) ? 'block' : 'none'; });
+}
+document.getElementById('btnAbrirAdesao').addEventListener('click', () => mostrarEstadoAdesao('adesaoForm'));
+document.getElementById('btnCancelarAdesao').addEventListener('click', () => mostrarEstadoAdesao('adesaoIdle'));
+
+document.getElementById('btnGerarPix').addEventListener('click', async () => {
+  const erroEl = document.getElementById('adErro');
+  erroEl.style.display = 'none';
+  const nome = document.getElementById('adNome').value.trim();
+  const cpfCnpj = document.getElementById('adCpfCnpj').value.replace(/\D/g, '');
+  const email = document.getElementById('adEmail').value.trim();
+  const telefone = document.getElementById('adTelefone').value.trim();
+  if (!nome) return mostrarErroAdesao('Informe seu nome.');
+  if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) return mostrarErroAdesao('Informe um CPF ou CNPJ válido.');
+
+  const btn = document.getElementById('btnGerarPix');
+  btn.disabled = true; btn.textContent = 'Gerando Pix...';
+  try {
+    const resp = await fetch(`${API_BASE}/assinar/adesao`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome, cpfCnpj, email, telefone, vendedor: vendedorUrl, plano: planoUrl })
+    });
+    const data = await resp.json();
+    btn.disabled = false; btn.textContent = 'Gerar QR Code Pix';
+    if (!resp.ok || !data.ok) return mostrarErroAdesao(data.erro || 'Não foi possível gerar o Pix.');
+    document.getElementById('adQrImg').src = `data:image/png;base64,${data.qrCodeBase64}`;
+    document.getElementById('adCopiaECola').value = data.copiaECola;
+    try { sessionStorage.setItem('rl_adesao', JSON.stringify({ ref: data.ref, qr: data.qrCodeBase64, cola: data.copiaECola })); } catch (e) {}
+    mostrarEstadoAdesao('adesaoQr');
+    iniciarPollAdesao(data.ref);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Gerar QR Code Pix';
+    mostrarErroAdesao('Erro de conexão. Tente de novo.');
+  }
+});
+function mostrarErroAdesao(msg) {
+  const el = document.getElementById('adErro');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+document.getElementById('btnCopiarPix').addEventListener('click', async () => {
+  const input = document.getElementById('adCopiaECola');
+  const btn = document.getElementById('btnCopiarPix');
+  try {
+    await navigator.clipboard.writeText(input.value);
+  } catch (e) {
+    input.removeAttribute('readonly'); input.select(); document.execCommand('copy'); input.setAttribute('readonly', 'readonly');
+  }
+  btn.textContent = 'Copiado!'; setTimeout(() => { btn.textContent = 'Copiar'; }, 1800);
+});
+
+function iniciarPollAdesao(ref) {
+  if (adesaoPollTimer) clearInterval(adesaoPollTimer);
+  adesaoPollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/assinar/adesao/status?ref=${encodeURIComponent(ref)}`);
+      const data = await resp.json();
+      if (data.ok && data.pago) {
+        clearInterval(adesaoPollTimer);
+        try { sessionStorage.removeItem('rl_adesao'); } catch (e) {}
+        mostrarEstadoAdesao('adesaoPago');
+        criarIcones();
+      }
+    } catch (e) { /* tenta de novo no próximo ciclo */ }
+  }, 4000);
+}
+
+// Retoma o QR se a pessoa recarregar a página no meio do pagamento.
+(function retomarAdesao() {
+  try {
+    const salvo = JSON.parse(sessionStorage.getItem('rl_adesao') || 'null');
+    if (salvo && salvo.ref) {
+      document.getElementById('adQrImg').src = `data:image/png;base64,${salvo.qr}`;
+      document.getElementById('adCopiaECola').value = salvo.cola;
+      mostrarEstadoAdesao('adesaoQr');
+      iniciarPollAdesao(salvo.ref);
+    }
+  } catch (e) {}
+})();
+
+carregarPlanos();
+criarIcones();
 </script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>try { lucide.createIcons(); } catch(_) {}</script>
