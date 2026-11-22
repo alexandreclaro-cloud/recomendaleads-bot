@@ -230,7 +230,7 @@
       </section>
 
       <section class="view fade-in" id="view-nichos">
-        <div class="card">
+        <div class="card" id="nichoIntroCard">
           <div class="block-title"><i data-lucide="sparkles"></i> Demonstração por nicho</div>
           <p class="sub">Personalize a apresentação para cada tipo de cliente. No mesmo número, cada link mostra os textos da área. Assim o cliente se vê dentro do sistema. 💡</p>
           <div id="nichosTabs" style="display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 4px;"></div>
@@ -279,14 +279,26 @@
       <section class="view fade-in" id="view-cadastroCliente">
         <div class="card">
           <div class="block-title"><i data-lucide="user-plus"></i> Cadastro de cliente</div>
-          <p class="sub">Fechou com o cliente? Abra o cadastro — ele preenche os dados e já paga na hora (Pix, cartão ou boleto). Escolha a condição combinada com ele.</p>
-          <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px; max-width:420px;">
-            <a class="btn btn-action" href="/assinar" target="_blank" rel="noopener" style="text-align:center;">📝 Cadastro completo (cliente escolhe o plano)</a>
-            <a class="btn btn-secondary" href="/assinar?plano=mensal&unico=1" target="_blank" rel="noopener" style="text-align:center;">R$ 397/mês — condição padrão</a>
-            <a class="btn btn-secondary" href="/assinar?plano=mensal347&unico=1" target="_blank" rel="noopener" style="text-align:center;">R$ 347/mês — condição promocional</a>
-            <a class="btn btn-secondary" href="/assinar?plano=mensal297&unico=1" target="_blank" rel="noopener" style="text-align:center;">R$ 297/mês — só pra negociação com rede/franquia</a>
+          <p class="sub">Escolha a condição combinada com o cliente e copie o link (ou mande direto no WhatsApp). Ele faz o cadastro rápido e, no final, paga a adesão de R$ 500 via Pix e assina o plano mensal no cartão.</p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:14px 0 10px;">
+            <select class="input" id="cadastroClientePlanoSelect" style="max-width:280px;"><option>Carregando planos...</option></select>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input id="cadastroClienteLink" readonly onclick="this.select()" class="input" style="flex:1; min-width:220px;">
+            <button class="btn btn-secondary" id="cadastroClienteCopiarBtn"><i data-lucide="copy"></i> Copiar</button>
+            <a class="btn btn-action" id="cadastroClienteWppBtn" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Enviar no WhatsApp</a>
           </div>
           <p class="hint" style="margin-top:14px;">💡 Abre numa aba nova — pode mandar pro cliente preencher ele mesmo no celular, ou preencher junto com ele na visita.</p>
+        </div>
+
+        <div class="card" style="margin-top:16px" id="cadastroAfiliadoCard">
+          <div class="block-title"><i data-lucide="users"></i> Cadastrar Afiliado</div>
+          <p class="sub">Afiliados vendem com a condição de R$ 347/mês e você ganha uma comissão extra em cada venda que eles fizerem. Mande este link pra quem você quer recrutar.</p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px;">
+            <input id="cadastroAfiliadoLink" readonly onclick="this.select()" class="input" style="flex:1; min-width:220px;">
+            <button class="btn btn-secondary" id="cadastroAfiliadoCopiarBtn"><i data-lucide="copy"></i> Copiar</button>
+            <a class="btn btn-action" id="cadastroAfiliadoWppBtn" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Enviar no WhatsApp</a>
+          </div>
         </div>
       </section>
 
@@ -1070,6 +1082,7 @@
 </div>
 
 <script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.js"></script>
 <script>
 const API_BASE = window.location.origin;
 const TOKEN = localStorage.getItem('recomendaleads_token');
@@ -1098,17 +1111,25 @@ function aplicarGating() {
   document.querySelectorAll('[data-gestor]').forEach(el => { el.style.display = 'none'; });
 }
 
-// Representante (papel "vendedor"): ferramenta de campo pra prospectar — só
+// Representante (papel "vendedor"): ferramenta de campo pra prospectar —
 // Demonstração por nicho (+ relatório de exemplo), Cadastro de cliente,
-// CRM Vendas (simulado) e Disparo em massa. Nada de configuração da empresa.
+// CRM Vendas (simulado) e Disparo em massa (edição); Conversas, CRM/Leads e
+// os Funis ficam visíveis só pra MOSTRAR na prática pro cliente — ele não
+// edita nada lá, o servidor já bloqueia qualquer alteração de quem não é
+// gestor (ver exigirGestor/exigirGestorOuVendedor). Nada mais de
+// configuração da empresa (Ofertas, Script de vendas, Equipe, Assinatura
+// etc. continuam escondidos).
+const EXTRA_VISIVEL_VENDEDOR = '.nav-item-funil, .nav-label-funis, .funil-tile, a[href="/crm#config"]';
 function aplicarGatingVendedor() {
   document.querySelectorAll('[data-gestor]').forEach(el => {
     if (SECOES_VENDEDOR.some(sec => el.matches(`[data-section="${sec}"]`))) return;
+    if (el.matches(EXTRA_VISIVEL_VENDEDOR)) return;
     el.style.display = 'none';
   });
-  // "Conversas" e "CRM / Leads" são o CRM DE VERDADE da empresa — o Representante
-  // só vê o "CRM Vendas" simulado (pra mostrar ao prospect), não isso aqui.
-  ['navConversas', 'navCrmLeads'].forEach(id => {
+  // Dentro de "Demonstração por nicho": o Representante não edita texto nem
+  // prêmio, só escolhe o nicho e mostra o QR pro cliente — esconde a parte
+  // de configuração e deixa só os botões grandes de demonstração.
+  ['nichoIntroCard', 'nichoEditorCard', 'nichoPremiosCard'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -4172,6 +4193,10 @@ function textoLinkNicho(slug) {
   return `Olá, quero meu presente aqui (${nome})`;
 }
 
+// Cards grandes e tocáveis — pensados pro vendedor usar no celular/tablet
+// durante a visita: toca no nicho, o QR já abre em tela cheia pro cliente
+// escanear na hora. "Copiar link" fica num botão pequeno à parte, pra quando
+// o cliente não está na frente (manda por WhatsApp em vez de mostrar o QR).
 function renderNichosLinks() {
   const cont = document.getElementById('nichosLinks');
   const inp = document.getElementById('nichoNumeroInput');
@@ -4179,29 +4204,24 @@ function renderNichosLinks() {
   if (!num) { cont.innerHTML = '<p class="sub">Digite o número do robô acima e salve pra gerar os links.</p>'; return; }
   if (!nichosLista.length) { cont.innerHTML = '<p class="sub">Crie um mercado pra gerar os links.</p>'; return; }
   const num55 = num.startsWith('55') ? num : '55' + num;
-  cont.innerHTML = nichosLista.map(n => {
+  cont.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px;">` + nichosLista.map(n => {
     const texto = `${textoLinkNicho(n.slug)} #${codigoNicho(n.slug)}`;
     const link = `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
     const nomeSeg = escapeHtml(n.nome);
-    // QR Code pronto pra mostrar na hora, sem precisar mandar nada: o vendedor
-    // abre em tela cheia e vira o celular pro cliente escanear com a câmera.
-    return `<div style="display:flex; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap; padding:10px; border:1px solid var(--border,#eee); border-radius:10px;">
-      <img src="${qrUrl}" alt="QR Code ${nomeSeg}" class="nicho-qr-thumb" data-qr="${qrUrl}" data-nome="${nomeSeg}" style="width:60px;height:60px;border-radius:8px;border:1px solid var(--border,#eee);background:#fff;cursor:pointer;flex-shrink:0;">
-      <div style="flex:1; min-width:180px;">
-        <div style="font-weight:600; margin-bottom:4px;">${emojiNicho(n.slug)} ${n.nome}</div>
-        <input class="input" readonly value="${link}" style="width:100%; font-size:0.78rem;" onclick="this.select()">
-      </div>
-      <div style="display:flex; gap:6px; flex-wrap:wrap;">
-        <button class="btn btn-secondary btn-mini btn-ver-qr" data-qr="${qrUrl}" data-nome="${nomeSeg}">📱 Mostrar QR</button>
-        <button class="btn btn-secondary btn-mini btn-copiar-link" data-link="${link}">Copiar</button>
-      </div>
+    return `<div style="border:2px solid var(--border,#e3e6ea); border-radius:16px; overflow:hidden; background:var(--surface,#fff);">
+      <button type="button" class="btn-ver-qr" data-qr="${qrUrl}" data-nome="${nomeSeg}" style="display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; padding:26px 14px 18px; border:none; background:none; cursor:pointer; color:inherit;">
+        <span style="font-size:2.6rem; line-height:1;">${emojiNicho(n.slug)}</span>
+        <span style="font-weight:700; font-size:1.08rem; text-align:center;">${n.nome}</span>
+        <span style="font-size:0.8rem; color:var(--brand,#b8860b); font-weight:600;">👆 Toque pra mostrar o QR Code</span>
+      </button>
+      <button class="btn-copiar-link" data-link="${escapeHtml(link)}" style="display:block; width:100%; border:none; border-top:1px solid var(--border,#e3e6ea); background:var(--surface-2,#f8f9fb); color:var(--text-dim,#6b7280); font-size:0.82rem; font-weight:600; padding:12px; cursor:pointer;">🔗 Copiar link</button>
     </div>`;
-  }).join('');
+  }).join('') + `</div>`;
   cont.querySelectorAll('.btn-copiar-link').forEach(b => b.addEventListener('click', () => {
-    navigator.clipboard.writeText(b.dataset.link).then(() => { const t = b.textContent; b.textContent = 'Copiado!'; setTimeout(() => b.textContent = t, 1500); });
+    navigator.clipboard.writeText(b.dataset.link).then(() => { const t = b.textContent; b.textContent = '✅ Copiado!'; setTimeout(() => b.textContent = t, 1500); });
   }));
-  cont.querySelectorAll('.btn-ver-qr, .nicho-qr-thumb').forEach(el => el.addEventListener('click', () => abrirQrTelaCheia(el.dataset.qr, el.dataset.nome)));
+  cont.querySelectorAll('.btn-ver-qr').forEach(el => el.addEventListener('click', () => abrirQrTelaCheia(el.dataset.qr, el.dataset.nome)));
 }
 
 // Mostra o QR Code em tela cheia — pensado pro vendedor usar no próprio
@@ -4266,9 +4286,73 @@ function renderCrmVendasDemo() {
     </div>`).join('');
 }
 
+// Cadastro de cliente: o Representante escolhe a condição combinada e manda
+// SÓ esse link — o cliente não escolhe nada, só confirma e paga. O 397/347/297
+// e o recrutamento de Afiliado reaproveitam o sistema de Representante/
+// Afiliado que já existe (VENDEDORES_COL) — ver GET /minha-vendedor-vinculado
+// no servidor: cria o vínculo na primeira vez que essa tela é aberta. O 297
+// só aparece pra quem NÃO é Afiliado (ele não teria margem nessa venda).
+let MEU_VENDEDOR_VINCULADO_ID = null;
+let PLANOS_CADASTRO_CLIENTE_CACHE = [];
+async function carregarVendedorVinculado() {
+  try {
+    const resp = await fetchAutenticado(`${API_BASE}/minha-vendedor-vinculado`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) return { vendedorId: null, ehAfiliado: false };
+    MEU_VENDEDOR_VINCULADO_ID = data.vendedorId;
+    return data;
+  } catch (e) { return { vendedorId: null, ehAfiliado: false }; }
+}
+async function carregarCadastroClientePlanos() {
+  const sel = document.getElementById('cadastroClientePlanoSelect');
+  if (!sel) return;
+  try {
+    const { ehAfiliado } = await carregarVendedorVinculado();
+    const ids = ehAfiliado ? ['mensal', 'mensal347'] : ['mensal', 'mensal347', 'mensal297'];
+    const resultados = await Promise.all(ids.map(id => fetch(`${API_BASE}/planos?plano=${id}&unico=1`).then(r => r.json())));
+    PLANOS_CADASTRO_CLIENTE_CACHE = resultados.filter(d => d && d.ok && d.planos && d.planos[0]).map(d => d.planos[0]);
+    if (!PLANOS_CADASTRO_CLIENTE_CACHE.length) throw new Error();
+    sel.innerHTML = PLANOS_CADASTRO_CLIENTE_CACHE.map(p => `<option value="${p.id}">${p.nome} — ${moedaBR(p.valorCentavos)}/mês</option>`).join('');
+    montarCadastroClienteLink();
+    montarCadastroAfiliadoLink();
+  } catch (e) { sel.innerHTML = '<option>Erro ao carregar planos</option>'; }
+}
+function montarCadastroClienteLink() {
+  const sel = document.getElementById('cadastroClientePlanoSelect');
+  const inp = document.getElementById('cadastroClienteLink');
+  const wpp = document.getElementById('cadastroClienteWppBtn');
+  if (!sel || !inp || !sel.value) return;
+  const vend = MEU_VENDEDOR_VINCULADO_ID ? `&vendedor=${encodeURIComponent(MEU_VENDEDOR_VINCULADO_ID)}` : '';
+  const link = `${API_BASE}/assinar?plano=${encodeURIComponent(sel.value)}&unico=1${vend}`;
+  inp.value = link;
+  const msg = 'Oi! Segue o link pra ativar o RecomendaLeads no plano combinado:\n\n' + link;
+  wpp.href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+}
+function montarCadastroAfiliadoLink() {
+  const inp = document.getElementById('cadastroAfiliadoLink');
+  const wpp = document.getElementById('cadastroAfiliadoWppBtn');
+  if (!inp || !MEU_VENDEDOR_VINCULADO_ID) return;
+  const link = `${API_BASE}/vendedor/cadastro?principal=${encodeURIComponent(MEU_VENDEDOR_VINCULADO_ID)}`;
+  inp.value = link;
+  const msg = 'Oi! Segue o link pra você se cadastrar como Afiliado:\n\n' + link;
+  wpp.href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+}
+document.getElementById('cadastroClientePlanoSelect')?.addEventListener('change', montarCadastroClienteLink);
+document.getElementById('cadastroClienteCopiarBtn')?.addEventListener('click', () => {
+  const inp = document.getElementById('cadastroClienteLink');
+  const btn = document.getElementById('cadastroClienteCopiarBtn');
+  navigator.clipboard.writeText(inp.value).then(() => { const t = btn.innerHTML; btn.innerHTML = 'Copiado!'; setTimeout(() => btn.innerHTML = t, 1500); });
+});
+document.getElementById('cadastroAfiliadoCopiarBtn')?.addEventListener('click', () => {
+  const inp = document.getElementById('cadastroAfiliadoLink');
+  const btn = document.getElementById('cadastroAfiliadoCopiarBtn');
+  navigator.clipboard.writeText(inp.value).then(() => { const t = btn.innerHTML; btn.innerHTML = 'Copiado!'; setTimeout(() => btn.innerHTML = t, 1500); });
+});
+
 aplicarGating();
 icons();
 renderCrmVendasDemo();
+carregarCadastroClientePlanos();
 carregarConfiguracao();
 if (EH_GESTOR) carregarWhatsapp();
 carregarVisaoGeral();

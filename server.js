@@ -6340,6 +6340,44 @@ async function vendedorEhAfiliado(vendedorId) {
   } catch (e) { return false; }
 }
 
+// Liga o Representante da Equipe (papel "vendedor" em USUARIOS_COL, o painel
+// de campo dentro de Minha Empresa) a um registro no sistema de
+// Representante/Afiliado (VENDEDORES_COL) — cria na primeira vez que ele
+// acessa, reaproveitando tudo que já existe lá: comissão, link de recrutar
+// Afiliado e a regra do voucher de R$297 (só pra Representante direto, nunca
+// Afiliado). Nunca mexe no login dele — ele continua entrando por
+// minha-empresa/login, não por /vendedor; o registro criado aqui é só pra
+// comissão/recrutamento, com uma senha aleatória que ninguém usa.
+app.get('/minha-vendedor-vinculado', exigirLoginEmpresa, exigirGestorOuVendedor, async (req, res) => {
+  try {
+    let vendedorId = req.usuario ? req.usuario.vendedorVinculadoId : (req.empresaLogin.vendedorVinculadoId || null);
+    if (vendedorId) {
+      const doc = await VENDEDORES_COL().doc(vendedorId).get();
+      if (!doc.exists) vendedorId = null;
+    }
+    if (!vendedorId) {
+      const nome = (req.usuario && req.usuario.nome) || req.empresaLogin.nome || 'Representante';
+      const email = (req.usuario && req.usuario.email) || req.empresaLogin.email || null;
+      const senhaHash = await bcrypt.hash(crypto.randomUUID(), 10);
+      const ref = await VENDEDORES_COL().add({
+        nome, email, senhaHash, ativo: true, senhaProvisoria: true,
+        tipoComissao: 'percentual', comissaoPct: COMISSAO_PCT,
+        vendedorPrincipalId: null,
+        vinculadoEquipe: true, equipeUsuarioId: (req.usuario && req.usuario.id) || null, equipeEmpresaId: req.empresaLogin.id,
+        banco: { banco: null, agencia: null, conta: null, tipo: null, pix: null, titular: null },
+        criadoEm: new Date().toISOString()
+      });
+      vendedorId = ref.id;
+      if (req.usuario) await USUARIOS_COL().doc(req.usuario.id).update({ vendedorVinculadoId: vendedorId });
+      else await EMPRESAS_COL().doc(req.empresaLogin.id).update({ vendedorVinculadoId: vendedorId });
+    }
+    const ehAfiliado = await vendedorEhAfiliado(vendedorId);
+    res.json({ ok: true, vendedorId, ehAfiliado });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Lista pública de planos (para a página /assinar).
 app.get('/planos', async (req, res) => {
   // Plano oculto (exclusivo, ?plano=mensal297) OU link de vendedor que já
