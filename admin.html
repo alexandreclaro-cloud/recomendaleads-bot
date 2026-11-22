@@ -140,6 +140,23 @@
       <div id="nichosDemoVendedor"><span class="muted">Carregando...</span></div>
     </div>
 
+    <div class="card dono-only" style="display:none; margin-bottom:18px; padding:18px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">➕ Cadastrar cliente (venda direta sua)</h2>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Sem Representante no meio — a venda (e a comissão) é 100% sua. Escolha a condição e cadastre junto com o cliente, ou mande o link pra ele preencher sozinho.</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+        <select class="input" id="planoDonoSelect" style="max-width:260px;"><option>Carregando planos...</option></select>
+      </div>
+      <a class="btn btn-brand" id="cadastrarClienteDonoBtn" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
+      <div style="border-top:1px solid var(--border); margin-top:16px; padding-top:14px;">
+        <p class="muted" style="font-size:0.82rem; margin:0 0 10px;">Ou só mande o link, sem preencher nada (o cliente preenche sozinho):</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="planoDonoLink" readonly onclick="this.select()" style="flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:0.82rem;">
+          <button class="btn btn-secondary" id="planoDonoCopiarBtn"><i data-lucide="copy"></i> Copiar</button>
+          <a class="btn btn-secondary" id="planoDonoWppBtn" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Enviar no WhatsApp</a>
+        </div>
+      </div>
+    </div>
+
     <div class="card" style="margin-bottom:18px; padding:18px;">
       <h2 style="font-size:1rem; margin:0 0 4px;">🔗 Link de autocadastro do cliente</h2>
       <p class="muted" style="font-size:0.85rem; margin:0 0 12px;" id="conviteTexto">Um link só, pra sempre. Mande pra qualquer cliente: ele preenche os dados da empresa e <strong>assina o contrato</strong>. O cadastro entra como <strong>pendente</strong> e só libera quando <strong>você validar</strong> — aí você define o plano/pagamento e ele recebe o e-mail de acesso.</p>
@@ -343,6 +360,7 @@ function mostrarLinkCliente(link) {
   document.getElementById('conviteWpp').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
   document.getElementById('conviteBox').style.display = 'block';
   montarLinkPlanoVendedor();
+  montarLinkPlanoDono();
   icons();
 }
 async function carregarLinkCliente() {
@@ -494,7 +512,7 @@ function mostrarApp() {
   icons();
   carregarComissoes();
   carregarLinkCliente();
-  if (!vend) { carregarVendedores(); carregarMeuAcesso(); carregarAvisosEnviados(); }
+  if (!vend) { carregarVendedores(); carregarMeuAcesso(); carregarAvisosEnviados(); carregarPlanosAssinaturaDono(); }
 }
 
 // Busca os próprios dados de comissão (nunca de outro vendedor) pra mostrar o
@@ -569,6 +587,42 @@ document.getElementById('planoVendedorSelect')?.addEventListener('change', monta
 document.getElementById('planoVendedorCopiarBtn')?.addEventListener('click', () => {
   const inp = document.getElementById('planoVendedorLink');
   const btn = document.getElementById('planoVendedorCopiarBtn');
+  navigator.clipboard.writeText(inp.value).then(() => { const t = btn.innerHTML; btn.innerHTML = 'Copiado!'; setTimeout(() => btn.innerHTML = t, 1500); });
+});
+
+// Mesma coisa, só que pro Dono vender direto (sem Representante no meio —
+// comissão 100% dele, por isso nunca manda &vendedor= em nenhum dos links).
+let PLANOS_DONO_CACHE = [];
+async function carregarPlanosAssinaturaDono() {
+  const sel = document.getElementById('planoDonoSelect');
+  if (!sel) return;
+  try {
+    const ids = ['mensal', 'mensal347', 'mensal297'];
+    const resultados = await Promise.all(ids.map(id => fetch(`${API_BASE}/planos?plano=${id}&unico=1`).then(r => r.json())));
+    PLANOS_DONO_CACHE = resultados.filter(d => d && d.ok && d.planos && d.planos[0]).map(d => d.planos[0]);
+    if (!PLANOS_DONO_CACHE.length) throw new Error();
+    sel.innerHTML = PLANOS_DONO_CACHE.map(p => `<option value="${p.id}">${p.nome} — ${fmtReais(p.valorCentavos)}/mês</option>`).join('');
+    montarLinkPlanoDono();
+  } catch (e) { sel.innerHTML = '<option>Erro ao carregar planos</option>'; }
+}
+function montarLinkPlanoDono() {
+  const sel = document.getElementById('planoDonoSelect');
+  const inp = document.getElementById('planoDonoLink');
+  const wpp = document.getElementById('planoDonoWppBtn');
+  const btnCadastrar = document.getElementById('cadastrarClienteDonoBtn');
+  if (!sel || !sel.value) return;
+  if (btnCadastrar) btnCadastrar.href = `/admin/criar-empresa?plano=${encodeURIComponent(sel.value)}`;
+  if (inp && wpp && LINK_CLIENTE_BASE) {
+    const link = `${LINK_CLIENTE_BASE}&plano=${encodeURIComponent(sel.value)}`;
+    inp.value = link;
+    const msg = 'Oi! Segue o link pra ativar o RecomendaLeads no plano combinado:\n\n' + link;
+    wpp.href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+  }
+}
+document.getElementById('planoDonoSelect')?.addEventListener('change', montarLinkPlanoDono);
+document.getElementById('planoDonoCopiarBtn')?.addEventListener('click', () => {
+  const inp = document.getElementById('planoDonoLink');
+  const btn = document.getElementById('planoDonoCopiarBtn');
   navigator.clipboard.writeText(inp.value).then(() => { const t = btn.innerHTML; btn.innerHTML = 'Copiado!'; setTimeout(() => btn.innerHTML = t, 1500); });
 });
 

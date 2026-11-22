@@ -364,8 +364,20 @@ const ehDonoToken = !ehConvite && !STORED_KEY && !!DONO_TOKEN;
   } else if (ehDonoToken) {
     // Dono logado pelo login fácil: não precisa digitar a chave (mantém trial/migração).
     esconder('keyBlock');
+    mostrarContratoSeTiverPlano();
   } else if (STORED_KEY) {
     document.getElementById('adminKeyInput').value = STORED_KEY;
+    mostrarContratoSeTiverPlano();
+  }
+  // Venda direta do dono (sem Representante): mesmo cadastro completo
+  // (dados + contrato com o preço real + Pix/cartão automático) — nunca
+  // manda vendedor= nos links dele, então a comissão nunca é atribuída a
+  // ninguém (VENDEDOR_ID_ATUAL fica vazio, igual já nasce aqui em cima).
+  function mostrarContratoSeTiverPlano() {
+    if (!CAD_PLANO) return;
+    const cb = document.getElementById('clienteBlock');
+    if (cb) cb.style.display = 'block';
+    carregarValorCombinado();
   }
 })();
 
@@ -511,13 +523,13 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
       aceiteContrato: !!(document.getElementById('aceiteContrato') || {}).checked,
       ...(CAD_PLANO ? { plano: CAD_PLANO } : {})
     } : {}),
-    ...(ehVendedor && CAD_PLANO ? {
+    ...((ehVendedor || ehDonoToken || adminKey) && CAD_PLANO ? {
       aceiteContrato: !!(document.getElementById('aceiteContrato') || {}).checked,
       plano: CAD_PLANO
     } : {})
   };
 
-  if (ehConvite || (ehVendedor && CAD_PLANO)) {
+  if (ehConvite || ((ehVendedor || ehDonoToken || adminKey) && CAD_PLANO)) {
     if (!payload.aceiteContrato) {
       statusEl.textContent = 'É preciso ler e aceitar o contrato para concluir o cadastro.';
       statusEl.className = 'status err';
@@ -555,7 +567,7 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
       statusEl.textContent = '';
       // Preço já combinado (link do cliente OU Representante preenchendo):
       // cadastro + contrato aceitos, agora cobra a adesão na hora (Pix).
-      if ((ehConvite || ehVendedor) && CAD_PLANO) {
+      if ((ehConvite || ehVendedor || ehDonoToken || adminKey) && CAD_PLANO) {
         document.getElementById('criarBtn').style.display = 'none';
         document.getElementById('clienteBlock').style.display = 'none';
         document.getElementById('pagamentoAdesaoBox').style.display = 'block';
