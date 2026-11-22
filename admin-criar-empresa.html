@@ -299,10 +299,17 @@ const ehConvite = !!CAD_KEY;
 // Link pessoal do vendedor (?vendedor=ID anexado no link de autocadastro do
 // cliente) — atribui a comissão a ele quando o cliente se cadastra por aqui.
 const CAD_VENDEDOR = new URLSearchParams(window.location.search).get('vendedor') || '';
+// Pro link público (ehConvite) o ID vem na URL; pro Representante logado
+// preenchendo ele mesmo (ehVendedor) não vem — é buscado à parte (ver
+// ajustarPorAcesso) e atualizado aqui, pra tudo que usa "o vendedor da
+// comissão" (adesão, botão de assinar no cartão) funcionar nos dois casos.
+let VENDEDOR_ID_ATUAL = CAD_VENDEDOR;
 // Preço já combinado pelo Representante (?plano=mensal|mensal347|mensal297) —
 // mostra o valor real no contrato em vez do texto genérico "definido depois",
-// e depois do cadastro já cobra a adesão (ver pagamentoAdesaoBox).
-const CAD_PLANO = (ehConvite ? (new URLSearchParams(window.location.search).get('plano') || '') : '').toLowerCase();
+// e depois do cadastro já cobra a adesão (ver pagamentoAdesaoBox). Vale tanto
+// pro link público do cliente (ehConvite) quanto pro Representante logado
+// preenchendo ele mesmo (ehVendedor, ver POST /admin/criar-empresa?plano=).
+const CAD_PLANO = (new URLSearchParams(window.location.search).get('plano') || '').toLowerCase();
 
 // Detecta quem está logado: dono (chave) ou vendedor (token).
 const STORED_KEY = ehConvite ? '' : (localStorage.getItem('recomendaleads_admin_key') || '');
@@ -340,6 +347,20 @@ const ehDonoToken = !ehConvite && !STORED_KEY && !!DONO_TOKEN;
     esconder('migrarBlock');
     document.getElementById('vendBanner').style.display = 'block';
     document.getElementById('vendBannerNome').textContent = VEND_NOME || 'você';
+    // Veio com o preço já escolhido (botão "Cadastrar cliente" do /vendedor):
+    // mostra o contrato com o valor real e, depois de salvar, já cobra a
+    // adesão — mesma experiência do link público (ehConvite), só que é o
+    // próprio Representante preenchendo junto com o cliente.
+    if (CAD_PLANO) {
+      const cb = document.getElementById('clienteBlock');
+      if (cb) cb.style.display = 'block';
+      carregarValorCombinado();
+      // O ID do próprio Representante não vem na URL (ele já está logado) —
+      // busca pra poder registrar a comissão da adesão certinho (ver
+      // iniciarPagamentoAdesao), igual já funciona no link público.
+      fetch(`${API_BASE}/admin/vendedor/meu-perfil`, { headers: { Authorization: 'Bearer ' + VEND_TOKEN } })
+        .then(r => r.json()).then(d => { if (d && d.ok && d.id) VENDEDOR_ID_ATUAL = d.id; }).catch(() => {});
+    }
   } else if (ehDonoToken) {
     // Dono logado pelo login fácil: não precisa digitar a chave (mantém trial/migração).
     esconder('keyBlock');
@@ -484,14 +505,19 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     migrarConfigPrincipal,
     ...(ehConvite && CAD_VENDEDOR ? { vendedorComissao: CAD_VENDEDOR } : {}),
     // Autocadastro do cliente: aceite do contrato + o plano já combinado pelo
-    // Representante (se veio na URL — ver carregarValorCombinado).
+    // Representante (se veio na URL — ver carregarValorCombinado). Mesma
+    // coisa quando é o próprio Representante preenchendo (ehVendedor).
     ...(ehConvite ? {
       aceiteContrato: !!(document.getElementById('aceiteContrato') || {}).checked,
       ...(CAD_PLANO ? { plano: CAD_PLANO } : {})
+    } : {}),
+    ...(ehVendedor && CAD_PLANO ? {
+      aceiteContrato: !!(document.getElementById('aceiteContrato') || {}).checked,
+      plano: CAD_PLANO
     } : {})
   };
 
-  if (ehConvite) {
+  if (ehConvite || (ehVendedor && CAD_PLANO)) {
     if (!payload.aceiteContrato) {
       statusEl.textContent = 'É preciso ler e aceitar o contrato para concluir o cadastro.';
       statusEl.className = 'status err';
@@ -527,10 +553,9 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
 
     if (resp.ok && data.ok) {
       statusEl.textContent = '';
-      // Veio pelo link do Representante com preço já combinado: cadastro +
-      // contrato aceitos, agora cobra a adesão na hora (Pix) — pagar já
-      // libera o acesso, sem precisar o dono validar (ver marcarAdesaoPaga).
-      if (ehConvite && CAD_PLANO) {
+      // Preço já combinado (link do cliente OU Representante preenchendo):
+      // cadastro + contrato aceitos, agora cobra a adesão na hora (Pix).
+      if ((ehConvite || ehVendedor) && CAD_PLANO) {
         document.getElementById('criarBtn').style.display = 'none';
         document.getElementById('clienteBlock').style.display = 'none';
         document.getElementById('pagamentoAdesaoBox').style.display = 'block';
@@ -591,7 +616,7 @@ async function iniciarPagamentoAdesao(dadosEmpresa) {
   // vendedor — reaproveita a mesma tela de "plano já travado" (/assinar).
   const btnCartao = document.getElementById('pagAdesaoAssinarCartaoBtn');
   if (btnCartao) {
-    btnCartao.href = `${API_BASE}/assinar?plano=${encodeURIComponent(CAD_PLANO)}&unico=1${CAD_VENDEDOR ? `&vendedor=${encodeURIComponent(CAD_VENDEDOR)}` : ''}`;
+    btnCartao.href = `${API_BASE}/assinar?plano=${encodeURIComponent(CAD_PLANO)}&unico=1${VENDEDOR_ID_ATUAL ? `&vendedor=${encodeURIComponent(VENDEDOR_ID_ATUAL)}` : ''}`;
   }
   // Gera o Pix automaticamente, sem precisar de outro clique — os dados
   // (nome/e-mail/CPF-CNPJ/telefone) já vieram preenchidos no cadastro.
@@ -601,7 +626,7 @@ async function iniciarPagamentoAdesao(dadosEmpresa) {
       body: JSON.stringify({
         nome: dadosEmpresa.nome, email: dadosEmpresa.email,
         cpfCnpj: dadosEmpresa.cpfCnpj, telefone: dadosEmpresa.telefone,
-        vendedor: CAD_VENDEDOR, plano: CAD_PLANO, empresaId: dadosEmpresa.empresaId
+        vendedor: VENDEDOR_ID_ATUAL, plano: CAD_PLANO, empresaId: dadosEmpresa.empresaId
       })
     });
     const data = await resp.json();

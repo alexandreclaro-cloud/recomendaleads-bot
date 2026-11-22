@@ -10011,8 +10011,12 @@ app.post('/admin/vendedores/:id/impersonar', exigirAdmin, async (req, res) => {
 app.post('/admin/demo-cliente/impersonar', exigirAcessoAdmin, async (req, res) => {
   try {
     const snap = await EMPRESAS_COL().where('demoVendedores', '==', true).limit(1).get();
-    if (snap.empty) return res.status(404).json({ ok: false, erro: 'Nenhuma empresa demo configurada. Peça ao dono pra marcar uma em Editar empresa → "Usar como demonstração pros vendedores".' });
-    const doc = snap.docs[0];
+    // Sem empresa marcada como demo (empresa.demoVendedores): cai pra matriz
+    // em modoDemo (só leitura — exigirLoginEmpresa bloqueia qualquer escrita
+    // nessa sessão) em vez de dar erro. Evita precisar de uma empresa "de
+    // mentira" separada só pra isso.
+    const doc = snap.empty ? await EMPRESAS_COL().doc(EMPRESA_ID_PDN).get() : snap.docs[0];
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Nenhuma empresa demo configurada.' });
     const d = doc.data();
     // modoDemo:true — o vendedor só pode VER (CRM pra mostrar pro cliente,
     // nichos pro QR Code). exigirLoginEmpresa bloqueia qualquer escrita nessa

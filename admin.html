@@ -111,21 +111,19 @@
     </div>
 
     <div class="card vendedor-only" style="display:none; margin-bottom:18px; padding:18px;">
-      <h2 style="font-size:1rem; margin:0 0 4px;">➕ Cadastrar novo cliente</h2>
-      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;" id="cadastrarClienteDesc">O cliente fica vinculado a você automaticamente. Sua comissão aparece abaixo.</p>
-      <a class="btn btn-brand" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
-    </div>
-
-    <div class="card vendedor-only" style="display:none; margin-bottom:18px; padding:18px;">
-      <h2 style="font-size:1rem; margin:0 0 4px;">💳 Link com plano já definido</h2>
-      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Você escolhe o plano antes, o cliente só vê esse e preenche o cadastro — sem escolher nada, sem precisar o dono aprovar plano depois.</p>
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">➕ Cadastrar cliente</h2>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;" id="cadastrarClienteDesc">Escolha a condição combinada com o cliente — o cadastro, o contrato (já com esse preço) e o pagamento saem todos no mesmo lugar.</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
         <select class="input" id="planoVendedorSelect" style="max-width:260px;"><option>Carregando planos...</option></select>
       </div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <input id="planoVendedorLink" readonly onclick="this.select()" style="flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:0.82rem;">
-        <button class="btn btn-secondary" id="planoVendedorCopiarBtn"><i data-lucide="copy"></i> Copiar</button>
-        <a class="btn btn-secondary" id="planoVendedorWppBtn" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Enviar no WhatsApp</a>
+      <a class="btn btn-brand" id="cadastrarClienteBtn" href="/admin/criar-empresa"><i data-lucide="plus"></i> Cadastrar cliente</a>
+      <div style="border-top:1px solid var(--border); margin-top:16px; padding-top:14px;">
+        <p class="muted" style="font-size:0.82rem; margin:0 0 10px;">Ou só mande o link de pagamento, sem preencher nada (o cliente preenche sozinho):</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="planoVendedorLink" readonly onclick="this.select()" style="flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:0.82rem;">
+          <button class="btn btn-secondary" id="planoVendedorCopiarBtn"><i data-lucide="copy"></i> Copiar</button>
+          <a class="btn btn-secondary" id="planoVendedorWppBtn" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Enviar no WhatsApp</a>
+        </div>
       </div>
     </div>
 
@@ -336,12 +334,15 @@ async function validarCadastro(id) {
 }
 
 // ── Link fixo de autocadastro do cliente ───────────────────────────────────
+let LINK_CLIENTE_BASE = '';
 function mostrarLinkCliente(link) {
+  LINK_CLIENTE_BASE = link;
   document.getElementById('conviteLink').value = link;
   const msg = 'Oi! Segue o link pra você fazer o cadastro da sua empresa no RecomendaLeads:\n\n'
     + link + '\n\nÉ rapidinho. Assim que eu validar, você recebe um e-mail com o acesso.';
   document.getElementById('conviteWpp').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
   document.getElementById('conviteBox').style.display = 'block';
+  montarLinkPlanoVendedor();
   icons();
 }
 async function carregarLinkCliente() {
@@ -550,11 +551,19 @@ function montarLinkPlanoVendedor() {
   const sel = document.getElementById('planoVendedorSelect');
   const inp = document.getElementById('planoVendedorLink');
   const wpp = document.getElementById('planoVendedorWppBtn');
-  if (!sel || !inp || !sel.value || !MEU_VENDEDOR_ID) return;
-  const link = `${API_BASE}/assinar?plano=${encodeURIComponent(sel.value)}&vendedor=${encodeURIComponent(MEU_VENDEDOR_ID)}`;
-  inp.value = link;
-  const msg = 'Oi! Segue o link pra ativar o RecomendaLeads no plano combinado:\n\n' + link;
-  wpp.href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+  const btnCadastrar = document.getElementById('cadastrarClienteBtn');
+  if (!sel || !sel.value) return;
+  // "Cadastrar cliente" leva pro cadastro completo (dados + contrato com
+  // esse preço + Pix/cartão), com o plano já travado — ver admin-criar-empresa.html.
+  if (btnCadastrar) btnCadastrar.href = `/admin/criar-empresa?plano=${encodeURIComponent(sel.value)}`;
+  // Link pra mandar e o próprio cliente preencher (mesmo cadastro completo,
+  // só que pelo link público em vez do vendedor preenchendo).
+  if (inp && wpp && LINK_CLIENTE_BASE) {
+    const link = `${LINK_CLIENTE_BASE}&plano=${encodeURIComponent(sel.value)}`;
+    inp.value = link;
+    const msg = 'Oi! Segue o link pra ativar o RecomendaLeads no plano combinado:\n\n' + link;
+    wpp.href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+  }
 }
 document.getElementById('planoVendedorSelect')?.addEventListener('change', montarLinkPlanoVendedor);
 document.getElementById('planoVendedorCopiarBtn')?.addEventListener('click', () => {
