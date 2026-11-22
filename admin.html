@@ -1251,6 +1251,18 @@ async function entrarComo(id) {
   } catch (e) { alert('Erro de conexão'); }
 }
 
+async function entrarComoVendedor(id) {
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/vendedores/${id}/impersonar`, { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      localStorage.setItem('recomendaleads_vend_token', data.token);
+      localStorage.setItem('recomendaleads_vend_nome', data.vendedor.nome || '');
+      window.open('/vendedor', '_blank');
+    } else { alert(data.erro || 'Erro ao entrar como Representante'); }
+  } catch (e) { alert('Erro de conexão'); }
+}
+
 async function resetSenha(id) {
   if (!confirm('Resetar a senha deste cliente para 123mudar? Ele será obrigado a definir uma nova no próximo acesso.')) return;
   const msg = document.getElementById('mMsg'); if (msg) { msg.textContent = 'Resetando...'; msg.className = 'status-msg'; }
@@ -1421,15 +1433,22 @@ async function carregarVendedores() {
         <td style="font-weight:700;">${v.tipoComissao === 'fixo' ? (fmtReais(v.comissaoValorFixoCentavos || 0) + (v.comissaoOverrideFixoCentavos ? ` <span style="font-weight:400;color:var(--text-dim);font-size:0.78rem;">(+${fmtReais(v.comissaoOverrideFixoCentavos)} como repr.)</span>` : '')) : (v.comissaoPct != null ? v.comissaoPct : 20) + '%'}</td>
         <td>${statusVendedorHtml(v)}</td>
         <td><button class="btn btn-secondary btn-mini" data-edv="${esc(v.id)}">Editar</button></td>
+        <td><button class="btn btn-brand btn-mini" data-entrarv="${esc(v.id)}" title="Abre o painel dele, sem precisar sair ou saber a senha">👁️ Entrar como</button></td>
+        <td><button class="btn btn-secondary btn-mini" data-linkacesso="${esc(v.id)}" title="Link de login + e-mail, pra você mandar pra ele">🔗 Link de acesso</button></td>
         <td><button class="btn btn-secondary btn-mini" data-linkv="${esc(v.id)}" title="Link de convite — quem se cadastrar por ele vira afiliado deste representante">🔗 Link p/ afiliado</button></td>
         <td><button class="btn btn-secondary btn-mini" data-adesao="${esc(v.id)}" title="Registra a comissão de adesão (50% do valor, não sobe pro principal)">➕ Adesão</button></td>
         <td><button class="btn btn-secondary btn-mini" data-resetsenha="${esc(v.id)}" title="Caso ele esqueça a senha, reseta pra uma senha provisória">🔑 Resetar senha</button></td>
         <td><button class="btn btn-secondary btn-mini" data-delv="${esc(v.id)}" style="color:#c0392b;" title="Excluir cadastro — só o dono pode fazer isso">🗑️ Excluir</button></td>
       </tr>`).join('')}</tbody></table>`;
     cont.querySelectorAll('[data-edv]').forEach(b => b.addEventListener('click', () => abrirModalVendedor(b.dataset.edv)));
+    cont.querySelectorAll('[data-entrarv]').forEach(b => b.addEventListener('click', () => entrarComoVendedor(b.dataset.entrarv)));
+    cont.querySelectorAll('[data-linkacesso]').forEach(b => b.addEventListener('click', () => {
+      const v = vendedoresCache.find(x => x.id === b.dataset.linkacesso);
+      prompt('Link de acesso do Representante (login dele é o e-mail abaixo):', `${API_BASE}/vendedor — login: ${(v && v.email) || ''}`);
+    }));
     cont.querySelectorAll('[data-linkv]').forEach(b => b.addEventListener('click', () => {
       const link = `${API_BASE}/vendedor/cadastro?principal=${encodeURIComponent(b.dataset.linkv)}`;
-      navigator.clipboard.writeText(link).then(() => { const t = b.textContent; b.textContent = 'Copiado!'; setTimeout(() => b.textContent = t, 1500); });
+      prompt('Link pra recrutar Afiliado (selecione e copie):', link);
     }));
     cont.querySelectorAll('[data-adesao]').forEach(b => b.addEventListener('click', () => registrarAdesao(b.dataset.adesao)));
     cont.querySelectorAll('[data-resetsenha]').forEach(b => b.addEventListener('click', () => resetarSenhaVendedor(b.dataset.resetsenha)));

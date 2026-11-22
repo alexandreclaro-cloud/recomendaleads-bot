@@ -9955,6 +9955,20 @@ app.post('/admin/empresas/:id/impersonar', exigirAdmin, async (req, res) => {
   }
 });
 
+// "Entrar como" pro Representante — o dono abre o /vendedor dele sem precisar
+// sair do /admin nem saber a senha, igual já existe pra empresa acima.
+app.post('/admin/vendedores/:id/impersonar', exigirAdmin, async (req, res) => {
+  try {
+    const doc = await VENDEDORES_COL().doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ ok: false, erro: 'Representante não encontrado' });
+    const d = doc.data();
+    const token = jwt.sign({ tipo: 'vendedor-admin', vendedorId: doc.id, nome: d.nome || '' }, JWT_SECRET, { expiresIn: '12h' });
+    res.json({ ok: true, token, vendedor: { id: doc.id, nome: d.nome, email: d.email } });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Versão restrita do "entrar como" — só pra vendedor mostrar uma DEMONSTRAÇÃO
 // ao prospect. Diferente da rota acima (dono, qualquer empresa por :id), esta
 // nunca recebe um id: sempre entra na(s) empresa(s) marcada(s) como
