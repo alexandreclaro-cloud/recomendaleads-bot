@@ -9351,6 +9351,28 @@ app.get('/admin/vendedor/meu-perfil', exigirAcessoAdmin, async (req, res) => {
   }
 });
 
+// Nichos de demonstração pro Representante testar no /vendedor — lê direto
+// da MATRIZ, somente leitura (nunca edita nada aqui). Evita precisar de uma
+// empresa "de mentira" separada marcada como demoVendedores só pra isso:
+// reaproveita os mesmos nichos que o dono já configurou em Demonstração por
+// nicho (mesmo endpoint de dados que GET /minha-nichos usa).
+app.get('/admin/vendedor/nichos-demo', exigirAcessoAdmin, async (req, res) => {
+  try {
+    const empresa = await getEmpresaById(EMPRESA_ID_PDN);
+    if (!empresa) return res.status(404).json({ ok: false, erro: 'Matriz não encontrada' });
+    // getEmpresaById já devolve a configuração "achatada" no próprio objeto
+    // (não tem um campo .configuracao aninhado) — ver a função pra conferir.
+    const config = empresa;
+    const contextoNum = { empresa, empresaId: EMPRESA_ID_PDN, zapi: zapiDaEmpresa(empresa), oficial: oficialDaEmpresa(empresa) };
+    let numeroAuto = '';
+    await tenantContext.run(contextoNum, async () => { numeroAuto = String((await getNumeroConectado(empresa)) || '').replace(/\D/g, ''); });
+    const numeroDemo = numeroAuto || String(config.numeroDemo || config.numeroWhatsapp || '').replace(/\D/g, '');
+    res.json({ ok: true, lista: listaNichos(config), nichos: config.nichos || {}, defaults: NICHOS_DEMO, numeroDemo });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Clientes vinculados a este vendedor — e, se ele for Representante, também
 // os clientes dos Afiliados vinculados a ele (controle de vendas da equipe
 // dele). Nunca mostra clientes de fora desse escopo.
@@ -9552,6 +9574,14 @@ app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
       if (!pDoc.exists) return res.status(400).json({ ok: false, erro: 'Representante principal não encontrado' });
       vendedorPrincipalId = pDoc.id;
     }
+    // Padrão do contrato de Representação Comercial: valores FIXOS, não
+    // percentual — R$197 por venda direta, R$100 se for Afiliado (vínculo
+    // a um principal), +R$97 pro principal quando quem vendeu foi o Afiliado
+    // dele (mesmo default do autocadastro, ver POST /vendedor/cadastro). O
+    // dono pode sobrescrever explicitamente pelo modal (tipoComissao/valores).
+    const tipoComissaoFinal = b.tipoComissao === 'percentual' ? 'percentual' : 'fixo';
+    const valorFixoPadrao = vendedorPrincipalId ? 10000 : 19700;
+    const overrideFixoPadrao = vendedorPrincipalId ? null : 9700;
     const ref = await VENDEDORES_COL().add({
       // senhaProvisoria: true — é o DONO que define a senha inicial aqui, então
       // o vendedor é obrigado a trocar no primeiro acesso (ver /admin/vendedor-login).
@@ -9559,9 +9589,13 @@ app.post('/admin/vendedores', exigirAdmin, async (req, res) => {
       cpf: b.cpf || null, razaoSocial: b.razaoSocial || null,
       cnpj: b.cnpj || null, endereco: b.endereco || null, whatsapp: b.whatsapp || null,
       comissaoPct: pct,
-      tipoComissao: b.tipoComissao === 'fixo' ? 'fixo' : 'percentual',
-      comissaoValorFixoCentavos: b.comissaoValorFixoCentavos != null ? Math.max(0, Math.round(Number(b.comissaoValorFixoCentavos) || 0)) : null,
-      comissaoOverrideFixoCentavos: b.comissaoOverrideFixoCentavos != null ? Math.max(0, Math.round(Number(b.comissaoOverrideFixoCentavos) || 0)) : null,
+      tipoComissao: tipoComissaoFinal,
+      comissaoValorFixoCentavos: tipoComissaoFinal === 'fixo'
+        ? (b.comissaoValorFixoCentavos != null ? Math.max(0, Math.round(Number(b.comissaoValorFixoCentavos) || 0)) : valorFixoPadrao)
+        : null,
+      comissaoOverrideFixoCentavos: tipoComissaoFinal === 'fixo'
+        ? (b.comissaoOverrideFixoCentavos != null ? Math.max(0, Math.round(Number(b.comissaoOverrideFixoCentavos) || 0)) : overrideFixoPadrao)
+        : null,
       walletIdAsaas: b.walletIdAsaas ? String(b.walletIdAsaas).trim() : null,
       vendedorPrincipalId,
       banco: {

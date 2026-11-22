@@ -136,6 +136,12 @@
       <span class="status-msg" id="demoClienteMsg" style="margin-left:10px;"></span>
     </div>
 
+    <div class="card vendedor-only" style="display:none; margin-bottom:18px; padding:18px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">🎯 Demonstração por nicho</h2>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 14px;">Escolha o nicho do prospect e mostre o QR Code na hora — ele escaneia e já experimenta o fluxo.</p>
+      <div id="nichosDemoVendedor"><span class="muted">Carregando...</span></div>
+    </div>
+
     <div class="card" style="margin-bottom:18px; padding:18px;">
       <h2 style="font-size:1rem; margin:0 0 4px;">🔗 Link de autocadastro do cliente</h2>
       <p class="muted" style="font-size:0.85rem; margin:0 0 12px;" id="conviteTexto">Um link só, pra sempre. Mande pra qualquer cliente: ele preenche os dados da empresa e <strong>assina o contrato</strong>. O cadastro entra como <strong>pendente</strong> e só libera quando <strong>você validar</strong> — aí você define o plano/pagamento e ele recebe o e-mail de acesso.</p>
@@ -197,7 +203,7 @@
 
     <div class="card" style="margin-bottom:18px; padding:16px 18px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-        <h2 style="font-size:1rem; margin:0;" id="comissoesTitulo">💸 Comissões dos Representantes (20% por pagamento)</h2>
+        <h2 style="font-size:1rem; margin:0;" id="comissoesTitulo">💸 Comissões dos Representantes (padrão: 50% da Adesão + R$ 197 por venda direta + R$ 97 por venda de Afiliado vinculado)</h2>
         <button class="btn btn-secondary btn-mini" id="atualizarComissoesBtn">↻ Atualizar</button>
       </div>
       <div id="comissoesResumo" style="margin-top:12px;"><span class="muted">Carregando...</span></div>
@@ -482,6 +488,7 @@ function mostrarApp() {
     document.getElementById('conviteTexto').textContent = 'Um link só, pra sempre. Mande pra qualquer cliente: ele preenche os dados da empresa e assina o contrato. O cadastro já fica vinculado à sua comissão e entra pendente — o dono valida antes de liberar o acesso.';
     carregarMeuPerfilVendedor();
     carregarMeusClientes();
+    carregarNichosDemoVendedor();
   }
   icons();
   carregarComissoes();
@@ -575,6 +582,61 @@ async function mostrarDemoCliente() {
   btn.disabled = false;
 }
 document.getElementById('demoClienteBtn').addEventListener('click', mostrarDemoCliente);
+
+// Demonstração por nicho — cards grandes com QR Code, igual o painel da
+// empresa, mas lendo direto da matriz (só leitura, GET /admin/vendedor/
+// nichos-demo) — não precisa de nenhuma empresa de demo separada.
+const NICHOS_EMOJI = { barbearia: '💈', cabeleireiro: '💇', dentista: '🦷', estetica: '✨' };
+function emojiNicho(slug) { return NICHOS_EMOJI[slug] || '🎯'; }
+function codigoNicho(slug) {
+  let h = 0; const s = String(slug || '');
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+  return h.toString(36).slice(0, 4).padStart(4, '0');
+}
+async function carregarNichosDemoVendedor() {
+  const cont = document.getElementById('nichosDemoVendedor');
+  if (!cont) return;
+  try {
+    const resp = await adminFetch(`${API_BASE}/admin/vendedor/nichos-demo`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error();
+    const num = String(data.numeroDemo || '').replace(/\D/g, '');
+    if (!num) { cont.innerHTML = '<p class="muted">O dono ainda não conectou o WhatsApp da matriz.</p>'; return; }
+    const num55 = num.startsWith('55') ? num : '55' + num;
+    const textoLink = (slug) => {
+      const over = (data.nichos && data.nichos[slug]) || {};
+      if (over.textoLink) return over.textoLink;
+      const def = (data.defaults && data.defaults[slug]) || {};
+      if (def.textoLink) return def.textoLink;
+      const item = (data.lista || []).find(n => n.slug === slug) || {};
+      return `Olá, quero meu presente aqui (${item.nome || slug})`;
+    };
+    cont.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px;">` + (data.lista || []).map(n => {
+      const texto = `${textoLink(n.slug)} #${codigoNicho(n.slug)}`;
+      const link = `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
+      const nomeSeg = esc(n.nome);
+      return `<button type="button" class="btn-ver-qr-vend" data-qr="${qrUrl}" data-nome="${nomeSeg}" style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:18px 10px; border:2px solid var(--border,#e3e6ea); border-radius:14px; background:var(--surface,#fff); cursor:pointer; color:inherit;">
+        <span style="font-size:2.1rem; line-height:1;">${emojiNicho(n.slug)}</span>
+        <span style="font-weight:700; font-size:0.92rem; text-align:center;">${n.nome}</span>
+        <span style="font-size:0.72rem; color:var(--brand,#2563eb); font-weight:600;">👆 QR Code</span>
+      </button>`;
+    }).join('') + `</div>`;
+    cont.querySelectorAll('.btn-ver-qr-vend').forEach(el => el.addEventListener('click', () => abrirQrTelaCheiaVendedor(el.dataset.qr, el.dataset.nome)));
+  } catch (e) { cont.innerHTML = '<p class="muted">Não foi possível carregar os nichos.</p>'; }
+}
+function abrirQrTelaCheiaVendedor(qrUrl, nome) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.94);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;cursor:pointer;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;">
+      <img src="${qrUrl.replace('200x200', '500x500')}" alt="QR Code ${nome}" style="width:min(70vw,340px);height:min(70vw,340px);display:block;">
+    </div>
+    <div style="color:#fff;font-size:1.1rem;font-weight:700;text-align:center;">${nome} — peça pro cliente escanear</div>
+    <div style="color:#cbd5e1;font-size:0.85rem;">Toque em qualquer lugar pra fechar</div>`;
+  overlay.addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
+}
 
 // Clientes do vendedor (e dos Afiliados vinculados a ele, se tiver) com
 // status de adimplência — o Representante enxerga as vendas dos Afiliados
@@ -1556,6 +1618,9 @@ function abrirModalVendedor(id) {
   document.getElementById('v_principal').addEventListener('change', () => atualizarCamposComissaoVendedor(true));
   document.getElementById('preencherContratoBtn').addEventListener('click', preencherValoresContratoVendedor);
   atualizarCamposComissaoVendedor();
+  // Padrão novo: Representante já nasce com os valores fixos do contrato
+  // (197/100/97), não mais 20% — o dono só muda se for um caso especial.
+  if (novo) preencherValoresContratoVendedor();
   document.getElementById('verSenhaBtn').addEventListener('click', () => {
     const inp = document.getElementById('v_senha');
     inp.type = inp.type === 'password' ? 'text' : 'password';
