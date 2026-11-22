@@ -1152,8 +1152,9 @@ function aplicarGatingDemo() {
   if (main && loadMsg && !document.getElementById('avisoModoDemo')) {
     const banner = document.createElement('div');
     banner.id = 'avisoModoDemo';
-    banner.style = 'background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 14px;font-size:0.85rem;margin-bottom:16px;';
-    banner.textContent = '👀 Conta de demonstração — mostre o CRM e os Nichos pro cliente. Edições não são salvas.';
+    banner.style = 'display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:10px 14px;font-size:0.85rem;margin-bottom:16px;';
+    banner.innerHTML = `<span>👀 Conta de demonstração — mostre o CRM e os Nichos pro cliente. Edições não são salvas.</span>
+      <a href="/vendedor" style="flex-shrink:0; display:inline-flex; align-items:center; gap:6px; background:#92400E; color:#fff; padding:7px 14px; border-radius:999px; font-weight:600; font-size:0.8rem; text-decoration:none; white-space:nowrap;">← Voltar pro meu painel</a>`;
     main.insertBefore(banner, loadMsg);
   }
 }
