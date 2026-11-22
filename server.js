@@ -5342,8 +5342,11 @@ async function tratarWebhook(req, res) {
     if (ehQualquerGatilhoInicial || nichoDetectado || querRecomendar) {
       // Rede de lojas: ninguém resolveu ainda qual loja é (2+ ofertas ativas,
       // nenhuma frase-gatilho específica bateu) — manda o menu e espera a
-      // resposta antes de iniciar qualquer fluxo.
-      const ativasMenu = (!ofertaEfetivaId && empGatilho.ofertasHabilitado && empGatilho.ofertas)
+      // resposta antes de iniciar qualquer fluxo. NUNCA quando o link trouxe um
+      // nicho de demonstração explícito (#código): aí já se sabe exatamente do
+      // que se trata (é o vendedor testando uma área específica), então não faz
+      // sentido perguntar "qual loja" — ia confundir a demo com a Rede de lojas.
+      const ativasMenu = (!ofertaEfetivaId && !nichoDetectado && empGatilho.ofertasHabilitado && empGatilho.ofertas)
         ? Object.entries(empGatilho.ofertas).filter(([, o]) => o && o.ativa) : [];
       if (ativasMenu.length > 1) {
         await resetSessao(telefone);
