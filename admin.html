@@ -494,12 +494,14 @@ function mostrarApp() {
 // valor certo no painel, em vez do "20%" fixo que não reflete o contrato de
 // Representante/Afiliado (valor fixo, não percentual).
 let MEU_VENDEDOR_ID = '';
+let MEU_EH_AFILIADO = false;
 async function carregarMeuPerfilVendedor() {
   try {
     const resp = await adminFetch(`${API_BASE}/admin/vendedor/meu-perfil`);
     const data = await resp.json();
     if (!resp.ok || !data.ok) return;
     MEU_VENDEDOR_ID = data.id || '';
+    MEU_EH_AFILIADO = !!data.ehAfiliado;
     carregarPlanosAssinatura();
     let desc;
     if (data.tipoComissao === 'fixo') {
@@ -520,15 +522,20 @@ async function carregarMeuPerfilVendedor() {
 // Link com plano já escolhido pelo vendedor — o cliente abre e só vê ESSE
 // plano (não a vitrine toda), confirma, paga, e aí preenche o cadastro da
 // empresa (/completar). Sem precisar o dono aprovar/definir plano depois.
+// Os 3 valores do Mensal (397/347/297): 347 e 297 são planos ocultos da
+// vitrine pública, só acessíveis via link direto — por isso busca cada um
+// com ?unico=1 em vez do /planos geral. O 297 só é oferecido pro
+// Representante direto (não Afiliado) — mesma regra já aplicada no servidor
+// em /planos e /assinar/checkout (ver vendedorEhAfiliado).
 let PLANOS_VENDEDOR_CACHE = [];
 async function carregarPlanosAssinatura() {
   const sel = document.getElementById('planoVendedorSelect');
   if (!sel) return;
   try {
-    const resp = await fetch(`${API_BASE}/planos`);
-    const data = await resp.json();
-    if (!resp.ok || !data.ok) throw new Error();
-    PLANOS_VENDEDOR_CACHE = data.planos || [];
+    const ids = MEU_EH_AFILIADO ? ['mensal', 'mensal347'] : ['mensal', 'mensal347', 'mensal297'];
+    const resultados = await Promise.all(ids.map(id => fetch(`${API_BASE}/planos?plano=${id}&unico=1`).then(r => r.json())));
+    PLANOS_VENDEDOR_CACHE = resultados.filter(d => d && d.ok && d.planos && d.planos[0]).map(d => d.planos[0]);
+    if (!PLANOS_VENDEDOR_CACHE.length) throw new Error();
     sel.innerHTML = PLANOS_VENDEDOR_CACHE.map(p => `<option value="${p.id}">${p.nome} — ${fmtReais(p.valorCentavos)}${p.tipo === 'assinatura' ? '/mês' : ` (${p.meses}x, à vista)`}</option>`).join('');
     montarLinkPlanoVendedor();
   } catch (e) { sel.innerHTML = '<option>Erro ao carregar planos</option>'; }
