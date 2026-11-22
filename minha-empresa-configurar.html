@@ -236,6 +236,16 @@
           <div id="nichosTabs" style="display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 4px;"></div>
         </div>
 
+        <div class="card" style="margin-top:16px" id="nichoPremiosCard">
+          <div class="block-title"><i data-lucide="gift"></i> Prêmio do cliente que recomendou (e imagens da área)</div>
+          <p class="sub">O presente que o cliente ganha na hora, assim que recomenda um amigo. Cada prêmio pode ter uma imagem ou PDF próprio da área. 💡</p>
+          <div id="nichoPremiosContainer"></div>
+          <div class="row-save">
+            <button class="btn btn-action" id="salvarNichoPremiosBtn">Salvar prêmios desta área</button>
+            <span class="status-msg" id="statusNichoPremios"></span>
+          </div>
+        </div>
+
         <div class="card" style="margin-top:16px" id="nichoEditorCard">
           <div class="block-title" id="nichoEditorTitulo"><i data-lucide="pencil"></i> Textos da área</div>
           <p class="sub">Deixe em branco pra usar o texto padrão. Você pode usar as variáveis <b>{nomeRecomendado}</b>, <b>{empresa}</b>, <b>{premio}</b>, <b>{vendedor}</b>.</p>
@@ -243,16 +253,6 @@
           <div class="row-save">
             <button class="btn btn-action" id="salvarNichoBtn">Salvar esta área</button>
             <span class="status-msg" id="statusNicho"></span>
-          </div>
-        </div>
-
-        <div class="card" style="margin-top:16px" id="nichoPremiosCard">
-          <div class="block-title"><i data-lucide="gift"></i> Prêmios e imagens da área</div>
-          <p class="sub">As artes que o cliente vê. Cada prêmio pode ter uma imagem ou PDF próprio da área. 💡</p>
-          <div id="nichoPremiosContainer"></div>
-          <div class="row-save">
-            <button class="btn btn-action" id="salvarNichoPremiosBtn">Salvar prêmios desta área</button>
-            <span class="status-msg" id="statusNichoPremios"></span>
           </div>
         </div>
 
