@@ -5227,9 +5227,15 @@ async function tratarWebhook(req, res) {
     // Resolve só quando é óbvio (sessão já sabe, frase-gatilho bate, ou só 1
     // oferta ativa) — com 2+ ofertas ambíguas, fica null e segue tudo igual a
     // hoje até a Fase 2b (menu de desambiguação) existir.
+    // NUNCA quando o link trouxe um nicho de demonstração explícito (#código):
+    // sem isso, uma oferta antiga presa na sessão (ex.: o número já escolheu
+    // uma loja antes, num teste anterior) sobrepunha a config do nicho por
+    // cima (aplicarOferta roda depois de aplicarNicho) e confundia a demo com
+    // a Rede de lojas — exatamente o mesmo motivo que já tirava o MENU de
+    // "qual loja" quando havia nicho (ver ativasMenu, mais abaixo).
     const ofertaIdSessaoCliente = sessaoExiste ? sessaoExistenteSnap.data().ofertaId : null;
     const ofertaIdSessaoRec = sessaoRecomendado ? sessaoRecomendado.ofertaId : null;
-    const ofertaEfetivaId = resolverOfertaSilenciosa(empGatilho, texto, ofertaIdSessaoCliente || ofertaIdSessaoRec);
+    const ofertaEfetivaId = nichoDetectado ? null : resolverOfertaSilenciosa(empGatilho, texto, ofertaIdSessaoCliente || ofertaIdSessaoRec);
     if (ofertaEfetivaId) {
       const ctx = tenantContext.getStore();
       if (ctx) ctx.empresa = aplicarOferta(ctx.empresa, ofertaEfetivaId);
@@ -5250,7 +5256,11 @@ async function tratarWebhook(req, res) {
     // ---- Rede de lojas: resposta ao menu "qual loja você prefere?" (Fase 2b) ----
     // Prioridade máxima — é uma resposta de menu específica, trata antes de
     // qualquer outro roteamento (inclusive antes do menu de confirmação Basic).
-    if (_sConf && _sConf.aguardandoEscolhaOferta && !ehOptOut(texto)) {
+    // Exceto nicho de demonstração (!nichoDetectado, igual aos dois guards
+    // parecidos abaixo): sem isso, um número preso aguardando escolher loja
+    // (de um teste antigo) engolia um novo link de nicho e só respondia
+    // "não entendi" pro código do link, em vez de reiniciar a demonstração.
+    if (_sConf && _sConf.aguardandoEscolhaOferta && !nichoDetectado && !ehOptOut(texto)) {
       const opcoes = _sConf.opcoesOferta || [];
       const idx = parseInt(String(texto || '').trim(), 10) - 1;
       const escolhida = opcoes[idx];
