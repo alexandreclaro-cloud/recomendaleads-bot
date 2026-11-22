@@ -223,13 +223,17 @@
 
     <!-- Só no autocadastro do cliente (link fixo) -->
     <div id="clienteBlock" style="display:none">
+      <div id="valorCombinadoBox" style="display:none;margin-bottom:14px;background:#EFF6FF;border:1px solid #DBEAFE;border-radius:10px;padding:12px 14px;font-size:0.9rem;">
+        <b>💰 Condição combinada</b><br>
+        <span id="valorCombinadoTexto"></span>
+      </div>
       <div class="sec">Contrato</div>
       <div style="border:1px solid var(--line,#ccc);border-radius:8px;padding:12px;max-height:150px;overflow-y:auto;font-size:0.82rem;line-height:1.5;background:#fafafa;color:#444" id="contratoTexto">
         <b>Contrato de prestação de serviço — RecomendaLeads</b><br><br>
         1. A RecomendaLeads disponibiliza uma plataforma de programa de recomendação, incluindo automação de mensagens
         via WhatsApp, painel de gestão e acompanhamento de resultados.<br>
-        2. O plano, o valor e a forma de pagamento são definidos pela RecomendaLeads e informados ao CONTRATANTE após a
-        aprovação do cadastro. Havendo período gratuito, a cobrança só passa a valer ao final dele, salvo cancelamento.<br>
+        2. <span id="clausulaValor">O plano, o valor e a forma de pagamento são definidos pela RecomendaLeads e informados ao CONTRATANTE após a
+        aprovação do cadastro.</span> Havendo período gratuito, a cobrança só passa a valer ao final dele, salvo cancelamento.<br>
         3. Não há fidelidade: o cancelamento pode ser solicitado a qualquer momento, encerrando cobranças futuras.<br>
         4. O CONTRATANTE é responsável pelos dados que cadastrar e pelo uso adequado da ferramenta, respeitando a
         legislação vigente (inclusive LGPD) e as regras das plataformas de mensageria.<br>
@@ -245,6 +249,35 @@
 
     <button id="criarBtn">Cadastrar empresa</button>
     <div class="status" id="statusMsg"></div>
+
+    <!-- Pagamento da adesão (Pix), só aparece depois do cadastro quando veio
+         pelo link do Representante com um plano já combinado (?plano=). -->
+    <div id="pagamentoAdesaoBox" style="display:none;text-align:center;">
+      <div id="pagAdesaoIdle">
+        <h2 style="margin:10px 0 8px;font-size:1.15rem;">Gerando o Pix da adesão...</h2>
+        <p style="margin:0;font-size:0.92rem;color:#555;">⏳ Só um instante.</p>
+      </div>
+      <div id="pagAdesaoQr" style="display:none;">
+        <h2 style="margin:10px 0 4px;font-size:1.15rem;">Falta só o pagamento da adesão</h2>
+        <p style="margin:0 0 14px;font-size:0.92rem;color:#555;">R$ 500,00 via Pix — paga e seu acesso libera na hora.</p>
+        <img id="pagAdesaoQrImg" alt="QR Code Pix" style="width:220px;height:220px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff;">
+        <div style="display:flex;gap:8px;margin:12px 0;">
+          <input id="pagAdesaoCopiaECola" readonly style="flex:1;font-size:0.78rem;padding:8px;border:1px solid var(--line);border-radius:8px;">
+          <button id="pagAdesaoCopiarBtn" style="width:auto;padding:8px 14px;">Copiar</button>
+        </div>
+        <div id="pagAdesaoStatus" style="color:var(--text-dim);font-size:0.88rem;margin-bottom:18px;">Aguardando pagamento...</div>
+        <div style="border-top:1px solid var(--line);padding-top:16px;">
+          <p style="margin:0 0 10px;font-size:0.88rem;color:#555;">💳 Se o vendedor estiver com você, já dá pra assinar o plano mensal no cartão agora mesmo (ou fazer isso depois, já logado):</p>
+          <a id="pagAdesaoAssinarCartaoBtn" href="#" target="_blank" style="display:inline-block;width:auto;padding:10px 18px;border-radius:999px;background:#fff;border:1px solid var(--gold);color:var(--gold);font-weight:700;text-decoration:none;font-size:0.9rem;">Assinar o plano no cartão agora</a>
+        </div>
+      </div>
+      <div id="pagAdesaoPago" style="display:none;">
+        <div style="font-size:2.6rem;">✅</div>
+        <h2 style="margin:10px 0 8px;font-size:1.15rem;">Pix confirmado! Seu acesso já está liberado.</h2>
+        <p style="margin:0;font-size:0.92rem;color:#555;">Enviamos um e-mail pra <b id="pagAdesaoEmailResumo"></b> com os dados de login.<br><br>
+        <a href="/login" style="color:var(--gold);font-weight:600;">Entrar agora →</a></p>
+      </div>
+    </div>
 
     <div class="resultado" id="resultadoBox">
       <div>✅ Empresa <b id="resultadoNome"></b> cadastrada!</div>
@@ -266,6 +299,10 @@ const ehConvite = !!CAD_KEY;
 // Link pessoal do vendedor (?vendedor=ID anexado no link de autocadastro do
 // cliente) — atribui a comissão a ele quando o cliente se cadastra por aqui.
 const CAD_VENDEDOR = new URLSearchParams(window.location.search).get('vendedor') || '';
+// Preço já combinado pelo Representante (?plano=mensal|mensal347|mensal297) —
+// mostra o valor real no contrato em vez do texto genérico "definido depois",
+// e depois do cadastro já cobra a adesão (ver pagamentoAdesaoBox).
+const CAD_PLANO = (ehConvite ? (new URLSearchParams(window.location.search).get('plano') || '') : '').toLowerCase();
 
 // Detecta quem está logado: dono (chave) ou vendedor (token).
 const STORED_KEY = ehConvite ? '' : (localStorage.getItem('recomendaleads_admin_key') || '');
@@ -292,8 +329,11 @@ const ehDonoToken = !ehConvite && !STORED_KEY && !!DONO_TOKEN;
     const b = document.getElementById('vendBanner');
     if (b) {
       b.style.display = 'block';
-      b.textContent = 'Bem-vindo! Preencha os dados da sua empresa para concluir o cadastro. Ele passa por uma validação rápida e você recebe um e-mail assim que for liberado.';
+      b.textContent = CAD_PLANO
+        ? 'Bem-vindo! Preencha os dados da sua empresa, aceite o contrato e, na sequência, pague a adesão — seu acesso libera na hora.'
+        : 'Bem-vindo! Preencha os dados da sua empresa para concluir o cadastro. Ele passa por uma validação rápida e você recebe um e-mail assim que for liberado.';
     }
+    if (CAD_PLANO) carregarValorCombinado();
   } else if (ehVendedor) {
     esconder('keyBlock');
     esconder('trialBlock');
@@ -382,6 +422,24 @@ async function buscarCep() {
   if (tel) tel.placeholder = '(11) 90000-0000';
 })();
 
+// Busca o valor real do plano combinado (?plano=) e mostra no contrato, em
+// vez do texto genérico "definido depois" — ?unico=1 funciona mesmo pros
+// planos ocultos (347/297), ver GET /planos no servidor.
+async function carregarValorCombinado() {
+  try {
+    const r = await fetch(`${API_BASE}/planos?plano=${encodeURIComponent(CAD_PLANO)}&unico=1`);
+    const d = await r.json();
+    const p = d && d.ok && d.planos && d.planos[0];
+    if (!p) return;
+    const valorMes = (p.valorCentavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    document.getElementById('valorCombinadoTexto').textContent =
+      `Adesão (instalação): R$ 500,00 via Pix, pagamento único. Mensalidade: ${valorMes}/mês no cartão de crédito recorrente (cobrança automática todo mês), sem fidelidade.`;
+    document.getElementById('valorCombinadoBox').style.display = 'block';
+    document.getElementById('clausulaValor').textContent =
+      `O plano combinado é de ${valorMes}/mês no cartão de crédito recorrente (cobrança automática todo mês) + R$ 500,00 de adesão (Pix, pagamento único), conforme indicado acima.`;
+  } catch (e) {}
+}
+
 document.getElementById('trialSelect').addEventListener('change', function () {
   document.getElementById('trialCustom').style.display = this.value === 'custom' ? 'block' : 'none';
 });
@@ -425,9 +483,11 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     senha,
     migrarConfigPrincipal,
     ...(ehConvite && CAD_VENDEDOR ? { vendedorComissao: CAD_VENDEDOR } : {}),
-    // Autocadastro do cliente: aceite do contrato (o plano quem define é o dono, depois de aprovar)
+    // Autocadastro do cliente: aceite do contrato + o plano já combinado pelo
+    // Representante (se veio na URL — ver carregarValorCombinado).
     ...(ehConvite ? {
-      aceiteContrato: !!(document.getElementById('aceiteContrato') || {}).checked
+      aceiteContrato: !!(document.getElementById('aceiteContrato') || {}).checked,
+      ...(CAD_PLANO ? { plano: CAD_PLANO } : {})
     } : {})
   };
 
@@ -467,7 +527,24 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
 
     if (resp.ok && data.ok) {
       statusEl.textContent = '';
-      // Autocadastro do cliente: não mostra senha/webhook — avisa que está em análise.
+      // Veio pelo link do Representante com preço já combinado: cadastro +
+      // contrato aceitos, agora cobra a adesão na hora (Pix) — pagar já
+      // libera o acesso, sem precisar o dono validar (ver marcarAdesaoPaga).
+      if (ehConvite && CAD_PLANO) {
+        document.getElementById('criarBtn').style.display = 'none';
+        document.getElementById('clienteBlock').style.display = 'none';
+        document.getElementById('pagamentoAdesaoBox').style.display = 'block';
+        window.scrollTo(0, 0);
+        iniciarPagamentoAdesao({
+          empresaId: data.empresa.id,
+          nome: payload.nomeFantasia || payload.razaoSocial,
+          email: payload.emailEmpresa,
+          cpfCnpj: payload.cnpj,
+          telefone: payload.telefoneEmpresa
+        });
+        return;
+      }
+      // Autocadastro do cliente (sem plano travado): não mostra senha/webhook — avisa que está em análise.
       if (ehConvite || data.pendente) {
         const card = document.querySelector('.card');
         card.innerHTML =
@@ -503,6 +580,68 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     btn.disabled = false;
   }
 });
+
+// Cobra a adesão (R$500, Pix) pra empresa recém-cadastrada (cadastro +
+// contrato já aceitos) — pagar já libera o acesso, sem o dono validar (ver
+// marcarAdesaoPaga no servidor). Dados (nome/e-mail/CPF-CNPJ/telefone) já
+// vieram preenchidos no formulário — não pergunta de novo.
+let pagAdesaoPollTimer = null;
+async function iniciarPagamentoAdesao(dadosEmpresa) {
+  // Link pro cliente assinar o plano mensal no cartão na hora, junto com o
+  // vendedor — reaproveita a mesma tela de "plano já travado" (/assinar).
+  const btnCartao = document.getElementById('pagAdesaoAssinarCartaoBtn');
+  if (btnCartao) {
+    btnCartao.href = `${API_BASE}/assinar?plano=${encodeURIComponent(CAD_PLANO)}&unico=1${CAD_VENDEDOR ? `&vendedor=${encodeURIComponent(CAD_VENDEDOR)}` : ''}`;
+  }
+  // Gera o Pix automaticamente, sem precisar de outro clique — os dados
+  // (nome/e-mail/CPF-CNPJ/telefone) já vieram preenchidos no cadastro.
+  try {
+    const resp = await fetch(`${API_BASE}/assinar/adesao`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nome: dadosEmpresa.nome, email: dadosEmpresa.email,
+        cpfCnpj: dadosEmpresa.cpfCnpj, telefone: dadosEmpresa.telefone,
+        vendedor: CAD_VENDEDOR, plano: CAD_PLANO, empresaId: dadosEmpresa.empresaId
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      document.getElementById('pagAdesaoIdle').innerHTML =
+        '<p style="color:#c0392b;font-size:0.92rem;">❌ ' + (data.erro || 'Não foi possível gerar o Pix.') + ' Atualize a página pra tentar de novo.</p>';
+      return;
+    }
+    document.getElementById('pagAdesaoQrImg').src = `data:image/png;base64,${data.qrCodeBase64}`;
+    document.getElementById('pagAdesaoCopiaECola').value = data.copiaECola;
+    document.getElementById('pagAdesaoIdle').style.display = 'none';
+    document.getElementById('pagAdesaoQr').style.display = 'block';
+    iniciarPollAdesao(data.ref, dadosEmpresa.email);
+  } catch (e) {
+    document.getElementById('pagAdesaoIdle').innerHTML =
+      '<p style="color:#c0392b;font-size:0.92rem;">❌ Erro de conexão. Atualize a página pra tentar de novo.</p>';
+  }
+  document.getElementById('pagAdesaoCopiarBtn').addEventListener('click', async () => {
+    const input = document.getElementById('pagAdesaoCopiaECola');
+    const btn = document.getElementById('pagAdesaoCopiarBtn');
+    try { await navigator.clipboard.writeText(input.value); }
+    catch (e) { input.removeAttribute('readonly'); input.select(); document.execCommand('copy'); input.setAttribute('readonly', 'readonly'); }
+    btn.textContent = 'Copiado!'; setTimeout(() => { btn.textContent = 'Copiar'; }, 1800);
+  });
+}
+function iniciarPollAdesao(ref, email) {
+  if (pagAdesaoPollTimer) clearInterval(pagAdesaoPollTimer);
+  pagAdesaoPollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/assinar/adesao/status?ref=${encodeURIComponent(ref)}`);
+      const data = await resp.json();
+      if (data.ok && data.pago) {
+        clearInterval(pagAdesaoPollTimer);
+        document.getElementById('pagAdesaoQr').style.display = 'none';
+        document.getElementById('pagAdesaoEmailResumo').textContent = email;
+        document.getElementById('pagAdesaoPago').style.display = 'block';
+      }
+    } catch (e) {}
+  }, 4000);
+}
 </script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>lucide.createIcons();</script>

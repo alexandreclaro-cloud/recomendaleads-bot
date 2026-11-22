@@ -5827,6 +5827,22 @@ async function marcarAdesaoPaga(ref, dadosConhecidos) {
       await registrarComissaoAdesao({ vendedorId: d.vendedor, valorAdesaoCentavos: ADESAO_CENTAVOS, clienteNome: d.nome || null });
     } catch (e) { console.error('[ADESAO] erro ao registrar comissão:', e.message); }
   }
+  // Cadastro pelo link do Representante: paga a adesão → libera o acesso na
+  // hora, igual o dono clicando em "Validar" (ver POST /admin/empresas/:id/validar).
+  // O cartão/assinatura mensal continua opcional, o cliente configura depois
+  // já logado, em Minha Empresa → Assinatura.
+  if (d.empresaId) {
+    try {
+      const eref = EMPRESAS_COL().doc(d.empresaId);
+      const esnap = await eref.get();
+      if (esnap.exists && esnap.data().pendenteAprovacao) {
+        const e = esnap.data();
+        await eref.update({ pendenteAprovacao: false, validadoEm: new Date().toISOString() });
+        enviarBoasVindasCliente({ nomeEmpresa: e.nome, emailLogin: e.email, senha: SENHA_PADRAO_AUTOCADASTRO, req: null })
+          .catch(err => console.error('[EMAIL] boas-vindas (adesão paga) falhou:', err.message));
+      }
+    } catch (e) { console.error('[ADESAO] erro ao liberar acesso da empresa:', e.message); }
+  }
 }
 
 // Roda periodicamente: marca `desligadoEm` em quem passou 90 dias sem venda
@@ -6515,6 +6531,11 @@ app.post('/assinar/adesao', async (req, res) => {
     const telefone = String(b.telefone || '').trim().slice(0, 30);
     const vendedor = String(b.vendedor || '').trim().slice(0, 60);
     const planoId = String(b.plano || '').toLowerCase();
+    // Cadastro pelo link do Representante (/cliente/cadastro): a empresa já
+    // foi criada PENDENTE (dados + contrato aceitos) antes de chegar aqui —
+    // esse Pix é o que libera o acesso dela, sem precisar o dono validar
+    // manualmente (ver marcarAdesaoPaga).
+    const empresaId = String(b.empresaId || '').trim().slice(0, 60);
     if (!nome) return res.status(400).json({ ok: false, erro: 'Informe seu nome.' });
     if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) return res.status(400).json({ ok: false, erro: 'Informe um CPF ou CNPJ válido.' });
 
@@ -6527,6 +6548,7 @@ app.post('/assinar/adesao', async (req, res) => {
     });
     await ADESOES_PENDENTES_COL().doc(ref).set({
       nome, email, cpfCnpj, telefone, vendedor: vendedor || null, plano: planoId || null,
+      empresaId: empresaId || null,
       paymentId: pix.paymentId, pago: false, criadoEm: new Date().toISOString()
     });
     res.json({ ok: true, ref, qrCodeBase64: pix.qrCodeBase64, copiaECola: pix.copiaECola, expiracao: pix.expiracao });

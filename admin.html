@@ -121,7 +121,6 @@
       <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Você escolhe o plano antes, o cliente só vê esse e preenche o cadastro — sem escolher nada, sem precisar o dono aprovar plano depois.</p>
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
         <select class="input" id="planoVendedorSelect" style="max-width:260px;"><option>Carregando planos...</option></select>
-        <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem;"><input type="checkbox" id="planoVendedorBoleto" checked> Aceitar Pix/boleto também</label>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
         <input id="planoVendedorLink" readonly onclick="this.select()" style="flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:0.82rem;">
@@ -545,14 +544,12 @@ function montarLinkPlanoVendedor() {
   const inp = document.getElementById('planoVendedorLink');
   const wpp = document.getElementById('planoVendedorWppBtn');
   if (!sel || !inp || !sel.value || !MEU_VENDEDOR_ID) return;
-  const boleto = document.getElementById('planoVendedorBoleto').checked;
-  const link = `${API_BASE}/assinar?plano=${encodeURIComponent(sel.value)}&vendedor=${encodeURIComponent(MEU_VENDEDOR_ID)}${boleto ? '&boleto=1' : ''}`;
+  const link = `${API_BASE}/assinar?plano=${encodeURIComponent(sel.value)}&vendedor=${encodeURIComponent(MEU_VENDEDOR_ID)}`;
   inp.value = link;
   const msg = 'Oi! Segue o link pra ativar o RecomendaLeads no plano combinado:\n\n' + link;
   wpp.href = 'https://wa.me/?text=' + encodeURIComponent(msg);
 }
 document.getElementById('planoVendedorSelect')?.addEventListener('change', montarLinkPlanoVendedor);
-document.getElementById('planoVendedorBoleto')?.addEventListener('change', montarLinkPlanoVendedor);
 document.getElementById('planoVendedorCopiarBtn')?.addEventListener('click', () => {
   const inp = document.getElementById('planoVendedorLink');
   const btn = document.getElementById('planoVendedorCopiarBtn');
