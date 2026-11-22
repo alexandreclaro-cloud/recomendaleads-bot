@@ -3918,7 +3918,6 @@ const CAMPOS_NICHO_UI = [
   { campo: 'mensagemPedeContatos', label: 'Pedir os contatos', rows: 2 },
   { campo: 'mensagemColeta', label: 'Pedido de recomendações', rows: 3 },
   { campo: 'mensagemValidarAmigo', label: 'Aviso pra avisar os amigos', rows: 2 },
-  { campo: 'premioRecomendado', label: 'Prêmio do amigo recomendado (texto)', rows: 2 },
   { campo: 'mensagemInicialRecomendado', label: '1ª mensagem ao amigo recomendado', rows: 3 },
   { campo: 'mensagemAguardandoConfirmacao', label: 'Mensagem repetida enquanto a pessoa não confirma', rows: 2 },
   { campo: 'mensagemAntesPresente', label: 'Antes de entregar o presente', rows: 2 },
@@ -4108,15 +4107,31 @@ function renderNichoPremios() {
       <input type="hidden" data-f="link" value="${esc(f.link)}">
       <input type="hidden" data-f="texto" value="${esc(f.texto)}">
     </div>`).join('');
+  const premioRec = valorEfetivoNicho('premioRecomendado') || '';
   html += `
     <div class="card" style="box-shadow:none; border:1px dashed var(--border);">
-      <div style="font-weight:700; margin-bottom:8px;">👥 Imagem do presente do amigo recomendado</div>
+      <div style="font-weight:700; margin-bottom:8px;">👥 Presente do amigo recomendado</div>
+      <label class="label">Prêmio (texto curto mostrado ao amigo)</label>
+      <input class="input" id="nichoPremioRecTexto" value="${esc(premioRec)}">
+      <label class="label">Imagem ou PDF do prêmio</label>
       <div class="arquivo-row">
         <input class="input" id="nichoArqRec" value="${esc(arqRec)}" placeholder="Envie um arquivo ou cole um link">
         <button type="button" class="btn btn-secondary" id="nichoArqRecBtn"><i data-lucide="upload"></i> Enviar</button>
         <input type="file" id="nichoArqRecFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
       </div>
       <div class="hint" id="nichoArqRecStatus"></div>
+    </div>`;
+  const bannerFundo = valorEfetivoNicho('bannerFundo') || '';
+  html += `
+    <div class="card" style="box-shadow:none; border:1px dashed var(--border);">
+      <div style="font-weight:700; margin-bottom:8px;">🖼️ Banner do QR Code (arte de fundo, opcional)</div>
+      <p class="sub" style="margin-top:0;">Uma foto/arte pra usar no lugar do banner simples, quando mostrar o QR em tela cheia — deixe um espaço livre pro QR aparecer no canto inferior esquerdo da imagem. Sem imagem, usa o banner padrão (logo + texto + QR).</p>
+      <div class="arquivo-row">
+        <input class="input" id="nichoBannerFundo" value="${esc(bannerFundo)}" placeholder="Envie uma imagem ou cole um link">
+        <button type="button" class="btn btn-secondary" id="nichoBannerFundoBtn"><i data-lucide="upload"></i> Enviar</button>
+        <input type="file" id="nichoBannerFundoFile" accept="image/jpeg,image/png,image/webp" style="display:none">
+      </div>
+      <div class="hint" id="nichoBannerFundoStatus"></div>
     </div>`;
   cont.innerHTML = html;
   cont.querySelectorAll('.nicho-faixa').forEach(card => {
@@ -4133,6 +4148,12 @@ function renderNichoPremios() {
   const recSt = document.getElementById('nichoArqRecStatus');
   mostrarPreviewArquivo(recArq, arqRec);
   if (recBtn && recFile) { recBtn.addEventListener('click', () => recFile.click()); recFile.addEventListener('change', () => uploadArquivo(recFile, recArq, recSt)); }
+  const bgBtn = document.getElementById('nichoBannerFundoBtn');
+  const bgFile = document.getElementById('nichoBannerFundoFile');
+  const bgArq = document.getElementById('nichoBannerFundo');
+  const bgSt = document.getElementById('nichoBannerFundoStatus');
+  mostrarPreviewArquivo(bgArq, bannerFundo);
+  if (bgBtn && bgFile) { bgBtn.addEventListener('click', () => bgFile.click()); bgFile.addEventListener('change', () => uploadArquivo(bgFile, bgArq, bgSt)); }
   if (window.lucide) lucide.createIcons();
 }
 
@@ -4149,9 +4170,13 @@ document.getElementById('salvarNichoPremiosBtn').addEventListener('click', async
   }));
   const recEl = document.getElementById('nichoArqRec');
   const arquivoRecomendado = (recEl ? recEl.value : '').trim() || null;
+  const premioRecEl = document.getElementById('nichoPremioRecTexto');
+  const premioRecomendado = premioRecEl ? premioRecEl.value.trim() : '';
+  const bgEl = document.getElementById('nichoBannerFundo');
+  const bannerFundo = (bgEl ? bgEl.value : '').trim() || null;
   btn.disabled = true; st.textContent = 'Salvando...'; st.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos/${nichoAtual}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ faixasBonus: faixas, arquivoRecomendado }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos/${nichoAtual}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ faixasBonus: faixas, arquivoRecomendado, premioRecomendado, bannerFundo }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       if (nichosData) { nichosData.nichos = nichosData.nichos || {}; nichosData.nichos[nichoAtual] = data.nicho; }
@@ -4198,6 +4223,17 @@ function textoLinkNicho(slug) {
 // durante a visita: toca no nicho, o QR já abre em tela cheia pro cliente
 // escanear na hora. "Copiar link" fica num botão pequeno à parte, pra quando
 // o cliente não está na frente (manda por WhatsApp em vez de mostrar o QR).
+// Prêmio do recomendador dessa área (pra mostrar no banner do QR) — mesma
+// lógica de prioridade de textoLinkNicho: personalizado > padrão > genérico.
+function premioNicho(slug) {
+  const over = (nichosData && nichosData.nichos && nichosData.nichos[slug]) || {};
+  const def = (nichosData && nichosData.defaults && nichosData.defaults[slug]) || {};
+  const faixas = (over.faixasBonus && over.faixasBonus.length) ? over.faixasBonus : (def.faixasBonus || []);
+  const bruto = (faixas[0] && faixas[0].premio) ? String(faixas[0].premio) : '';
+  const limpo = bruto.replace(/[*_]/g, '').replace(/^🎁\s*/, '').replace(/^Exemplo de presente:\s*/i, '').trim();
+  return limpo || 'um presente especial';
+}
+
 function renderNichosLinks() {
   const cont = document.getElementById('nichosLinks');
   const inp = document.getElementById('nichoNumeroInput');
@@ -4210,11 +4246,13 @@ function renderNichosLinks() {
     const link = `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
     const nomeSeg = escapeHtml(n.nome);
+    const premioSeg = escapeHtml(premioNicho(n.slug));
+    const bannerFundoSeg = escapeHtml(((nichosData && nichosData.nichos && nichosData.nichos[n.slug]) || {}).bannerFundo || '');
     return `<div style="border:2px solid var(--border,#e3e6ea); border-radius:16px; overflow:hidden; background:var(--surface,#fff);">
-      <button type="button" class="btn-ver-qr" data-qr="${qrUrl}" data-nome="${nomeSeg}" style="display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; padding:26px 14px 18px; border:none; background:none; cursor:pointer; color:inherit;">
+      <button type="button" class="btn-ver-qr" data-qr="${qrUrl}" data-nome="${nomeSeg}" data-premio="${premioSeg}" data-fundo="${bannerFundoSeg}" style="display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; padding:26px 14px 18px; border:none; background:none; cursor:pointer; color:inherit;">
         <span style="font-size:2.6rem; line-height:1;">${emojiNicho(n.slug)}</span>
         <span style="font-weight:700; font-size:1.08rem; text-align:center;">${n.nome}</span>
-        <span style="font-size:0.8rem; color:var(--brand,#b8860b); font-weight:600;">👆 Toque pra mostrar o QR Code</span>
+        <span style="font-size:0.8rem; color:var(--brand,#b8860b); font-weight:600;">👆 Toque pra mostrar o banner</span>
       </button>
       <button class="btn-copiar-link" data-link="${escapeHtml(link)}" style="display:block; width:100%; border:none; border-top:1px solid var(--border,#e3e6ea); background:var(--surface-2,#f8f9fb); color:var(--text-dim,#6b7280); font-size:0.82rem; font-weight:600; padding:12px; cursor:pointer;">🔗 Copiar link</button>
     </div>`;
@@ -4222,21 +4260,49 @@ function renderNichosLinks() {
   cont.querySelectorAll('.btn-copiar-link').forEach(b => b.addEventListener('click', () => {
     navigator.clipboard.writeText(b.dataset.link).then(() => { const t = b.textContent; b.textContent = '✅ Copiado!'; setTimeout(() => b.textContent = t, 1500); });
   }));
-  cont.querySelectorAll('.btn-ver-qr').forEach(el => el.addEventListener('click', () => abrirQrTelaCheia(el.dataset.qr, el.dataset.nome)));
+  cont.querySelectorAll('.btn-ver-qr').forEach(el => el.addEventListener('click', () => abrirQrTelaCheia(el.dataset.qr, el.dataset.nome, el.dataset.premio, el.dataset.fundo)));
 }
 
-// Mostra o QR Code em tela cheia — pensado pro vendedor usar no próprio
-// celular durante a visita: toca, vira a tela pro cliente escanear com a
-// câmera e já experimenta o fluxo na hora, sem precisar enviar nada.
-function abrirQrTelaCheia(qrUrl, nome) {
+// Banner "totem" em tela cheia — pensado pro vendedor usar no próprio
+// celular/tablet durante a visita: toca no nicho, mostra esse banner (logo +
+// prêmio + QR, ou a arte própria do nicho se tiver uma) pro cliente escanear
+// na hora. Tem um botão pra girar 90° e ficar bem grande, tipo o totem de
+// acrílico que fica no balcão.
+// Com arte própria (bannerFundo): o QR real entra posicionado no canto
+// inferior esquerdo da imagem (combinado com o "deixe um espaço livre" na
+// dica do upload) — não tem como adivinhar a posição certa pra qualquer
+// foto, então assume sempre esse mesmo canto.
+function abrirQrTelaCheia(qrUrl, nome, premio, bannerFundo) {
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.94);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;cursor:pointer;';
-  overlay.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:20px;">
-      <img src="${qrUrl.replace('200x200', '500x500')}" alt="QR Code ${nome}" style="width:min(70vw,340px);height:min(70vw,340px);display:block;">
-    </div>
-    <div style="color:#fff;font-size:1.1rem;font-weight:700;text-align:center;">${nome} — peça pro cliente escanear</div>
-    <div style="color:#cbd5e1;font-size:0.85rem;">Toque em qualquer lugar pra fechar</div>`;
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.94);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;';
+  const premioTxt = premio || 'um presente especial';
+  const qrGrande = qrUrl.replace('200x200', '500x500');
+  const cardHtml = bannerFundo
+    ? `<div id="totemCard" style="position:relative; width:min(86vw,460px); line-height:0; border-radius:18px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.45); transition:transform .25s, width .25s;">
+        <img src="${escapeHtml(bannerFundo)}" alt="${escapeHtml(nome)}" style="width:100%; display:block;">
+        <img src="${qrGrande}" alt="QR Code ${escapeHtml(nome)}" style="position:absolute; left:23%; bottom:10%; width:13%; border-radius:6px;">
+      </div>`
+    : `<div id="totemCard" style="width:min(86vw,380px); background:#fff; border-radius:22px; padding:28px 22px 22px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.45); transition:transform .25s, width .25s, height .25s;">
+        <img src="/assets/logo-symbol.png" alt="" style="width:40px;height:40px;border-radius:10px;margin-bottom:8px;">
+        <div style="font-weight:800; color:#0F172A; font-size:1.05rem; letter-spacing:-.01em;">RecomendaLeads</div>
+        <div style="margin:16px 0 6px; font-size:1.2rem; color:#0F172A; font-weight:700; line-height:1.3;">Leia este QR Code<br>e ganhe</div>
+        <div style="display:inline-block; background:#16a34a; color:#fff; font-weight:800; font-size:1.05rem; padding:9px 18px; border-radius:999px; margin:2px 0 20px; line-height:1.35; max-width:100%;">${escapeHtml(premioTxt)}</div>
+        <img src="${qrGrande}" alt="QR Code ${escapeHtml(nome)}" style="width:100%; max-width:270px; display:block; margin:0 auto; border-radius:14px;">
+        <div style="margin-top:14px; font-size:0.85rem; color:#6b7280; font-weight:700;">${escapeHtml(nome)}</div>
+      </div>`;
+  overlay.innerHTML = cardHtml + `
+    <button id="totemGirarBtn" type="button" style="background:#fff; border:none; border-radius:999px; padding:11px 20px; font-weight:700; font-size:0.9rem; color:#0F172A; cursor:pointer;">🔄 Girar pra ficar maior</button>
+    <div style="color:#cbd5e1; font-size:0.8rem;">Toque fora do banner pra fechar</div>`;
+  const card = overlay.querySelector('#totemCard');
+  card.addEventListener('click', ev => ev.stopPropagation());
+  let girado = false;
+  overlay.querySelector('#totemGirarBtn').addEventListener('click', ev => {
+    ev.stopPropagation();
+    girado = !girado;
+    const largMax = bannerFundo ? 460 : 380;
+    card.style.transform = girado ? 'rotate(90deg)' : 'rotate(0deg)';
+    card.style.width = girado ? `min(86vh,${largMax}px)` : `min(86vw,${largMax}px)`;
+  });
   overlay.addEventListener('click', () => overlay.remove());
   document.body.appendChild(overlay);
 }
