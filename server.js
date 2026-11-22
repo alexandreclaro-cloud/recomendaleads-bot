@@ -6783,7 +6783,10 @@ app.post('/minha-equipe', exigirLoginEmpresa, exigirGestor, async (req, res) => 
     if (String(senha).length < 6) {
       return res.status(400).json({ ok: false, erro: 'A senha precisa ter ao menos 6 caracteres' });
     }
-    const papelFinal = papel === 'gestor' ? 'gestor' : 'atendente';
+    // "vendedor" (Representante de campo) só existe na conta matriz/demo — em
+    // qualquer outra empresa, cai pra atendente mesmo se vier no corpo.
+    const ehMatrizCriacao = req.empresaLogin.id === EMPRESA_ID_PDN || !!req.empresaLogin.demoVendedores;
+    const papelFinal = papel === 'gestor' ? 'gestor' : (papel === 'vendedor' && ehMatrizCriacao ? 'vendedor' : 'atendente');
     const emailNorm = String(email).trim().toLowerCase();
     const existe = await USUARIOS_COL().where('email', '==', emailNorm).limit(1).get();
     if (!existe.empty) {
@@ -6840,9 +6843,17 @@ app.patch('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res
     if (meuOfertaId && alvo.ofertaId !== meuOfertaId) {
       return res.status(404).json({ ok: false, erro: 'Usuário não encontrado' });
     }
-    const { nome, papel, novaSenha, telefone, atendenteOficial, ofertaId } = req.body;
+    const { nome, papel, novaSenha, telefone, atendenteOficial, ofertaId, email } = req.body;
     const update = {};
     if (nome) update.nome = String(nome).trim();
+    if (email) {
+      const emailNorm = String(email).trim().toLowerCase();
+      if (emailNorm !== alvo.email) {
+        const existeEmail = await USUARIOS_COL().where('email', '==', emailNorm).limit(1).get();
+        if (!existeEmail.empty) return res.status(409).json({ ok: false, erro: 'Já existe um usuário com esse email' });
+        update.email = emailNorm;
+      }
+    }
     if (telefone !== undefined) update.telefone = String(telefone || '').replace(/\D/g, '');
     if (atendenteOficial !== undefined) update.atendenteOficial = !!atendenteOficial;
     if (ofertaId !== undefined) {
@@ -6859,7 +6870,9 @@ app.patch('/minha-equipe/:id', exigirLoginEmpresa, exigirGestor, async (req, res
         update.ofertaId = ofertaId;
       }
     }
-    if (papel === 'gestor' || papel === 'atendente') {
+    // "vendedor" (Representante de campo) só existe na conta matriz/demo.
+    const ehMatrizEdicao = req.empresaLogin.id === EMPRESA_ID_PDN || !!req.empresaLogin.demoVendedores;
+    if (papel === 'gestor' || papel === 'atendente' || (papel === 'vendedor' && ehMatrizEdicao)) {
       // Não permitir rebaixar o último gestor da empresa.
       if (alvo.papel === 'gestor' && papel !== 'gestor' && (await contarGestoresAtivos(req.empresaLogin.id)) <= 1) {
         return res.status(409).json({ ok: false, erro: 'A empresa precisa de ao menos um gestor.' });
@@ -7102,6 +7115,16 @@ function exigirGestor(req, res, next) {
   next();
 }
 
+// Igual a exigirGestor, mas também libera o papel "vendedor" — o Representante
+// de campo (conta matriz) que usa só Demonstração por nicho e Disparo em massa
+// pra prospectar, sem acesso às configurações da empresa.
+function exigirGestorOuVendedor(req, res, next) {
+  if (req.papel !== 'gestor' && req.papel !== 'vendedor') {
+    return res.status(403).json({ ok: false, erro: 'Apenas gestores ou representantes podem fazer esta ação.' });
+  }
+  next();
+}
+
 // Só a conta MATRIZ (PDN Vendas) OU a conta marcada como demonstração pros
 // vendedores (demoVendedores:true, ver PATCH /admin/empresas/:id) — usada em
 // recursos que não fazem sentido pra conta de um cliente de verdade, como a
@@ -7250,7 +7273,7 @@ function listaNichos(config) {
   }));
 }
 
-app.get('/minha-nichos', exigirLoginEmpresa, exigirGestor, exigirMatriz, async (req, res) => {
+app.get('/minha-nichos', exigirLoginEmpresa, exigirGestorOuVendedor, exigirMatriz, async (req, res) => {
   try {
     const config = req.empresaLogin.configuracao || {};
     const base = { ...EMPRESA_PADRAO, ...config };
@@ -10534,7 +10557,7 @@ async function validarHeaderTemplate(empresa, template, headerImageUrl) {
   return null;
 }
 
-app.post('/minha-disparo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.post('/minha-disparo', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresa = await getEmpresaById(req.empresaLogin.id);
     if (empresa.whatsappTipo !== 'oficial') {
@@ -10834,7 +10857,7 @@ app.get('/minha-disparo/status', exigirLoginEmpresa, (req, res) => {
 
 // Histórico de campanhas (mais recente primeiro) — pra listar na tela e abrir
 // o relatório de cada uma.
-app.get('/minha-disparos', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.get('/minha-disparos', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const snap = await DISPAROS_COL().where('empresaId', '==', req.empresaLogin.id).get();
     const disparos = [];
@@ -11061,7 +11084,7 @@ async function calcularRespostasPorBotao(disparo, empresaId) {
     .sort((a, b) => b.contatos.length - a.contatos.length);
 }
 
-app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.get('/minha-disparos/:id/relatorio', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const doc = await DISPAROS_COL().doc(req.params.id).get();
     if (!doc.exists || doc.data().empresaId !== req.empresaLogin.id) {
@@ -11119,7 +11142,7 @@ async function montarDisparoAgregado(empresaId, template) {
   return { campanhaIds, contatos, criadoEm: criadoEmMin, lotes: campanhaIds.length };
 }
 
-app.get('/minha-disparos/template/:template/relatorio', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.get('/minha-disparos/template/:template/relatorio', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const template = req.params.template;
     const agregado = await montarDisparoAgregado(req.empresaLogin.id, template);
@@ -11166,7 +11189,7 @@ app.get('/minha-disparos/template/:template/relatorio', exigirLoginEmpresa, exig
 
 // Redispara pra um grupo de resposta, mas olhando pra TODOS os lotes desse
 // template (versão agregada do /minha-disparos/:id/resposta/disparar).
-app.post('/minha-disparos/template/:template/resposta/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.post('/minha-disparos/template/:template/resposta/disparar', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresa = await getEmpresaById(req.empresaLogin.id);
     if (empresa.whatsappTipo !== 'oficial') {
@@ -11221,7 +11244,7 @@ app.post('/minha-disparos/template/:template/resposta/disparar', exigirLoginEmpr
 // nunca respondeu vs. quem respondeu mas travou no meio do fluxo. Recalcula a
 // coluna na hora (não confia em cache) e cria uma campanha NOVA (rastreável
 // como qualquer outra), sem mexer no disparo original.
-app.post('/minha-disparos/:id/pipeline/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.post('/minha-disparos/:id/pipeline/disparar', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresa = await getEmpresaById(req.empresaLogin.id);
     if (empresa.whatsappTipo !== 'oficial') {
@@ -11277,7 +11300,7 @@ app.post('/minha-disparos/:id/pipeline/disparar', exigirLoginEmpresa, exigirGest
 // janela de 24h já fechou e só um template novo alcança essas pessoas de novo,
 // sem misturar com quem recusou ou nunca respondeu. Recalcula na hora (não
 // confia em cache) e cria uma campanha NOVA, não mexe na original.
-app.post('/minha-disparos/:id/resposta/disparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.post('/minha-disparos/:id/resposta/disparar', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresa = await getEmpresaById(req.empresaLogin.id);
     if (empresa.whatsappTipo !== 'oficial') {
@@ -11332,7 +11355,7 @@ app.post('/minha-disparos/:id/resposta/disparar', exigirLoginEmpresa, exigirGest
 
 // Redispara SÓ pra quem ainda não respondeu essa campanha (recalcula na hora,
 // não confia em cache) — cria uma campanha NOVA, não mexe na original.
-app.post('/minha-disparos/:id/redisparar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.post('/minha-disparos/:id/redisparar', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresa = await getEmpresaById(req.empresaLogin.id);
     if (empresa.whatsappTipo !== 'oficial') {
@@ -11373,7 +11396,7 @@ app.post('/minha-disparos/:id/redisparar', exigirLoginEmpresa, exigirGestor, exi
 // mesmo em campanha 100% concluída), aqui a checagem é por quem já foi ENVIADO
 // de fato (via o log de mensagens, campanhaId) — assim ninguém que já recebeu
 // leva o mesmo template de novo (e paga de novo) só porque não respondeu.
-app.post('/minha-disparos/:id/retomar', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.post('/minha-disparos/:id/retomar', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresa = await getEmpresaById(req.empresaLogin.id);
     if (empresa.whatsappTipo !== 'oficial') {
@@ -11415,7 +11438,7 @@ app.post('/minha-disparos/:id/retomar', exigirLoginEmpresa, exigirGestor, exigir
 // um DISPAROS_COL retroativo com esse lote e carimba campanhaId nas mensagens
 // — depois disso o relatório funciona igual a qualquer campanha nova. Rodar de
 // novo não duplica: mensagem já tagueada nunca entra de novo no cálculo.
-app.post('/minha-disparos/reconstruir-ultimo', exigirLoginEmpresa, exigirGestor, exigirUsuarioSemOferta, async (req, res) => {
+app.post('/minha-disparos/reconstruir-ultimo', exigirLoginEmpresa, exigirGestorOuVendedor, exigirUsuarioSemOferta, async (req, res) => {
   try {
     const empresaId = req.empresaLogin.id;
     const snap = await MENSAGENS_CHAT_COL().where('empresaId', '==', empresaId).where('direcao', '==', 'out').get();
@@ -11459,7 +11482,7 @@ app.post('/minha-disparos/reconstruir-ultimo', exigirLoginEmpresa, exigirGestor,
 // Cancela agendamentos ainda pendentes de "chamar o recomendado" desta empresa —
 // útil pra abortar disparos de teste antes de saírem (evita cobrança à toa na
 // API Oficial). Não afeta o que já foi enviado, só o que ainda está na fila.
-app.post('/minha-disparo/cancelar-recomendados-pendentes', exigirLoginEmpresa, exigirGestor, async (req, res) => {
+app.post('/minha-disparo/cancelar-recomendados-pendentes', exigirLoginEmpresa, exigirGestorOuVendedor, async (req, res) => {
   try {
     const snap = await AGENDAMENTOS_COL()
       .where('status', '==', 'pendente')

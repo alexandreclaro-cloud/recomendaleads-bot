@@ -62,6 +62,8 @@
       <button class="nav-item" data-section="conversaCliente" data-gestor style="display:none"><i data-lucide="message-square"></i><span class="txt">Conversa do cliente</span></button>
       <button class="nav-item" data-section="premios" data-gestor style="display:none"><i data-lucide="gift"></i><span class="txt">Prêmios</span></button>
       <button class="nav-item" data-section="nichos" data-gestor><i data-lucide="sparkles"></i><span class="txt">Demonstração por nicho</span></button>
+      <button class="nav-item" data-section="cadastroCliente" data-gestor><i data-lucide="user-plus"></i><span class="txt">Cadastro de cliente</span></button>
+      <button class="nav-item" data-section="crmVendas" data-gestor><i data-lucide="kanban-square"></i><span class="txt">CRM Vendas</span></button>
       <!-- Follow-up (avisar amigos) foi movido pro CRM → Configurações (uma tela só). -->
       <button class="nav-item" data-section="followup" data-gestor style="display:none"><i data-lucide="bell-ring"></i><span class="txt">Follow-up (avisar amigos)</span></button>
       <button class="nav-item" data-section="info" data-gestor style="display:none"><i data-lucide="info"></i><span class="txt">Informações do negócio</span></button>
@@ -71,8 +73,8 @@
       <button class="nav-item" data-section="disparo" data-gestor style="display:none"><i data-lucide="send"></i><span class="txt">Disparo em massa</span></button>
       <button class="nav-item" data-section="custos" data-gestor style="display:none"><i data-lucide="receipt"></i><span class="txt">Custos de mensagens</span></button>
       <button class="nav-item" data-section="script" data-gestor><i data-lucide="scroll-text"></i><span class="txt">Script de vendas</span></button>
-      <a class="nav-item" href="/conversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
-      <a class="nav-item" href="/crm"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
+      <a class="nav-item" href="/conversas" id="navConversas"><i data-lucide="message-circle"></i><span class="txt">Conversas</span></a>
+      <a class="nav-item" href="/crm" id="navCrmLeads"><i data-lucide="kanban"></i><span class="txt">CRM / Leads</span></a>
       <div class="nav-label-funis" data-gestor>Funis</div>
       <a class="nav-item nav-item-funil" href="/crm#config" data-gestor><i data-lucide="flag"></i><span class="txt">Funil Start</span></a>
       <a class="nav-item nav-item-funil" href="/crm#funilNaoCliente" data-gestor><i data-lucide="door-open"></i><span class="txt">Funil Não Cliente</span></a>
@@ -271,6 +273,28 @@
           <div class="block-title"><i data-lucide="bar-chart-3"></i> Relatório diário (exemplo)</div>
           <p class="sub">É assim que o gestor recebe, todo dia no WhatsApp, a evolução de quantas recomendações, convites, resgates e vendas aconteceram — só pra mostrar, não envia nada de verdade.</p>
           <div id="previewRelatorioDiario" style="margin-top:12px;"></div>
+        </div>
+      </section>
+
+      <section class="view fade-in" id="view-cadastroCliente">
+        <div class="card">
+          <div class="block-title"><i data-lucide="user-plus"></i> Cadastro de cliente</div>
+          <p class="sub">Fechou com o cliente? Abra o cadastro — ele preenche os dados e já paga na hora (Pix, cartão ou boleto). Escolha a condição combinada com ele.</p>
+          <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px; max-width:420px;">
+            <a class="btn btn-action" href="/assinar" target="_blank" rel="noopener" style="text-align:center;">📝 Cadastro completo (cliente escolhe o plano)</a>
+            <a class="btn btn-secondary" href="/assinar?plano=mensal&unico=1" target="_blank" rel="noopener" style="text-align:center;">R$ 397/mês — condição padrão</a>
+            <a class="btn btn-secondary" href="/assinar?plano=mensal347&unico=1" target="_blank" rel="noopener" style="text-align:center;">R$ 347/mês — condição promocional</a>
+            <a class="btn btn-secondary" href="/assinar?plano=mensal297&unico=1" target="_blank" rel="noopener" style="text-align:center;">R$ 297/mês — só pra negociação com rede/franquia</a>
+          </div>
+          <p class="hint" style="margin-top:14px;">💡 Abre numa aba nova — pode mandar pro cliente preencher ele mesmo no celular, ou preencher junto com ele na visita.</p>
+        </div>
+      </section>
+
+      <section class="view fade-in" id="view-crmVendas">
+        <div class="card">
+          <div class="block-title"><i data-lucide="kanban-square"></i> CRM Vendas — exemplo</div>
+          <p class="sub">É assim que o funil do cliente aparece no CRM de verdade. Use esta tela pra mostrar ao prospect como ele vai acompanhar tudo — são dados de exemplo, não é a conta real dele.</p>
+          <div id="crmVendasKanban" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin-top:16px;"></div>
         </div>
       </section>
 
@@ -939,6 +963,7 @@
               <select class="input" id="novoUserPapel">
                 <option value="atendente">Atendente (só atender)</option>
                 <option value="gestor">Gestor (acesso total)</option>
+                <option value="vendedor" id="novoUserPapelVendedor" style="display:none">Representante (demo + cadastro + disparo)</option>
               </select>
             </div>
             <div>
@@ -1054,6 +1079,10 @@ if (!TOKEN) { window.location.href = '/login'; }
 const EMPRESA_SALVA = JSON.parse(localStorage.getItem('recomendaleads_empresa') || '{}');
 const PAPEL = EMPRESA_SALVA.papel || 'gestor';
 const EH_GESTOR = PAPEL === 'gestor';
+// Representante de campo (conta matriz): só usa Demonstração por nicho,
+// Cadastro de cliente, CRM Vendas (simulado) e Disparo em massa.
+const EH_VENDEDOR = PAPEL === 'vendedor';
+const SECOES_VENDEDOR = ['nichos', 'cadastroCliente', 'crmVendas', 'disparo'];
 // Rede de lojas: presente quando o usuário logado está preso a uma loja
 // específica (null = usuário matriz, vê/edita a rede toda).
 const MEU_OFERTA_ID = EMPRESA_SALVA.ofertaId || null;
@@ -1061,12 +1090,28 @@ const MEU_OFERTA_NOME = EMPRESA_SALVA.ofertaNome || null;
 let EH_MATRIZ = false;
 let OFERTAS_HABILITADO = false;
 let MODO_DEMO = false;
-const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'followup', 'info', 'modo', 'whatsapp', 'ofertas', 'disparo', 'custos', 'script', 'equipe', 'assinatura'];
+const SECOES_GESTOR = ['empresa', 'conversaCliente', 'premios', 'nichos', 'cadastroCliente', 'crmVendas', 'followup', 'info', 'modo', 'whatsapp', 'ofertas', 'disparo', 'custos', 'script', 'equipe', 'assinatura'];
 
 // Atendente não enxerga itens de edição (nav, cards, tiles e seção Equipe).
 function aplicarGating() {
   if (EH_GESTOR) return;
   document.querySelectorAll('[data-gestor]').forEach(el => { el.style.display = 'none'; });
+}
+
+// Representante (papel "vendedor"): ferramenta de campo pra prospectar — só
+// Demonstração por nicho (+ relatório de exemplo), Cadastro de cliente,
+// CRM Vendas (simulado) e Disparo em massa. Nada de configuração da empresa.
+function aplicarGatingVendedor() {
+  document.querySelectorAll('[data-gestor]').forEach(el => {
+    if (SECOES_VENDEDOR.some(sec => el.matches(`[data-section="${sec}"]`))) return;
+    el.style.display = 'none';
+  });
+  // "Conversas" e "CRM / Leads" são o CRM DE VERDADE da empresa — o Representante
+  // só vê o "CRM Vendas" simulado (pra mostrar ao prospect), não isso aqui.
+  ['navConversas', 'navCrmLeads'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
 }
 
 // Conta de demonstração pro vendedor mostrar ao prospect: só pode VER o CRM
@@ -1112,6 +1157,8 @@ const TITULOS = {
   conversaCliente: ['Conversa do cliente', 'As mensagens que o robô envia pra quem recomenda.'],
   premios: ['Prêmios', 'Configure as faixas e os vouchers entregues.'],
   nichos: ['Demonstração por nicho', 'Personalize a apresentação para cada tipo de cliente.'],
+  cadastroCliente: ['Cadastro de cliente', 'Fechou o cliente? Preencha o cadastro e o pagamento na hora.'],
+  crmVendas: ['CRM Vendas', 'Exemplo de como o funil do cliente aparece no CRM — use pra mostrar ao prospect.'],
   followup: ['Follow-up', 'Lembretes automáticos pro cliente avisar os amigos.'],
   info: ['Informações do negócio', 'O robô responde dúvidas do cliente com estes dados.'],
   modo: ['Modo de recomendação', 'Como o presente chega aos amigos recomendados.'],
@@ -1126,10 +1173,13 @@ const TITULOS = {
 };
 
 function trocarSecao(secao) {
-  // Atendente não acessa seções de gestor — cai na visão geral.
-  if (!EH_GESTOR && SECOES_GESTOR.includes(secao)) secao = 'overview';
-  // "Demonstração por nicho" é exclusiva da conta matriz (PDN Vendas).
-  if (secao === 'nichos' && !EH_MATRIZ) secao = 'overview';
+  // Atendente não acessa seções de gestor — cai na visão geral. Representante
+  // (vendedor) acessa só as 4 seções da sua ferramenta de campo.
+  const liberadoVendedor = EH_VENDEDOR && SECOES_VENDEDOR.includes(secao);
+  if (!EH_GESTOR && !liberadoVendedor && SECOES_GESTOR.includes(secao)) secao = 'overview';
+  // "Demonstração por nicho" (e o resto da ferramenta do Representante) é
+  // exclusiva da conta matriz (PDN Vendas / Matriz Recomenda Leads).
+  if ((secao === 'nichos' || secao === 'cadastroCliente' || secao === 'crmVendas') && !EH_MATRIZ) secao = 'overview';
   document.querySelectorAll('section.view').forEach(s => s.classList.remove('active'));
   const alvo = document.getElementById('view-' + secao);
   if (alvo) { alvo.classList.remove('fade-in'); void alvo.offsetWidth; alvo.classList.add('active', 'fade-in'); }
@@ -2019,9 +2069,15 @@ async function carregarConfiguracao() {
     // esconde o item do menu (o backend também bloqueia os endpoints).
     EH_MATRIZ = !!data.ehMatriz;
     if (!EH_MATRIZ) {
-      const nav = document.querySelector('#nav .nav-item[data-section="nichos"]');
-      if (nav) nav.style.display = 'none';
+      ['nichos', 'cadastroCliente', 'crmVendas'].forEach(sec => {
+        const nav = document.querySelector(`#nav .nav-item[data-section="${sec}"]`);
+        if (nav) nav.style.display = 'none';
+      });
+    } else {
+      const optVendedor = document.getElementById('novoUserPapelVendedor');
+      if (optVendedor) optVendedor.style.display = '';
     }
+    if (EH_VENDEDOR) aplicarGatingVendedor();
     MODO_DEMO = !!data.modoDemo;
     if (MODO_DEMO) aplicarGatingDemo();
     // Múltiplas ofertas é função extra, cobrada à parte — só aparece pra quem o
@@ -2090,7 +2146,9 @@ async function carregarConfiguracao() {
     const mPremios = document.getElementById('mPremios');
     if (mPremios) mPremios.textContent = faixas.length;
     if (leadsVG && leadsVG.length) renderDashboardVG();
-    trocarSecao('overview');
+    // Representante cai direto na Demonstração por nicho — "Visão geral" não
+    // tem nada útil pra ele (todos os cards são de gestor).
+    trocarSecao(EH_VENDEDOR ? 'nichos' : 'overview');
     icons();
   } catch (err) { loadMsg.textContent = 'Não foi possível carregar a configuração.'; }
 }
@@ -2845,7 +2903,9 @@ async function carregarEquipe() {
     wrap.innerHTML = usuarios.map(u => {
       const badge = u.papel === 'gestor'
         ? '<span class="badge badge-success">Gestor</span>'
-        : '<span class="badge">Atendente</span>';
+        : u.papel === 'vendedor'
+          ? '<span class="badge">🎯 Representante</span>'
+          : '<span class="badge">Atendente</span>';
       const badgeLoja = u.ofertaNome ? ` <span class="badge">🏬 ${escapeHtml(u.ofertaNome)}</span>` : '';
       const st = u.statusAtendimento || 'online';
       const statusOnline = u.online
@@ -2862,10 +2922,13 @@ async function carregarEquipe() {
             ? `<button class="btn btn-secondary" data-acao="oficial" data-id="${u.id}" data-valor="false" style="padding:6px 10px;font-size:0.78rem">☆ Tirar de oficial</button>`
             : `<button class="btn btn-secondary" data-acao="oficial" data-id="${u.id}" data-valor="true" style="padding:6px 10px;font-size:0.78rem">⭐ Tornar atendente oficial</button>`)
         : '';
-      const acoes = u.souEu ? '' : `
-        <button class="btn btn-secondary" data-acao="papel" data-id="${u.id}" data-papel="${u.papel}" style="padding:6px 10px;font-size:0.78rem">${u.papel === 'gestor' ? 'Tornar atendente' : 'Tornar gestor'}</button>
+      // Editar email: disponível até pra "você mesmo" (as outras ações não são,
+      // pra ninguém se auto-rebaixar/remover sem querer).
+      const btnEmail = `<button class="btn btn-secondary" data-acao="email" data-id="${u.id}" data-email="${escapeHtml(u.email)}" style="padding:6px 10px;font-size:0.78rem">✏️ Email</button>`;
+      const acoes = (u.souEu ? '' : `
+        <button class="btn btn-secondary" data-acao="papel" data-id="${u.id}" data-papel="${u.papel}" style="padding:6px 10px;font-size:0.78rem">${rotuloProximoPapel(u.papel)}</button>
         <button class="btn btn-secondary" data-acao="senha" data-id="${u.id}" style="padding:6px 10px;font-size:0.78rem">Resetar senha</button>
-        <button class="btn btn-secondary" data-acao="remover" data-id="${u.id}" data-nome="${escapeHtml(u.nome)}" style="padding:6px 10px;font-size:0.78rem;color:var(--error)">Remover</button>`;
+        <button class="btn btn-secondary" data-acao="remover" data-id="${u.id}" data-nome="${escapeHtml(u.nome)}" style="padding:6px 10px;font-size:0.78rem;color:var(--error)">Remover</button>`) + btnEmail;
       return `<div class="user-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)">
         <div><b>${escapeHtml(u.nome)}</b>${eu} ${badge}${badgeLoja}${badgeOficial}${statusOnline}<br><small style="color:var(--text-dim)">${escapeHtml(u.email)}</small>${tel}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btnTestar}${btnOficial}${acoes}</div>
@@ -2877,16 +2940,40 @@ async function carregarEquipe() {
   }
 }
 
+// Ciclo do botão "Tornar X" na lista da Equipe. Fora da conta matriz continua
+// binário (gestor <-> atendente) — "vendedor" (Representante) só existe lá.
+function proximoPapel(atual) {
+  if (EH_MATRIZ) {
+    if (atual === 'gestor') return 'atendente';
+    if (atual === 'atendente') return 'vendedor';
+    return 'gestor';
+  }
+  return atual === 'gestor' ? 'atendente' : 'gestor';
+}
+function rotuloProximoPapel(atual) {
+  const alvo = proximoPapel(atual);
+  return { gestor: 'Tornar gestor', atendente: 'Tornar atendente', vendedor: 'Tornar Representante' }[alvo];
+}
+
 async function acaoEquipe(e) {
   const btn = e.currentTarget;
   const id = btn.dataset.id;
   const acao = btn.dataset.acao;
   try {
     if (acao === 'papel') {
-      const novo = btn.dataset.papel === 'gestor' ? 'atendente' : 'gestor';
+      const novo = proximoPapel(btn.dataset.papel);
       const resp = await fetchAutenticado(`${API_BASE}/minha-equipe/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ papel: novo }) });
       const data = await resp.json();
       if (!resp.ok || !data.ok) return alert(data.erro || 'Não foi possível alterar o papel.');
+    } else if (acao === 'email') {
+      const novo = prompt('Novo email de login:', btn.dataset.email || '');
+      if (novo == null) return;
+      const novoNorm = novo.trim().toLowerCase();
+      if (!novoNorm || !novoNorm.includes('@')) return alert('Digite um email válido.');
+      const resp = await fetchAutenticado(`${API_BASE}/minha-equipe/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: novoNorm }) });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) return alert(data.erro || 'Não foi possível alterar o email.');
+      alert('✅ Email atualizado! A pessoa já loga com o novo email (a senha continua a mesma).');
     } else if (acao === 'senha') {
       const nova = prompt('Nova senha provisória (mín. 6 caracteres):');
       if (nova == null) return;
@@ -4147,8 +4234,41 @@ document.getElementById('salvarNumeroBtn').addEventListener('click', async () =>
   finally { setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
 });
 
+// CRM Vendas (Representante): Kanban de EXEMPLO fixo, só pra ilustrar o
+// funil pro prospect — não é dado real de ninguém.
+const CRM_VENDAS_DEMO = [
+  { titulo: '🚪 Chegaram', cor: '#2563eb', cards: [
+    { nome: 'Fernanda M.', info: '💈 Barbearia — leu o QR há 4min' },
+    { nome: 'Carlos R.', info: '🦷 Dentista — leu o QR há 22min' },
+    { nome: 'Juliana P.', info: '✨ Clínica de Estética — leu o QR ontem' }
+  ] },
+  { titulo: '🎁 Retiraram o voucher', cor: '#d97706', cards: [
+    { nome: 'Marcelo A.', info: '💇 Salão — resgatou o presente há 1h' },
+    { nome: 'Beatriz L.', info: '💈 Barbearia — resgatou o presente ontem' }
+  ] },
+  { titulo: '✅ Vieram da recomendação', cor: '#16a34a', cards: [
+    { nome: 'Rafael S.', info: 'Indicado por Marcelo A. — já é cliente' },
+    { nome: 'Patrícia G.', info: 'Indicada por Beatriz L. — resgatou o presente' },
+    { nome: 'Diego F.', info: 'Indicado por Fernanda M. — aguardando retorno' }
+  ] }
+];
+function renderCrmVendasDemo() {
+  const cont = document.getElementById('crmVendasKanban');
+  if (!cont) return;
+  cont.innerHTML = CRM_VENDAS_DEMO.map(col => `
+    <div style="background:var(--surface,#fff); border:1px solid var(--border,#eee); border-radius:12px; padding:12px;">
+      <div style="font-weight:700; margin-bottom:10px; color:${col.cor};">${col.titulo} <span style="color:var(--text-dim); font-weight:400;">(${col.cards.length})</span></div>
+      ${col.cards.map(c => `
+        <div style="background:var(--bg,#FAFAFA); border:1px solid var(--border,#eee); border-radius:8px; padding:8px 10px; margin-bottom:8px;">
+          <div style="font-weight:600; font-size:0.88rem;">${escapeHtml(c.nome)}</div>
+          <div style="font-size:0.78rem; color:var(--text-dim);">${escapeHtml(c.info)}</div>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
 aplicarGating();
 icons();
+renderCrmVendasDemo();
 carregarConfiguracao();
 if (EH_GESTOR) carregarWhatsapp();
 carregarVisaoGeral();
