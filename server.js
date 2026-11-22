@@ -765,6 +765,7 @@ function querRecomendarMais(texto) {
 const NICHOS_DEMO = {
   barbearia: {
     nome: 'Barbearia',
+    textoLink: 'Olá, quero meu presente da sua barbearia',
     mensagemAgradecimento: 'Olá! 💈 Bem-vindo(a) à demonstração do RecomendaLeads para *Barbearias*. Obrigado por testar! Vou te mostrar como seus clientes recomendam amigos e todos ganham. 🙏',
     faixasBonus: [{ quantidade: 1, premio: '🎁 *Exemplo de presente:* um combo Corte + Barba de cortesia no seu retorno! 💈', arquivo: null, link: null, texto: '_(É só um exemplo — na sua barbearia você define o prêmio real: desconto, brinde, combo...)_' }],
     premioRecomendado: 'um Corte + Barba com desconto especial, cortesia de quem te indicou 💈',
@@ -773,6 +774,7 @@ const NICHOS_DEMO = {
   },
   cabeleireiro: {
     nome: 'Cabeleireiro',
+    textoLink: 'Olá, quero meu presente do seu salão',
     mensagemAgradecimento: 'Olá! 💇 Bem-vindo(a) à demonstração do RecomendaLeads para *Cabeleireiros e Salões*. Obrigado por testar! Vou te mostrar como seus clientes recomendam amigos e todos ganham. 🙏',
     faixasBonus: [{ quantidade: 1, premio: '🎁 *Exemplo de presente:* uma escova ou hidratação de cortesia! 💇', arquivo: null, link: null, texto: '_(É só um exemplo — no seu salão você escolhe o prêmio: desconto, tratamento, brinde...)_' }],
     premioRecomendado: 'um serviço com desconto especial, cortesia de quem te indicou 💇',
@@ -781,6 +783,7 @@ const NICHOS_DEMO = {
   },
   dentista: {
     nome: 'Dentista',
+    textoLink: 'Olá, quero meu presente do seu consultório',
     mensagemAgradecimento: 'Olá! 🦷 Bem-vindo(a) à demonstração do RecomendaLeads para *Dentistas e Clínicas Odontológicas*. Obrigado por testar! Vou te mostrar como seus pacientes recomendam amigos e todos ganham. 🙏',
     faixasBonus: [{ quantidade: 1, premio: '🎁 *Exemplo de presente:* uma limpeza (profilaxia) de cortesia! 🦷', arquivo: null, link: null, texto: '_(É só um exemplo — na sua clínica você define o prêmio: avaliação, desconto, clareamento...)_' }],
     premioRecomendado: 'uma avaliação com condição especial, cortesia de quem te indicou 🦷',
@@ -789,6 +792,7 @@ const NICHOS_DEMO = {
   },
   estetica: {
     nome: 'Clínica de Estética',
+    textoLink: 'Olá, quero meu presente da sua clínica',
     mensagemAgradecimento: 'Olá! ✨ Bem-vindo(a) à demonstração do RecomendaLeads para *Clínicas de Estética*. Obrigado por testar! Vou te mostrar como suas clientes recomendam amigas e todas ganham. 🙏',
     faixasBonus: [{ quantidade: 1, premio: '🎁 *Exemplo de presente:* uma sessão de limpeza de pele de cortesia! ✨', arquivo: null, link: null, texto: '_(É só um exemplo — na sua clínica você escolhe o prêmio: sessão, desconto, kit...)_' }],
     premioRecomendado: 'uma sessão com condição especial, cortesia de quem te indicou ✨',
@@ -7220,7 +7224,7 @@ app.post('/minha-config', exigirLoginEmpresa, exigirGestor, exigirEscopoOferta, 
 const NICHOS_VALIDOS = ['barbearia', 'cabeleireiro', 'dentista', 'estetica'];
 // Campos que o dono pode personalizar por nicho.
 const CAMPOS_NICHO = new Set([
-  'nome', 'mensagemAgradecimento', 'mensagemPedeNome', 'mensagemPedeVendedor',
+  'nome', 'textoLink', 'mensagemAgradecimento', 'mensagemPedeNome', 'mensagemPedeVendedor',
   'mensagemPedeContatos', 'mensagemColeta', 'mensagemValidarAmigo',
   'mensagemInicialRecomendado', 'mensagemAntesPresente', 'mensagemAguardandoConfirmacao',
   'mensagemFechamentoRecomendado', 'premioRecomendado', 'arquivoRecomendado',
@@ -7284,7 +7288,7 @@ app.post('/minha-mercados', exigirLoginEmpresa, exigirGestor, exigirMatriz, asyn
     config.nichos = config.nichos || {};
     const existe = s => !!(NICHOS_DEMO[s] || config.nichos[s]);
     if (existe(slug)) { let i = 2; while (existe(`${slug}-${i}`)) i++; slug = `${slug}-${i}`; }
-    config.nichos[slug] = { nome };
+    config.nichos[slug] = { nome, textoLink: `Olá, quero meu presente aqui (${nome})` };
     await EMPRESAS_COL().doc(req.empresaLogin.id).set({ configuracao: config }, { merge: true });
     res.json({ ok: true, slug, nome, lista: listaNichos(config) });
   } catch (err) {

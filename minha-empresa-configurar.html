@@ -256,7 +256,7 @@
 
         <div class="card" style="margin-top:16px">
           <div class="block-title"><i data-lucide="link"></i> Links de demonstração</div>
-          <p class="sub">Envie o link da área ao cliente. Ao tocar, ele abre uma conversa com o robô já no modo daquela área.</p>
+          <p class="sub">Envie o link da área ao cliente. Ao tocar, ele abre uma conversa com o robô já no modo daquela área. A mensagem que já vem escrita é a que você edita em "Mensagem do link/QR Code" acima — o código no final (ex: #a3f9) é só pra identificar que é um teste, não aparece pro cliente perceber.</p>
           <label class="label">Número do robô (usado nos links)</label>
           <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
             <input class="input" type="text" id="nichoNumeroInput" placeholder="Ex: 5511940816872" style="max-width:240px;">
@@ -3802,6 +3802,7 @@ function codigoNicho(slug) {
 }
 const CAMPOS_NICHO_UI = [
   { campo: 'nome', label: 'Nome do negócio-exemplo', rows: 1 },
+  { campo: 'textoLink', label: 'Mensagem do link/QR Code (o código de identificação do teste entra sozinho no final)', rows: 2 },
   { campo: 'mensagemAgradecimento', label: 'Saudação / boas-vindas (1ª mensagem)', rows: 3 },
   { campo: 'mensagemPedeNome', label: 'Pedir o nome', rows: 2 },
   { campo: 'mensagemPedeVendedor', label: 'Perguntar quem atendeu', rows: 2 },
@@ -4072,6 +4073,18 @@ document.getElementById('salvarNichoBtn').addEventListener('click', async () => 
   finally { btn.disabled = false; setTimeout(() => { st.textContent = ''; st.className = 'status-msg'; }, 4000); }
 });
 
+// Mensagem do link/QR dessa área: o que o dono personalizou > o padrão da área
+// > um texto genérico de fallback. O código opaco (#code) entra sempre no final,
+// à parte, pra não quebrar a detecção no servidor mesmo que o texto mude.
+function textoLinkNicho(slug) {
+  const over = (nichosData && nichosData.nichos && nichosData.nichos[slug]) || {};
+  if (over.textoLink) return over.textoLink;
+  const def = (nichosData && nichosData.defaults && nichosData.defaults[slug]) || {};
+  if (def.textoLink) return def.textoLink;
+  const nome = (nichoInfo(slug) || {}).nome || slug;
+  return `Olá, quero meu presente aqui (${nome})`;
+}
+
 function renderNichosLinks() {
   const cont = document.getElementById('nichosLinks');
   const inp = document.getElementById('nichoNumeroInput');
@@ -4080,7 +4093,7 @@ function renderNichosLinks() {
   if (!nichosLista.length) { cont.innerHTML = '<p class="sub">Crie um mercado pra gerar os links.</p>'; return; }
   const num55 = num.startsWith('55') ? num : '55' + num;
   cont.innerHTML = nichosLista.map(n => {
-    const texto = `Quero testar o RecomendaLeads #${codigoNicho(n.slug)}`;
+    const texto = `${textoLinkNicho(n.slug)} #${codigoNicho(n.slug)}`;
     const link = `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
     const nomeSeg = escapeHtml(n.nome);
