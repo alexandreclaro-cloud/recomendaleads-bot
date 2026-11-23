@@ -7325,7 +7325,6 @@ const CAMPOS_NICHO = new Set([
   'mensagemInicialRecomendado', 'mensagemAntesPresente', 'mensagemAguardandoConfirmacao',
   'mensagemFechamentoRecomendado', 'premioRecomendado', 'arquivoRecomendado',
   'linkRecomendado', 'textoRecomendado', 'faixasBonus', 'bannerFundo',
-  'bannerFundoQrX', 'bannerFundoQrY', 'bannerFundoQrW',
   // Fluxo completo pós-presente (pra o demo ficar 1:1 com o cliente real).
   'posMensagemConexao', 'posMenuPrincipal', 'linkAgendamento', 'posLinkAgendamento',
   'posPerguntaPeriodo', 'posPerguntaDia', 'posConfirmacaoAgendamento', 'posConfirmacaoCheck',
