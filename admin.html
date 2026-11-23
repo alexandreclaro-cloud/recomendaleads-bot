@@ -682,19 +682,25 @@ async function carregarNichosDemoVendedor() {
       const limpo = bruto.replace(/[*_]/g, '').replace(/^🎁\s*/, '').replace(/^Exemplo de presente:\s*/i, '').trim();
       return limpo || 'um presente especial';
     };
-    cont.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px;">` + (data.lista || []).map(n => {
+    cont.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px;">` + (data.lista || []).map(n => {
       const texto = `${textoLink(n.slug)} #${codigoNicho(n.slug)}`;
       const link = `https://wa.me/${num55}?text=${encodeURIComponent(texto)}`;
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
       const nomeSeg = esc(n.nome);
       const premioSeg = esc(premioLink(n.slug));
       const fundoSeg = esc(((data.nichos && data.nichos[n.slug]) || {}).bannerFundo || '');
-      return `<button type="button" class="btn-ver-qr-vend" data-qr="${qrUrl}" data-nome="${nomeSeg}" data-premio="${premioSeg}" data-fundo="${fundoSeg}" style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:18px 10px; border:2px solid var(--border,#e3e6ea); border-radius:14px; background:var(--surface,#fff); cursor:pointer; color:inherit;">
-        <span style="font-size:2.1rem; line-height:1;">${emojiNicho(n.slug)}</span>
-        <span style="font-weight:700; font-size:0.92rem; text-align:center;">${n.nome}</span>
-        <span style="font-size:0.72rem; color:var(--brand,#2563eb); font-weight:600;">👆 Toque pro banner</span>
-      </button>`;
+      return `<div style="border:2px solid var(--border,#e3e6ea); border-radius:16px; overflow:hidden; background:var(--surface,#fff);">
+        <button type="button" class="btn-ver-qr-vend" data-qr="${qrUrl}" data-nome="${nomeSeg}" data-premio="${premioSeg}" data-fundo="${fundoSeg}" style="display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; padding:26px 14px 18px; border:none; background:none; cursor:pointer; color:inherit;">
+          <span style="font-size:2.6rem; line-height:1;">${emojiNicho(n.slug)}</span>
+          <span style="font-weight:700; font-size:1.08rem; text-align:center;">${n.nome}</span>
+          <span style="font-size:0.8rem; color:var(--brand,#2563eb); font-weight:600;">👆 Toque pra mostrar o banner</span>
+        </button>
+        <button class="btn-copiar-link-vend" data-link="${esc(link)}" style="display:block; width:100%; border:none; border-top:1px solid var(--border,#e3e6ea); background:var(--surface-2,#f8f9fb); color:var(--text-dim,#6b7280); font-size:0.82rem; font-weight:600; padding:12px; cursor:pointer;">🔗 Copiar link</button>
+      </div>`;
     }).join('') + `</div>`;
+    cont.querySelectorAll('.btn-copiar-link-vend').forEach(b => b.addEventListener('click', () => {
+      navigator.clipboard.writeText(b.dataset.link).then(() => { const t = b.textContent; b.textContent = '✅ Copiado!'; setTimeout(() => b.textContent = t, 1500); });
+    }));
     cont.querySelectorAll('.btn-ver-qr-vend').forEach(el => el.addEventListener('click', () => abrirQrTelaCheiaVendedor(el.dataset.qr, el.dataset.nome, el.dataset.premio, el.dataset.fundo)));
   } catch (e) { cont.innerHTML = '<p class="muted">Não foi possível carregar os nichos.</p>'; }
 }
