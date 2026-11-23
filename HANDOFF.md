@@ -57,6 +57,18 @@ estas funcionalidades mais recentes **já estão em produção**:
   contrato com preço real, **Pix automático via Asaas** libera o acesso na
   hora. Programa de Representantes/Afiliados no `/admin` (comissão 20%, paga
   manual) com CTA pra criar conta no Asaas.
+- **Rankings da iFinc (Mesa e Head)** — placar de vendas para a TV, com
+  lançamento diário e acumulado do mês (`rankingmesa.js` +
+  `ranking-mesa.html`). **No ar:**
+  - Mesa (TV): https://recomendaleads.com.br/rankingmesa
+  - Mesa (lançar): https://recomendaleads.com.br/rankingmesa/admin
+  - Head (TV): https://recomendaleads.com.br/rankinghead
+  - Head (lançar): https://recomendaleads.com.br/rankinghead/admin
+
+  Os dados começaram com a planilha "IFinc Mesa (Respostas)" de 22/10/2026,
+  e desde então o lançamento é feito direto no `/admin`. O `/admin` abre
+  **sem senha**, porque não há `RANKINGMESA_SENHA` no Render. Quem tiver o
+  link pode alterar os números, então só o link da TV deve ser compartilhado.
 - **Landing de captação de parceiros** em `/parceiro` (`parceiro.html`).
   ⚠️ **Esse arquivo fica SEMPRE fora dos commits** — o Alexandre edita por
   fora (está modificado no working tree de propósito; não commitar).
@@ -89,7 +101,13 @@ estas funcionalidades mais recentes **já estão em produção**:
    por completo** ("isso vai ficar uma bosta"). Ele monta a arte final (foto +
    QR já embutido) por fora e só faz upload. Com `bannerFundo`, o sistema **só
    exibe a imagem**, sem desenhar nada por cima. **NÃO reintroduzir overlay.**
-5. **Emojis corretos por nicho** — adicionado 🐶 (pet-shop) e 🍽️ (restaurante)
+5. **Rankings iFinc (outubro a novembro de 2026).** O ranking começou como
+   painel no Claude lendo o Google Sheets e virou um módulo do site.
+   Também foram feitos: TV e admin separados, desempate pelas pastas abertas
+   (caso Jaqueline), tudo numa tela só (TV e "Ver ranking" no admin), `/admin`
+   sem senha e a versão Head, que usa o mesmo motor. Em 11/11 o Alexandre só
+   pediu os links, sem mudanças.
+6. **Emojis corretos por nicho** — adicionado 🐶 (pet-shop) e 🍽️ (restaurante)
    no `NICHOS_EMOJI` (`admin.html` e `minha-empresa-configurar.html`). **No ar.**
 
 Validação de tudo: `node --check server.js` + check dos scripts inline dos
@@ -111,6 +129,12 @@ HTML. Push sempre com confirmação explícita do Alexandre.
   estender `cadenciaFollowupRecomendado` pra multi-toque (ex.: 1d/3d/7d/14d)
   com textos distintos. ⚠️ Passos fora da janela de 24h exigem **template da
   API Oficial** — não dá pra mandar texto livre.
+- **Subdomínios dos rankings** (`rankingmesa.` e
+  `rankinghead.recomendaleads.com.br`) **ainda não foram cadastrados** no
+  Render (Settings → Custom Domains) nem no DNS (CNAME). Até isso ser feito,
+  use os endereços `/rankingmesa` e `/rankinghead`. Se quiser senha no
+  `/admin` de novo, basta criar `RANKINGMESA_SENHA` no Render, sem mexer no
+  código.
 - **Melhorias da página de vendas** — levantadas (preço, CTAs, repetição),
   **nenhuma decidida nem implementada**.
 - **Backup no pen drive (`BACKUP-ALEXANDRE`)** já falhou parcialmente em
@@ -132,7 +156,9 @@ HTML. Push sempre com confirmação explícita do Alexandre.
    reforçar CTA de fechamento / enxugar repetições) — 1 por vez.
 4. **Migrações Z-API → API Oficial** seguindo a regra "um número = um
    sistema" (não deixar o mesmo número ativo nos dois, senão a mensagem some).
-5. Novo nicho/card de demonstração: já nasce no padrão visual atual (grid,
+5. **Rankings iFinc:** se o Alexandre quiser, apontar os subdomínios
+   (Render + DNS) e decidir se o `/admin` volta a ter senha.
+6. Novo nicho/card de demonstração: já nasce no padrão visual atual (grid,
    emoji específico, "Copiar link") **nos dois painéis** ao mesmo tempo.
 
 ## 5. Como continuar com segurança (resumo das regras — detalhe no CLAUDE.md)
@@ -153,5 +179,9 @@ HTML. Push sempre com confirmação explícita do Alexandre.
 Tocados em paralelo, cada um em pasta separada, **sem relação de código com
 este repo**: "**80+**" (longevidade, `~/projeto-80mais`), "**ProspectAI**"
 (CRM de prospecção B2B, `~/Downloads/prospectai-project`), "**Aquecimento de
-chip**" (`~/aquecimento-chip`) e "**Visita Vet**" (visitavet.com.br). Se
+chip**" (`~/aquecimento-chip`) e "**Visita Vet**" (visitavet.com.br). Também em paralelo estão o
+**iFincZap**, um CRM central para os 20 números de WhatsApp Business dos
+consultores da iFinc, em planejamento, e os negócios de fotos temáticas e de
+música personalizada. (Só os **Rankings iFinc** e o teste do Evolution
+"iFinZap" moram neste repo.) Se
 aparecer um desses nomes, **não é este projeto** — não misturar.

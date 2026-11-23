@@ -48,6 +48,13 @@ Render com deploy automático a cada push em `main`.
   **⚠️ Nunca commitar/alterar via automação** — fica sempre fora dos commits
   por instrução permanente do Alexandre (ele edita isso por fora).
 - `recomendometro-*.html` — quiz gamificado por nicho (landing de Meta Ads).
+- `rankingmesa.js` + `ranking-mesa.html` — **Rankings da iFinc** (placar de
+  vendas para TV), um projeto à parte que só usa o mesmo servidor. Um único
+  módulo serve as duas equipes: **Mesa** (closers) e **Head** (3 vendedores).
+  Registrado em `server.js` com `require('./rankingmesa')(app, db, rateLimit)`
+  (~linha 6079). Os dados ficam no Firestore, nas coleções
+  `rankingmesa_closers`/`rankingmesa_lancamentos` e
+  `rankinghead_closers`/`rankinghead_lancamentos`. Detalhes na seção 6.
 - `docs/` — notas de roteiro de mensagens e schema vs. spec de melhorias.
 - `PROJETO.md` — documento de continuidade técnico completo (arquitetura,
   modelo de dados, glossário, segurança, decisões). **Leia antes de mudanças
@@ -69,7 +76,15 @@ Render com deploy automático a cada push em `main`.
     verdade — o servidor real tem **cron jobs em background que mandam
     mensagens reais de WhatsApp**, então rodá-lo localmente é arriscado.
 - **Deploy**: `git push origin main` → Render detecta e faz o deploy
-  sozinho. Não existe staging; `main` é produção. **Só dar push depois de
+  sozinho em 3 a 5 minutos. Depois, peça ao Alexandre para recarregar a
+  página com **Cmd + Shift + R**, porque o navegador guarda a versão antiga.
+  Comandos exatos usados:
+  ```
+  git add <arquivos>   # nunca parceiro.html, nunca .env
+  git -c user.name="Alexandre Claro" -c user.email="alexandreclaro@pdnpro.com" commit -m "mensagem"
+  git fetch -q origin main && git rebase -q origin/main && git push -q origin HEAD:main
+  ```
+  Não existe staging; `main` é produção. **Só dar push depois de
   confirmação explícita do Alexandre** (ele quer ver/aprovar antes).
 - Variáveis obrigatórias no Render: `JWT_SECRET`, `ADMIN_SECRET`,
   `FIREBASE_SERVICE_ACCOUNT`. Ver seção 5 (segredos) e seção 9 do
@@ -83,6 +98,9 @@ Render com deploy automático a cada push em `main`.
   `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` (se Stripe estiver ativo),
   `ANTHROPIC_API_KEY`, `META_APP_SECRET` (assinatura do webhook da Meta),
   `WA_PROXY_URL` (proxy residencial pro QR do Baileys, se usado).
+- Rankings iFinc: `RANKINGMESA_SENHA` e `RANKINGHEAD_SENHA` (opcionais; a
+  Head usa a da Mesa se a dela não existir). **Hoje nenhuma das duas está
+  criada no Render, de propósito**, e por isso o `/admin` abre sem senha.
 - Credenciais de WhatsApp por empresa (Z-API `instanceId`/`token`/
   `clientToken`, ou token/phone-id da API Oficial da Meta) ficam salvas
   **no Firestore**, por empresa — não são variáveis globais.
@@ -121,11 +139,43 @@ Render com deploy automático a cada push em `main`.
   real é **API Oficial da Meta** ou modelo inbound — não há conserto no canal
   não-oficial (Z-API/Baileys/Evolution sofrem o mesmo). Há "Teste de entrega"
   no painel que mostra o `errorCode` real do `DeliveryCallback`.
+- **Rankings iFinc (Mesa e Head):**
+  - **Endereços:** a TV usa `recomendaleads.com.br/rankingmesa` e
+    `/rankinghead`; o lançamento usa `/rankingmesa/admin` e
+    `/rankinghead/admin`. Os subdomínios `rankingmesa.` e
+    `rankinghead.recomendaleads.com.br` já estão no código, mas só passam a
+    funcionar depois de cadastrados no Render (Custom Domains) e no DNS
+    (CNAME).
+  - **Tela da TV separada do admin:** quem vê a tela compartilhada não vê
+    nenhum controle de lançamento.
+  - **Placar acumula o mês inteiro** e zera no dia 1. Um seletor de data
+    permite lançar ou corrigir qualquer dia.
+  - **Ordem do ranking:** 1º valor dos contratos assinados, 2º pastas
+    fechadas, 3º pastas abertas (quantidade e valor). A ordem alfabética foi
+    descartada como desempate porque deixava em último quem tinha mais
+    pastas abertas.
+  - **Visual de placar:** cores sólidas, sem brilho, gradiente ou
+    transparência (pedido explícito). Ouro, prata e bronze do 1º ao 3º,
+    verde-água no 4º e 5º, vermelho ("abaixo da meta mínima") do 6º em
+    diante. Todos os participantes e a linha TOTAL cabem numa tela, sem
+    rolagem e sem centavos na TV. Isso vale também para a aba "Ver ranking"
+    dentro do `/admin`.
+  - **Recusado pelo Alexandre:** solução via Google Apps Script ("NÃO
+    QUERO"). O ranking fica dentro do site do RecomendaLeads.
 - Mais decisões/histórico técnico completo: seção 8 do `PROJETO.md`.
 
 ## 7. Como o Alexandre gosta de trabalhar (regras de colaboração)
 
 - **Responder sempre em português.** Sem exceção.
+- Respostas **curtas e diretas**. Ele aprova com poucas palavras ("perfeito",
+  "gostei", "ok") e corrige seco ("piorou", "não funciona"), muitas vezes em
+  maiúsculas ("QUAL O LINK?"). Nos dois casos, agir logo e justificar em uma
+  ou duas frases.
+- Quando pedir um link, dar o endereço completo com `https://`, pronto para
+  clicar.
+- Em todo material, usar "**recomendação**", **nunca "indicação"**.
+- **Não gastar créditos pagos** (Higgsfield, APIs pagas) sem antes ter
+  certeza de que vai funcionar e sem a aprovação dele.
 - Ele manda prints de tela pra mostrar bugs/problemas visuais — analisar a
   imagem antes de propor fix.
 - **Avançar 1 funcionalidade por vez**, não empacotar várias mudanças numa
