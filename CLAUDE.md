@@ -112,6 +112,15 @@ Render com deploy automático a cada push em `main`.
   "indicar".
 - **Pré-pago via API Oficial**: cobra por mensagem (marketing ~R$0,35,
   utility ~R$0,05, serviço 24h grátis), bloqueia envio quando o saldo zera.
+- **Fluxo curto do recomendador é GLOBAL** (`FLUXO_CURTO_GLOBAL = true` em
+  `server.js`): agradecimento → nome → contatos → prêmio → 1 lembrete → fim.
+  Elimina o "Modo Full" e todas as perguntas de "já avisou os amigos?" pra
+  reduzir abandono. É reversível (trocar pra `false`). Pergunta de vendedor
+  fica condicional (só se a empresa tem vendedores).
+- **Não-entrega no Z-API = SHADOW_BAN do WhatsApp**, não é bug nosso. O fix
+  real é **API Oficial da Meta** ou modelo inbound — não há conserto no canal
+  não-oficial (Z-API/Baileys/Evolution sofrem o mesmo). Há "Teste de entrega"
+  no painel que mostra o `errorCode` real do `DeliveryCallback`.
 - Mais decisões/histórico técnico completo: seção 8 do `PROJETO.md`.
 
 ## 7. Como o Alexandre gosta de trabalhar (regras de colaboração)
