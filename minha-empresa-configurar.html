@@ -3901,7 +3901,7 @@ document.getElementById('salvarFollowupNaoAbriuBtn').addEventListener('click', a
 });
 
 // ===================== DEMONSTRAÇÃO POR NICHO =====================
-const NICHOS_EMOJI = { barbearia: '💈', cabeleireiro: '💇', dentista: '🦷', estetica: '✨' };
+const NICHOS_EMOJI = { barbearia: '💈', cabeleireiro: '💇', dentista: '🦷', estetica: '✨', 'pet-shop': '🐶', restaurante: '🍽️' };
 function emojiNicho(slug) { return NICHOS_EMOJI[slug] || '🎯'; }
 // Código opaco do nicho (mesmo cálculo do servidor) — vai no link sem revelar o mercado.
 function codigoNicho(slug) {
@@ -4122,16 +4122,33 @@ function renderNichoPremios() {
       <div class="hint" id="nichoArqRecStatus"></div>
     </div>`;
   const bannerFundo = valorEfetivoNicho('bannerFundo') || '';
+  const qrX = valorEfetivoNicho('bannerFundoQrX'); const qrY = valorEfetivoNicho('bannerFundoQrY'); const qrW = valorEfetivoNicho('bannerFundoQrW');
   html += `
     <div class="card" style="box-shadow:none; border:1px dashed var(--border);">
       <div style="font-weight:700; margin-bottom:8px;">🖼️ Banner do QR Code (arte de fundo, opcional)</div>
-      <p class="sub" style="margin-top:0;">Uma foto/arte pra usar no lugar do banner simples, quando mostrar o QR em tela cheia — deixe um espaço livre pro QR aparecer no canto inferior esquerdo da imagem. Sem imagem, usa o banner padrão (logo + texto + QR).</p>
+      <p class="sub" style="margin-top:0;">Uma foto/arte pra usar no lugar do banner simples, quando mostrar o QR em tela cheia. Sem imagem, usa o banner padrão (logo + texto + QR).</p>
       <div class="arquivo-row">
         <input class="input" id="nichoBannerFundo" value="${esc(bannerFundo)}" placeholder="Envie uma imagem ou cole um link">
         <button type="button" class="btn btn-secondary" id="nichoBannerFundoBtn"><i data-lucide="upload"></i> Enviar</button>
         <input type="file" id="nichoBannerFundoFile" accept="image/jpeg,image/png,image/webp" style="display:none">
       </div>
       <div class="hint" id="nichoBannerFundoStatus"></div>
+      <div id="nichoBannerQrPosWrap" style="display:${bannerFundo ? 'block' : 'none'}; margin-top:12px;">
+        <p class="sub" style="margin-top:0;">Arraste o quadrado verde pra onde o QR Code real deve aparecer nessa imagem (puxe a bolinha no canto pra ajustar o tamanho):</p>
+        <div id="nichoBannerPreviewWrap" style="position:relative; display:inline-block; max-width:380px; width:100%; line-height:0; border-radius:10px; overflow:visible; touch-action:none;">
+          <img id="nichoBannerPreviewImg" src="${esc(bannerFundo)}" style="display:block; width:100%; border-radius:10px;">
+          <div id="nichoBannerQrBox" style="position:absolute; aspect-ratio:1/1; border:3px dashed #16a34a; background:rgba(22,163,74,.18); box-sizing:border-box; cursor:move; display:flex; align-items:center; justify-content:center; color:#16a34a; font-size:11px; font-weight:800;">
+            QR
+            <div id="nichoBannerQrHandle" style="position:absolute; right:-7px; bottom:-7px; width:16px; height:16px; background:#16a34a; border:2px solid #fff; border-radius:50%; cursor:nwse-resize;"></div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:8px; flex-wrap:wrap;">
+          <input type="hidden" id="nichoBannerQrX" value="${esc(qrX != null && qrX !== '' ? qrX : 23)}">
+          <input type="hidden" id="nichoBannerQrY" value="${esc(qrY != null && qrY !== '' ? qrY : 10)}">
+          <input type="hidden" id="nichoBannerQrW" value="${esc(qrW != null && qrW !== '' ? qrW : 13)}">
+          <button type="button" class="btn btn-secondary" id="nichoBannerQrPreviewBtn"><i data-lucide="eye"></i> Pré-visualizar em tela cheia</button>
+        </div>
+      </div>
     </div>`;
   cont.innerHTML = html;
   cont.querySelectorAll('.nicho-faixa').forEach(card => {
@@ -4153,8 +4170,89 @@ function renderNichoPremios() {
   const bgArq = document.getElementById('nichoBannerFundo');
   const bgSt = document.getElementById('nichoBannerFundoStatus');
   mostrarPreviewArquivo(bgArq, bannerFundo);
-  if (bgBtn && bgFile) { bgBtn.addEventListener('click', () => bgFile.click()); bgFile.addEventListener('change', () => uploadArquivo(bgFile, bgArq, bgSt)); }
+  if (bgBtn && bgFile) {
+    bgBtn.addEventListener('click', () => bgFile.click());
+    bgFile.addEventListener('change', async () => { await uploadArquivo(bgFile, bgArq, bgSt); atualizarPreviewBannerQr(); });
+  }
+  if (bgArq) bgArq.addEventListener('change', atualizarPreviewBannerQr);
+  setupBannerQrDrag();
+  const qrPrevBtn = document.getElementById('nichoBannerQrPreviewBtn');
+  if (qrPrevBtn) qrPrevBtn.addEventListener('click', () => {
+    const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent('https://recomendaleads.com.br');
+    const x = parseFloat(document.getElementById('nichoBannerQrX').value) || 23;
+    const y = parseFloat(document.getElementById('nichoBannerQrY').value) || 10;
+    const w = parseFloat(document.getElementById('nichoBannerQrW').value) || 13;
+    abrirQrTelaCheia(qrUrl, nichoAtual, premioNicho(nichoAtual), document.getElementById('nichoBannerFundo').value.trim(), { x, y, w });
+  });
   if (window.lucide) lucide.createIcons();
+}
+
+// Atualiza a prévia do banner (imagem + caixinha arrastável do QR) depois de
+// enviar/trocar a arte de fundo, sem apagar o que ainda não foi salvo no resto
+// do formulário (por isso não dá pra só re-renderizar tudo de novo aqui).
+function atualizarPreviewBannerQr() {
+  const url = (document.getElementById('nichoBannerFundo') || {}).value || '';
+  const wrap = document.getElementById('nichoBannerQrPosWrap');
+  const img = document.getElementById('nichoBannerPreviewImg');
+  if (!wrap || !img) return;
+  if (url) { wrap.style.display = 'block'; img.src = url; }
+  else { wrap.style.display = 'none'; }
+}
+
+// Arrasta/redimensiona o quadrado verde sobre a prévia da imagem pra marcar
+// onde o QR real deve entrar — tudo em % (left/bottom/width), guardado nos
+// 3 inputs escondidos que vão junto no "Salvar". Sem biblioteca, só Pointer
+// Events (funciona com mouse e touch).
+function setupBannerQrDrag() {
+  const wrap = document.getElementById('nichoBannerPreviewWrap');
+  const box = document.getElementById('nichoBannerQrBox');
+  const handle = document.getElementById('nichoBannerQrHandle');
+  const xEl = document.getElementById('nichoBannerQrX');
+  const yEl = document.getElementById('nichoBannerQrY');
+  const wEl = document.getElementById('nichoBannerQrW');
+  if (!wrap || !box || !xEl || !yEl || !wEl) return;
+  function aplicar() {
+    box.style.left = (parseFloat(xEl.value) || 0) + '%';
+    box.style.bottom = (parseFloat(yEl.value) || 0) + '%';
+    box.style.width = (parseFloat(wEl.value) || 13) + '%';
+  }
+  aplicar();
+  let arrastando = null;
+  box.addEventListener('pointerdown', ev => {
+    if (ev.target === handle) return;
+    ev.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    arrastando = { tipo: 'mover', x0: ev.clientX, y0: ev.clientY, left0: parseFloat(xEl.value) || 0, bottom0: parseFloat(yEl.value) || 0, rw: rect.width, rh: rect.height };
+    box.setPointerCapture(ev.pointerId);
+  });
+  if (handle) handle.addEventListener('pointerdown', ev => {
+    ev.preventDefault(); ev.stopPropagation();
+    const rect = wrap.getBoundingClientRect();
+    arrastando = { tipo: 'redimensionar', x0: ev.clientX, w0: parseFloat(wEl.value) || 13, rw: rect.width };
+    handle.setPointerCapture(ev.pointerId);
+  });
+  function mover(ev) {
+    if (!arrastando) return;
+    if (arrastando.tipo === 'mover') {
+      const dx = ev.clientX - arrastando.x0, dy = ev.clientY - arrastando.y0;
+      const largura = parseFloat(wEl.value) || 13;
+      let left = arrastando.left0 + (dx / arrastando.rw * 100);
+      let bottom = arrastando.bottom0 - (dy / arrastando.rh * 100);
+      left = Math.max(0, Math.min(100 - largura, left));
+      bottom = Math.max(0, Math.min(95, bottom));
+      xEl.value = left.toFixed(1); yEl.value = bottom.toFixed(1);
+    } else {
+      const dx = ev.clientX - arrastando.x0;
+      let largura = arrastando.w0 + (dx / arrastando.rw * 100);
+      largura = Math.max(4, Math.min(60, largura));
+      wEl.value = largura.toFixed(1);
+    }
+    aplicar();
+  }
+  box.addEventListener('pointermove', mover);
+  if (handle) handle.addEventListener('pointermove', mover);
+  box.addEventListener('pointerup', () => arrastando = null);
+  if (handle) handle.addEventListener('pointerup', () => arrastando = null);
 }
 
 document.getElementById('salvarNichoPremiosBtn').addEventListener('click', async () => {
@@ -4174,9 +4272,13 @@ document.getElementById('salvarNichoPremiosBtn').addEventListener('click', async
   const premioRecomendado = premioRecEl ? premioRecEl.value.trim() : '';
   const bgEl = document.getElementById('nichoBannerFundo');
   const bannerFundo = (bgEl ? bgEl.value : '').trim() || null;
+  const qrXEl = document.getElementById('nichoBannerQrX'), qrYEl = document.getElementById('nichoBannerQrY'), qrWEl = document.getElementById('nichoBannerQrW');
+  const bannerFundoQrX = qrXEl ? parseFloat(qrXEl.value) : null;
+  const bannerFundoQrY = qrYEl ? parseFloat(qrYEl.value) : null;
+  const bannerFundoQrW = qrWEl ? parseFloat(qrWEl.value) : null;
   btn.disabled = true; st.textContent = 'Salvando...'; st.className = 'status-msg';
   try {
-    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos/${nichoAtual}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ faixasBonus: faixas, arquivoRecomendado, premioRecomendado, bannerFundo }) });
+    const resp = await fetchAutenticado(`${API_BASE}/minha-nichos/${nichoAtual}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ faixasBonus: faixas, arquivoRecomendado, premioRecomendado, bannerFundo, bannerFundoQrX, bannerFundoQrY, bannerFundoQrW }) });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       if (nichosData) { nichosData.nichos = nichosData.nichos || {}; nichosData.nichos[nichoAtual] = data.nicho; }
@@ -4247,9 +4349,13 @@ function renderNichosLinks() {
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
     const nomeSeg = escapeHtml(n.nome);
     const premioSeg = escapeHtml(premioNicho(n.slug));
-    const bannerFundoSeg = escapeHtml(((nichosData && nichosData.nichos && nichosData.nichos[n.slug]) || {}).bannerFundo || '');
+    const nCfg = ((nichosData && nichosData.nichos && nichosData.nichos[n.slug]) || {});
+    const bannerFundoSeg = escapeHtml(nCfg.bannerFundo || '');
+    const qrX = nCfg.bannerFundoQrX != null ? nCfg.bannerFundoQrX : 23;
+    const qrY = nCfg.bannerFundoQrY != null ? nCfg.bannerFundoQrY : 10;
+    const qrW = nCfg.bannerFundoQrW != null ? nCfg.bannerFundoQrW : 13;
     return `<div style="border:2px solid var(--border,#e3e6ea); border-radius:16px; overflow:hidden; background:var(--surface,#fff);">
-      <button type="button" class="btn-ver-qr" data-qr="${qrUrl}" data-nome="${nomeSeg}" data-premio="${premioSeg}" data-fundo="${bannerFundoSeg}" style="display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; padding:26px 14px 18px; border:none; background:none; cursor:pointer; color:inherit;">
+      <button type="button" class="btn-ver-qr" data-qr="${qrUrl}" data-nome="${nomeSeg}" data-premio="${premioSeg}" data-fundo="${bannerFundoSeg}" data-qrx="${qrX}" data-qry="${qrY}" data-qrw="${qrW}" style="display:flex; flex-direction:column; align-items:center; gap:10px; width:100%; padding:26px 14px 18px; border:none; background:none; cursor:pointer; color:inherit;">
         <span style="font-size:2.6rem; line-height:1;">${emojiNicho(n.slug)}</span>
         <span style="font-weight:700; font-size:1.08rem; text-align:center;">${n.nome}</span>
         <span style="font-size:0.8rem; color:var(--brand,#b8860b); font-weight:600;">👆 Toque pra mostrar o banner</span>
@@ -4260,7 +4366,7 @@ function renderNichosLinks() {
   cont.querySelectorAll('.btn-copiar-link').forEach(b => b.addEventListener('click', () => {
     navigator.clipboard.writeText(b.dataset.link).then(() => { const t = b.textContent; b.textContent = '✅ Copiado!'; setTimeout(() => b.textContent = t, 1500); });
   }));
-  cont.querySelectorAll('.btn-ver-qr').forEach(el => el.addEventListener('click', () => abrirQrTelaCheia(el.dataset.qr, el.dataset.nome, el.dataset.premio, el.dataset.fundo)));
+  cont.querySelectorAll('.btn-ver-qr').forEach(el => el.addEventListener('click', () => abrirQrTelaCheia(el.dataset.qr, el.dataset.nome, el.dataset.premio, el.dataset.fundo, { x: parseFloat(el.dataset.qrx), y: parseFloat(el.dataset.qry), w: parseFloat(el.dataset.qrw) })));
 }
 
 // Banner "totem" em tela cheia — pensado pro vendedor usar no próprio
@@ -4268,11 +4374,14 @@ function renderNichosLinks() {
 // prêmio + QR, ou a arte própria do nicho se tiver uma) pro cliente escanear
 // na hora. Tem um botão pra girar 90° e ficar bem grande, tipo o totem de
 // acrílico que fica no balcão.
-// Com arte própria (bannerFundo): o QR real entra posicionado no canto
-// inferior esquerdo da imagem (combinado com o "deixe um espaço livre" na
-// dica do upload) — não tem como adivinhar a posição certa pra qualquer
-// foto, então assume sempre esse mesmo canto.
-function abrirQrTelaCheia(qrUrl, nome, premio, bannerFundo) {
+// Com arte própria (bannerFundo): o QR real entra na posição marcada pelo
+// dono na prévia arrastável (qrPos.x/y/w, em %) — cada foto tem sua própria
+// posição salva, já que a composição muda de imagem pra imagem.
+function abrirQrTelaCheia(qrUrl, nome, premio, bannerFundo, qrPos) {
+  const pos = qrPos || {};
+  const qrLeft = (Number.isFinite(pos.x) ? pos.x : 23) + '%';
+  const qrBottom = (Number.isFinite(pos.y) ? pos.y : 10) + '%';
+  const qrWidth = (Number.isFinite(pos.w) ? pos.w : 13) + '%';
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.94);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;';
   const premioTxt = premio || 'um presente especial';
@@ -4283,7 +4392,7 @@ function abrirQrTelaCheia(qrUrl, nome, premio, bannerFundo) {
   const cardHtml = bannerFundo
     ? `<div id="totemCard" style="position:relative; display:inline-block; line-height:0; border-radius:18px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.45); transition:transform .25s, max-width .25s, max-height .25s;">
         <img src="${escapeHtml(bannerFundo)}" alt="${escapeHtml(nome)}" style="display:block; width:auto; height:auto; max-width:94vw; max-height:82vh;">
-        <img src="${qrGrande}" alt="QR Code ${escapeHtml(nome)}" style="position:absolute; left:23%; bottom:10%; width:13%; border-radius:6px;">
+        <img src="${qrGrande}" alt="QR Code ${escapeHtml(nome)}" style="position:absolute; left:${qrLeft}; bottom:${qrBottom}; width:${qrWidth}; border-radius:6px;">
       </div>`
     : `<div id="totemCard" style="width:min(94vw,520px); background:#fff; border-radius:22px; padding:5vh 5vw; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.45); transition:transform .25s, width .25s;">
         <img src="/assets/logo-symbol.png" alt="" style="width:clamp(40px,8vw,64px);height:clamp(40px,8vw,64px);border-radius:14px;margin-bottom:10px;">

@@ -649,7 +649,7 @@ document.getElementById('demoClienteBtn').addEventListener('click', mostrarDemoC
 // Demonstração por nicho — cards grandes com QR Code, igual o painel da
 // empresa, mas lendo direto da matriz (só leitura, GET /admin/vendedor/
 // nichos-demo) — não precisa de nenhuma empresa de demo separada.
-const NICHOS_EMOJI = { barbearia: '💈', cabeleireiro: '💇', dentista: '🦷', estetica: '✨' };
+const NICHOS_EMOJI = { barbearia: '💈', cabeleireiro: '💇', dentista: '🦷', estetica: '✨', 'pet-shop': '🐶', restaurante: '🍽️' };
 function emojiNicho(slug) { return NICHOS_EMOJI[slug] || '🎯'; }
 function codigoNicho(slug) {
   let h = 0; const s = String(slug || '');
@@ -688,22 +688,30 @@ async function carregarNichosDemoVendedor() {
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
       const nomeSeg = esc(n.nome);
       const premioSeg = esc(premioLink(n.slug));
-      const fundoSeg = esc(((data.nichos && data.nichos[n.slug]) || {}).bannerFundo || '');
-      return `<button type="button" class="btn-ver-qr-vend" data-qr="${qrUrl}" data-nome="${nomeSeg}" data-premio="${premioSeg}" data-fundo="${fundoSeg}" style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:18px 10px; border:2px solid var(--border,#e3e6ea); border-radius:14px; background:var(--surface,#fff); cursor:pointer; color:inherit;">
+      const nCfg = (data.nichos && data.nichos[n.slug]) || {};
+      const fundoSeg = esc(nCfg.bannerFundo || '');
+      const qrX = nCfg.bannerFundoQrX != null ? nCfg.bannerFundoQrX : 23;
+      const qrY = nCfg.bannerFundoQrY != null ? nCfg.bannerFundoQrY : 10;
+      const qrW = nCfg.bannerFundoQrW != null ? nCfg.bannerFundoQrW : 13;
+      return `<button type="button" class="btn-ver-qr-vend" data-qr="${qrUrl}" data-nome="${nomeSeg}" data-premio="${premioSeg}" data-fundo="${fundoSeg}" data-qrx="${qrX}" data-qry="${qrY}" data-qrw="${qrW}" style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:18px 10px; border:2px solid var(--border,#e3e6ea); border-radius:14px; background:var(--surface,#fff); cursor:pointer; color:inherit;">
         <span style="font-size:2.1rem; line-height:1;">${emojiNicho(n.slug)}</span>
         <span style="font-weight:700; font-size:0.92rem; text-align:center;">${n.nome}</span>
         <span style="font-size:0.72rem; color:var(--brand,#2563eb); font-weight:600;">👆 Toque pro banner</span>
       </button>`;
     }).join('') + `</div>`;
-    cont.querySelectorAll('.btn-ver-qr-vend').forEach(el => el.addEventListener('click', () => abrirQrTelaCheiaVendedor(el.dataset.qr, el.dataset.nome, el.dataset.premio, el.dataset.fundo)));
+    cont.querySelectorAll('.btn-ver-qr-vend').forEach(el => el.addEventListener('click', () => abrirQrTelaCheiaVendedor(el.dataset.qr, el.dataset.nome, el.dataset.premio, el.dataset.fundo, { x: parseFloat(el.dataset.qrx), y: parseFloat(el.dataset.qry), w: parseFloat(el.dataset.qrw) })));
   } catch (e) { cont.innerHTML = '<p class="muted">Não foi possível carregar os nichos.</p>'; }
 }
 // Banner "totem" em tela cheia, igual ao painel da empresa (ver
 // abrirQrTelaCheia em minha-empresa-configurar.html) — mesmo design, só
 // duplicado aqui porque são arquivos/paineis diferentes. Com arte própria
-// (bannerFundo), o QR real entra posicionado no canto inferior esquerdo —
-// mesma posição assumida em todo lugar (ver dica no upload da arte).
-function abrirQrTelaCheiaVendedor(qrUrl, nome, premio, bannerFundo) {
+// (bannerFundo), o QR real entra na posição marcada pelo dono em "Minha
+// empresa" (qrPos.x/y/w, em %) — cada foto tem a sua própria.
+function abrirQrTelaCheiaVendedor(qrUrl, nome, premio, bannerFundo, qrPos) {
+  const pos = qrPos || {};
+  const qrLeft = (Number.isFinite(pos.x) ? pos.x : 23) + '%';
+  const qrBottom = (Number.isFinite(pos.y) ? pos.y : 10) + '%';
+  const qrWidth = (Number.isFinite(pos.w) ? pos.w : 13) + '%';
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.94);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;';
   const premioTxt = premio || 'um presente especial';
@@ -714,7 +722,7 @@ function abrirQrTelaCheiaVendedor(qrUrl, nome, premio, bannerFundo) {
   const cardHtml = bannerFundo
     ? `<div id="totemCardVend" style="position:relative; display:inline-block; line-height:0; border-radius:18px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.45); transition:transform .25s, max-width .25s, max-height .25s;">
         <img src="${esc(bannerFundo)}" alt="${esc(nome)}" style="display:block; width:auto; height:auto; max-width:94vw; max-height:82vh;">
-        <img src="${qrGrande}" alt="QR Code ${esc(nome)}" style="position:absolute; left:23%; bottom:10%; width:13%; border-radius:6px;">
+        <img src="${qrGrande}" alt="QR Code ${esc(nome)}" style="position:absolute; left:${qrLeft}; bottom:${qrBottom}; width:${qrWidth}; border-radius:6px;">
       </div>`
     : `<div id="totemCardVend" style="width:min(94vw,520px); background:#fff; border-radius:22px; padding:5vh 5vw; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.45); transition:transform .25s, width .25s;">
         <img src="/assets/logo-symbol.png" alt="" style="width:clamp(40px,8vw,64px);height:clamp(40px,8vw,64px);border-radius:14px;margin-bottom:10px;">
