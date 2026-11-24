@@ -127,6 +127,22 @@
       </div>
     </div>
 
+    <!-- Sem a classe vendedor-only de propósito: quem mostra é carregarMeuPerfilVendedor,
+         só pra Representante (Afiliado não recruta Afiliado). -->
+    <div class="card" id="cadastroAfiliadoCard" style="display:none; margin-bottom:18px; padding:18px;">
+      <h2 style="font-size:1rem; margin:0 0 4px;">🤝 Cadastrar Afiliado</h2>
+      <p class="muted" style="font-size:0.85rem; margin:0 0 12px;" id="cadastroAfiliadoDesc">O Afiliado fica vinculado a você automaticamente.</p>
+      <a class="btn btn-brand" id="cadastroAfiliadoBtn" target="_blank" rel="noopener"><i data-lucide="user-plus"></i> Cadastrar Afiliado</a>
+      <div style="border-top:1px solid var(--border); margin-top:16px; padding-top:14px;">
+        <p class="muted" style="font-size:0.82rem; margin:0 0 10px;">Ou só mande o link, e ele preenche sozinho:</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="cadastroAfiliadoLink" readonly onclick="this.select()" style="flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:0.82rem;">
+          <button class="btn btn-secondary" id="cadastroAfiliadoCopiarBtn"><i data-lucide="copy"></i> Copiar link</button>
+          <a class="btn btn-secondary" id="cadastroAfiliadoWppBtn" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Enviar no WhatsApp</a>
+        </div>
+      </div>
+    </div>
+
     <div class="card vendedor-only" style="display:none; margin-bottom:18px; padding:18px;">
       <h2 style="font-size:1rem; margin:0 0 4px;">🎬 Demonstração pro cliente</h2>
       <p class="muted" style="font-size:0.85rem; margin:0 0 12px;">Abre o painel de uma empresa de demonstração — use pra mostrar ao prospect como o sistema funciona na prática.</p>
@@ -527,6 +543,7 @@ async function carregarMeuPerfilVendedor() {
     if (!resp.ok || !data.ok) return;
     MEU_VENDEDOR_ID = data.id || '';
     MEU_EH_AFILIADO = !!data.ehAfiliado;
+    montarCadastroAfiliado(data);
     carregarPlanosAssinatura();
     let desc;
     if (data.tipoComissao === 'fixo') {
@@ -543,6 +560,28 @@ async function carregarMeuPerfilVendedor() {
     document.getElementById('cadastrarClienteDesc').textContent = `O cliente fica vinculado a você automaticamente. Sua comissão: ${desc}.`;
   } catch (e) {}
 }
+
+// Recrutamento de Afiliado pelo próprio Representante — mesmo link
+// (?principal=ID) que o dono usa em "Link p/ afiliado" e que o painel Minha
+// Empresa mostra em "Cadastrar Afiliado".
+function montarCadastroAfiliado(perfil) {
+  const card = document.getElementById('cadastroAfiliadoCard');
+  if (!card) return;
+  if (!MEU_VENDEDOR_ID || MEU_EH_AFILIADO) { card.style.display = 'none'; return; }
+  const link = `${API_BASE}/vendedor/cadastro?principal=${encodeURIComponent(MEU_VENDEDOR_ID)}`;
+  const extra = perfil.tipoComissao === 'fixo' && perfil.comissaoOverrideFixoCentavos
+    ? ' Você ganha comissão em cada venda que ele fizer.' : '';
+  document.getElementById('cadastroAfiliadoDesc').textContent = 'O Afiliado fica vinculado a você automaticamente.' + extra;
+  document.getElementById('cadastroAfiliadoLink').value = link;
+  document.getElementById('cadastroAfiliadoBtn').href = link;
+  document.getElementById('cadastroAfiliadoWppBtn').href = 'https://wa.me/?text=' + encodeURIComponent('Oi! Segue o link pra você se cadastrar como Afiliado:\n\n' + link);
+  card.style.display = '';
+}
+document.getElementById('cadastroAfiliadoCopiarBtn')?.addEventListener('click', () => {
+  const inp = document.getElementById('cadastroAfiliadoLink');
+  const btn = document.getElementById('cadastroAfiliadoCopiarBtn');
+  navigator.clipboard.writeText(inp.value).then(() => { const t = btn.innerHTML; btn.innerHTML = 'Copiado!'; setTimeout(() => btn.innerHTML = t, 1500); });
+});
 
 // Link com plano já escolhido pelo vendedor — o cliente abre e só vê ESSE
 // plano (não a vitrine toda), confirma, paga, e aí preenche o cadastro da
