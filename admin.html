@@ -548,7 +548,7 @@ async function carregarMeuPerfilVendedor() {
     let desc;
     if (data.tipoComissao === 'fixo') {
       if (data.ehAfiliado) {
-        desc = `${fmtReais(data.comissaoValorFixoCentavos || 0)} fixo por venda (dentro da faixa comercial autorizada)`;
+        desc = `${fmtReais(data.comissaoValorFixoCentavos || 0)} por venda no preço cheio — o desconto que você der sai da sua comissão`;
       } else {
         desc = `${fmtReais(data.comissaoValorFixoCentavos || 0)} por venda direta`;
         if (data.comissaoOverrideFixoCentavos) desc += ` + ${fmtReais(data.comissaoOverrideFixoCentavos)} por venda de Afiliado vinculado a você`;
@@ -1787,7 +1787,7 @@ function abrirModalVendedor(id) {
 
 // Os valores de comissão do contrato (ANEXO I) são fixos: Representante que
 // vende sozinho = 197,00; Representante como upline de um Afiliado = 97,00;
-// Afiliado = 100,00. Aqui a tela deixa claro qual campo vale pra cada papel,
+// Afiliado = 100,00 (menos o desconto que ele der). Aqui a tela deixa claro qual campo vale pra cada papel,
 // em vez de misturar os dois casos num placeholder só.
 function ehAfiliadoNoModal() { return !!document.getElementById('v_principal').value; }
 
@@ -1799,25 +1799,25 @@ function atualizarCamposComissaoVendedor(fromUserChange) {
   const help = document.getElementById('helpComissaoFixa');
   if (afiliado) {
     lblFixa.textContent = 'Comissão por venda — ele é Afiliado (R$)';
-    fixa.placeholder = 'Valor do contrato: R$ 100,00 fixo, sempre (preço mínimo autorizado: R$ 347,00)';
+    fixa.placeholder = 'Valor do contrato: R$ 100,00 no preço cheio (o sistema abate o desconto sozinho)';
     overrideWrap.style.display = 'none';
     // Afiliado nunca recebe repasse de upline (quem recebe é o Representante
     // acima dele) — se a pessoa acabou de virar Afiliado na tela, zera um
     // valor de override que tenha ficado de um cadastro anterior como Representante.
     if (fromUserChange) document.getElementById('v_comissaoOverride').value = '';
     help.innerHTML = 'A empresa sempre fica com os primeiros <b>R$ 200,00</b> de cada pagamento.<br>'
-      + '• Ele (Afiliado) sempre recebe <b>R$ 100,00</b> fixos por venda — valor que não muda mesmo com desconto (ex.: rede de lojas). Preço mínimo autorizado: R$ 347,00.<br>'
-      + '• O Representante acima dele fica automaticamente com o que sobrar (preço − 200 − 100) — no preço cheio de R$ 397,00, isso dá <b>R$ 97,00</b>; no piso de R$ 347,00, dá R$ 47,00.<br>'
+      + '• Ele (Afiliado) recebe <b>R$ 100,00</b> no preço cheio de R$ 397,00. O desconto sai da comissão dele: no preço mínimo autorizado, R$ 347,00, ele recebe <b>R$ 50,00</b>.<br>'
+      + '• O Representante acima dele recebe sempre <b>R$ 97,00</b>, com ou sem desconto.<br>'
       + 'Ele não vê e não tem campo de "comissão como Representante" — o repasse acontece sozinho, sem ele saber.';
   } else {
     lblFixa.textContent = 'Comissão quando ELE vende sozinho (R$)';
     fixa.placeholder = 'Valor do contrato: tudo acima de R$ 200,00 da empresa — 197,00 no preço cheio de R$ 397,00';
     overrideWrap.style.display = '';
     const over = document.getElementById('v_comissaoOverride');
-    over.placeholder = 'Valor do contrato: o que sobrar (preço − 200 − 100 do Afiliado) — 97,00 no preço cheio; só se ele tiver Afiliados vinculados a ele';
+    over.placeholder = 'Valor do contrato: 97,00 fixo, mesmo com desconto; só se ele tiver Afiliados vinculados a ele';
     help.innerHTML = 'A empresa sempre fica com os primeiros <b>R$ 200,00</b> de cada pagamento.<br>'
       + '• Vendendo sozinho: ele fica com tudo que passar de R$ 200,00 — no preço cheio de R$ 397,00 isso dá <b>R$ 197,00</b>. Preço mínimo autorizado: R$ 297,00 (comissão mínima: R$ 97,00).<br>'
-      + '• Se tiver Afiliado(s) vinculados a ele ("Representante vinculado" = ele): o Afiliado sempre recebe R$ 100,00 fixos, e ele fica automaticamente com o que sobrar — <b>R$ 97,00</b> no preço cheio. Preço mínimo autorizado nesse caso: R$ 347,00.';
+      + '• Se tiver Afiliado(s) vinculados a ele ("Representante vinculado" = ele): ele recebe sempre <b>R$ 97,00</b>, e o desconto sai da comissão do Afiliado (R$ 100,00 no preço cheio, <b>R$ 50,00</b> no preço mínimo autorizado de R$ 347,00).';
   }
 }
 

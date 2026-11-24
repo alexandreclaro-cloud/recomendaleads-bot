@@ -5702,7 +5702,15 @@ async function gravarAssinatura(empresaId, dados) {
 function calcularComissaoCentavos(vd, valorPagoCentavos, comoUpline) {
   if (vd && vd.tipoComissao === 'fixo') {
     const campo = comoUpline ? vd.comissaoOverrideFixoCentavos : vd.comissaoValorFixoCentavos;
-    return Math.max(0, Math.round(Number(campo) || 0));
+    let fixo = Math.max(0, Math.round(Number(campo) || 0));
+    // Desconto em venda de AFILIADO sai só da comissão dele — nunca da empresa
+    // (R$ 200) nem do Representante (R$ 97). Ex.: a R$ 347,00 são R$ 50 a menos
+    // que o preço cheio, então o Afiliado recebe 100 - 50 = R$ 50.
+    if (!comoUpline && vd.vendedorPrincipalId) {
+      const desconto = Math.max(0, PLANOS.mensal.valorCentavos - (Number(valorPagoCentavos) || 0));
+      fixo = Math.max(0, fixo - desconto);
+    }
+    return fixo;
   }
   const pct = (vd && vd.comissaoPct != null && Number(vd.comissaoPct) >= 0) ? Number(vd.comissaoPct) : COMISSAO_PCT;
   return Math.round((Number(valorPagoCentavos) || 0) * pct / 100);
@@ -6236,7 +6244,7 @@ app.post('/minha-senha', exigirLoginEmpresa, async (req, res) => {
 const CONTRATO_VERSAO = '1.0-2026-06-26';
 // Versão do contrato de REPRESENTAÇÃO COMERCIAL (vendedor-cadastro.html) —
 // troque aqui se o texto mudar, pra saber qual versão cada um aceitou.
-const VENDEDOR_CONTRATO_VERSAO = '1.0-2026-11-15';
+const VENDEDOR_CONTRATO_VERSAO = '1.1-2026-11-24';
 
 // Status do aceite da empresa logada.
 app.get('/meu-contrato', exigirLoginEmpresa, async (req, res) => {
@@ -6355,8 +6363,8 @@ app.post('/minha-assinatura/checkout', exigirLoginEmpresa, exigirGestor, async (
 // O voucher de R$ 297 (mensal297) só pode ser negociado pelo REPRESENTANTE,
 // numa venda direta dele (sem Afiliado) — é a margem que ele tem pra fechar
 // com cliente de rede/múltiplas unidades. Pra venda com Afiliado o piso
-// autorizado é R$ 347 (mensal347): o Afiliado sempre recebe R$ 100 fixos, e a
-// R$ 297 isso nem sobra pro Representante. `vendedorPrincipalId` marca quem é
+// autorizado é R$ 347 (mensal347): o desconto sai da comissão do Afiliado
+// (100 → 50), e a R$ 297 ele ficaria sem nada. `vendedorPrincipalId` marca quem é
 // Afiliado (vinculado a um Representante principal).
 async function vendedorEhAfiliado(vendedorId) {
   if (!vendedorId) return false;
