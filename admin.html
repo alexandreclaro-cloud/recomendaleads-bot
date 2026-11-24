@@ -550,7 +550,7 @@ async function carregarMeuPerfilVendedor() {
       if (data.ehAfiliado) {
         desc = `${fmtReais(data.comissaoValorFixoCentavos || 0)} por venda no preço cheio — o desconto que você der sai da sua comissão`;
       } else {
-        desc = `${fmtReais(data.comissaoValorFixoCentavos || 0)} por venda direta`;
+        desc = `${fmtReais(data.comissaoValorFixoCentavos || 0)} por venda direta no preço cheio (o desconto que você der sai da sua comissão)`;
         if (data.comissaoOverrideFixoCentavos) desc += ` + ${fmtReais(data.comissaoOverrideFixoCentavos)} por venda de Afiliado vinculado a você`;
       }
     } else {

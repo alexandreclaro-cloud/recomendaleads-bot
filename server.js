@@ -213,30 +213,65 @@ async function criarCheckoutAsaas({ plano, planoId, empresaId, externalReference
   }
 }
 
+// Confere os dígitos verificadores — pega número digitado errado ANTES de
+// chamar a Asaas, com uma mensagem clara pro cliente.
+function cpfCnpjValido(valor) {
+  const d = String(valor || '').replace(/\D/g, '');
+  if (/^(\d)\1+$/.test(d)) return false;
+  const digito = (base, pesos) => {
+    const r = pesos.reduce((soma, p, i) => soma + Number(base[i]) * p, 0) % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  if (d.length === 11) {
+    return digito(d, [10, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(d[9])
+      && digito(d, [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(d[10]);
+  }
+  if (d.length === 14) {
+    return digito(d, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(d[12])
+      && digito(d, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(d[13]);
+  }
+  return false;
+}
+
+// Telefone no formato da Asaas: celular (11 dígitos, 9 depois do DDD) vai em
+// `mobilePhone`, fixo (10 dígitos) em `phone`. Fora disso não manda nada —
+// telefone é opcional lá, mas um inválido faz a Asaas recusar o cliente.
+function telefoneAsaas(telefone) {
+  let d = String(telefone || '').replace(/\D/g, '');
+  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+  if (d.length === 11 && d[2] === '9') return { mobilePhone: d };
+  if (d.length === 10) return { phone: d };
+  return {};
+}
+
 // Acha (por CPF/CNPJ) ou cria o cliente no Asaas — usado pra emitir o Pix
 // avulso da adesão. Diferente do fluxo de assinatura (onde o Asaas Checkout
 // cria o customer sozinho), o Pix direto via /payments exige um customer já
 // existente, e a Asaas exige CPF/CNPJ pra emitir cobrança Pix.
 async function garantirAsaasCustomerPix({ nome, email, cpfCnpj, telefone }) {
   const cpfCnpjLimpo = String(cpfCnpj || '').replace(/\D/g, '');
-  if (!nome || cpfCnpjLimpo.length < 11) throw new Error('Informe nome e CPF/CNPJ válidos.');
   try {
     const busca = await asaas.get('/customers', { params: { cpfCnpj: cpfCnpjLimpo } });
-    if (busca.data && Array.isArray(busca.data.data) && busca.data.data.length) return busca.data.data[0].id;
+    const achado = ((busca.data && busca.data.data) || []).find(c => !c.deleted);
+    if (achado) return achado.id;
   } catch (e) { /* segue pra criar */ }
-  const { data } = await asaas.post('/customers', {
-    name: nome,
-    email: email || undefined,
-    cpfCnpj: cpfCnpjLimpo,
-    mobilePhone: String(telefone || '').replace(/\D/g, '') || undefined
-  });
-  return data.id;
+  const essencial = { name: nome, cpfCnpj: cpfCnpjLimpo };
+  try {
+    const { data } = await asaas.post('/customers', { ...essencial, email: email || undefined, ...telefoneAsaas(telefone) });
+    return data.id;
+  } catch (err) {
+    // E-mail/telefone recusado não pode impedir o pagamento: só nome e
+    // CPF/CNPJ são obrigatórios, então tenta de novo só com eles.
+    if (!err.response || err.response.status !== 400) throw err;
+    console.warn('[ASAAS] cliente recusado, tentando só com nome e CPF/CNPJ:', JSON.stringify(err.response.data));
+    const { data } = await asaas.post('/customers', essencial);
+    return data.id;
+  }
 }
 
-// Gera uma cobrança Pix avulsa (à vista) + QR Code — usado pela adesão em
-// /assinar/adesao. Devolve { paymentId, qrCodeBase64, copiaECola, expiracao }.
+// Cria a cobrança Pix avulsa (à vista) da adesão.
 async function criarPixAvulso({ customerId, valorCentavos, descricao, externalReference }) {
-  const { data: pagamento } = await asaas.post('/payments', {
+  const { data } = await asaas.post('/payments', {
     customer: customerId,
     billingType: 'PIX',
     value: valorCentavos / 100,
@@ -244,8 +279,22 @@ async function criarPixAvulso({ customerId, valorCentavos, descricao, externalRe
     description: descricao,
     externalReference
   });
-  const { data: qr } = await asaas.get(`/payments/${pagamento.id}/pixQrCode`);
-  return { paymentId: pagamento.id, qrCodeBase64: qr.encodedImage, copiaECola: qr.payload, expiracao: qr.expirationDate };
+  return data.id;
+}
+
+// Busca o QR Code de uma cobrança Pix — tenta 3 vezes, porque logo depois de
+// criar a cobrança a Asaas às vezes ainda não tem o QR pronto.
+async function buscarQrPix(paymentId) {
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      const { data: qr } = await asaas.get(`/payments/${paymentId}/pixQrCode`);
+      if (!qr.encodedImage || !qr.payload) throw new Error('Asaas devolveu o QR Code vazio');
+      return { qrCodeBase64: qr.encodedImage, copiaECola: qr.payload, expiracao: qr.expirationDate };
+    } catch (err) {
+      if (tentativa >= 3) throw err;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
 }
 
 // ============================================================
@@ -5703,10 +5752,11 @@ function calcularComissaoCentavos(vd, valorPagoCentavos, comoUpline) {
   if (vd && vd.tipoComissao === 'fixo') {
     const campo = comoUpline ? vd.comissaoOverrideFixoCentavos : vd.comissaoValorFixoCentavos;
     let fixo = Math.max(0, Math.round(Number(campo) || 0));
-    // Desconto em venda de AFILIADO sai só da comissão dele — nunca da empresa
-    // (R$ 200) nem do Representante (R$ 97). Ex.: a R$ 347,00 são R$ 50 a menos
-    // que o preço cheio, então o Afiliado recebe 100 - 50 = R$ 50.
-    if (!comoUpline && vd.vendedorPrincipalId) {
+    // Desconto sai só da comissão de QUEM FECHOU a venda — nunca da empresa
+    // (R$ 200) nem do repasse do Representante (R$ 97) em venda de Afiliado.
+    // Ex. a R$ 347,00: Afiliado 100 - 50 = R$ 50; Representante em venda direta
+    // 197 - 50 = R$ 147 (a R$ 297,00, R$ 97).
+    if (!comoUpline) {
       const desconto = Math.max(0, PLANOS.mensal.valorCentavos - (Number(valorPagoCentavos) || 0));
       fixo = Math.max(0, fixo - desconto);
     }
@@ -6540,6 +6590,7 @@ app.post('/assinar/checkout', async (req, res) => {
 // AVULSO e separado da assinatura mensal, pra mostrar QR Code + copia-e-cola
 // direto na página /assinar (sem redirecionar pro checkout hospedado).
 app.post('/assinar/adesao', async (req, res) => {
+  let etapa = 'DADOS';
   try {
     if (!asaas) return res.status(503).json({ ok: false, erro: 'Pagamento ainda não configurado.' });
     const b = req.body || {};
@@ -6555,25 +6606,50 @@ app.post('/assinar/adesao', async (req, res) => {
     // manualmente (ver marcarAdesaoPaga).
     const empresaId = String(b.empresaId || '').trim().slice(0, 60);
     if (!nome) return res.status(400).json({ ok: false, erro: 'Informe seu nome.' });
-    if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) return res.status(400).json({ ok: false, erro: 'Informe um CPF ou CNPJ válido.' });
+    if (!cpfCnpjValido(cpfCnpj)) return res.status(400).json({ ok: false, erro: 'CPF ou CNPJ inválido. Confira os números e tente de novo.' });
 
-    const customerId = await garantirAsaasCustomerPix({ nome, email, cpfCnpj, telefone });
-    const ref = 'adesao_' + crypto.randomUUID();
-    const pix = await criarPixAvulso({
-      customerId, valorCentavos: ADESAO_CENTAVOS,
-      descricao: 'RecomendaLeads — Adesão (instalação e configuração)',
-      externalReference: ref
-    });
-    await ADESOES_PENDENTES_COL().doc(ref).set({
-      nome, email, cpfCnpj, telefone, vendedor: vendedor || null, plano: planoId || null,
-      empresaId: empresaId || null,
-      paymentId: pix.paymentId, pago: false, criadoEm: new Date().toISOString()
-    });
+    // "Tentar de novo" da mesma empresa reaproveita a cobrança que ainda está
+    // em aberto, em vez de criar outra de R$ 500.
+    let ref = null, paymentId = null;
+    if (empresaId) {
+      const anteriores = await ADESOES_PENDENTES_COL().where('empresaId', '==', empresaId).get();
+      const aberta = anteriores.docs.find(d => !d.data().pago && d.data().paymentId && d.data().cpfCnpj === cpfCnpj);
+      if (aberta) {
+        etapa = 'CONSULTA';
+        try {
+          const { data } = await asaas.get(`/payments/${aberta.data().paymentId}`);
+          if (data.status === 'PENDING' && !data.deleted) { ref = aberta.id; paymentId = aberta.data().paymentId; }
+        } catch (e) { if (!e.response || e.response.status !== 404) throw e; }
+      }
+    }
+    if (!paymentId) {
+      etapa = 'CLIENTE';
+      const customerId = await garantirAsaasCustomerPix({ nome, email, cpfCnpj, telefone });
+      ref = 'adesao_' + crypto.randomUUID();
+      etapa = 'COBRANCA';
+      paymentId = await criarPixAvulso({
+        customerId, valorCentavos: ADESAO_CENTAVOS,
+        descricao: 'RecomendaLeads — Adesão (instalação e configuração)',
+        externalReference: ref
+      });
+      // Grava ANTES de buscar o QR: se o QR falhar, a cobrança não fica órfã.
+      await ADESOES_PENDENTES_COL().doc(ref).set({
+        nome, email, cpfCnpj, telefone, vendedor: vendedor || null, plano: planoId || null,
+        empresaId: empresaId || null,
+        paymentId, pago: false, criadoEm: new Date().toISOString()
+      });
+    }
+    etapa = 'QRCODE';
+    const pix = await buscarQrPix(paymentId);
     res.json({ ok: true, ref, qrCodeBase64: pix.qrCodeBase64, copiaECola: pix.copiaECola, expiracao: pix.expiracao });
   } catch (err) {
-    const msg = (err.response && err.response.data && JSON.stringify(err.response.data)) || err.message;
-    console.error('Erro ao gerar Pix da adesão:', msg);
-    res.status(500).json({ ok: false, erro: 'Não foi possível gerar o Pix agora. Confira seus dados e tente de novo.' });
+    const dadosErro = err.response && err.response.data;
+    console.error(`Erro ao gerar Pix da adesão (etapa ${etapa}):`, (dadosErro && JSON.stringify(dadosErro)) || err.message);
+    // Erro nos DADOS do cliente: mostra o motivo da Asaas. Nas outras etapas o
+    // problema é nosso (conta/chave Pix), então só o código pro suporte achar no log.
+    const motivo = etapa === 'CLIENTE' && err.response && err.response.status === 400
+      && dadosErro && Array.isArray(dadosErro.errors) && dadosErro.errors[0] && dadosErro.errors[0].description;
+    res.status(500).json({ ok: false, erro: motivo || `Não foi possível gerar o Pix agora (código ${etapa}). Tente de novo em instantes.` });
   }
 });
 

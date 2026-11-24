@@ -545,6 +545,15 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
     return;
   }
 
+  // Com plano combinado, o Pix da adesão sai logo depois do cadastro e exige
+  // CPF ou CNPJ válido — confere ANTES de criar a conta.
+  const docPagamento = [payload.cnpj, payload.cpfSocio].find(cpfCnpjValido) || '';
+  if (CAD_PLANO && !docPagamento) {
+    statusEl.textContent = 'Informe um CNPJ da empresa ou um CPF do sócio válido — ele é obrigatório pra gerar o Pix da adesão.';
+    statusEl.className = 'status err';
+    return;
+  }
+
   btn.disabled = true;
   statusEl.textContent = 'Cadastrando...';
   statusEl.className = 'status';
@@ -576,8 +585,8 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
           empresaId: data.empresa.id,
           nome: payload.nomeFantasia || payload.razaoSocial,
           email: payload.emailEmpresa,
-          cpfCnpj: payload.cnpj,
-          telefone: payload.telefoneEmpresa
+          cpfCnpj: docPagamento,
+          telefone: payload.whatsappSocio || payload.telefoneEmpresa
         });
         return;
       }
@@ -623,6 +632,34 @@ document.getElementById('criarBtn').addEventListener('click', async () => {
 // marcarAdesaoPaga no servidor). Dados (nome/e-mail/CPF-CNPJ/telefone) já
 // vieram preenchidos no formulário — não pergunta de novo.
 let pagAdesaoPollTimer = null;
+function cpfCnpjValido(valor) {
+  const d = String(valor || '').replace(/\D/g, '');
+  if (/^(\d)\1+$/.test(d)) return false;
+  const digito = (base, pesos) => {
+    const r = pesos.reduce((soma, p, i) => soma + Number(base[i]) * p, 0) % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  if (d.length === 11) {
+    return digito(d, [10, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(d[9])
+      && digito(d, [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(d[10]);
+  }
+  if (d.length === 14) {
+    return digito(d, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(d[12])
+      && digito(d, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) === Number(d[13]);
+  }
+  return false;
+}
+// Erro ao gerar o Pix: a conta já foi criada, então recarregar a página não
+// resolve (daria "e-mail já existe") — o botão tenta de novo aqui mesmo.
+function mostrarErroPixAdesao(msg, dadosEmpresa) {
+  const box = document.getElementById('pagAdesaoIdle');
+  box.innerHTML = '<p style="color:#c0392b;font-size:0.92rem;"></p><p style="font-size:0.88rem;color:#555;">Seu cadastro já foi salvo. Não feche nem atualize esta página.</p><button type="button">Tentar de novo</button>';
+  box.querySelector('p').textContent = '❌ ' + msg;
+  box.querySelector('button').onclick = (ev) => {
+    ev.target.disabled = true; ev.target.textContent = 'Gerando Pix...';
+    iniciarPagamentoAdesao(dadosEmpresa);
+  };
+}
 async function iniciarPagamentoAdesao(dadosEmpresa) {
   // Link pro cliente assinar o plano mensal no cartão na hora, junto com o
   // vendedor — reaproveita a mesma tela de "plano já travado" (/assinar).
@@ -643,8 +680,7 @@ async function iniciarPagamentoAdesao(dadosEmpresa) {
     });
     const data = await resp.json();
     if (!resp.ok || !data.ok) {
-      document.getElementById('pagAdesaoIdle').innerHTML =
-        '<p style="color:#c0392b;font-size:0.92rem;">❌ ' + (data.erro || 'Não foi possível gerar o Pix.') + ' Atualize a página pra tentar de novo.</p>';
+      mostrarErroPixAdesao(data.erro || 'Não foi possível gerar o Pix.', dadosEmpresa);
       return;
     }
     document.getElementById('pagAdesaoQrImg').src = `data:image/png;base64,${data.qrCodeBase64}`;
@@ -653,16 +689,16 @@ async function iniciarPagamentoAdesao(dadosEmpresa) {
     document.getElementById('pagAdesaoQr').style.display = 'block';
     iniciarPollAdesao(data.ref, dadosEmpresa.email);
   } catch (e) {
-    document.getElementById('pagAdesaoIdle').innerHTML =
-      '<p style="color:#c0392b;font-size:0.92rem;">❌ Erro de conexão. Atualize a página pra tentar de novo.</p>';
+    mostrarErroPixAdesao('Erro de conexão.', dadosEmpresa);
+    return;
   }
-  document.getElementById('pagAdesaoCopiarBtn').addEventListener('click', async () => {
+  document.getElementById('pagAdesaoCopiarBtn').onclick = async () => {
     const input = document.getElementById('pagAdesaoCopiaECola');
     const btn = document.getElementById('pagAdesaoCopiarBtn');
     try { await navigator.clipboard.writeText(input.value); }
     catch (e) { input.removeAttribute('readonly'); input.select(); document.execCommand('copy'); input.setAttribute('readonly', 'readonly'); }
     btn.textContent = 'Copiado!'; setTimeout(() => { btn.textContent = 'Copiar'; }, 1800);
-  });
+  };
 }
 function iniciarPollAdesao(ref, email) {
   if (pagAdesaoPollTimer) clearInterval(pagAdesaoPollTimer);
