@@ -1,8 +1,7 @@
 # HANDOFF.md — Estado da última sessão de trabalho
 
-> Atualizado em 2026-11-23 porque o Alexandre vai trocar de conta Claude e a
-> conta nova **não terá acesso ao histórico das conversas nem à memória** das
-> sessões anteriores. Este arquivo é a ponte. Leia junto com
+> Atualizado em 2026-11-25. Uma conta nova **não tem acesso ao histórico das
+> conversas** das sessões anteriores. Este arquivo é a ponte. Leia junto com
 > [`CLAUDE.md`](./CLAUDE.md) (regras e estrutura do projeto) e
 > [`PROJETO.md`](./PROJETO.md) (arquitetura e modelo de dados completos).
 > **Tudo descrito aqui como "no ar" já está commitado na `main` e em produção
@@ -69,12 +68,49 @@ estas funcionalidades mais recentes **já estão em produção**:
   e desde então o lançamento é feito direto no `/admin`. O `/admin` abre
   **sem senha**, porque não há `RANKINGMESA_SENHA` no Render. Quem tiver o
   link pode alterar os números, então só o link da TV deve ser compartilhado.
+- **Pagamentos e comissões (revisados em 24 e 25/11/2026).** Regras vigentes:
+  - **O desconto sai de quem fecha a venda**, nunca da empresa (R$ 200):
+
+    | Venda | Empresa | Representante | Afiliado |
+    |---|---|---|---|
+    | Direta R$ 397 | 200 | 197 | — |
+    | Direta R$ 347 | 200 | 147 | — |
+    | Direta R$ 297 | 200 | 97 | — |
+    | Com Afiliado R$ 397 | 200 | 97 | 100 |
+    | Com Afiliado R$ 347 | 200 | 97 | 50 |
+
+    Cálculo em `calcularComissaoCentavos`. Quem recebe por percentual não muda.
+    Contrato do Representante/Afiliado (Anexo I) na **versão 1.1-2026-11-24**.
+  - **Cadastrar Afiliado** fica no `/vendedor` (só Representante vê; Afiliado
+    não recruta Afiliado) e em Minha Empresa → Cadastro de cliente.
+  - **Pix da adesão** (`POST /assinar/adesao`): CPF/CNPJ conferido antes de
+    criar a conta; sem CNPJ usa o CPF do sócio; erro mostra o motivo ou a etapa
+    (`COBRANCA`, `QRCODE`); "Tentar de novo" reaproveita a cobrança em aberto.
+  - **Cartão:** o botão depois do cadastro leva `?empresa=ID` e a assinatura
+    entra nessa empresa (`garantirContaSignup`, em transação).
+  - **Webhook `/webhook-asaas`:** no cartão a Asaas avisa o mesmo pagamento 2x
+    (CONFIRMED e, ~30 dias depois, RECEIVED). O prazo conta da data do pagamento
+    e nunca encurta; a comissão tem ID fixo por pagamento + vendedor.
+  - O bloqueio por falta de pagamento encontrado é **só no painel** (leva o
+    gestor pra Assinatura); não foi achada trava por pagamento no robô.
 - **Landing de captação de parceiros** em `/parceiro` (`parceiro.html`).
   ⚠️ **Esse arquivo fica SEMPRE fora dos commits** — o Alexandre edita por
   fora (está modificado no working tree de propósito; não commitar).
 
 ## 2. O que foi feito nas sessões mais recentes (mais novo primeiro)
 
+0. **Afiliado, comissões, Pix e cartão (24 e 25/11/2026). Tudo no ar:**
+   - `363a9e4` card "Cadastrar Afiliado" no `/vendedor` (visto pelo Alexandre).
+   - `3fc138b` desconto do Afiliado + Anexo I versão 1.1.
+   - `c7241e8` Pix mais robusto + desconto da venda direta. **QR real gerado**
+     na página `/assinar` (não pago).
+   - `5017a18` conta duplicada no cartão.
+   - `2998340` renovação do acesso em toda mensalidade.
+   - `9fd3fbc` uma comissão por pagamento.
+
+   ⚠️ Cartão, renovação e comissão foram testados **só com Asaas e banco
+   simulados**. O caminho do Pix pelo cadastro do cliente também. Os 3 links de
+   cartão (397/347/297) foram abertos na Asaas, sem pagar.
 1. **Revisão da página de vendas (2026-11-23, sem alterar nada).** Revisamos a
    `landing-nova.html` (servida na raiz `recomendaleads.com.br`, rota
    `app.get('/')` ~linha 6082) ao vivo. **Nenhuma mudança feita** — ficou
@@ -115,7 +151,27 @@ HTML. Push sempre com confirmação explícita do Alexandre.
 
 ## 3. O que ficou pela metade ou com problema
 
-- **Canal Evolution completo + failover híbrido (PRÓXIMO GRANDE PASSO).** Só o
+- **Conferir o primeiro pagamento real no cartão:** assinatura na empresa certa,
+  sem outra empresa criada, e **uma** comissão por pessoa. Conferir também a
+  primeira renovação. Em 25/11 não havia nenhuma comissão registrada.
+- **Decisões que são do Alexandre (25/11/2026):**
+  - Testes vencidos: **Studio Carly** (30/09) e **Poder do Network** (27/10), as
+    duas sem assinatura no cartão.
+  - **CEN**: WhatsApp caído há mais de 130 dias.
+  - Limpeza: empresa "teste pizza" e o "Teste Fluxo Novo" na lista de
+    Representantes (a *empresa* com esse nome já foi excluída).
+  - Formalizar por escrito o Anexo I 1.1 com os Representantes que aceitaram a
+    versão 1.0 (cláusula 5.4). Não havia Afiliado cadastrado até 24/11.
+  - Semestral/anual: a comissão fixa é registrada **uma vez só**, sem multiplicar
+    pelos meses.
+  - Rankings Mesa e Head estavam **zerados em novembro** em 24/11.
+- **Limites conhecidos do cartão:** o link de Minha Empresa → Cadastro de cliente
+  é pra cliente NOVO (quem já tem conta e usa esse link ainda cria outra); links
+  enviados antes de 25/11, 10h, não têm o vínculo; contas já duplicadas não foram
+  juntadas; CNPJ com letras não é aceito pela máscara (usar o CPF do sócio).
+- **Canal Evolution completo + failover híbrido — EM PAUSA.** Em 24/11 o
+  Alexandre mandou **esquecer o iFinZap**, que era o servidor dos testes; sem
+  ele não há servidor Evolution. Não retomar sem ele pedir. Contexto: só o
   botão/endpoint de teste foi feito. Falta, depois de o Alexandre rodar o teste
   e confirmar o formato do `sendText`: construir `whatsappTipo: 'evolution'`
   (config, send de texto/imagem/documento, webhook
@@ -148,17 +204,18 @@ HTML. Push sempre com confirmação explícita do Alexandre.
 
 ## 4. Próximos passos (ordem de prioridade sugerida)
 
-1. **Evolution:** Alexandre roda o "Testar envio Evolution" no painel → com o
-   formato confirmado, construir o canal completo e depois o failover híbrido.
-2. **Follow-up longo** pra reter clientes (começar pela Studio Carly), usando
-   template da API Oficial pros toques fora da janela de 24h.
+1. **Conferir o primeiro pagamento real no cartão** (ver seção 3).
+2. **Follow-up longo** pra reter clientes (começar pela Studio Carly, que já está
+   na API Oficial), com template pros toques fora da janela de 24h. Em 24/11 ele
+   disse "agora não".
 3. **Página de vendas:** se ele decidir, tratar os 3 pontos (mostrar preço /
    reforçar CTA de fechamento / enxugar repetições) — 1 por vez.
 4. **Migrações Z-API → API Oficial** seguindo a regra "um número = um
    sistema" (não deixar o mesmo número ativo nos dois, senão a mensagem some).
 5. **Rankings iFinc:** se o Alexandre quiser, apontar os subdomínios
    (Render + DNS) e decidir se o `/admin` volta a ter senha.
-6. Novo nicho/card de demonstração: já nasce no padrão visual atual (grid,
+6. **Evolution:** em pausa, só se o Alexandre pedir.
+7. Novo nicho/card de demonstração: já nasce no padrão visual atual (grid,
    emoji específico, "Copiar link") **nos dois painéis** ao mesmo tempo.
 
 ## 5. Como continuar com segurança (resumo das regras — detalhe no CLAUDE.md)
@@ -172,7 +229,12 @@ HTML. Push sempre com confirmação explícita do Alexandre.
   "indicar".
 - Rodar o `server.js` local é arriscado (cron jobs mandam WhatsApp real) e
   exige segredos que só estão no Render → usar preview estático ou olhar o
-  site ao vivo.
+  site ao vivo. ⚠️ O `http.server` serve a pasta inteira, **inclusive o `.env`**:
+  sempre com `--bind 127.0.0.1` e desligar ao terminar.
+- O navegador do Claude **bloqueia caixas de confirmação** (`confirm`): exclusões
+  no `/admin` o Alexandre faz no navegador dele.
+- Deploy que só muda o `server.js`: confirmar pelo `last-modified` de qualquer
+  página no ar.
 
 ## 6. Outros projetos do Alexandre (NÃO são este repositório)
 
