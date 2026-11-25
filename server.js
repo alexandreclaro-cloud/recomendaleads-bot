@@ -5806,13 +5806,31 @@ function vendedorAindaRecebeComissao(vd) {
 // `origem === 'venda-avista'` é tratada como "venda nova" pro relógio de
 // inatividade de 90 dias (cláusula 8) — renovação mensal ('mensalidade') não
 // conta como venda nova, só mantém a comissão de quem ainda está ativo.
-async function registrarComissao(empresa, valorCentavos, origem) {
+//
+// `pagamento` é o payment da Asaas: cada um gera UMA comissão por vendedor, não
+// importa quantos avisos cheguem (no cartão são 2: CONFIRMED na hora e RECEIVED
+// ~30 dias depois). O ID do documento é fixo por pagamento e o create() recusa
+// o repetido.
+async function registrarComissao(empresa, valorCentavos, origem, pagamento) {
   try {
     const refInicial = empresa && empresa.vendedorComissao;
     if (!refInicial) return;
     const v = Number(valorCentavos) || 0;
     if (v <= 0) return;
     const ehVendaNova = origem === 'venda-avista';
+    const pagamentoId = (pagamento && pagamento.id) ? String(pagamento.id) : null;
+
+    // Comissões de antes do ID fixo (sem pagamentoId): se já existe uma igual,
+    // da mesma data do pagamento, o aviso que chegou agora é repetição.
+    let antigas = [];
+    const dataPag = pagamento && (pagamento.confirmedDate || pagamento.clientPaymentDate || pagamento.paymentDate);
+    if (pagamentoId && dataPag) {
+      const quando = new Date(String(dataPag).slice(0, 10) + 'T12:00:00Z').getTime();
+      const snap = await COMISSOES_COL().where('empresaId', '==', empresa.id).get();
+      antigas = snap.docs.map(d => d.data()).filter(c =>
+        !c.pagamentoId && c.origem === origem && c.valorPagoCentavos === v
+        && Math.abs(new Date(c.data).getTime() - quando) <= 2 * 86400000);
+    }
 
     let vendedorIdAtual = String(refInicial);
     const nomeLivre = String(refInicial); // fallback: comissão legado por nome livre (não é conta cadastrada)
@@ -5826,16 +5844,23 @@ async function registrarComissao(empresa, valorCentavos, origem) {
         if (doc.exists) vd = { id: doc.id, ...doc.data() };
       } catch (e) {}
 
+      const vendedorNome = vd ? (vd.nome || vendedorIdAtual) : nomeLivre;
+      const refFixa = pagamentoId
+        ? COMISSOES_COL().doc(`asaas_${encodeURIComponent(pagamentoId)}_${encodeURIComponent(vd ? vd.id : vendedorNome)}`) : null;
+      const repetido = antigas.some(c => (c.vendedorId || c.vendedor) === (vd ? vd.id : vendedorNome))
+        || (refFixa ? (await refFixa.get()).exists : false);
+
       // Venda nova reseta o relógio de inatividade (e reativa quem tinha
       // acabado de ser marcado como desligado, mas voltou a vender a tempo).
-      if (ehVendaNova && vd) {
+      if (ehVendaNova && vd && !repetido) {
         try { await VENDEDORES_COL().doc(vd.id).set({ ultimaVendaEm: new Date().toISOString(), desligadoEm: null }, { merge: true }); } catch (e) {}
       }
 
-      if (vendedorAindaRecebeComissao(vd)) {
-        const vendedorNome = vd ? (vd.nome || vendedorIdAtual) : nomeLivre;
+      if (repetido) {
+        console.log(`[COMISSAO] aviso repetido do pagamento ${pagamentoId} — ${vendedorNome} já tinha a comissão`);
+      } else if (vendedorAindaRecebeComissao(vd)) {
         const comissaoCentavos = calcularComissaoCentavos(vd, v, nivel > 0);
-        await COMISSOES_COL().add({
+        const dadosComissao = {
           empresaId: empresa.id,
           empresaNome: empresa.nome || '',
           vendedorId: vd ? vd.id : null,
@@ -5846,9 +5871,17 @@ async function registrarComissao(empresa, valorCentavos, origem) {
           comoUpline: nivel > 0,
           origem: origem || '',
           pago: false,
+          ...(pagamentoId ? { pagamentoId } : {}),
           data: new Date().toISOString()
-        });
-        console.log(`[COMISSAO] ${vendedorNome}: R$${(comissaoCentavos / 100).toFixed(2)} (empresa ${empresa.id}${nivel > 0 ? ', nível ' + nivel : ''})`);
+        };
+        let gravou = true;
+        if (refFixa) {
+          try { await refFixa.create(dadosComissao); }
+          catch (e) { if (e.code !== 6) throw e; gravou = false; } // 6 = ALREADY_EXISTS (2 avisos ao mesmo tempo)
+        } else {
+          await COMISSOES_COL().add(dadosComissao);
+        }
+        if (gravou) console.log(`[COMISSAO] ${vendedorNome}: R$${(comissaoCentavos / 100).toFixed(2)} (empresa ${empresa.id}${nivel > 0 ? ', nível ' + nivel : ''})`);
       } else {
         console.log(`[COMISSAO] ${vd.nome || vendedorIdAtual} desligado por inatividade — comissão NÃO registrada (empresa ${empresa.id})`);
       }
@@ -6024,9 +6057,12 @@ app.post('/webhook-asaas', async (req, res) => {
           // sem isto a 2ª em diante só "achava" a conta e não renovava o acesso.
           if (payment.subscription) {
             const dona = emp || await acharEmpresaPorPagamentoAsaas({ subscription: payment.subscription });
-            if (dona) await renovarAcessoPorPagamento(dona, payment);
+            if (dona) {
+              await renovarAcessoPorPagamento(dona, payment);
+              await registrarComissao(dona, valorCentavos, 'mensalidade', payment);
+            }
           }
-          if (emp && !payment.subscription) await registrarComissao(emp, valorCentavos, 'venda-avista');
+          if (emp && !payment.subscription) await registrarComissao(emp, valorCentavos, 'venda-avista', payment);
           console.log('[ASAAS] conta de signup garantida via webhook');
         } catch (e) { console.error('[ASAAS] erro ao criar conta de signup:', e.message); }
         return res.sendStatus(200);
@@ -6047,10 +6083,8 @@ app.post('/webhook-asaas', async (req, res) => {
           atualizadoEm: new Date().toISOString()
         };
         await gravarAssinatura(ref.empresaId, base);
-        if (!payment.subscription) {
-          const ed = await EMPRESAS_COL().doc(ref.empresaId).get();
-          if (ed.exists) await registrarComissao({ id: ed.id, ...ed.data() }, valorCentavos, 'venda-avista');
-        }
+        const ed = await EMPRESAS_COL().doc(ref.empresaId).get();
+        if (ed.exists) await registrarComissao({ id: ed.id, ...ed.data() }, valorCentavos, payment.subscription ? 'mensalidade' : 'venda-avista', payment);
         console.log(`[ASAAS] checkout concluído — empresa ${ref.empresaId}, plano ${ref.plano}`);
       } else if (payment.subscription || payment.customer) {
         // Sem externalReference reconhecível (ex.: cobrança recorrente de
@@ -6059,7 +6093,7 @@ app.post('/webhook-asaas', async (req, res) => {
         const empresa = await acharEmpresaPorPagamentoAsaas(payment);
         if (empresa) {
           await renovarAcessoPorPagamento(empresa, payment);
-          await registrarComissao(empresa, valorCentavos, 'mensalidade');
+          await registrarComissao(empresa, valorCentavos, 'mensalidade', payment);
           console.log(`[ASAAS] mensalidade paga — empresa ${empresa.id}`);
         }
       }
