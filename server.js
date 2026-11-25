@@ -173,6 +173,17 @@ async function acharEmpresaPorAsaasCustomer(customerId) {
   return { id: d.id, ...d.data() };
 }
 
+// Acha a empresa dona de um PAGAMENTO: primeiro pela assinatura (exata), depois
+// pelo customer — o mesmo CPF/CNPJ pode ter mais de uma empresa, e só pelo
+// customer a renovação podia cair na errada.
+async function acharEmpresaPorPagamentoAsaas(payment) {
+  if (payment.subscription) {
+    const snap = await EMPRESAS_COL().where('assinatura.asaasSubscriptionId', '==', payment.subscription).limit(1).get();
+    if (!snap.empty) { const d = snap.docs[0]; return { id: d.id, ...d.data() }; }
+  }
+  return acharEmpresaPorAsaasCustomer(payment.customer);
+}
+
 // Cria uma sessão de checkout hospedada no Asaas (Asaas Checkout) — o
 // equivalente ao stripe.checkout.sessions.create. Devolve { id, link } —
 // `link` é pra onde o front redireciona o cliente. `metodos` em português
@@ -5945,6 +5956,33 @@ function dataMaisMeses(meses) {
   return d.toISOString();
 }
 
+// Até quando um pagamento libera o acesso, contado da data DELE (não de hoje):
+// no cartão a Asaas avisa 2x o mesmo pagamento — CONFIRMED na hora e RECEIVED
+// ~30 dias depois — e contando de hoje o 2º aviso dava um mês de graça.
+function acessoAtePorPagamento(payment, meses) {
+  const data = payment.confirmedDate || payment.clientPaymentDate || payment.paymentDate;
+  let base = /^\d{4}-\d{2}-\d{2}/.test(String(data || '')) ? new Date(String(data).slice(0, 10) + 'T12:00:00Z') : new Date();
+  if (isNaN(base) || base > new Date()) base = new Date();
+  base.setMonth(base.getMonth() + meses);
+  return base.toISOString();
+}
+
+// Renova o acesso da empresa por um pagamento de assinatura. Nunca encurta o
+// prazo, então aviso repetido ou atrasado não muda nada.
+async function renovarAcessoPorPagamento(empresa, payment) {
+  const a = empresa.assinatura || {};
+  const acessoAte = acessoAtePorPagamento(payment, 1);
+  if (a.acessoAte && a.acessoAte >= acessoAte) return false;
+  await gravarAssinatura(empresa.id, {
+    ...a,
+    asaasCustomerId: payment.customer || a.asaasCustomerId || null,
+    asaasSubscriptionId: payment.subscription || a.asaasSubscriptionId || null,
+    status: 'ativa', acessoAte, atualizadoEm: new Date().toISOString()
+  });
+  console.log(`[ASAAS] acesso renovado até ${acessoAte.slice(0, 10)} — empresa ${empresa.id}`);
+  return true;
+}
+
 // Verificação do Asaas: token fixo no cabeçalho `asaas-access-token`, igual ao
 // authToken cadastrado no Webhook (não é assinatura criptográfica como o
 // Stripe usava — ver comentário na configuração ASAAS lá em cima).
@@ -5982,6 +6020,12 @@ app.post('/webhook-asaas', async (req, res) => {
           let email = '';
           try { const cli = await asaas.get(`/customers/${payment.customer}`); email = cli.data.email || ''; } catch (e2) {}
           const emp = await garantirContaSignup({ ref: signupRef, email, asaasCustomerId: payment.customer, asaasSubscriptionId: payment.subscription });
+          // A Asaas pode repetir esta mesma referência em TODAS as mensalidades:
+          // sem isto a 2ª em diante só "achava" a conta e não renovava o acesso.
+          if (payment.subscription) {
+            const dona = emp || await acharEmpresaPorPagamentoAsaas({ subscription: payment.subscription });
+            if (dona) await renovarAcessoPorPagamento(dona, payment);
+          }
           if (emp && !payment.subscription) await registrarComissao(emp, valorCentavos, 'venda-avista');
           console.log('[ASAAS] conta de signup garantida via webhook');
         } catch (e) { console.error('[ASAAS] erro ao criar conta de signup:', e.message); }
@@ -5989,13 +6033,17 @@ app.post('/webhook-asaas', async (req, res) => {
       }
       const plano = PLANOS[ref.plano];
       if (ref.empresaId && plano) {
-        // 1ª cobrança de uma empresa já existente (assinou um plano novo).
+        // Cobrança de uma empresa já existente (assinou um plano novo, ou
+        // mensalidade seguinte se a Asaas repetir a referência).
+        const atualSnap = await EMPRESAS_COL().doc(ref.empresaId).get();
+        const ateAtual = (atualSnap.exists && atualSnap.data().assinatura && atualSnap.data().assinatura.acessoAte) || '';
+        const ateNovo = acessoAtePorPagamento(payment, plano.tipo === 'assinatura' ? 1 : plano.meses);
         const base = {
           asaasCustomerId: payment.customer || null,
           asaasSubscriptionId: payment.subscription || null,
           ciclo: ref.plano,
           status: 'ativa',
-          acessoAte: dataMaisMeses(plano.tipo === 'assinatura' ? 1 : plano.meses),
+          acessoAte: ateNovo > ateAtual ? ateNovo : ateAtual,
           atualizadoEm: new Date().toISOString()
         };
         await gravarAssinatura(ref.empresaId, base);
@@ -6008,17 +6056,16 @@ app.post('/webhook-asaas', async (req, res) => {
         // Sem externalReference reconhecível (ex.: cobrança recorrente de
         // ciclos seguintes) — acha pelo customer do Asaas, igual o Stripe
         // fazia via invoice.paid.
-        const empresa = await acharEmpresaPorAsaasCustomer(payment.customer);
+        const empresa = await acharEmpresaPorPagamentoAsaas(payment);
         if (empresa) {
-          await gravarAssinatura(empresa.id, {
-            ...(empresa.assinatura || {}), status: 'ativa', acessoAte: dataMaisMeses(1), atualizadoEm: new Date().toISOString()
-          });
+          await renovarAcessoPorPagamento(empresa, payment);
           await registrarComissao(empresa, valorCentavos, 'mensalidade');
           console.log(`[ASAAS] mensalidade paga — empresa ${empresa.id}`);
         }
       }
     } else if (event === 'PAYMENT_OVERDUE') {
-      const empresa = await acharEmpresaPorAsaasCustomer(payment.customer);
+      // Pix da adesão vencido não é mensalidade atrasada.
+      const empresa = String(payment.externalReference || '').startsWith('adesao_') ? null : await acharEmpresaPorPagamentoAsaas(payment);
       if (empresa) {
         await gravarAssinatura(empresa.id, {
           ...(empresa.assinatura || {}), status: 'atrasada', atualizadoEm: new Date().toISOString()
