@@ -665,7 +665,7 @@ async function iniciarPagamentoAdesao(dadosEmpresa) {
   // vendedor — reaproveita a mesma tela de "plano já travado" (/assinar).
   const btnCartao = document.getElementById('pagAdesaoAssinarCartaoBtn');
   if (btnCartao) {
-    btnCartao.href = `${API_BASE}/assinar?plano=${encodeURIComponent(CAD_PLANO)}&unico=1${VENDEDOR_ID_ATUAL ? `&vendedor=${encodeURIComponent(VENDEDOR_ID_ATUAL)}` : ''}`;
+    btnCartao.href = `${API_BASE}/assinar?plano=${encodeURIComponent(CAD_PLANO)}&unico=1&empresa=${encodeURIComponent(dadosEmpresa.empresaId)}${VENDEDOR_ID_ATUAL ? `&vendedor=${encodeURIComponent(VENDEDOR_ID_ATUAL)}` : ''}`;
   }
   // Gera o Pix automaticamente, sem precisar de outro clique — os dados
   // (nome/e-mail/CPF-CNPJ/telefone) já vieram preenchidos no cadastro.

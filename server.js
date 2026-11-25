@@ -6556,7 +6556,20 @@ app.post('/assinar/checkout', async (req, res) => {
     const planoId = String((req.body && req.body.plano) || '').toLowerCase();
     const plano = PLANOS[planoId];
     if (!plano) return res.status(400).json({ ok: false, erro: 'Plano inválido' });
-    const vendedor = String((req.body && req.body.vendedor) || '').trim().slice(0, 60);
+    let vendedor = String((req.body && req.body.vendedor) || '').trim().slice(0, 60);
+    // Veio do cadastro já feito (/cliente/cadastro → botão do cartão): amarra o
+    // pagamento a essa empresa, pra não criar uma segunda conta.
+    const empresaId = String((req.body && req.body.empresaId) || '').trim().slice(0, 60);
+    if (empresaId) {
+      const esnap = /^[\w-]+$/.test(empresaId) ? await EMPRESAS_COL().doc(empresaId).get() : null;
+      if (!esnap || !esnap.exists) return res.status(404).json({ ok: false, erro: 'Cadastro não encontrado. Peça um novo link ao seu vendedor.' });
+      const emp = esnap.data();
+      const st = billingStatus(emp);
+      if (emp.assinatura && emp.assinatura.asaasSubscriptionId && st.status === 'ativa') {
+        return res.status(409).json({ ok: false, erro: 'Esta empresa já tem uma assinatura ativa no cartão. É só fazer login.' });
+      }
+      if (emp.vendedorComissao) vendedor = String(emp.vendedorComissao).slice(0, 60);
+    }
     if (planoId === 'mensal297' && vendedor && await vendedorEhAfiliado(vendedor)) {
       return res.status(400).json({ ok: false, erro: 'Esse valor promocional (R$ 297,00) só pode ser negociado pelo Representante, numa venda direta sem Afiliado. Pra venda com Afiliado, o piso autorizado é R$ 347,00.' });
     }
@@ -6567,14 +6580,17 @@ app.post('/assinar/checkout', async (req, res) => {
 
     const ref = crypto.randomUUID();
     await SIGNUPS_PENDENTES_COL().doc(ref).set({
-      plano: planoId, vendedor: vendedor || null, criadoEm: new Date().toISOString()
+      plano: planoId, vendedor: vendedor || null, empresaId: empresaId || null, criadoEm: new Date().toISOString()
     });
 
+    // Cancelou: volta pro MESMO link (plano + empresa), senão a nova tentativa
+    // perderia o vínculo e criaria outra conta.
+    const voltar = new URLSearchParams({ cancelado: '1', ...(empresaId ? { plano: planoId, unico: '1', empresa: empresaId, ...(vendedor ? { vendedor } : {}) } : {}) });
     const checkout = await criarCheckoutAsaas({
       plano, planoId,
       externalReference: ref,
       successUrl: `${base}/completar?ref=${ref}`,
-      cancelUrl: `${base}/assinar?cancelado=1`,
+      cancelUrl: `${base}/assinar?${voltar}`,
       metodos
     });
     await SIGNUPS_PENDENTES_COL().doc(ref).update({ checkoutId: checkout.id || null });
@@ -6684,32 +6700,61 @@ app.get('/assinar/adesao/status', async (req, res) => {
 // vezes seja chamada: webhook, /completar/status (poll) e /completar podem
 // chamar essa função pra mesma ref, de propósito — resiliência contra o
 // webhook atrasar ou falhar).
+//
+// Se a pessoa JÁ se cadastrou antes de pagar (link do cartão em
+// /cliente/cadastro, que manda ?empresa=ID), a assinatura entra NAQUELA empresa
+// — criar outra deixava o cliente com duas contas.
 async function garantirContaSignup({ ref, email, asaasCustomerId, asaasSubscriptionId }) {
-  const pend = await SIGNUPS_PENDENTES_COL().doc(ref).get();
-  if (!pend.exists) return null;
-  const { plano: planoId, vendedor } = pend.data();
-  const plano = PLANOS[planoId];
-  if (!plano) return null;
+  // Refs pagas antes de existir `empresaCriadaId` no signup.
   const existe = await EMPRESAS_COL().where('assinatura.asaasSignupRef', '==', ref).limit(1).get();
   if (!existe.empty) { const d = existe.docs[0]; return { id: d.id, ...d.data() }; }
-  const novaRef = await EMPRESAS_COL().add({
-    nome: 'Nova empresa',
-    email: (email || '').toLowerCase(),
-    cadastroIncompleto: true,
-    ...(vendedor ? { vendedorComissao: vendedor } : {}),
-    assinatura: {
+
+  const pendRef = SIGNUPS_PENDENTES_COL().doc(ref);
+  // Transação: o webhook e a tela /completar chegam quase juntos, e sem isso
+  // os dois não achavam a empresa e criavam uma cada.
+  const empresaId = await db.runTransaction(async (tx) => {
+    const pend = await tx.get(pendRef);
+    if (!pend.exists) return null;
+    const p = pend.data();
+    if (p.empresaCriadaId) return p.empresaCriadaId;
+    const plano = PLANOS[p.plano];
+    if (!plano) return null;
+    const assinatura = {
       asaasSignupRef: ref,
       asaasCustomerId: asaasCustomerId || null,
       asaasSubscriptionId: asaasSubscriptionId || null,
-      ciclo: planoId,
+      ciclo: p.plano,
       status: 'ativa',
       acessoAte: dataMaisMeses(plano.tipo === 'assinatura' ? 1 : plano.meses),
       atualizadoEm: new Date().toISOString()
-    },
-    criadoEm: new Date().toISOString()
+    };
+    if (p.empresaId) {
+      const eref = EMPRESAS_COL().doc(p.empresaId);
+      const esnap = await tx.get(eref);
+      if (esnap.exists) {
+        const atual = esnap.data();
+        const ateAtual = atual.assinatura && atual.assinatura.acessoAte;
+        if (ateAtual && ateAtual > assinatura.acessoAte) assinatura.acessoAte = ateAtual; // não encurta trial/cortesia
+        tx.set(eref, { assinatura, ...(p.vendedor && !atual.vendedorComissao ? { vendedorComissao: p.vendedor } : {}) }, { merge: true });
+        tx.update(pendRef, { empresaCriadaId: p.empresaId });
+        return p.empresaId;
+      }
+    }
+    const nova = EMPRESAS_COL().doc();
+    tx.set(nova, {
+      nome: 'Nova empresa',
+      email: (email || '').toLowerCase(),
+      cadastroIncompleto: true,
+      ...(p.vendedor ? { vendedorComissao: p.vendedor } : {}),
+      assinatura,
+      criadoEm: new Date().toISOString()
+    });
+    tx.update(pendRef, { empresaCriadaId: nova.id });
+    return nova.id;
   });
-  const snap = await novaRef.get();
-  return { id: novaRef.id, ...snap.data() };
+  if (!empresaId) return null;
+  const snap = await EMPRESAS_COL().doc(empresaId).get();
+  return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 
 // Busca o pagamento do Asaas pela nossa `ref` — usado pelas duas rotas
@@ -6754,7 +6799,7 @@ app.get('/completar/status', async (req, res) => {
     try { const cli = await asaas.get(`/customers/${pagamento.customer}`); email = cli.data.email || ''; } catch (e) {}
     const empresa = await garantirContaSignup({ ref, email, asaasCustomerId: pagamento.customer, asaasSubscriptionId: pagamento.subscription });
     if (!empresa) return res.status(400).json({ ok: false, erro: 'Referência inválida' });
-    res.json({ ok: true, pronto: true, email: empresa.email || '', jaCompleto: !empresa.cadastroIncompleto });
+    res.json({ ok: true, pronto: true, email: empresa.email || '', jaCompleto: !empresa.cadastroIncompleto, aguardandoAdesao: !!empresa.pendenteAprovacao });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -6774,6 +6819,10 @@ app.post('/completar', async (req, res) => {
     try { const cli = await asaas.get(`/customers/${pagamento.customer}`); email = cli.data.email || ''; } catch (e) {}
     const empresa = await garantirContaSignup({ ref, email, asaasCustomerId: pagamento.customer, asaasSubscriptionId: pagamento.subscription });
     if (!empresa) return res.status(400).json({ ok: false, erro: 'Referência inválida' });
+
+    // Empresa que já tinha cadastro só recebeu a assinatura: nunca sobrescreve os
+    // dados dela nem cria outro gestor por aqui.
+    if (!empresa.cadastroIncompleto) return res.status(409).json({ ok: false, erro: 'Este cadastro já foi concluído. Faça login.' });
 
     const emailNorm = (empresa.email || '').toLowerCase();
     const jaExiste = await USUARIOS_COL().where('email', '==', emailNorm).limit(1).get();

@@ -127,7 +127,13 @@ async function verificar(tentativa) {
     const resp = await fetch(`${API_BASE}/completar/status?ref=${encodeURIComponent(refPagamento)}`);
     const data = await resp.json();
     if (data.ok && data.pronto) {
-      if (data.jaCompleto) { mostrarErro('Este cadastro já foi concluído. Faça login para entrar.'); return; }
+      if (data.jaCompleto) {
+        mostrarErro(data.aguardandoAdesao
+          ? 'Pagamento do cartão confirmado! Seu acesso é liberado assim que o Pix da adesão for pago.'
+          : 'Pagamento confirmado e cadastro concluído! Faça login para entrar.');
+        document.querySelector('#erro .ok-emoji').textContent = '✅';
+        return;
+      }
       document.getElementById('email').value = data.email || '';
       document.getElementById('loading').style.display = 'none';
       document.getElementById('form').style.display = 'block';

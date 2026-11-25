@@ -161,7 +161,7 @@
 
     <div id="avisoCancelado" class="aviso" style="display:none;">Pagamento não concluído. Você pode tentar de novo quando quiser. 😊</div>
 
-    <p class="eyebrow">Passo 1 — Adesão (pagamento único)</p>
+    <p class="eyebrow" id="passoAdesao">Passo 1 — Adesão (pagamento único)</p>
     <div class="planos">
       <div class="plano" id="cardAdesao">
         <div class="ic"><i data-lucide="wrench"></i></div>
@@ -228,11 +228,15 @@ const API_BASE = window.location.origin;
 const params = new URLSearchParams(location.search);
 const planoUrl = (params.get('plano') || '').toLowerCase();
 const vendedorUrl = (params.get('vendedor') || '').trim();
+// Cliente que já fez o cadastro (botão do cartão em /cliente/cadastro): o
+// pagamento entra nessa empresa e a adesão não aparece de novo (já foi cobrada lá).
+const empresaUrl = (params.get('empresa') || '').trim();
 const comBoleto = params.get('boleto') === '1';
 const unicoUrl = params.get('unico') === '1';
 // Modo vendedor: link com ?vendedor=... ou ?boleto=1 → mostra TODOS os planos
 // (inclui Mensal recorrente) e libera pix/boleto. No site normal: só Semestral + Anual, cartão.
 const modoVendedor = !!vendedorUrl || comBoleto;
+if (empresaUrl) { document.getElementById('cardAdesao').style.display = 'none'; document.getElementById('passoAdesao').style.display = 'none'; }
 if (params.get('cancelado')) document.getElementById('avisoCancelado').style.display = 'block';
 
 function moeda(c) { return (c/100).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); }
@@ -286,7 +290,7 @@ async function assinar(btn) {
   document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = true);
   btn.textContent = 'Abrindo pagamento...';
   try {
-    const resp = await fetch(`${API_BASE}/assinar/checkout`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plano, vendedor: vendedorUrl, boleto: modoVendedor }) });
+    const resp = await fetch(`${API_BASE}/assinar/checkout`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plano, vendedor: vendedorUrl, empresaId: empresaUrl, boleto: modoVendedor }) });
     const data = await resp.json();
     if (resp.ok && data.ok && data.url) { window.location.href = data.url; }
     else { alert(data.erro || 'Não foi possível iniciar o pagamento.'); document.querySelectorAll('button[data-plano]').forEach(b => b.disabled = false); carregarPlanos(); }
